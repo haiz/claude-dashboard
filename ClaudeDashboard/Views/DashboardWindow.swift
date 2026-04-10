@@ -5,6 +5,36 @@ struct DashboardWindow: View {
     @State private var showingSettings = false
 
     var body: some View {
+        Group {
+            switch viewModel.navigation {
+            case .dashboard:
+                dashboardContent
+            case .accountDetail(let accountId):
+                if let state = viewModel.accountStates.first(where: { $0.id == accountId }) {
+                    AccountDetailView(
+                        viewModel: AccountDetailViewModel(
+                            accountId: accountId,
+                            accountName: state.account.name,
+                            accountPlan: state.account.plan,
+                            logStore: viewModel.logStore
+                        ),
+                        onBack: { viewModel.navigation = .dashboard }
+                    )
+                }
+            case .overview:
+                OverviewChartView(
+                    viewModel: viewModel,
+                    onBack: { viewModel.navigation = .dashboard }
+                )
+            }
+        }
+        .frame(minWidth: 400, minHeight: 300)
+        .sheet(isPresented: $showingSettings) {
+            SettingsView(viewModel: viewModel)
+        }
+    }
+
+    private var dashboardContent: some View {
         VStack(spacing: 0) {
             // Toolbar
             HStack {
@@ -12,6 +42,10 @@ struct DashboardWindow: View {
                     .font(.title2.bold())
 
                 Spacer()
+
+                Button(action: { viewModel.navigation = .overview }) {
+                    Label("Overview", systemImage: "chart.xyaxis.line")
+                }
 
                 Button(action: {
                     Task { await viewModel.refreshAll() }
@@ -42,6 +76,8 @@ struct DashboardWindow: View {
                                 Task { await viewModel.resyncAccount(state.id) }
                             }, onTogglePin: {
                                 viewModel.togglePin(for: state.id)
+                            }, onTap: {
+                                viewModel.navigation = .accountDetail(state.id)
                             })
                         }
                     }
@@ -49,13 +85,8 @@ struct DashboardWindow: View {
                 }
             }
         }
-        .frame(minWidth: 400, minHeight: 300)
-        .sheet(isPresented: $showingSettings) {
-            SettingsView(viewModel: viewModel)
-        }
     }
 
-    // macOS 13 compatible empty state (ContentUnavailableView requires macOS 14+)
     private var emptyStateView: some View {
         VStack(spacing: 12) {
             Spacer()

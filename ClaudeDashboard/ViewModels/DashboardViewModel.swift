@@ -23,6 +23,14 @@ final class DashboardViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(autoRefreshMinutes, forKey: "autoRefreshMinutes"); scheduleAutoRefresh() }
     }
 
+    enum NavigationDestination: Equatable {
+        case dashboard
+        case accountDetail(UUID)
+        case overview
+    }
+
+    @Published var navigation: NavigationDestination = .dashboard
+
     let accountStore: AccountStore
     private let apiService: UsageAPIService
     private var cancellables = Set<AnyCancellable>()
