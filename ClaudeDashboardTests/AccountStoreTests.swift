@@ -17,7 +17,9 @@ final class AccountStoreTests: XCTestCase {
         let account = Account(
             id: UUID(),
             name: "Test Account",
+            email: nil,
             chromeProfilePath: "Profile 1",
+            chromeProfileName: nil,
             orgId: "org-123",
             plan: .max200,
             lastSynced: nil,
@@ -34,7 +36,9 @@ final class AccountStoreTests: XCTestCase {
         let account = Account(
             id: UUID(),
             name: "Test",
+            email: nil,
             chromeProfilePath: "Profile 1",
+            chromeProfileName: nil,
             orgId: "org-123",
             plan: .pro,
             lastSynced: nil,
@@ -52,7 +56,9 @@ final class AccountStoreTests: XCTestCase {
         var account = Account(
             id: UUID(),
             name: "Old Name",
+            email: nil,
             chromeProfilePath: "Profile 1",
+            chromeProfileName: nil,
             orgId: "org-123",
             plan: .max200,
             lastSynced: nil,
@@ -70,7 +76,9 @@ final class AccountStoreTests: XCTestCase {
         let account = Account(
             id: UUID(),
             name: "Persistent",
+            email: nil,
             chromeProfilePath: "Profile 1",
+            chromeProfileName: nil,
             orgId: "org-123",
             plan: .max200,
             lastSynced: nil,

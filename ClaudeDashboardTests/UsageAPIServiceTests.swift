@@ -94,6 +94,63 @@ final class UsageAPIServiceTests: XCTestCase {
             // expected
         }
     }
+
+    func testFetchFullUsageDetectsMaxPlan() async throws {
+        let responseJSON = """
+        {
+          "five_hour": { "utilization": 30.0, "resets_at": null },
+          "seven_day": { "utilization": 10.0, "resets_at": null },
+          "seven_day_sonnet": { "utilization": 5.0, "resets_at": null },
+          "extra_usage": { "is_enabled": true }
+        }
+        """.data(using: .utf8)!
+
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200,
+                httpVersion: nil, headerFields: nil
+            )!
+            return (response, responseJSON)
+        }
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+
+        let service = UsageAPIService(session: session)
+        let (usage, planHint, _) = try await service.fetchFullUsage(orgId: "org-123", sessionKey: "sk-test")
+
+        XCTAssertEqual(usage.fiveHour.utilization, 30.0)
+        XCTAssertEqual(usage.sevenDaySonnet?.utilization, 5.0)
+        XCTAssertEqual(planHint, .max200)  // extra_usage enabled but no tier info → fallback Max
+    }
+
+    func testFetchFullUsageDetectsProPlan() async throws {
+        let responseJSON = """
+        {
+          "five_hour": { "utilization": 10.0, "resets_at": null },
+          "seven_day": { "utilization": 5.0, "resets_at": null },
+          "extra_usage": null
+        }
+        """.data(using: .utf8)!
+
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200,
+                httpVersion: nil, headerFields: nil
+            )!
+            return (response, responseJSON)
+        }
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+
+        let service = UsageAPIService(session: session)
+        let (_, planHint, _) = try await service.fetchFullUsage(orgId: "org-123", sessionKey: "sk-test")
+
+        XCTAssertEqual(planHint, .pro)
+    }
 }
 
 // MARK: - Mock

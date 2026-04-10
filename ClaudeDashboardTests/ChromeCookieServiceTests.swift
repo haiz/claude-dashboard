@@ -7,10 +7,11 @@ final class ChromeCookieServiceTests: XCTestCase {
         let json = """
         {
           "profile": {
+            "last_active_profiles": ["Default", "Profile 1"],
             "info_cache": {
-              "Default": { "name": "Person 1" },
-              "Profile 1": { "name": "Work" },
-              "Profile 2": { "name": "Personal" }
+              "Default": { "name": "Person 1", "user_name": "" },
+              "Profile 1": { "name": "Work", "user_name": "work@example.com" },
+              "Profile 2": { "name": "Personal", "user_name": "me@example.com" }
             }
           }
         }
@@ -18,9 +19,13 @@ final class ChromeCookieServiceTests: XCTestCase {
 
         let profiles = ChromeCookieService.parseProfiles(from: json)
 
-        XCTAssertEqual(profiles.count, 3)
+        // Only active profiles (Default + Profile 1), not Profile 2
+        XCTAssertEqual(profiles.count, 2)
         XCTAssertEqual(profiles.first(where: { $0.path == "Default" })?.displayName, "Person 1")
         XCTAssertEqual(profiles.first(where: { $0.path == "Profile 1" })?.displayName, "Work")
+        XCTAssertEqual(profiles.first(where: { $0.path == "Profile 1" })?.googleEmail, "work@example.com")
+        XCTAssertEqual(profiles.first(where: { $0.path == "Default" })?.googleEmail, "")
+        XCTAssertNil(profiles.first(where: { $0.path == "Profile 2" }))
     }
 
     func testPBKDF2KeyDerivation() throws {
