@@ -25,7 +25,13 @@
       "Bash(git -C /Users/haicao/code/others/claude-dashboard commit -m ':*)",
       "Bash(xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests test)",
       "Bash(git add:*)",
-      "Bash(git commit -m ':*)"
+      "Bash(git commit -m ':*)",
+      "Bash(xcodebuild test:*)",
+      "Bash(xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboard build)",
+      "Bash(xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboard test)",
+      "Bash(xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests build-for-testing)",
+      "Bash(xcodebuild -project /Users/haicao/code/others/claude-dashboard/ClaudeDashboard.xcodeproj -scheme ClaudeDashboard build)",
+      "Bash(xcodebuild -project /Users/haicao/code/others/claude-dashboard/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests test)"
     ]
   }
 }
