@@ -18,6 +18,7 @@
 		9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF469D724BE1FCA1D071131F /* AccountStore.swift */; };
 		A39C01692A8EA4FA3A76ED88 /* AccountStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */; };
 		AAEAB48A072B469189CCA747 /* UsageAPIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64695012FC6F1C08762E7E77 /* UsageAPIServiceTests.swift */; };
+		C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */; };
 		EE79E9D7DCE9B79B909B5C30 /* ChromeCookieService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C398BC3CE03BDC7BD4C5E86F /* ChromeCookieService.swift */; };
 /* End PBXBuildFile section */
 
@@ -32,6 +33,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
 		1CCB0272995AEA4CCAA902F3 /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
 		23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreTests.swift; sourceTree = "<group>"; };
 		53D1A85918EB846584354C07 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -50,6 +52,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		0A3C2B00E6B723407F86A78B /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
 		109421F311E289DC97EE7C52 /* ClaudeDashboardTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -107,6 +117,7 @@
 				53D1A85918EB846584354C07 /* Info.plist */,
 				7A17B4EB239FCB21F225E818 /* Models */,
 				5FA635657F2C1FE8D6BBFB90 /* Services */,
+				0A3C2B00E6B723407F86A78B /* ViewModels */,
 			);
 			path = ClaudeDashboard;
 			sourceTree = "<group>";
@@ -218,6 +229,7 @@
 				9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */,
 				EE79E9D7DCE9B79B909B5C30 /* ChromeCookieService.swift in Sources */,
 				18B4F69185821E78B8E6139C /* ClaudeDashboardApp.swift in Sources */,
+				C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */,
 				5467470C8154768515DCC0EC /* KeychainService.swift in Sources */,
 				572F630B64E010889B2C70F5 /* UsageAPIService.swift in Sources */,
 				3C92DE3C1904B8E52835EE1A /* UsageData.swift in Sources */,
