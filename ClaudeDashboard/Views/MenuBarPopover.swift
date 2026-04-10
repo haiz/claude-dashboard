@@ -21,7 +21,12 @@ struct MenuBarPopover: View {
                 .buttonStyle(.borderless)
                 .disabled(viewModel.isRefreshing)
 
-                Button(action: onOpenWindow) {
+                Button(action: {
+                    onOpenWindow()
+                    DispatchQueue.main.async {
+                        NSApp.keyWindow?.close()
+                    }
+                }) {
                     Image(systemName: "rectangle.expand.vertical")
                 }
                 .buttonStyle(.borderless)
