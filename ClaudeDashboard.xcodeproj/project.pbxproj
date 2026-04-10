@@ -13,12 +13,14 @@
 		5467470C8154768515DCC0EC /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BDD5471D1B082F49E424611 /* KeychainService.swift */; };
 		572F630B64E010889B2C70F5 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84DA681CB4E6963F615B13B5 /* UsageAPIService.swift */; };
 		5B7E2C4AE91767C8329E200E /* ChromeCookieServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9602F34D10F24B11C7B02DF3 /* ChromeCookieServiceTests.swift */; };
+		6A3B29454AC4491BC3AB2C7B /* AccountCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786E54BCD656D51F01E86B77 /* AccountCard.swift */; };
 		87C2A9CB2E2D999C1C08AD3A /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C0B125D77B2634A93EEA79 /* Account.swift */; };
 		8C6A56AA09D21B951F1E7863 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D572159B978911BF3D1EDAC0 /* Assets.xcassets */; };
 		9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF469D724BE1FCA1D071131F /* AccountStore.swift */; };
 		A39C01692A8EA4FA3A76ED88 /* AccountStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */; };
 		AAEAB48A072B469189CCA747 /* UsageAPIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64695012FC6F1C08762E7E77 /* UsageAPIServiceTests.swift */; };
 		C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */; };
+		E53BC1DBE702E2298D98F974 /* UsageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36CFE6B80C6A187D9A176752 /* UsageBar.swift */; };
 		EE79E9D7DCE9B79B909B5C30 /* ChromeCookieService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C398BC3CE03BDC7BD4C5E86F /* ChromeCookieService.swift */; };
 /* End PBXBuildFile section */
 
@@ -36,9 +38,11 @@
 		044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
 		1CCB0272995AEA4CCAA902F3 /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
 		23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreTests.swift; sourceTree = "<group>"; };
+		36CFE6B80C6A187D9A176752 /* UsageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageBar.swift; sourceTree = "<group>"; };
 		53D1A85918EB846584354C07 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		61CE79EE895C0FE88D1ED98A /* UsageDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageDataTests.swift; sourceTree = "<group>"; };
 		64695012FC6F1C08762E7E77 /* UsageAPIServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAPIServiceTests.swift; sourceTree = "<group>"; };
+		786E54BCD656D51F01E86B77 /* AccountCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountCard.swift; sourceTree = "<group>"; };
 		8007AA99F483598797EBFAE0 /* ClaudeDashboardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDashboardApp.swift; sourceTree = "<group>"; };
 		84DA681CB4E6963F615B13B5 /* UsageAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAPIService.swift; sourceTree = "<group>"; };
 		8BDD5471D1B082F49E424611 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
@@ -100,6 +104,15 @@
 			path = Services;
 			sourceTree = "<group>";
 		};
+		70EAF5AB034336E472A2FD00 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				786E54BCD656D51F01E86B77 /* AccountCard.swift */,
+				36CFE6B80C6A187D9A176752 /* UsageBar.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
 		7A17B4EB239FCB21F225E818 /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -118,6 +131,7 @@
 				7A17B4EB239FCB21F225E818 /* Models */,
 				5FA635657F2C1FE8D6BBFB90 /* Services */,
 				0A3C2B00E6B723407F86A78B /* ViewModels */,
+				70EAF5AB034336E472A2FD00 /* Views */,
 			);
 			path = ClaudeDashboard;
 			sourceTree = "<group>";
@@ -226,12 +240,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				87C2A9CB2E2D999C1C08AD3A /* Account.swift in Sources */,
+				6A3B29454AC4491BC3AB2C7B /* AccountCard.swift in Sources */,
 				9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */,
 				EE79E9D7DCE9B79B909B5C30 /* ChromeCookieService.swift in Sources */,
 				18B4F69185821E78B8E6139C /* ClaudeDashboardApp.swift in Sources */,
 				C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */,
 				5467470C8154768515DCC0EC /* KeychainService.swift in Sources */,
 				572F630B64E010889B2C70F5 /* UsageAPIService.swift in Sources */,
+				E53BC1DBE702E2298D98F974 /* UsageBar.swift in Sources */,
 				3C92DE3C1904B8E52835EE1A /* UsageData.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
