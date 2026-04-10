@@ -15,7 +15,7 @@ struct UsageBar: View {
         self.animal = animal
     }
 
-    /// Number of countdown segments: 5 for 5h window, 7 for 7d window.
+    /// Number of countdown segments: 5 for 5h window, 7 for 7d and Sonnet windows.
     private var segmentCount: Int {
         totalSeconds <= 18000 ? 5 : 7
     }
