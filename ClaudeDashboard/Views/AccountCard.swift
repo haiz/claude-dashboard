@@ -9,10 +9,25 @@ struct AccountCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 // Header
                 HStack {
-                    Text(state.account.name)
-                        .font(.headline)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(state.account.name)
+                            .font(.headline)
+                        if let email = state.account.email, email != state.account.name {
+                            Text(email)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
 
                     Spacer()
+
+                    // Plan badge
+                    Text(state.account.plan.rawValue)
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(planBadgeColor.opacity(0.15))
+                        .clipShape(Capsule())
 
                     if state.isLoading {
                         ProgressView()
@@ -43,16 +58,34 @@ struct AccountCard: View {
 
     private func usageContent(_ usage: UsageData) -> some View {
         VStack(spacing: 8) {
-            UsageBar(label: "5h", utilization: usage.fiveHour.utilization, resetsAt: usage.fiveHour.resetsAt)
-            UsageBar(label: "7d", utilization: usage.sevenDay.utilization, resetsAt: usage.sevenDay.resetsAt)
+            UsageBar(label: "5h", utilization: usage.fiveHour.utilization, resetsAt: usage.fiveHour.resetsAt, totalSeconds: 18000)
+            UsageBar(label: "7d", utilization: usage.sevenDay.utilization, resetsAt: usage.sevenDay.resetsAt, totalSeconds: 604800)
+            if let sonnet = usage.sevenDaySonnet {
+                UsageBar(label: "S", utilization: sonnet.utilization, resetsAt: sonnet.resetsAt, totalSeconds: 604800)
+            }
+        }
+    }
+
+    private var planBadgeColor: Color {
+        switch state.account.plan {
+        case .pro: return .blue
+        case .max5x: return .purple
+        case .max20x: return .orange
+        case .max200: return .purple
         }
     }
 
     private var expiredContent: some View {
-        VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Session expired.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if let profileName = state.account.chromeProfileName {
+                Text("Open Chrome profile \"\(profileName)\" and login to claude.ai, then re-sync.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             Button("Re-sync from Chrome") {
                 onResync()
