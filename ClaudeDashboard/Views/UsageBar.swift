@@ -5,12 +5,14 @@ struct UsageBar: View {
     let utilization: Double     // 0-100
     let resetsAt: Date?
     let totalSeconds: TimeInterval  // total window: 18000 for 5h, 604800 for 7d
+    let animal: String?
 
-    init(label: String, utilization: Double, resetsAt: Date?, totalSeconds: TimeInterval = 18000) {
+    init(label: String, utilization: Double, resetsAt: Date?, totalSeconds: TimeInterval = 18000, animal: String? = nil) {
         self.label = label
         self.utilization = utilization
         self.resetsAt = resetsAt
         self.totalSeconds = totalSeconds
+        self.animal = animal
     }
 
     var body: some View {
@@ -29,6 +31,15 @@ struct UsageBar: View {
                         RoundedRectangle(cornerRadius: 4)
                             .fill(DashboardViewModel.usageColor(for: utilization))
                             .frame(width: geo.size.width * min(utilization / 100, 1.0))
+
+                        if let animal {
+                            Text(animal)
+                                .font(.system(size: 12))
+                                .offset(
+                                    x: geo.size.width * min(utilization / 100, 1.0) - 8,
+                                    y: -14
+                                )
+                        }
                     }
                 }
                 .frame(height: 8)
@@ -45,6 +56,7 @@ struct UsageBar: View {
                     .padding(.leading, 28)
             }
         }
+        .padding(.top, animal != nil ? 14 : 0)
     }
 
     /// Color based on how close the reset is relative to total window.

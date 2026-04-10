@@ -4,6 +4,7 @@ struct AccountCard: View {
     let state: AccountUsageState
     let onResync: () -> Void
     let onTogglePin: () -> Void
+    var onTap: (() -> Void)? = nil
 
     var body: some View {
         GroupBox {
@@ -42,14 +43,16 @@ struct AccountCard: View {
                     } else if state.account.status == .expired {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
-                    } else if let usage = state.usage {
-                        Circle()
-                            .fill(DashboardViewModel.usageColor(for: usage.fiveHour.utilization))
-                            .frame(width: 14, height: 14)
-                        Circle()
-                            .fill(DashboardViewModel.usageColor(for: usage.sevenDay.utilization))
-                            .frame(width: 10, height: 10)
                     }
+                    // Dots temporarily hidden
+                    // else if let usage = state.usage {
+                    //     Circle()
+                    //         .fill(DashboardViewModel.usageColor(for: usage.fiveHour.utilization))
+                    //         .frame(width: 14, height: 14)
+                    //     Circle()
+                    //         .fill(DashboardViewModel.usageColor(for: usage.sevenDay.utilization))
+                    //         .frame(width: 10, height: 10)
+                    // }
                 }
 
                 if state.account.status == .expired {
@@ -74,14 +77,18 @@ struct AccountCard: View {
                 )
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTap?()
+        }
     }
 
     private func usageContent(_ usage: UsageData) -> some View {
         VStack(spacing: 8) {
-            UsageBar(label: "5h", utilization: usage.fiveHour.utilization, resetsAt: usage.fiveHour.resetsAt, totalSeconds: 18000)
-            UsageBar(label: "7d", utilization: usage.sevenDay.utilization, resetsAt: usage.sevenDay.resetsAt, totalSeconds: 604800)
+            UsageBar(label: "5h", utilization: usage.fiveHour.utilization, resetsAt: usage.fiveHour.resetsAt, totalSeconds: 18000, animal: state.burnRates?.fiveHour?.animal)
+            UsageBar(label: "7d", utilization: usage.sevenDay.utilization, resetsAt: usage.sevenDay.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sevenDay?.animal)
             if let sonnet = usage.sevenDaySonnet {
-                UsageBar(label: "S", utilization: sonnet.utilization, resetsAt: sonnet.resetsAt, totalSeconds: 604800)
+                UsageBar(label: "S", utilization: sonnet.utilization, resetsAt: sonnet.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sonnet?.animal)
             }
         }
     }
