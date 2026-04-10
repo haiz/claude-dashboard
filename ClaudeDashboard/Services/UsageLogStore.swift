@@ -2,6 +2,8 @@
 import Foundation
 import SQLite3
 
+private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
 actor UsageLogStore {
     private var db: OpaquePointer?
 
@@ -18,7 +20,7 @@ actor UsageLogStore {
     // MARK: - Record
 
     func record(accountId: UUID, window: UsageWindow, resetsAt: Date, utilization: Double, isLimited: Bool) {
-        let aid = resolveAccountId(accountId)
+        guard let aid = resolveAccountId(accountId) else { return }
         let w = Int32(window.rawValue)
         let rat = Int64(resetsAt.timeIntervalSince1970)
         let t = Int64(Date().timeIntervalSince1970)
@@ -192,15 +194,17 @@ actor UsageLogStore {
 
     // MARK: - Account ID Mapping
 
-    private func resolveAccountId(_ uuid: UUID) -> Int32 {
+    private func resolveAccountId(_ uuid: UUID) -> Int32? {
         if let existing = lookupAccountId(uuid) { return existing }
         let sql = "INSERT INTO accounts_map (account_id) VALUES (?)"
         var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }
         let str = uuid.uuidString
-        sqlite3_bind_text(stmt, 1, (str as NSString).utf8String, -1, nil)
-        sqlite3_step(stmt)
+        str.withCString { cStr in
+            sqlite3_bind_text(stmt, 1, cStr, -1, SQLITE_TRANSIENT)
+        }
+        guard sqlite3_step(stmt) == SQLITE_DONE else { return nil }
         return Int32(sqlite3_last_insert_rowid(db))
     }
 
@@ -210,7 +214,9 @@ actor UsageLogStore {
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }
         let str = uuid.uuidString
-        sqlite3_bind_text(stmt, 1, (str as NSString).utf8String, -1, nil)
+        str.withCString { cStr in
+            sqlite3_bind_text(stmt, 1, cStr, -1, SQLITE_TRANSIENT)
+        }
         guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
         return sqlite3_column_int(stmt, 0)
     }

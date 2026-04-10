@@ -181,7 +181,7 @@ struct OverviewChartView: View {
                                     .foregroundStyle(.tertiary)
                             }
                             Spacer()
-                            if let animal = state.burnRates?.fiveHour?.animal {
+                            if let animal = animalForSelectedWindow(state.burnRates) {
                                 Text(animal)
                             } else {
                                 Text("—")
@@ -256,6 +256,14 @@ struct OverviewChartView: View {
         }
 
         return before?.utilization ?? after?.utilization
+    }
+
+    private func animalForSelectedWindow(_ rates: BurnRates?) -> String? {
+        switch selectedWindow {
+        case .fiveHour: return rates?.fiveHour?.animal
+        case .sevenDay: return rates?.sevenDay?.animal
+        case .sonnet: return rates?.sonnet?.animal
+        }
     }
 
     private func loadLogs() async {
