@@ -17,17 +17,24 @@ struct MenuBarPopover: View {
                     Task { await viewModel.refreshAll() }
                 }) {
                     Image(systemName: "arrow.clockwise")
+                        .font(.caption)
+                        .frame(width: 24, height: 24)
+                        .background(.quaternary)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.borderless)
                 .disabled(viewModel.isRefreshing)
 
                 Button(action: {
+                    let popover = NSApp.keyWindow
                     onOpenWindow()
-                    DispatchQueue.main.async {
-                        NSApp.keyWindow?.close()
-                    }
+                    popover?.close()
                 }) {
                     Image(systemName: "rectangle.expand.vertical")
+                        .font(.caption)
+                        .frame(width: 24, height: 24)
+                        .background(.quaternary)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.borderless)
             }
@@ -43,14 +50,38 @@ struct MenuBarPopover: View {
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(viewModel.accountStates) { state in
-                            AccountCard(state: state) {
-                                viewModel.resyncAccount(state.id)
-                            }
+                            AccountCard(state: state, onResync: {
+                                Task { await viewModel.resyncAccount(state.id) }
+                            }, onTogglePin: {
+                                viewModel.togglePin(for: state.id)
+                            })
                         }
                     }
                     .padding(12)
                 }
             }
+
+            Divider()
+
+            // Footer with Quit
+            HStack {
+                Button(action: {
+                    NSApplication.shared.terminate(nil)
+                }) {
+                    Label("Quit Claude Dashboard", systemImage: "power")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.quaternary)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.borderless)
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
         }
         .frame(width: 320)
         .frame(maxHeight: 500)

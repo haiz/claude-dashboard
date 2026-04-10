@@ -3,6 +3,7 @@ import SwiftUI
 struct AccountCard: View {
     let state: AccountUsageState
     let onResync: () -> Void
+    let onTogglePin: () -> Void
 
     var body: some View {
         GroupBox {
@@ -17,6 +18,12 @@ struct AccountCard: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                    }
+
+                    if state.account.isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     Spacer()
@@ -56,6 +63,16 @@ struct AccountCard: View {
                 }
             }
             .padding(.vertical, 4)
+        }
+        .contextMenu {
+            Button {
+                onTogglePin()
+            } label: {
+                Label(
+                    state.account.isPinned ? "Unpin" : "Pin to Top",
+                    systemImage: state.account.isPinned ? "pin.slash" : "pin"
+                )
+            }
         }
     }
 

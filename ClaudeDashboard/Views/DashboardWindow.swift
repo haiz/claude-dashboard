@@ -38,9 +38,11 @@ struct DashboardWindow: View {
                         spacing: 12
                     ) {
                         ForEach(viewModel.accountStates) { state in
-                            AccountCard(state: state) {
-                                viewModel.resyncAccount(state.id)
-                            }
+                            AccountCard(state: state, onResync: {
+                                Task { await viewModel.resyncAccount(state.id) }
+                            }, onTogglePin: {
+                                viewModel.togglePin(for: state.id)
+                            })
                         }
                     }
                     .padding()
