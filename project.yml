@@ -1,0 +1,40 @@
+name: ClaudeDashboard
+options:
+  bundleIdPrefix: com.claude-dashboard
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "16.3"
+  minimumXcodeGenVersion: "2.40"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+targets:
+  ClaudeDashboard:
+    type: application
+    platform: macOS
+    sources:
+      - ClaudeDashboard
+    settings:
+      base:
+        INFOPLIST_FILE: ClaudeDashboard/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        PRODUCT_BUNDLE_IDENTIFIER: com.claude-dashboard.app
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+  ClaudeDashboardTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - ClaudeDashboardTests
+    dependencies:
+      - target: ClaudeDashboard
+    settings:
+      base:
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ClaudeDashboard.app/Contents/MacOS/ClaudeDashboard"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
