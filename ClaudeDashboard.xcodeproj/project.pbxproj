@@ -17,11 +17,13 @@
 		87C2A9CB2E2D999C1C08AD3A /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C0B125D77B2634A93EEA79 /* Account.swift */; };
 		8C6A56AA09D21B951F1E7863 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D572159B978911BF3D1EDAC0 /* Assets.xcassets */; };
 		9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF469D724BE1FCA1D071131F /* AccountStore.swift */; };
+		A2A5D0F022E7A798045D105C /* DashboardWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA0F9129D3367D395937E5E /* DashboardWindow.swift */; };
 		A39C01692A8EA4FA3A76ED88 /* AccountStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */; };
 		AAEAB48A072B469189CCA747 /* UsageAPIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64695012FC6F1C08762E7E77 /* UsageAPIServiceTests.swift */; };
 		B38B8E482E1BC067FFD7AE74 /* MenuBarPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F459D10501056C193989A6 /* MenuBarPopover.swift */; };
 		C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */; };
 		E53BC1DBE702E2298D98F974 /* UsageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36CFE6B80C6A187D9A176752 /* UsageBar.swift */; };
+		EB9BD3D5123C7ED0209085E9 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */; };
 		EE79E9D7DCE9B79B909B5C30 /* ChromeCookieService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C398BC3CE03BDC7BD4C5E86F /* ChromeCookieService.swift */; };
 /* End PBXBuildFile section */
 
@@ -50,11 +52,13 @@
 		8BDD5471D1B082F49E424611 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		9602F34D10F24B11C7B02DF3 /* ChromeCookieServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromeCookieServiceTests.swift; sourceTree = "<group>"; };
 		BF469D724BE1FCA1D071131F /* AccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStore.swift; sourceTree = "<group>"; };
+		BFA0F9129D3367D395937E5E /* DashboardWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindow.swift; sourceTree = "<group>"; };
 		C398BC3CE03BDC7BD4C5E86F /* ChromeCookieService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromeCookieService.swift; sourceTree = "<group>"; };
 		C3C0B125D77B2634A93EEA79 /* Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Account.swift; sourceTree = "<group>"; };
 		CEA505924741CE7A0DFBB32F /* ClaudeDashboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeDashboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D572159B978911BF3D1EDAC0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E4BAD55D59287038F16012AE /* ClaudeDashboardTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeDashboardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -110,7 +114,9 @@
 			isa = PBXGroup;
 			children = (
 				786E54BCD656D51F01E86B77 /* AccountCard.swift */,
+				BFA0F9129D3367D395937E5E /* DashboardWindow.swift */,
 				52F459D10501056C193989A6 /* MenuBarPopover.swift */,
+				ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */,
 				36CFE6B80C6A187D9A176752 /* UsageBar.swift */,
 			);
 			path = Views;
@@ -248,8 +254,10 @@
 				EE79E9D7DCE9B79B909B5C30 /* ChromeCookieService.swift in Sources */,
 				18B4F69185821E78B8E6139C /* ClaudeDashboardApp.swift in Sources */,
 				C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */,
+				A2A5D0F022E7A798045D105C /* DashboardWindow.swift in Sources */,
 				5467470C8154768515DCC0EC /* KeychainService.swift in Sources */,
 				B38B8E482E1BC067FFD7AE74 /* MenuBarPopover.swift in Sources */,
+				EB9BD3D5123C7ED0209085E9 /* SettingsView.swift in Sources */,
 				572F630B64E010889B2C70F5 /* UsageAPIService.swift in Sources */,
 				E53BC1DBE702E2298D98F974 /* UsageBar.swift in Sources */,
 				3C92DE3C1904B8E52835EE1A /* UsageData.swift in Sources */,

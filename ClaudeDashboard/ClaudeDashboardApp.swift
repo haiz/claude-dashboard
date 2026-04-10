@@ -20,9 +20,8 @@ struct ClaudeDashboardApp: App {
         .menuBarExtraStyle(.window)
 
         Window("Claude Dashboard", id: "dashboard") {
-            Text("Full window — coming in Task 10")
-                .frame(width: 600, height: 400)
-                .environmentObject(viewModel)
+            DashboardWindow(viewModel: viewModel)
         }
+        .defaultSize(width: 700, height: 500)
     }
 }
