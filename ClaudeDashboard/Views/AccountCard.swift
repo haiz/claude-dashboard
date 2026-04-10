@@ -38,6 +38,9 @@ struct AccountCard: View {
                     } else if let usage = state.usage {
                         Circle()
                             .fill(DashboardViewModel.usageColor(for: usage.fiveHour.utilization))
+                            .frame(width: 14, height: 14)
+                        Circle()
+                            .fill(DashboardViewModel.usageColor(for: usage.sevenDay.utilization))
                             .frame(width: 10, height: 10)
                     }
                 }
