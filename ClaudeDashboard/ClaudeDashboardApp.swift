@@ -4,6 +4,7 @@ import SwiftUI
 struct ClaudeDashboardApp: App {
     @StateObject private var viewModel = DashboardViewModel()
     @Environment(\.openWindow) private var openWindow
+    @State private var showingSetup = false
 
     var body: some Scene {
         MenuBarExtra {
@@ -21,6 +22,14 @@ struct ClaudeDashboardApp: App {
 
         Window("Claude Dashboard", id: "dashboard") {
             DashboardWindow(viewModel: viewModel)
+                .onAppear {
+                    if viewModel.accountStore.accounts.isEmpty {
+                        showingSetup = true
+                    }
+                }
+                .sheet(isPresented: $showingSetup) {
+                    SetupView(viewModel: viewModel)
+                }
         }
         .defaultSize(width: 700, height: 500)
     }

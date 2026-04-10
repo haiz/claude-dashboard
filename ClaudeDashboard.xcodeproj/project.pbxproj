@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		18B4F69185821E78B8E6139C /* ClaudeDashboardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8007AA99F483598797EBFAE0 /* ClaudeDashboardApp.swift */; };
 		1F6E690999CAFDD5752BF11E /* UsageDataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61CE79EE895C0FE88D1ED98A /* UsageDataTests.swift */; };
+		211F98E0C0F99203EF129492 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066B8B1E829B2024AB298464 /* SetupView.swift */; };
 		3C92DE3C1904B8E52835EE1A /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CCB0272995AEA4CCAA902F3 /* UsageData.swift */; };
 		5467470C8154768515DCC0EC /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BDD5471D1B082F49E424611 /* KeychainService.swift */; };
 		572F630B64E010889B2C70F5 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84DA681CB4E6963F615B13B5 /* UsageAPIService.swift */; };
@@ -39,6 +40,7 @@
 
 /* Begin PBXFileReference section */
 		044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
+		066B8B1E829B2024AB298464 /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
 		1CCB0272995AEA4CCAA902F3 /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
 		23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreTests.swift; sourceTree = "<group>"; };
 		36CFE6B80C6A187D9A176752 /* UsageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageBar.swift; sourceTree = "<group>"; };
@@ -117,6 +119,7 @@
 				BFA0F9129D3367D395937E5E /* DashboardWindow.swift */,
 				52F459D10501056C193989A6 /* MenuBarPopover.swift */,
 				ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */,
+				066B8B1E829B2024AB298464 /* SetupView.swift */,
 				36CFE6B80C6A187D9A176752 /* UsageBar.swift */,
 			);
 			path = Views;
@@ -258,6 +261,7 @@
 				5467470C8154768515DCC0EC /* KeychainService.swift in Sources */,
 				B38B8E482E1BC067FFD7AE74 /* MenuBarPopover.swift in Sources */,
 				EB9BD3D5123C7ED0209085E9 /* SettingsView.swift in Sources */,
+				211F98E0C0F99203EF129492 /* SetupView.swift in Sources */,
 				572F630B64E010889B2C70F5 /* UsageAPIService.swift in Sources */,
 				E53BC1DBE702E2298D98F974 /* UsageBar.swift in Sources */,
 				3C92DE3C1904B8E52835EE1A /* UsageData.swift in Sources */,
