@@ -13,10 +13,12 @@ struct UsageLimit: Codable, Equatable {
 struct UsageData: Codable, Equatable {
     let fiveHour: UsageLimit
     let sevenDay: UsageLimit
+    let sevenDaySonnet: UsageLimit?
 
     enum CodingKeys: String, CodingKey {
         case fiveHour = "five_hour"
         case sevenDay = "seven_day"
+        case sevenDaySonnet = "seven_day_sonnet"
     }
 
     static func decode(from data: Data) throws -> UsageData {
