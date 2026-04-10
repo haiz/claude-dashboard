@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/haicao/.claude/**)",
+      "Read(//Users/haicao/Library/Application Support/Claude/**)",
+      "WebSearch",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:support.claude.com)",
+      "WebFetch(domain:gist.github.com)",
+      "Bash(security find-generic-password:*)",
+      "WebFetch(domain:www.claudecodecamp.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh repo:*)",
+      "Bash(swift --version)",
+      "Bash(xcode-select -p)",
+      "Bash(xcodegen generate:*)",
+      "Bash(xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboard -configuration Debug build)",
+      "Bash(xcodebuild -runFirstLaunch)",
+      "Bash(xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests -configuration Debug test)",
+      "Bash(xcodebuild -project /Users/haicao/code/others/claude-dashboard/ClaudeDashboard.xcodeproj -scheme ClaudeDashboard -configuration Debug build)",
+      "Bash(xcodebuild -project /Users/haicao/code/others/claude-dashboard/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests -configuration Debug test)",
+      "Bash(git -C /Users/haicao/code/others/claude-dashboard commit -m ':*)",
+      "Bash(xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests test)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)"
+    ]
+  }
+}
