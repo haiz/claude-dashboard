@@ -31,7 +31,7 @@ final class UsageAPIService {
 
     func fetchUsage(orgId: String, sessionKey: String) async throws -> UsageAPIResult {
         let url = URL(string: "\(baseURL)/organizations/\(orgId)/usage")!
-        var request = makeRequest(url: url, sessionKey: sessionKey)
+        let request = makeRequest(url: url, sessionKey: sessionKey)
 
         let (data, response) = try await session.data(for: request)
         let httpResponse = try validateResponse(response)
@@ -99,9 +99,11 @@ final class UsageAPIService {
                 } else {
                     planHint = .max200
                 }
-            } else {
+            } else if json.keys.contains("extra_usage") {
+                // extra_usage is null or is_enabled is false → Pro plan
                 planHint = .pro
             }
+            // If extra_usage key is absent entirely, leave planHint nil (unknown)
         }
 
         return (usage: usage, planHint: planHint, newSessionKey: newSessionKey)

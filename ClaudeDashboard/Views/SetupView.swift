@@ -1,13 +1,24 @@
 import SwiftUI
 
+struct DetectedAccount: Identifiable {
+    let id: String // chromeProfilePath (unique per profile)
+    let orgId: String
+    let chromeProfilePath: String
+    let chromeProfileName: String
+    let chromeProfileGoogleEmail: String
+    let sessionKey: String
+    var accountName: String  // Claude account email from org API
+    var email: String?       // Claude account email
+    var plan: AccountPlan?
+    var isSelected: Bool = true
+}
+
 struct SetupView: View {
     @ObservedObject var viewModel: DashboardViewModel
+    var onDone: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
-    @State private var detectedProfiles: [(profile: ChromeProfile, cookies: ChromeCookieResult)] = []
-    @State private var selectedProfiles: Set<String> = []
-    @State private var accountNames: [String: String] = [:]
-    @State private var accountPlans: [String: AccountPlan] = [:]
+    @State private var detectedAccounts: [DetectedAccount] = []
     @State private var isScanning = false
     @State private var scanError: String?
 
@@ -17,32 +28,44 @@ struct SetupView: View {
                 .font(.title2.bold())
 
             if isScanning {
-                ProgressView("Scanning Chrome profiles...")
-            } else if detectedProfiles.isEmpty {
+                VStack(spacing: 8) {
+                    ProgressView()
+                    Text("Scanning Chrome profiles and detecting accounts...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if detectedAccounts.isEmpty {
                 noProfilesView
             } else {
-                profileList
+                accountList
             }
 
             HStack {
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
+                Button("Cancel") {
+                    dismissSelf()
+                }
+                .keyboardShortcut(.cancelAction)
 
                 Spacer()
 
-                if !detectedProfiles.isEmpty {
+                if !detectedAccounts.isEmpty {
                     Button("Add Selected") {
                         addSelectedAccounts()
-                        dismiss()
+                        dismissSelf()
                     }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(selectedProfiles.isEmpty)
+                    .disabled(detectedAccounts.filter(\.isSelected).isEmpty)
                 }
             }
         }
         .padding(24)
-        .frame(width: 500, height: 300)
+        .frame(width: 520, height: 450)
         .onAppear { scan() }
+    }
+
+    private func dismissSelf() {
+        onDone?()
+        dismiss()
     }
 
     private var noProfilesView: some View {
@@ -60,48 +83,29 @@ struct SetupView: View {
         }
     }
 
-    private var profileList: some View {
+    private var accountList: some View {
         List {
-            ForEach(detectedProfiles, id: \.profile.path) { item in
+            ForEach($detectedAccounts) { $account in
                 HStack {
-                    Toggle(isOn: Binding(
-                        get: { selectedProfiles.contains(item.profile.path) },
-                        set: { isOn in
-                            if isOn {
-                                selectedProfiles.insert(item.profile.path)
-                            } else {
-                                selectedProfiles.remove(item.profile.path)
-                            }
-                        }
-                    )) {
+                    Toggle(isOn: $account.isSelected) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(item.profile.displayName)
-                                .font(.body)
-                            Text("Chrome: \(item.profile.path)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Spacer()
-
-                    if selectedProfiles.contains(item.profile.path) {
-                        TextField("Account name", text: Binding(
-                            get: { accountNames[item.profile.path] ?? item.profile.displayName },
-                            set: { accountNames[item.profile.path] = $0 }
-                        ))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 140)
-
-                        Picker("", selection: Binding(
-                            get: { accountPlans[item.profile.path] ?? .max200 },
-                            set: { accountPlans[item.profile.path] = $0 }
-                        )) {
-                            ForEach(AccountPlan.allCases, id: \.self) { plan in
-                                Text(plan.rawValue)
+                            HStack(spacing: 6) {
+                                Text(account.email ?? account.accountName)
+                                    .font(.body.bold())
+                                if let plan = account.plan {
+                                    Text(plan.rawValue)
+                                        .font(.caption2)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(plan.badgeColor.opacity(0.15))
+                                        .clipShape(Capsule())
+                                }
                             }
+                            let chromeEmail = account.chromeProfileGoogleEmail
+                            Text("Chrome: \(chromeEmail.isEmpty ? account.chromeProfilePath : chromeEmail)")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
                         }
-                        .frame(width: 70)
                     }
                 }
                 .padding(.vertical, 4)
@@ -113,44 +117,119 @@ struct SetupView: View {
         isScanning = true
         scanError = nil
 
-        DispatchQueue.global(qos: .userInitiated).async {
-            let results = ChromeCookieService.profilesWithClaudeSessions()
+        Task {
+            let results = await Task.detached {
+                ChromeCookieService.profilesWithClaudeSessions()
+            }.value
 
-            DispatchQueue.main.async {
-                self.detectedProfiles = results
-                self.isScanning = false
-
-                if results.isEmpty {
+            if results.isEmpty {
+                await MainActor.run {
+                    self.detectedAccounts = []
+                    self.isScanning = false
                     self.scanError = "No Chrome profiles found with active Claude sessions. Make sure you're logged into claude.ai in your Chrome profiles."
+                }
+                return
+            }
+
+            let apiService = UsageAPIService()
+            var accounts: [DetectedAccount] = []
+
+            for item in results {
+                guard let orgId = item.cookies.orgId,
+                      let sessionKey = item.cookies.sessionKey else { continue }
+
+                // Skip profiles already added
+                let alreadyAdded = viewModel.accountStore.accounts.contains { $0.chromeProfilePath == item.profile.path }
+                if alreadyAdded { continue }
+
+                // Validate session by fetching org info — skip if expired
+                guard let orgs = try? await apiService.fetchOrganizations(sessionKey: sessionKey),
+                      !orgs.isEmpty else {
+                    continue // session expired or invalid, skip this profile
+                }
+
+                var email: String? = nil
+
+                // Extract email from personal org name: "{email}'s Organization"
+                for org in orgs {
+                    if org.name.hasSuffix("'s Organization"),
+                       let emailPart = org.name.components(separatedBy: "'s Organization").first,
+                       emailPart.contains("@") {
+                        email = emailPart
+                        break
+                    }
+                }
+                if email == nil {
+                    email = orgs.compactMap(\.email).first
+                }
+
+                let accountName = email ?? item.profile.displayName
+
+                // Detect plan from usage response
+                var plan: AccountPlan? = nil
+                if let fullUsage = try? await apiService.fetchFullUsage(orgId: orgId, sessionKey: sessionKey) {
+                    plan = fullUsage.planHint
+                }
+
+                accounts.append(DetectedAccount(
+                    id: item.profile.path,
+                    orgId: orgId,
+                    chromeProfilePath: item.profile.path,
+                    chromeProfileName: item.profile.displayName,
+                    chromeProfileGoogleEmail: item.profile.googleEmail,
+                    sessionKey: sessionKey,
+                    accountName: accountName,
+                    email: email,
+                    plan: plan,
+                    isSelected: true
+                ))
+            }
+
+            await MainActor.run {
+                self.detectedAccounts = accounts
+                self.isScanning = false
+                if accounts.isEmpty && !results.isEmpty {
+                    self.scanError = "All detected accounts are already added."
                 }
             }
         }
     }
 
     private func addSelectedAccounts() {
-        for item in detectedProfiles where selectedProfiles.contains(item.profile.path) {
-            if viewModel.accountStore.accounts.contains(where: { $0.chromeProfilePath == item.profile.path }) {
+        for detected in detectedAccounts where detected.isSelected {
+            // Skip if already added
+            if viewModel.accountStore.accounts.contains(where: { $0.chromeProfilePath == detected.chromeProfilePath }) {
                 continue
             }
 
-            let name = accountNames[item.profile.path] ?? item.profile.displayName
-            let plan = accountPlans[item.profile.path] ?? .max200
+            let displayName: String
+            if let email = detected.email {
+                displayName = email
+            } else {
+                displayName = detected.accountName
+            }
+
+            let chromeLabel = detected.chromeProfileGoogleEmail.isEmpty ? detected.chromeProfileName : detected.chromeProfileGoogleEmail
 
             let account = Account(
                 id: UUID(),
-                name: name,
-                chromeProfilePath: item.profile.path,
-                orgId: item.cookies.orgId,
-                plan: plan,
+                name: displayName,
+                email: detected.email,
+                chromeProfilePath: detected.chromeProfilePath,
+                chromeProfileName: chromeLabel,
+                orgId: detected.orgId,
+                plan: detected.plan ?? .pro,
                 lastSynced: Date(),
                 status: .active
             )
 
             viewModel.accountStore.addAccount(account)
+            viewModel.accountStore.saveSessionKey(detected.sessionKey, for: account.id)
+        }
 
-            if let sessionKey = item.cookies.sessionKey {
-                viewModel.accountStore.saveSessionKey(sessionKey, for: account.id)
-            }
+        // Auto-refresh after adding
+        Task {
+            await viewModel.refreshAll()
         }
     }
 }

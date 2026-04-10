@@ -4,7 +4,7 @@ import SwiftUI
 
 struct AccountUsageState: Identifiable {
     let id: UUID
-    let account: Account
+    var account: Account
     var usage: UsageData?
     var isLoading: Bool = false
     var error: String?

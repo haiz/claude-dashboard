@@ -26,7 +26,7 @@ struct AccountCard: View {
                         .font(.caption2.bold())
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(planBadgeColor.opacity(0.15))
+                        .background(state.account.plan.badgeColor.opacity(0.15))
                         .clipShape(Capsule())
 
                     if state.isLoading {
@@ -63,15 +63,6 @@ struct AccountCard: View {
             if let sonnet = usage.sevenDaySonnet {
                 UsageBar(label: "S", utilization: sonnet.utilization, resetsAt: sonnet.resetsAt, totalSeconds: 604800)
             }
-        }
-    }
-
-    private var planBadgeColor: Color {
-        switch state.account.plan {
-        case .pro: return .blue
-        case .max5x: return .purple
-        case .max20x: return .orange
-        case .max200: return .purple
         }
     }
 
