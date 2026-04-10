@@ -15,6 +15,11 @@ struct UsageBar: View {
         self.animal = animal
     }
 
+    /// Number of countdown segments: 5 for 5h window, 7 for 7d window.
+    private var segmentCount: Int {
+        totalSeconds <= 18000 ? 5 : 7
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -93,6 +98,66 @@ struct UsageBar: View {
             return "\(hours)h \(String(format: "%02d", minutes))m"
         } else {
             return "\(minutes)m"
+        }
+    }
+}
+
+private struct CountdownBarsView: View {
+    let resetsAt: Date
+    let totalSeconds: TimeInterval
+    let segmentCount: Int
+
+    private let segmentColor = Color(red: 74/255, green: 144/255, blue: 217/255) // #4a90d9
+    private let depletedColor = Color.primary.opacity(0.08)
+
+    var body: some View {
+        GeometryReader { geo in
+            HStack(spacing: 2) {
+                ForEach(0..<segmentCount, id: \.self) { index in
+                    segmentView(index: index)
+                }
+            }
+            .frame(width: geo.size.width * 2.0 / 3.0, height: 8)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .frame(height: 8)
+    }
+
+    private func segmentView(index: Int) -> some View {
+        let fillFraction = fillFraction(for: index)
+        return GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                // Full background (depleted color)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(depletedColor)
+
+                // Blue fill from the right
+                if fillFraction > 0 {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(segmentColor)
+                        .frame(width: geo.size.width * fillFraction)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+        }
+    }
+
+    /// Returns 0.0 (fully depleted) to 1.0 (fully remaining) for a segment.
+    private func fillFraction(for index: Int) -> Double {
+        let remaining = resetsAt.timeIntervalSinceNow
+        guard remaining > 0, totalSeconds > 0 else { return 0 }
+
+        let elapsed = max(0, totalSeconds - remaining)
+        let secondsPerSegment = totalSeconds / Double(segmentCount)
+        let segmentStart = Double(index) * secondsPerSegment
+        let segmentEnd = Double(index + 1) * secondsPerSegment
+
+        if elapsed >= segmentEnd {
+            return 0.0 // fully depleted
+        } else if elapsed <= segmentStart {
+            return 1.0 // fully remaining
+        } else {
+            return (segmentEnd - elapsed) / secondsPerSegment
         }
     }
 }
