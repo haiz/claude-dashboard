@@ -30,9 +30,11 @@ struct Account: Identifiable, Codable, Equatable {
     var chromeProfilePath: String
     var chromeProfileName: String?
     var orgId: String?
+    var sessionKey: String?
     var plan: AccountPlan
     var lastSynced: Date?
     var status: AccountStatus
+    var isPinned: Bool = false
 
     var isConfigured: Bool {
         orgId != nil

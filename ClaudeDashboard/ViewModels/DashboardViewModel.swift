@@ -15,11 +15,24 @@ final class DashboardViewModel: ObservableObject {
     @Published var accountStates: [AccountUsageState] = []
     @Published var isRefreshing = false
 
+    @Published var autoRefreshEnabled: Bool {
+        didSet { UserDefaults.standard.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
+    }
+    @Published var autoRefreshMinutes: Int {
+        didSet { UserDefaults.standard.set(autoRefreshMinutes, forKey: "autoRefreshMinutes"); scheduleAutoRefresh() }
+    }
+
     let accountStore: AccountStore
     private let apiService: UsageAPIService
     private var cancellables = Set<AnyCancellable>()
+    private var autoRefreshTask: Task<Void, Never>?
 
     init(accountStore: AccountStore = AccountStore(), apiService: UsageAPIService = UsageAPIService()) {
+        self.autoRefreshEnabled = UserDefaults.standard.object(forKey: "autoRefreshEnabled") as? Bool ?? true
+        self.autoRefreshMinutes = {
+            let val = UserDefaults.standard.integer(forKey: "autoRefreshMinutes")
+            return val > 0 ? val : 5
+        }()
         self.accountStore = accountStore
         self.apiService = apiService
 
@@ -29,6 +42,22 @@ final class DashboardViewModel: ObservableObject {
                 self?.syncStates(with: accounts)
             }
             .store(in: &cancellables)
+
+        scheduleAutoRefresh()
+    }
+
+    private func scheduleAutoRefresh() {
+        autoRefreshTask?.cancel()
+        autoRefreshTask = nil
+        guard autoRefreshEnabled else { return }
+        let interval = UInt64(autoRefreshMinutes) * 60 * 1_000_000_000
+        autoRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: interval)
+                guard !Task.isCancelled else { break }
+                await self?.refreshAll()
+            }
+        }
     }
 
     // MARK: - Refresh
@@ -49,7 +78,7 @@ final class DashboardViewModel: ObservableObject {
                     do {
                         let (usage, planHint, newKey) = try await apiService.fetchFullUsage(orgId: orgId, sessionKey: sessionKey)
                         if let newKey {
-                            accountStore.saveSessionKey(newKey, for: account.id)
+                            await MainActor.run { accountStore.saveSessionKey(newKey, for: account.id) }
                         }
                         return (account.id, usage, nil, planHint)
                     } catch UsageAPIError.authExpired {
@@ -82,11 +111,14 @@ final class DashboardViewModel: ObservableObject {
             }
         }
 
-        // Sort by burn rate after refresh
-        accountStates.sort { DashboardViewModel.burnRate(for: $0) > DashboardViewModel.burnRate(for: $1) }
+        // Sort by burn rate after refresh (pinned first)
+        accountStates.sort {
+            if $0.account.isPinned != $1.account.isPinned { return $0.account.isPinned }
+            return DashboardViewModel.burnRate(for: $0) > DashboardViewModel.burnRate(for: $1)
+        }
     }
 
-    func resyncAccount(_ accountId: UUID) {
+    func resyncAccount(_ accountId: UUID) async {
         guard let account = accountStore.accounts.first(where: { $0.id == accountId }) else { return }
 
         let cookies = ChromeCookieService.extractCookies(for: account.chromeProfilePath)
@@ -100,9 +132,8 @@ final class DashboardViewModel: ObservableObject {
             return
         }
 
-        accountStore.saveSessionKey(sessionKey, for: accountId)
-
         var updated = account
+        updated.sessionKey = CryptoService.encrypt(sessionKey) ?? sessionKey
         updated.status = .active
         if let orgId = cookies.orgId {
             updated.orgId = orgId
@@ -115,17 +146,43 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Pin
+
+    func togglePin(for accountId: UUID) {
+        let wasPinned = accountStore.accounts.first(where: { $0.id == accountId })?.isPinned ?? false
+
+        // Unpin all accounts
+        for account in accountStore.accounts where account.isPinned {
+            var updated = account
+            updated.isPinned = false
+            accountStore.updateAccount(updated)
+        }
+
+        // If it wasn't pinned before, pin it now
+        if !wasPinned, var target = accountStore.accounts.first(where: { $0.id == accountId }) {
+            target.isPinned = true
+            accountStore.updateAccount(target)
+        }
+    }
+
     // MARK: - Menubar Label
 
     var menuBarLabel: String {
-        guard let highest = accountStates
-            .compactMap({ $0.usage?.fiveHour })
-            .max(by: { $0.utilization < $1.utilization }) else {
-            return "--"
-        }
+        // Prefer pinned account's usage, fallback to highest 5h utilization
+        let source: UsageLimit? = {
+            if let pinned = accountStates.first(where: { $0.account.isPinned }),
+               let usage = pinned.usage {
+                return usage.fiveHour
+            }
+            return accountStates
+                .compactMap { $0.usage?.fiveHour }
+                .max(by: { $0.utilization < $1.utilization })
+        }()
 
-        let pct = Int(highest.utilization)
-        if let reset = highest.resetsAt {
+        guard let limit = source else { return "--" }
+
+        let pct = Int(limit.utilization)
+        if let reset = limit.resetsAt {
             let remaining = reset.timeIntervalSinceNow
             if remaining > 0 {
                 let h = Int(remaining) / 3600
@@ -178,7 +235,10 @@ final class DashboardViewModel: ObservableObject {
             }
             return AccountUsageState(id: account.id, account: account)
         }
-        // Sort by burn rate
-        accountStates.sort { DashboardViewModel.burnRate(for: $0) > DashboardViewModel.burnRate(for: $1) }
+        // Sort by burn rate (pinned first)
+        accountStates.sort {
+            if $0.account.isPinned != $1.account.isPinned { return $0.account.isPinned }
+            return DashboardViewModel.burnRate(for: $0) > DashboardViewModel.burnRate(for: $1)
+        }
     }
 }
