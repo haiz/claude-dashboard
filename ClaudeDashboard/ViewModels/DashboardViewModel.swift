@@ -8,6 +8,7 @@ struct AccountUsageState: Identifiable {
     var usage: UsageData?
     var isLoading: Bool = false
     var error: String?
+    var burnRates: BurnRates?
 }
 
 @MainActor
@@ -26,8 +27,10 @@ final class DashboardViewModel: ObservableObject {
     private let apiService: UsageAPIService
     private var cancellables = Set<AnyCancellable>()
     private var autoRefreshTask: Task<Void, Never>?
+    private let burnRateTracker: BurnRateTracker
+    let logStore: UsageLogStore
 
-    init(accountStore: AccountStore = AccountStore(), apiService: UsageAPIService = UsageAPIService()) {
+    init(accountStore: AccountStore = AccountStore(), apiService: UsageAPIService = UsageAPIService(), logStore: UsageLogStore? = nil) {
         self.autoRefreshEnabled = UserDefaults.standard.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.autoRefreshMinutes = {
             let val = UserDefaults.standard.integer(forKey: "autoRefreshMinutes")
@@ -35,6 +38,14 @@ final class DashboardViewModel: ObservableObject {
         }()
         self.accountStore = accountStore
         self.apiService = apiService
+        let store = logStore ?? UsageLogStore()
+        self.logStore = store
+        self.burnRateTracker = BurnRateTracker(logStore: store)
+
+        // Cleanup old logs on launch
+        Task {
+            await store.deleteOlderThan(Date().addingTimeInterval(-90 * 24 * 3600))
+        }
 
         accountStore.$accounts
             .receive(on: DispatchQueue.main)
@@ -44,6 +55,9 @@ final class DashboardViewModel: ObservableObject {
             .store(in: &cancellables)
 
         scheduleAutoRefresh()
+
+        // Auto-load data on launch
+        Task { await self.refreshAll() }
     }
 
     private func scheduleAutoRefresh() {
@@ -106,6 +120,29 @@ final class DashboardViewModel: ObservableObject {
                             account.plan = planHint
                         }
                         accountStore.updateAccount(account)
+                    }
+
+                    // Record burn rates
+                    if let currentUsage = accountStates[index].usage {
+                        var rates = BurnRates()
+                        rates.fiveHour = await burnRateTracker.record(
+                            accountId: accountId, window: .fiveHour,
+                            utilization: currentUsage.fiveHour.utilization,
+                            resetsAt: currentUsage.fiveHour.resetsAt ?? Date().addingTimeInterval(18000)
+                        )
+                        rates.sevenDay = await burnRateTracker.record(
+                            accountId: accountId, window: .sevenDay,
+                            utilization: currentUsage.sevenDay.utilization,
+                            resetsAt: currentUsage.sevenDay.resetsAt ?? Date().addingTimeInterval(604800)
+                        )
+                        if let sonnet = currentUsage.sevenDaySonnet {
+                            rates.sonnet = await burnRateTracker.record(
+                                accountId: accountId, window: .sonnet,
+                                utilization: sonnet.utilization,
+                                resetsAt: sonnet.resetsAt ?? Date().addingTimeInterval(604800)
+                            )
+                        }
+                        accountStates[index].burnRates = rates
                     }
                 }
             }
@@ -230,7 +267,8 @@ final class DashboardViewModel: ObservableObject {
                     account: account,
                     usage: existing.usage,
                     isLoading: existing.isLoading,
-                    error: existing.error
+                    error: existing.error,
+                    burnRates: existing.burnRates
                 )
             }
             return AccountUsageState(id: account.id, account: account)
