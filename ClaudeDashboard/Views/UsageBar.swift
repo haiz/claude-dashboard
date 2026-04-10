@@ -51,14 +51,26 @@ struct UsageBar: View {
 
                 Text("\(Int(utilization))%")
                     .font(.system(.caption, design: .monospaced))
-                    .frame(width: 36, alignment: .trailing)
+                    .frame(width: 50, alignment: .trailing)
             }
 
             if let resetsAt {
-                Text("resets in \(formatTimeRemaining(resetsAt))")
-                    .font(.caption2)
-                    .foregroundStyle(resetUrgencyColor(resetsAt))
-                    .padding(.leading, 28)
+                HStack(spacing: 8) {
+                    // Spacer matching label width
+                    Color.clear
+                        .frame(width: 24)
+
+                    CountdownBarsView(
+                        resetsAt: resetsAt,
+                        totalSeconds: totalSeconds,
+                        segmentCount: segmentCount
+                    )
+
+                    Text(formatTimeRemaining(resetsAt))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(resetUrgencyColor(resetsAt))
+                        .frame(width: 50, alignment: .trailing)
+                }
             }
         }
         .padding(.top, animal != nil ? 14 : 0)
