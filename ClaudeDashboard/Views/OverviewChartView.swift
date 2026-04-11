@@ -231,6 +231,7 @@ struct OverviewChartView: View {
         }
         .padding(8)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+        .fixedSize()
     }
 
     private func formatHoverTime(_ date: Date) -> String {

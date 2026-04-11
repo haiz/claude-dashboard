@@ -67,7 +67,9 @@
       "Bash(git config:*)",
       "Bash(chmod +x /Users/haicao/code/others/claude-dashboard/install.sh)",
       "Bash(xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboard -configuration Release build)",
-      "Bash(gh auth:*)"
+      "Bash(gh auth:*)",
+      "Bash(gh release create v1.0.0 /Users/haicao/code/others/claude-dashboard/ClaudeDashboard.app.zip --title 'Claude Dashboard v1.0.0' --notes ':*)",
+      "Bash(git rm:*)"
     ],
     "additionalDirectories": [
       "/Users/haicao/code/others/claude-dashboard/scripts/icon_output"
