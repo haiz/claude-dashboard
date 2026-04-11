@@ -66,7 +66,7 @@ struct OverviewChartView: View {
                         var positiveDeltas = 0.0
                         for i in 1..<totalPoints.count {
                             let delta = totalPoints[i].value - totalPoints[i - 1].value
-                            if delta >= 0 { positiveDeltas += delta }
+                            if delta > 0 { positiveDeltas += delta }
                         }
                         return positiveDeltas / totalHours
                     },
