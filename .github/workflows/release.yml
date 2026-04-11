@@ -1,0 +1,38 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build Release
+        run: |
+          xcodebuild -project ClaudeDashboard.xcodeproj \
+            -scheme ClaudeDashboard \
+            -configuration Release \
+            -derivedDataPath build \
+            build
+
+      - name: Package app
+        run: |
+          cd build/Build/Products/Release
+          ditto -ck --sequesterRsrc --keepParent ClaudeDashboard.app ClaudeDashboard.app.zip
+          mv ClaudeDashboard.app.zip "$GITHUB_WORKSPACE/"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ClaudeDashboard.app.zip
+          generate_release_notes: true

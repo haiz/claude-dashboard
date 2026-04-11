@@ -23,3 +23,5 @@ xcuserdata/
 
 # Release artifacts
 *.app.zip
+docs/superpowers/
+.superpowers/
