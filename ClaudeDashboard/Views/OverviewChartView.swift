@@ -418,7 +418,18 @@ struct OverviewChartView: View {
         if selectedAccounts.isEmpty {
             selectedAccounts = Set(viewModel.accountStates.map(\.id))
         }
-        let effectiveRange = range ?? visibleRange
+
+        let effectiveRange: ClosedRange<Date>
+        if let range {
+            effectiveRange = range
+        } else {
+            // Refresh to current time so we always include the latest data
+            let duration = visibleRange.upperBound.timeIntervalSince(visibleRange.lowerBound)
+            let now = Date()
+            visibleRange = now.addingTimeInterval(-duration)...now
+            effectiveRange = visibleRange
+        }
+
         let store = viewModel.logStore
         logs = await store.allLogs(window: selectedWindow, from: effectiveRange.lowerBound, to: effectiveRange.upperBound)
     }

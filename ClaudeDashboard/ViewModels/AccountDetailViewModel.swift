@@ -36,6 +36,11 @@ final class AccountDetailViewModel: ObservableObject {
             )
             logs = cycleLogs
         } else {
+            // Refresh range to current time so we always include the latest data
+            let duration = visibleRange.upperBound.timeIntervalSince(visibleRange.lowerBound)
+            let now = Date()
+            visibleRange = now.addingTimeInterval(-duration)...now
+
             let allLogs = await logStore.logs(
                 accountId: accountId, window: selectedWindow,
                 from: visibleRange.lowerBound, to: visibleRange.upperBound

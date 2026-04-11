@@ -142,20 +142,20 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
     private var chartArea: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topTrailing) {
-                // Chart content
+                // Chart content — gesture applied here so onContinuousHover in chartOverlay still works
                 chartContent()
+                    .simultaneousGesture(combinedGesture(geometry: geometry))
 
                 // Average rate overlay
                 averageRateOverlay
                     .padding(8)
+                    .allowsHitTesting(false)
 
                 // Zoom selection highlight (drawn on top during zoom drag)
                 if mode == .zoom, let zsr = zoomSelectionRange {
                     zoomSelectionHighlight(zsr, in: geometry)
+                        .allowsHitTesting(false)
                 }
-
-                // Invisible gesture overlay
-                gestureOverlay(geometry: geometry)
             }
         }
         .frame(height: chartHeight)
@@ -226,15 +226,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
             .position(x: minX + width / 2, y: geometry.size.height / 2)
     }
 
-    // MARK: - Gesture Overlay
-
-    private func gestureOverlay(geometry: GeometryProxy) -> some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .gesture(combinedGesture(geometry: geometry))
-    }
-
-    // MARK: - Combined Gesture
+    // MARK: - Gesture
 
     private func combinedGesture(geometry: GeometryProxy) -> some Gesture {
         DragGesture(minimumDistance: 2)
