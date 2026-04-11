@@ -33,8 +33,8 @@ enum TimeRangePreset: String, CaseIterable, Identifiable {
 struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
     // MARK: External
 
-    let chartContent: ChartContent
-    let toolbarExtra: ToolbarExtra
+    let chartContent: () -> ChartContent
+    let toolbarExtra: () -> ToolbarExtra
     let dataPoints: [UsageLogEntry]
     let averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)?
     let onRangeChanged: (ClosedRange<Date>) -> Void
@@ -56,15 +56,15 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         chartHeight: CGFloat = 300,
         averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)? = nil,
         onRangeChanged: @escaping (ClosedRange<Date>) -> Void,
-        @ViewBuilder chartContent: () -> ChartContent,
-        @ViewBuilder toolbarExtra: () -> ToolbarExtra
+        @ViewBuilder chartContent: @escaping () -> ChartContent,
+        @ViewBuilder toolbarExtra: @escaping () -> ToolbarExtra
     ) {
         self.dataPoints = dataPoints
         self.chartHeight = chartHeight
         self.averageRateProvider = averageRateProvider
         self.onRangeChanged = onRangeChanged
-        self.chartContent = chartContent()
-        self.toolbarExtra = toolbarExtra()
+        self.chartContent = chartContent
+        self.toolbarExtra = toolbarExtra
 
         let now = Date()
         let start = now.addingTimeInterval(-initialPreset.seconds)
@@ -112,7 +112,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
 
             Spacer()
 
-            toolbarExtra
+            toolbarExtra()
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -143,7 +143,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         GeometryReader { geometry in
             ZStack(alignment: .topTrailing) {
                 // Chart content
-                chartContent
+                chartContent()
 
                 // Average rate overlay
                 averageRateOverlay
@@ -222,8 +222,8 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
                 Rectangle()
                     .stroke(Color.accentColor.opacity(0.5), lineWidth: 1)
             )
-            .frame(width: max(width, 1))
-            .offset(x: minX - geometry.size.width / 2)
+            .frame(width: max(width, 1), height: geometry.size.height)
+            .position(x: minX + width / 2, y: geometry.size.height / 2)
     }
 
     // MARK: - Gesture Overlay
@@ -231,84 +231,76 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
     private func gestureOverlay(geometry: GeometryProxy) -> some View {
         Color.clear
             .contentShape(Rectangle())
-            .gesture(
-                mode == .pan
-                    ? AnyGesture(panGesture(geometry: geometry).map { _ in () })
-                    : AnyGesture(zoomGesture(geometry: geometry).map { _ in () })
-            )
+            .gesture(combinedGesture(geometry: geometry))
     }
 
-    // MARK: - Pan Gesture
+    // MARK: - Combined Gesture
 
-    private func panGesture(geometry: GeometryProxy) -> some Gesture {
+    private func combinedGesture(geometry: GeometryProxy) -> some Gesture {
         DragGesture(minimumDistance: 2)
             .onChanged { value in
-                if dragStartRange == nil {
-                    dragStartRange = visibleRange
+                if mode == .pan {
+                    if dragStartRange == nil {
+                        dragStartRange = visibleRange
+                    }
+
+                    guard let startRange = dragStartRange else { return }
+
+                    let width = geometry.size.width
+                    guard width > 0 else { return }
+
+                    let duration = startRange.upperBound.timeIntervalSince(startRange.lowerBound)
+                    let secondsPerPoint = duration / Double(width)
+                    let offsetSeconds = Double(value.translation.width) * secondsPerPoint
+
+                    // Shift range left (drag right = go back in time)
+                    var newLower = startRange.lowerBound.addingTimeInterval(-offsetSeconds)
+                    var newUpper = startRange.upperBound.addingTimeInterval(-offsetSeconds)
+
+                    // Clamp: don't go past now
+                    let now = Date()
+                    if newUpper > now {
+                        let excess = newUpper.timeIntervalSince(now)
+                        newLower = newLower.addingTimeInterval(-excess)
+                        newUpper = now
+                    }
+
+                    visibleRange = newLower...newUpper
+                    selectedPreset = nil
+                    onRangeChanged(visibleRange)
+                } else {
+                    zoomSelectionRange = (
+                        start: value.startLocation.x,
+                        end: value.location.x
+                    )
                 }
-
-                guard let startRange = dragStartRange else { return }
-
-                let width = geometry.size.width
-                guard width > 0 else { return }
-
-                let duration = startRange.upperBound.timeIntervalSince(startRange.lowerBound)
-                let secondsPerPoint = duration / Double(width)
-                let offsetSeconds = Double(value.translation.width) * secondsPerPoint
-
-                // Shift range left (drag right = go back in time)
-                var newLower = startRange.lowerBound.addingTimeInterval(-offsetSeconds)
-                var newUpper = startRange.upperBound.addingTimeInterval(-offsetSeconds)
-
-                // Clamp: don't go past now
-                let now = Date()
-                if newUpper > now {
-                    let excess = newUpper.timeIntervalSince(now)
-                    newLower = newLower.addingTimeInterval(-excess)
-                    newUpper = now
-                }
-
-                visibleRange = newLower...newUpper
-                selectedPreset = nil
-                onRangeChanged(visibleRange)
-            }
-            .onEnded { _ in
-                dragStartRange = nil
-            }
-    }
-
-    // MARK: - Zoom Gesture
-
-    private func zoomGesture(geometry: GeometryProxy) -> some Gesture {
-        DragGesture(minimumDistance: 2)
-            .onChanged { value in
-                zoomSelectionRange = (
-                    start: value.startLocation.x,
-                    end: value.location.x
-                )
             }
             .onEnded { value in
-                defer { zoomSelectionRange = nil }
+                if mode == .pan {
+                    dragStartRange = nil
+                } else {
+                    defer { zoomSelectionRange = nil }
 
-                let startX = min(value.startLocation.x, value.location.x)
-                let endX = max(value.startLocation.x, value.location.x)
-                let width = geometry.size.width
+                    let startX = min(value.startLocation.x, value.location.x)
+                    let endX = max(value.startLocation.x, value.location.x)
+                    let width = geometry.size.width
 
-                guard width > 0, endX - startX > 1 else { return }
+                    guard width > 0, endX - startX > 1 else { return }
 
-                let duration = visibleRange.upperBound.timeIntervalSince(visibleRange.lowerBound)
-                let secondsPerPoint = duration / Double(width)
+                    let duration = visibleRange.upperBound.timeIntervalSince(visibleRange.lowerBound)
+                    let secondsPerPoint = duration / Double(width)
 
-                let newLower = visibleRange.lowerBound.addingTimeInterval(Double(startX) * secondsPerPoint)
-                let newUpper = visibleRange.lowerBound.addingTimeInterval(Double(endX) * secondsPerPoint)
+                    let newLower = visibleRange.lowerBound.addingTimeInterval(Double(startX) * secondsPerPoint)
+                    let newUpper = visibleRange.lowerBound.addingTimeInterval(Double(endX) * secondsPerPoint)
 
-                // Minimum zoom: 5 minutes
-                let minInterval: TimeInterval = 5 * 60
-                guard newUpper.timeIntervalSince(newLower) >= minInterval else { return }
+                    // Minimum zoom: 5 minutes
+                    let minInterval: TimeInterval = 5 * 60
+                    guard newUpper.timeIntervalSince(newLower) >= minInterval else { return }
 
-                visibleRange = newLower...newUpper
-                selectedPreset = nil
-                onRangeChanged(visibleRange)
+                    visibleRange = newLower...newUpper
+                    selectedPreset = nil
+                    onRangeChanged(visibleRange)
+                }
             }
     }
 
