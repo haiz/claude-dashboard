@@ -12,6 +12,10 @@ final class AccountDetailViewModel: ObservableObject {
     @Published var logs: [UsageLogEntry] = []
     @Published var resetCycles: [ResetCycle] = []
     @Published var selectedCycle: ResetCycle?
+    @Published var visibleRange: ClosedRange<Date> = {
+        let now = Date()
+        return now.addingTimeInterval(-86400)...now
+    }()
 
     init(accountId: UUID, accountName: String, accountPlan: AccountPlan, logStore: UsageLogStore) {
         self.accountId = accountId
@@ -34,10 +38,15 @@ final class AccountDetailViewModel: ObservableObject {
         } else {
             let allLogs = await logStore.logs(
                 accountId: accountId, window: selectedWindow,
-                from: nil, to: nil
+                from: visibleRange.lowerBound, to: visibleRange.upperBound
             )
             logs = allLogs
         }
+    }
+
+    func updateRange(_ range: ClosedRange<Date>) {
+        visibleRange = range
+        Task { await loadData() }
     }
 
     func selectWindow(_ window: UsageWindow) {
