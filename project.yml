@@ -24,6 +24,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.claude-dashboard.app
         ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: NO
+    dependencies:
+      - sdk: IOKit.framework
   ClaudeDashboardTests:
     type: bundle.unit-test
     platform: macOS

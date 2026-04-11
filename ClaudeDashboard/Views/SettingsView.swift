@@ -4,7 +4,6 @@ struct SettingsView: View {
     @ObservedObject var viewModel: DashboardViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var showingSetup = false
-    @State private var editingAccount: Account?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +24,14 @@ struct SettingsView: View {
                         accountRow(account)
                     }
                 }
+
+                Section("Auto Refresh") {
+                    Toggle("Enable auto refresh", isOn: $viewModel.autoRefreshEnabled)
+
+                    if viewModel.autoRefreshEnabled {
+                        Stepper("Every \(viewModel.autoRefreshMinutes) min", value: $viewModel.autoRefreshMinutes, in: 1...60)
+                    }
+                }
             }
 
             Divider()
@@ -37,8 +44,10 @@ struct SettingsView: View {
                 Spacer()
 
                 Button("Re-sync All from Chrome") {
-                    for account in viewModel.accountStore.accounts {
-                        viewModel.resyncAccount(account.id)
+                    Task {
+                        for account in viewModel.accountStore.accounts {
+                            await viewModel.resyncAccount(account.id)
+                        }
                     }
                 }
             }
@@ -46,11 +55,8 @@ struct SettingsView: View {
         }
         .frame(width: 500, height: 400)
         .sheet(isPresented: $showingSetup) {
-            SetupView(viewModel: viewModel)
-        }
-        .sheet(item: $editingAccount) { account in
-            EditAccountView(account: account) { updated in
-                viewModel.accountStore.updateAccount(updated)
+            SetupView(viewModel: viewModel) {
+                showingSetup = false
             }
         }
     }
@@ -81,11 +87,6 @@ struct SettingsView: View {
                     .foregroundStyle(.orange)
             }
 
-            Button(action: { editingAccount = account }) {
-                Image(systemName: "pencil")
-            }
-            .buttonStyle(.borderless)
-
             Button(action: {
                 viewModel.accountStore.removeAccount(id: account.id)
             }) {
@@ -95,40 +96,5 @@ struct SettingsView: View {
             .foregroundStyle(.red)
         }
         .padding(.vertical, 2)
-    }
-}
-
-struct EditAccountView: View {
-    @State var account: Account
-    let onSave: (Account) -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Edit Account")
-                .font(.headline)
-
-            TextField("Name", text: $account.name)
-                .textFieldStyle(.roundedBorder)
-
-            Picker("Plan", selection: $account.plan) {
-                ForEach(AccountPlan.allCases, id: \.self) { plan in
-                    Text(plan.rawValue)
-                }
-            }
-
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Save") {
-                    onSave(account)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 300)
     }
 }

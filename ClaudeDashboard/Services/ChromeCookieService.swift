@@ -3,8 +3,9 @@ import CommonCrypto
 import SQLite3
 
 struct ChromeProfile {
-    let path: String
-    let displayName: String
+    let path: String        // e.g. "Profile 1"
+    let displayName: String // e.g. "Harry"
+    let googleEmail: String // e.g. "hai@gotitapp.co" — from user_name field
 }
 
 struct ChromeCookieResult {
@@ -16,6 +17,9 @@ enum ChromeCookieService {
 
     private static let chromeBasePath = NSHomeDirectory()
         + "/Library/Application Support/Google/Chrome"
+
+    /// Cached encryption key — avoids repeated Keychain prompts per app session
+    private static var cachedEncryptionKey: Data?
 
     // MARK: - Profile Scanning
 
@@ -34,12 +38,17 @@ enum ChromeCookieService {
             return []
         }
 
+        // Only include profiles that currently have open windows
+        let activeProfiles = Set(profile["last_active_profiles"] as? [String] ?? [])
+
         return infoCache.compactMap { (key, value) in
-            guard let info = value as? [String: Any],
+            guard activeProfiles.contains(key),
+                  let info = value as? [String: Any],
                   let name = info["name"] as? String else {
                 return nil
             }
-            return ChromeProfile(path: key, displayName: name)
+            let googleEmail = info["user_name"] as? String ?? ""
+            return ChromeProfile(path: key, displayName: name, googleEmail: googleEmail)
         }
         .sorted { $0.path < $1.path }
     }
@@ -50,11 +59,36 @@ enum ChromeCookieService {
         guard let encryptionKey = getChromeEncryptionKey() else {
             return ChromeCookieResult(sessionKey: nil, orgId: nil)
         }
+        return extractCookies(for: profilePath, encryptionKey: encryptionKey)
+    }
+
+    static func extractCookies(for profilePath: String, encryptionKey: Data) -> ChromeCookieResult {
 
         let dbPath = chromeBasePath + "/\(profilePath)/Cookies"
-        var db: OpaquePointer?
 
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+        // Copy DB to temp location — Chrome holds WAL lock while running,
+        // preventing direct read-only access
+        let tempDir = NSTemporaryDirectory()
+        let tempPath = tempDir + "claude-dashboard-cookies-\(profilePath.replacingOccurrences(of: " ", with: "_")).db"
+        try? FileManager.default.removeItem(atPath: tempPath)
+        guard (try? FileManager.default.copyItem(atPath: dbPath, toPath: tempPath)) != nil else {
+            return ChromeCookieResult(sessionKey: nil, orgId: nil)
+        }
+        // Also copy WAL and SHM if they exist
+        for suffix in ["-wal", "-shm"] {
+            let src = dbPath + suffix
+            let dst = tempPath + suffix
+            try? FileManager.default.removeItem(atPath: dst)
+            try? FileManager.default.copyItem(atPath: src, toPath: dst)
+        }
+        defer {
+            try? FileManager.default.removeItem(atPath: tempPath)
+            try? FileManager.default.removeItem(atPath: tempPath + "-wal")
+            try? FileManager.default.removeItem(atPath: tempPath + "-shm")
+        }
+
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(tempPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
             return ChromeCookieResult(sessionKey: nil, orgId: nil)
         }
         defer { sqlite3_close(db) }
@@ -103,9 +137,10 @@ enum ChromeCookieService {
     // MARK: - Profiles with Claude Sessions
 
     static func profilesWithClaudeSessions() -> [(profile: ChromeProfile, cookies: ChromeCookieResult)] {
+        guard let encryptionKey = getChromeEncryptionKey() else { return [] }
         let profiles = scanProfiles()
         return profiles.compactMap { profile in
-            let cookies = extractCookies(for: profile.path)
+            let cookies = extractCookies(for: profile.path, encryptionKey: encryptionKey)
             guard cookies.sessionKey != nil else { return nil }
             return (profile: profile, cookies: cookies)
         }
@@ -114,9 +149,11 @@ enum ChromeCookieService {
     // MARK: - Crypto
 
     static func getChromeEncryptionKey() -> Data? {
-        let passphrase = getChromeSafeStoragePassword()
-        guard let passphrase else { return nil }
-        return deriveKey(from: passphrase)
+        if let cached = cachedEncryptionKey { return cached }
+        guard let passphrase = getChromeSafeStoragePassword() else { return nil }
+        let key = deriveKey(from: passphrase)
+        cachedEncryptionKey = key
+        return key
     }
 
     static func deriveKey(from passphrase: String) -> Data {
@@ -178,21 +215,21 @@ enum ChromeCookieService {
 
         decryptedData.count = decryptedLength
 
-        // Chrome DB v24+ may prepend 32-byte domain hash
+        // Try full data as UTF-8 first
+        if let result = String(data: decryptedData, encoding: .utf8) {
+            return result
+        }
+
+        // Chrome DB v24+ prepends 32-byte domain hash (non-UTF8 binary)
+        // Strip it and try again
         if decryptedLength > 32 {
-            let asString = String(data: decryptedData, encoding: .utf8)
-            if asString == nil || asString?.contains("\0") == true {
-                let stripped = decryptedData.dropFirst(32)
-                if let result = String(data: stripped, encoding: .utf8) {
-                    return result
-                }
-            }
-            if let result = asString {
+            let stripped = Data(decryptedData.dropFirst(32))
+            if let result = String(data: stripped, encoding: .utf8) {
                 return result
             }
         }
 
-        return String(data: decryptedData, encoding: .utf8)
+        return nil
     }
 
     private static func getChromeSafeStoragePassword() -> String? {

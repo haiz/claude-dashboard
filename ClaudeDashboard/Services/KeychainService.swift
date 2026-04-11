@@ -1,11 +1,13 @@
 import Foundation
 import Security
 
-enum KeychainService {
-    private static let servicePrefix = "com.claude-dashboard"
-    private static var cache: [String: String] = [:]
+actor KeychainService {
+    static let shared = KeychainService()
 
-    static func save(key: String, value: String) {
+    private let servicePrefix = "com.claude-dashboard"
+    private var cache: [String: String] = [:]
+
+    func save(key: String, value: String) {
         cache[key] = value
 
         let data = value.data(using: .utf8)!
@@ -24,11 +26,20 @@ enum KeychainService {
         SecItemAdd(addQuery as CFDictionary, nil)
     }
 
-    static func load(key: String) -> String? {
+    func load(key: String) -> String? {
         if let cached = cache[key] {
             return cached
         }
 
+        // Bulk-load all items for our service on first miss — single Keychain prompt
+        if !didBulkLoad {
+            bulkLoad()
+            if let cached = cache[key] {
+                return cached
+            }
+        }
+
+        // Fallback: individual lookup (shouldn't normally be needed)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: servicePrefix,
@@ -49,7 +60,33 @@ enum KeychainService {
         return value
     }
 
-    static func delete(key: String) {
+    private var didBulkLoad = false
+
+    private func bulkLoad() {
+        didBulkLoad = true
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: servicePrefix,
+            kSecReturnData as String: true,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else { return }
+
+        for item in items {
+            guard let account = item[kSecAttrAccount as String] as? String,
+                  let data = item[kSecValueData as String] as? Data,
+                  let value = String(data: data, encoding: .utf8) else { continue }
+            cache[account] = value
+        }
+    }
+
+    func delete(key: String) {
         cache.removeValue(forKey: key)
 
         let query: [String: Any] = [

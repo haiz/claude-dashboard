@@ -19,7 +19,6 @@ final class AccountStore: ObservableObject {
 
     func removeAccount(id: UUID) {
         accounts.removeAll { $0.id == id }
-        KeychainService.delete(key: KeychainService.sessionKey(for: id))
         persist()
     }
 
@@ -30,11 +29,14 @@ final class AccountStore: ObservableObject {
     }
 
     func saveSessionKey(_ key: String, for accountId: UUID) {
-        KeychainService.save(key: KeychainService.sessionKey(for: accountId), value: key)
+        guard let index = accounts.firstIndex(where: { $0.id == accountId }) else { return }
+        accounts[index].sessionKey = CryptoService.encrypt(key) ?? key
+        persist()
     }
 
     func loadSessionKey(for accountId: UUID) -> String? {
-        KeychainService.load(key: KeychainService.sessionKey(for: accountId))
+        guard let encrypted = accounts.first(where: { $0.id == accountId })?.sessionKey else { return nil }
+        return CryptoService.decrypt(encrypted) ?? encrypted
     }
 
     // MARK: - Persistence

@@ -13,6 +13,8 @@ struct OverviewChartView: View {
     @State private var selectedAccounts: Set<UUID> = []
     @State private var logs: [UsageLogEntry] = []
     @State private var hoverDate: Date?
+    @State private var hoverX: CGFloat = 0
+    @State private var chartWidth: CGFloat = 1
 
     private static let totalColor = Color.white.opacity(0.85)
 
@@ -84,6 +86,7 @@ struct OverviewChartView: View {
                             Text("S").tag(UsageWindow.sonnet)
                         }
                         .pickerStyle(.segmented)
+                        .labelsHidden()
                         .frame(width: 140)
                     }
                 )
@@ -101,7 +104,7 @@ struct OverviewChartView: View {
     // MARK: - Chart
 
     private var overviewChart: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: hoverX > chartWidth / 2 ? .topLeading : .topTrailing) {
             Chart {
                 // Per-account lines
                 ForEach(viewModel.accountStates.filter { selectedAccounts.contains($0.id) }) { state in
@@ -161,12 +164,14 @@ struct OverviewChartView: View {
             }
             .chartLegend(.hidden)
             .chartOverlay { proxy in
-                GeometryReader { _ in
+                GeometryReader { geo in
                     Rectangle().fill(.clear).contentShape(Rectangle())
                         .onContinuousHover { phase in
                             switch phase {
                             case .active(let location):
                                 hoverDate = proxy.value(atX: location.x)
+                                hoverX = location.x
+                                chartWidth = geo.size.width
                             case .ended:
                                 hoverDate = nil
                             }
@@ -174,10 +179,11 @@ struct OverviewChartView: View {
                 }
             }
 
-            // Hover tooltip
+            // Hover tooltip (auto-flips side based on cursor position)
             if let hoverDate {
                 hoverTooltip(for: hoverDate)
                     .padding(8)
+                    .allowsHitTesting(false)
             }
         }
     }

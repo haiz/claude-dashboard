@@ -30,7 +30,9 @@ final class UsageAPIService {
     // MARK: - Usage
 
     func fetchUsage(orgId: String, sessionKey: String) async throws -> UsageAPIResult {
-        let url = URL(string: "\(baseURL)/organizations/\(orgId)/usage")!
+        guard let url = URL(string: "\(baseURL)/organizations/\(orgId)/usage") else {
+            throw UsageAPIError.invalidResponse
+        }
         let request = makeRequest(url: url, sessionKey: sessionKey)
 
         let (data, response) = try await session.data(for: request)
@@ -45,7 +47,9 @@ final class UsageAPIService {
     // MARK: - Organization Info (for email + plan detection)
 
     func fetchOrganizations(sessionKey: String) async throws -> [OrgInfo] {
-        let url = URL(string: "\(baseURL)/organizations")!
+        guard let url = URL(string: "\(baseURL)/organizations") else {
+            throw UsageAPIError.invalidResponse
+        }
         let request = makeRequest(url: url, sessionKey: sessionKey)
 
         let (data, response) = try await session.data(for: request)
@@ -71,11 +75,19 @@ final class UsageAPIService {
     // MARK: - Full Usage (with plan detection from raw response)
 
     func fetchFullUsage(orgId: String, sessionKey: String) async throws -> (usage: UsageData, planHint: AccountPlan?, newSessionKey: String?) {
-        let url = URL(string: "\(baseURL)/organizations/\(orgId)/usage")!
+        guard let url = URL(string: "\(baseURL)/organizations/\(orgId)/usage") else {
+            throw UsageAPIError.invalidResponse
+        }
         let request = makeRequest(url: url, sessionKey: sessionKey)
 
         let (data, response) = try await session.data(for: request)
         let httpResponse = try validateResponse(response)
+
+        // DEBUG: log raw API response to see seven_day_sonnet field
+        if let rawJSON = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let sonnetValue = rawJSON["seven_day_sonnet"] as Any
+            print("[UsageAPI] orgId=\(orgId) seven_day_sonnet=\(sonnetValue)")
+        }
 
         let usage = try UsageData.decode(from: data)
         let newSessionKey = parseSessionKey(from: httpResponse)

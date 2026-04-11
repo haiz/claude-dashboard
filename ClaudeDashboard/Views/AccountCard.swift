@@ -13,10 +13,10 @@ struct AccountCard: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(state.account.name)
-                            .font(.headline)
+                            .font(.title3)
                         if let email = state.account.email, email != state.account.name {
                             Text(email)
-                                .font(.caption)
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -31,7 +31,7 @@ struct AccountCard: View {
 
                     // Plan badge
                     Text(state.account.plan.rawValue)
-                        .font(.caption2.bold())
+                        .font(.caption.bold())
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(state.account.plan.badgeColor.opacity(0.15))
@@ -61,7 +61,7 @@ struct AccountCard: View {
                     usageContent(usage)
                 } else if let error = state.error {
                     Text(error)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.red)
                 }
             }
@@ -88,7 +88,7 @@ struct AccountCard: View {
             UsageBar(label: "5h", utilization: usage.fiveHour.utilization, resetsAt: usage.fiveHour.resetsAt, totalSeconds: 18000, animal: state.burnRates?.fiveHour?.animal)
             UsageBar(label: "7d", utilization: usage.sevenDay.utilization, resetsAt: usage.sevenDay.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sevenDay?.animal)
             if let sonnet = usage.sevenDaySonnet {
-                UsageBar(label: "S", utilization: sonnet.utilization, resetsAt: sonnet.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sonnet?.animal)
+                UsageBar(label: "S", utilization: sonnet.utilization, resetsAt: sonnet.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sonnet?.animal, showCountdown: false)
             }
         }
     }

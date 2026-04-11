@@ -6,6 +6,8 @@ struct AccountDetailView: View {
     let onBack: () -> Void
 
     @State private var hoverDate: Date?
+    @State private var hoverX: CGFloat = 0
+    @State private var chartWidth: CGFloat = 1
     @State private var cyclesExpanded = false
 
     var body: some View {
@@ -70,6 +72,7 @@ struct AccountDetailView: View {
                             Text("S").tag(UsageWindow.sonnet)
                         }
                         .pickerStyle(.segmented)
+                        .labelsHidden()
                         .frame(width: 140)
 
                         if viewModel.selectedCycle != nil {
@@ -93,7 +96,7 @@ struct AccountDetailView: View {
     }
 
     private var usageChart: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: hoverX > chartWidth / 2 ? .topLeading : .topTrailing) {
             Chart {
                 ForEach(viewModel.logs) { log in
                     LineMark(
@@ -139,12 +142,14 @@ struct AccountDetailView: View {
                 }
             }
             .chartOverlay { proxy in
-                GeometryReader { _ in
+                GeometryReader { geo in
                     Rectangle().fill(.clear).contentShape(Rectangle())
                         .onContinuousHover { phase in
                             switch phase {
                             case .active(let location):
                                 hoverDate = proxy.value(atX: location.x)
+                                hoverX = location.x
+                                chartWidth = geo.size.width
                             case .ended:
                                 hoverDate = nil
                             }
@@ -152,10 +157,11 @@ struct AccountDetailView: View {
                 }
             }
 
-            // Hover tooltip
+            // Hover tooltip (auto-flips side based on cursor position)
             if let hoverDate {
                 hoverTooltip(for: hoverDate)
                     .padding(8)
+                    .allowsHitTesting(false)
             }
         }
     }

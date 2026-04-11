@@ -28,7 +28,7 @@ struct DashboardWindow: View {
                 )
             }
         }
-        .frame(minWidth: 400, minHeight: 300)
+        .frame(minWidth: 600, minHeight: 450)
         .sheet(isPresented: $showingSettings) {
             SettingsView(viewModel: viewModel)
         }
@@ -67,10 +67,7 @@ struct DashboardWindow: View {
                 emptyStateView
             } else {
                 ScrollView {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 280, maximum: 400), spacing: 12)],
-                        spacing: 12
-                    ) {
+                    LazyVStack(spacing: 12) {
                         ForEach(viewModel.accountStates) { state in
                             AccountCard(state: state, onResync: {
                                 Task { await viewModel.resyncAccount(state.id) }

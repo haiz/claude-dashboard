@@ -50,8 +50,10 @@ struct SetupView: View {
 
                 if !detectedAccounts.isEmpty {
                     Button("Add Selected") {
-                        addSelectedAccounts()
-                        dismissSelf()
+                        Task {
+                            await addSelectedAccounts()
+                            dismissSelf()
+                        }
                     }
                     .keyboardShortcut(.defaultAction)
                     .disabled(detectedAccounts.filter(\.isSelected).isEmpty)
@@ -195,7 +197,7 @@ struct SetupView: View {
         }
     }
 
-    private func addSelectedAccounts() {
+    private func addSelectedAccounts() async {
         for detected in detectedAccounts where detected.isSelected {
             // Skip if already added
             if viewModel.accountStore.accounts.contains(where: { $0.chromeProfilePath == detected.chromeProfilePath }) {
@@ -218,13 +220,13 @@ struct SetupView: View {
                 chromeProfilePath: detected.chromeProfilePath,
                 chromeProfileName: chromeLabel,
                 orgId: detected.orgId,
+                sessionKey: CryptoService.encrypt(detected.sessionKey) ?? detected.sessionKey,
                 plan: detected.plan ?? .pro,
                 lastSynced: Date(),
                 status: .active
             )
 
             viewModel.accountStore.addAccount(account)
-            viewModel.accountStore.saveSessionKey(detected.sessionKey, for: account.id)
         }
 
         // Auto-refresh after adding

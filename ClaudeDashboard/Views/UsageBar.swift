@@ -6,13 +6,15 @@ struct UsageBar: View {
     let resetsAt: Date?
     let totalSeconds: TimeInterval  // total window: 18000 for 5h, 604800 for 7d
     let animal: String?
+    let showCountdown: Bool
 
-    init(label: String, utilization: Double, resetsAt: Date?, totalSeconds: TimeInterval = 18000, animal: String? = nil) {
+    init(label: String, utilization: Double, resetsAt: Date?, totalSeconds: TimeInterval = 18000, animal: String? = nil, showCountdown: Bool = true) {
         self.label = label
         self.utilization = utilization
         self.resetsAt = resetsAt
         self.totalSeconds = totalSeconds
         self.animal = animal
+        self.showCountdown = showCountdown
     }
 
     /// Number of countdown segments: 5 for 5h window, 7 for 7d and Sonnet windows.
@@ -24,7 +26,7 @@ struct UsageBar: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(label)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.system(.body, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .frame(width: 24, alignment: .leading)
 
@@ -50,11 +52,11 @@ struct UsageBar: View {
                 .frame(height: 8)
 
                 Text("\(Int(utilization))%")
-                    .font(.system(.caption, design: .monospaced))
-                    .frame(width: 50, alignment: .trailing)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(width: 70, alignment: .trailing)
             }
 
-            if let resetsAt {
+            if showCountdown, let resetsAt {
                 HStack(spacing: 8) {
                     // Spacer matching label width
                     Color.clear
@@ -66,10 +68,10 @@ struct UsageBar: View {
                         segmentCount: segmentCount
                     )
 
-                    Text(formatTimeRemaining(resetsAt))
-                        .font(.system(.caption, design: .monospaced))
+                    Text(formatResetTime(resetsAt))
+                        .font(.system(.body, design: .monospaced))
                         .foregroundStyle(resetUrgencyColor(resetsAt))
-                        .frame(width: 50, alignment: .trailing)
+                        .frame(width: 70, alignment: .trailing)
                 }
             }
         }
@@ -96,21 +98,17 @@ struct UsageBar: View {
         return Color(hue: 120.0 / 360.0, saturation: 0.6 * greenIntensity + 0.1, brightness: 0.5 + 0.35 * greenIntensity)
     }
 
-    private func formatTimeRemaining(_ date: Date) -> String {
-        let remaining = date.timeIntervalSinceNow
-        guard remaining > 0 else { return "now" }
+    /// Formats the reset time as an absolute timestamp, e.g. "Sat 5pm" or "Mon 2am".
+    private func formatResetTime(_ date: Date) -> String {
+        guard date.timeIntervalSinceNow > 0 else { return "now" }
 
-        let days = Int(remaining) / 86400
-        let hours = (Int(remaining) % 86400) / 3600
-        let minutes = (Int(remaining) % 3600) / 60
-
-        if days > 0 {
-            return "\(days)d \(hours)h"
-        } else if hours > 0 {
-            return "\(hours)h \(String(format: "%02d", minutes))m"
-        } else {
-            return "\(minutes)m"
-        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.timeZone = TimeZone.current
+        // "EEE" = abbreviated weekday, "ha" = hour + am/pm (e.g. "5PM")
+        formatter.dateFormat = "EEE ha"
+        let raw = formatter.string(from: date).lowercased()
+        return raw.prefix(1).uppercased() + raw.dropFirst()
     }
 }
 
@@ -129,10 +127,10 @@ private struct CountdownBarsView: View {
                     segmentView(index: index)
                 }
             }
-            .frame(width: geo.size.width * 2.0 / 3.0, height: 8)
+            .frame(width: geo.size.width * 2.0 / 3.0, height: 4)
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .frame(height: 8)
+        .frame(height: 4)
     }
 
     private func segmentView(index: Int) -> some View {

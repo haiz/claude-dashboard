@@ -112,6 +112,11 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
 
             Spacer()
 
+            averageRateOverlay
+                .allowsHitTesting(false)
+
+            Spacer()
+
             toolbarExtra()
         }
         .padding(.horizontal, 8)
@@ -145,11 +150,6 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
                 // Chart content — gesture applied here so onContinuousHover in chartOverlay still works
                 chartContent()
                     .simultaneousGesture(combinedGesture(geometry: geometry))
-
-                // Average rate overlay
-                averageRateOverlay
-                    .padding(8)
-                    .allowsHitTesting(false)
 
                 // Zoom selection highlight (drawn on top during zoom drag)
                 if mode == .zoom, let zsr = zoomSelectionRange {
