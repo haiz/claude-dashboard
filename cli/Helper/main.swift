@@ -18,8 +18,7 @@ switch command {
 case "decrypt":
     exit(DecryptCommand.run())
 case "sync":
-    fputs("sync: not yet implemented\n", stderr)
-    exit(1)
+    exit(SyncCommand.run())
 default:
     fputs("Unknown command: \(command)\n", stderr)
     exit(1)
