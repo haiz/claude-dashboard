@@ -50,16 +50,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrameAutosaveName("ClaudeDashboardWindow")
         window.minSize = NSSize(width: 600, height: 450)
 
-        // Show Dock icon when dashboard window opens
-        NSApp.setActivationPolicy(.regular)
-
         windowCloseObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
         ) { [weak self] _ in
-            // Hide Dock icon when dashboard window closes
-            NSApp.setActivationPolicy(.accessory)
             // Reset navigation so chart views are released
             self?.currentViewModel?.navigation = .dashboard
             // Release window and its entire view hierarchy to free memory
