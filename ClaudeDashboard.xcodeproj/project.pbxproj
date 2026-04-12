@@ -9,12 +9,14 @@
 /* Begin PBXBuildFile section */
 		04AD291FD33FFB834B40D945 /* InteractiveChartContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86AC4B09025CCFBC088F61A5 /* InteractiveChartContainer.swift */; };
 		0924D8F9139A4EE436ABEA8C /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7E115BD84248989BAA883F /* CryptoService.swift */; };
+		0D2BDE04D4B6D1D0C60DC187 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
 		16A265A2C631E5035C789757 /* ChromeCookieService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141FB3A6068D99AD9485D6FB /* ChromeCookieService.swift */; };
 		18B4F69185821E78B8E6139C /* ClaudeDashboardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8007AA99F483598797EBFAE0 /* ClaudeDashboardApp.swift */; };
 		1F6E690999CAFDD5752BF11E /* UsageDataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61CE79EE895C0FE88D1ED98A /* UsageDataTests.swift */; };
 		211F98E0C0F99203EF129492 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066B8B1E829B2024AB298464 /* SetupView.swift */; };
-		3C92DE3C1904B8E52835EE1A /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CCB0272995AEA4CCAA902F3 /* UsageData.swift */; };
+		32096CA45EBC78281F4D080E /* ChromeCookieService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141FB3A6068D99AD9485D6FB /* ChromeCookieService.swift */; };
 		411CACBC4F1791E139BDF4BA /* AccountDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CC442D5CD274FE704D4AC0F /* AccountDetailViewModel.swift */; };
+		46ACA4D872B48395C5A010F6 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		4E96F2399828773E0E34BC8A /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2535C231EBCF76F786F7B7E /* Account.swift */; };
 		5467470C8154768515DCC0EC /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BDD5471D1B082F49E424611 /* KeychainService.swift */; };
 		56CDB1C08E0C2EB2BED3CE7D /* AccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 268FCC5C51E46A928607748C /* AccountDetailView.swift */; };
@@ -23,18 +25,23 @@
 		5EA995FF435E95F185C021D0 /* UsageLogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8454A54E81908E1F697644E4 /* UsageLogModels.swift */; };
 		5EFD93757C36AAB2C68F515C /* AccountBadgeColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61909AF36968A9389D9F3A8F /* AccountBadgeColor.swift */; };
 		6A3B29454AC4491BC3AB2C7B /* AccountCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786E54BCD656D51F01E86B77 /* AccountCard.swift */; };
+		74AAC2BB9743F4E1DDA24F4B /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */; };
 		799960A4D530BF35FAB68326 /* UsageLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A9C824A446A4513554E6BC5 /* UsageLogStore.swift */; };
 		8A05B43134B187D33EE15895 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		8C6A56AA09D21B951F1E7863 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D572159B978911BF3D1EDAC0 /* Assets.xcassets */; };
+		94BDC42C46406C1E227F11FA /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */; };
+		952383DC16D74D6BF7106040 /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7E115BD84248989BAA883F /* CryptoService.swift */; };
 		98FD479769E1857F43E86CCB /* UsageLogModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8ADAEF8BBFC797B0D4950E3 /* UsageLogModelsTests.swift */; };
 		9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF469D724BE1FCA1D071131F /* AccountStore.swift */; };
 		A2A5D0F022E7A798045D105C /* DashboardWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA0F9129D3367D395937E5E /* DashboardWindow.swift */; };
 		A39C01692A8EA4FA3A76ED88 /* AccountStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */; };
+		A6DAAE7B2732C3395271F7BB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA09806794F5E11A193DC9E0 /* main.swift */; };
 		AAEAB48A072B469189CCA747 /* UsageAPIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64695012FC6F1C08762E7E77 /* UsageAPIServiceTests.swift */; };
 		B38B8E482E1BC067FFD7AE74 /* MenuBarPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F459D10501056C193989A6 /* MenuBarPopover.swift */; };
 		BAAE906146838597BF21E53E /* BurnRateTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D13B511083DF4FE0C75FA0DD /* BurnRateTracker.swift */; };
 		C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */; };
 		C436B7F85AB4285388BE8869 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
+		CBA5F28B81C6FA6C0E24C610 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2535C231EBCF76F786F7B7E /* Account.swift */; };
 		E53BC1DBE702E2298D98F974 /* UsageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36CFE6B80C6A187D9A176752 /* UsageBar.swift */; };
 		EB9BD3D5123C7ED0209085E9 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */; };
 		F25AC7AD4FA98DC521351742 /* UsageLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */; };
@@ -58,11 +65,11 @@
 		141FB3A6068D99AD9485D6FB /* ChromeCookieService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromeCookieService.swift; sourceTree = "<group>"; };
 		185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogStoreTests.swift; sourceTree = "<group>"; };
 		1B626BA4B6B77C9127190E09 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
-		1CCB0272995AEA4CCAA902F3 /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
 		1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAPIService.swift; sourceTree = "<group>"; };
 		23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreTests.swift; sourceTree = "<group>"; };
 		268FCC5C51E46A928607748C /* AccountDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDetailView.swift; sourceTree = "<group>"; };
 		2AA56B8E5252FD397123C6C2 /* OverviewChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewChartView.swift; sourceTree = "<group>"; };
+		2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
 		36CFE6B80C6A187D9A176752 /* UsageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageBar.swift; sourceTree = "<group>"; };
 		52F459D10501056C193989A6 /* MenuBarPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPopover.swift; sourceTree = "<group>"; };
 		53D1A85918EB846584354C07 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -78,6 +85,8 @@
 		8BDD5471D1B082F49E424611 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		95A99A9BA83C1C687A1C2E17 /* BurnRateTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnRateTrackerTests.swift; sourceTree = "<group>"; };
 		9602F34D10F24B11C7B02DF3 /* ChromeCookieServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromeCookieServiceTests.swift; sourceTree = "<group>"; };
+		A81A393416A5618902A5764C /* ClaudeDashboardHelper */ = {isa = PBXFileReference; includeInIndex = 0; path = ClaudeDashboardHelper; sourceTree = BUILT_PRODUCTS_DIR; };
+		BA09806794F5E11A193DC9E0 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		BF469D724BE1FCA1D071131F /* AccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStore.swift; sourceTree = "<group>"; };
 		BFA0F9129D3367D395937E5E /* DashboardWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindow.swift; sourceTree = "<group>"; };
 		C8ADAEF8BBFC797B0D4950E3 /* UsageLogModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogModelsTests.swift; sourceTree = "<group>"; };
@@ -95,6 +104,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				C436B7F85AB4285388BE8869 /* IOKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A2A1BBB11BB4A6AF9C364448 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0D2BDE04D4B6D1D0C60DC187 /* IOKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -128,6 +145,7 @@
 			isa = PBXGroup;
 			children = (
 				CEA505924741CE7A0DFBB32F /* ClaudeDashboard.app */,
+				A81A393416A5618902A5764C /* ClaudeDashboardHelper */,
 				E4BAD55D59287038F16012AE /* ClaudeDashboardTests.xctest */,
 			);
 			name = Products;
@@ -138,6 +156,7 @@
 			children = (
 				A8C7505E85FF47BD0DA39F4F /* ClaudeDashboard */,
 				109421F311E289DC97EE7C52 /* ClaudeDashboardTests */,
+				B117A7CF77C920D1DAFAD334 /* Helper */,
 				B641D65413ACAD21C9A8FF6B /* Shared */,
 				B67FD40F83C3CF2730CD9C6D /* Frameworks */,
 				1BA1E0603DC4CC66ABF8C4C4 /* Products */,
@@ -175,7 +194,6 @@
 			isa = PBXGroup;
 			children = (
 				61909AF36968A9389D9F3A8F /* AccountBadgeColor.swift */,
-				1CCB0272995AEA4CCAA902F3 /* UsageData.swift */,
 				8454A54E81908E1F697644E4 /* UsageLogModels.swift */,
 			);
 			path = Models;
@@ -195,6 +213,15 @@
 			path = ClaudeDashboard;
 			sourceTree = "<group>";
 		};
+		B117A7CF77C920D1DAFAD334 /* Helper */ = {
+			isa = PBXGroup;
+			children = (
+				BA09806794F5E11A193DC9E0 /* main.swift */,
+			);
+			name = Helper;
+			path = cli/Helper;
+			sourceTree = "<group>";
+		};
 		B641D65413ACAD21C9A8FF6B /* Shared */ = {
 			isa = PBXGroup;
 			children = (
@@ -202,6 +229,7 @@
 				141FB3A6068D99AD9485D6FB /* ChromeCookieService.swift */,
 				6C7E115BD84248989BAA883F /* CryptoService.swift */,
 				1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */,
+				2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -254,6 +282,24 @@
 			productReference = E4BAD55D59287038F16012AE /* ClaudeDashboardTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		FC2A9B644D7F7E5772864833 /* ClaudeDashboardHelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C577274D5CFCB7B567686B3C /* Build configuration list for PBXNativeTarget "ClaudeDashboardHelper" */;
+			buildPhases = (
+				CA28C4E2FB1319C41A58B265 /* Sources */,
+				A2A1BBB11BB4A6AF9C364448 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ClaudeDashboardHelper;
+			packageProductDependencies = (
+			);
+			productName = ClaudeDashboardHelper;
+			productReference = A81A393416A5618902A5764C /* ClaudeDashboardHelper */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -267,6 +313,9 @@
 						ProvisioningStyle = Manual;
 					};
 					83DF443592CBF6C2C3AD03E0 = {
+						ProvisioningStyle = Manual;
+					};
+					FC2A9B644D7F7E5772864833 = {
 						ProvisioningStyle = Manual;
 					};
 				};
@@ -286,6 +335,7 @@
 			projectRoot = "";
 			targets = (
 				19E4C25522380DDF62F7B840 /* ClaudeDashboard */,
+				FC2A9B644D7F7E5772864833 /* ClaudeDashboardHelper */,
 				83DF443592CBF6C2C3AD03E0 /* ClaudeDashboardTests */,
 			);
 		};
@@ -317,6 +367,19 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CA28C4E2FB1319C41A58B265 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CBA5F28B81C6FA6C0E24C610 /* Account.swift in Sources */,
+				32096CA45EBC78281F4D080E /* ChromeCookieService.swift in Sources */,
+				952383DC16D74D6BF7106040 /* CryptoService.swift in Sources */,
+				46ACA4D872B48395C5A010F6 /* UsageAPIService.swift in Sources */,
+				74AAC2BB9743F4E1DDA24F4B /* UsageData.swift in Sources */,
+				A6DAAE7B2732C3395271F7BB /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EBBD9C823D01E4B131B31780 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -341,7 +404,7 @@
 				211F98E0C0F99203EF129492 /* SetupView.swift in Sources */,
 				8A05B43134B187D33EE15895 /* UsageAPIService.swift in Sources */,
 				E53BC1DBE702E2298D98F974 /* UsageBar.swift in Sources */,
-				3C92DE3C1904B8E52835EE1A /* UsageData.swift in Sources */,
+				94BDC42C46406C1E227F11FA /* UsageData.swift in Sources */,
 				5EA995FF435E95F185C021D0 /* UsageLogModels.swift in Sources */,
 				799960A4D530BF35FAB68326 /* UsageLogStore.swift in Sources */,
 			);
@@ -358,6 +421,24 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		22AB664D507699CDFD26CD80 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.claude-dashboard.ClaudeDashboardHelper";
+				PRODUCT_NAME = "claude-dashboard-helper";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
 		2FB9679CABCD24CF17C18FF4 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -555,6 +636,24 @@
 			};
 			name = Debug;
 		};
+		F0A942746D5718C228F391C7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.claude-dashboard.ClaudeDashboardHelper";
+				PRODUCT_NAME = "claude-dashboard-helper";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -581,6 +680,15 @@
 			buildConfigurations = (
 				77571BFC4059867B3C234F82 /* Debug */,
 				2FB9679CABCD24CF17C18FF4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C577274D5CFCB7B567686B3C /* Build configuration list for PBXNativeTarget "ClaudeDashboardHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				22AB664D507699CDFD26CD80 /* Debug */,
+				F0A942746D5718C228F391C7 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
