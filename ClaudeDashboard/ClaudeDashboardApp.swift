@@ -27,6 +27,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowCloseObserver: Any?
     private weak var currentViewModel: DashboardViewModel?
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
+    }
+
     func openDashboardWindow(viewModel: DashboardViewModel) {
         if let window = dashboardWindow, window.isVisible {
             window.makeKeyAndOrderFront(nil)
