@@ -17,7 +17,7 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Build Release
+      - name: Build GUI app (Release)
         run: |
           xcodebuild -project ClaudeDashboard.xcodeproj \
             -scheme ClaudeDashboard \
@@ -25,14 +25,40 @@ jobs:
             -derivedDataPath build \
             build
 
-      - name: Package app
+      - name: Build CLI helper (Release)
+        run: |
+          xcodebuild -project ClaudeDashboard.xcodeproj \
+            -scheme ClaudeDashboardHelper \
+            -configuration Release \
+            -derivedDataPath build \
+            build
+
+      - name: Package GUI app
         run: |
           cd build/Build/Products/Release
           ditto -ck --sequesterRsrc --keepParent ClaudeDashboard.app ClaudeDashboard.app.zip
           mv ClaudeDashboard.app.zip "$GITHUB_WORKSPACE/"
 
+      - name: Package CLI
+        run: |
+          mkdir -p cli-dist/bin
+          cp build/Build/Products/Release/claude-dashboard-helper cli-dist/bin/
+          cp cli/claude-dashboard-cli cli-dist/bin/
+          chmod +x cli-dist/bin/claude-dashboard-cli
+          cd cli-dist
+          tar czf "$GITHUB_WORKSPACE/claude-dashboard-cli.tar.gz" bin/
+
+      - name: Compute SHA256
+        run: |
+          shasum -a 256 ClaudeDashboard.app.zip | tee gui-sha256.txt
+          shasum -a 256 claude-dashboard-cli.tar.gz | tee cli-sha256.txt
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ClaudeDashboard.app.zip
+          files: |
+            ClaudeDashboard.app.zip
+            claude-dashboard-cli.tar.gz
+            gui-sha256.txt
+            cli-sha256.txt
           generate_release_notes: true
