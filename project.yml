@@ -15,6 +15,7 @@ targets:
     platform: macOS
     sources:
       - ClaudeDashboard
+      - Shared
     settings:
       base:
         INFOPLIST_FILE: ClaudeDashboard/Info.plist
