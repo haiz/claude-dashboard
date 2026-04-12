@@ -1,4 +1,26 @@
 import Foundation
 
-print("claude-dashboard-helper: not yet implemented")
-exit(0)
+let args = CommandLine.arguments.dropFirst()
+
+guard let command = args.first else {
+    fputs("""
+    Usage: claude-dashboard-helper <command>
+
+    Commands:
+      decrypt    Decrypt accounts and output JSON to stdout
+      sync       Scan Chrome for Claude sessions and save to accounts
+
+    """, stderr)
+    exit(1)
+}
+
+switch command {
+case "decrypt":
+    exit(DecryptCommand.run())
+case "sync":
+    fputs("sync: not yet implemented\n", stderr)
+    exit(1)
+default:
+    fputs("Unknown command: \(command)\n", stderr)
+    exit(1)
+}
