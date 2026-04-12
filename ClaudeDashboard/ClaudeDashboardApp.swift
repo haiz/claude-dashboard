@@ -25,6 +25,7 @@ struct ClaudeDashboardApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var dashboardWindow: NSWindow?
     private var windowCloseObserver: Any?
+    private weak var currentViewModel: DashboardViewModel?
 
     func openDashboardWindow(viewModel: DashboardViewModel) {
         if let window = dashboardWindow, window.isVisible {
@@ -33,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        currentViewModel = viewModel
         let showSetup = viewModel.accountStore.accounts.isEmpty
         let contentView = DashboardWindowWrapper(viewModel: viewModel, showSetupOnAppear: showSetup)
 
@@ -47,7 +49,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.setFrameAutosaveName("ClaudeDashboardWindow")
         window.minSize = NSSize(width: 600, height: 450)
-        window.isReleasedWhenClosed = false
 
         // Show Dock icon when dashboard window opens
         NSApp.setActivationPolicy(.regular)
@@ -59,6 +60,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             // Hide Dock icon when dashboard window closes
             NSApp.setActivationPolicy(.accessory)
+            // Reset navigation so chart views are released
+            self?.currentViewModel?.navigation = .dashboard
+            // Release window and its entire view hierarchy to free memory
+            self?.dashboardWindow?.contentView = nil
+            self?.dashboardWindow = nil
             if let observer = self?.windowCloseObserver {
                 NotificationCenter.default.removeObserver(observer)
                 self?.windowCloseObserver = nil

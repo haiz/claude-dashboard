@@ -25,3 +25,4 @@ xcuserdata/
 *.app.zip
 docs/superpowers/
 .superpowers/
+.claude/
