@@ -22,55 +22,52 @@ struct ClaudeDashboardApp: App {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var dashboardWindow: NSWindow?
-    private var windowCloseObserver: Any?
     private weak var currentViewModel: DashboardViewModel?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
     }
 
-    func openDashboardWindow(viewModel: DashboardViewModel) {
-        if let window = dashboardWindow, window.isVisible {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
+    // Intercept the red-X close: hide the window instead of closing it.
+    // Keeping the NSWindow instance alive prevents SwiftUI/AppKit from treating
+    // this as "last window closed" and terminating the menu-bar-only app.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard sender === dashboardWindow else { return true }
+        // Reset navigation so chart/detail subviews are released.
+        currentViewModel?.navigation = .dashboard
+        // Drop the SwiftUI view hierarchy to free memory while hidden.
+        sender.contentView = nil
+        sender.orderOut(nil)
+        return false
+    }
 
+    func openDashboardWindow(viewModel: DashboardViewModel) {
         currentViewModel = viewModel
         let showSetup = viewModel.accountStore.accounts.isEmpty
         let contentView = DashboardWindowWrapper(viewModel: viewModel, showSetupOnAppear: showSetup)
 
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1050, height: 750),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Claude Dashboard"
-        window.contentView = NSHostingView(rootView: contentView)
-        window.center()
-        window.setFrameAutosaveName("ClaudeDashboardWindow")
-        window.minSize = NSSize(width: 600, height: 450)
-
-        windowCloseObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification,
-            object: window,
-            queue: .main
-        ) { [weak self] _ in
-            // Reset navigation so chart views are released
-            self?.currentViewModel?.navigation = .dashboard
-            // Release window and its entire view hierarchy to free memory
-            self?.dashboardWindow?.contentView = nil
-            self?.dashboardWindow = nil
-            if let observer = self?.windowCloseObserver {
-                NotificationCenter.default.removeObserver(observer)
-                self?.windowCloseObserver = nil
-            }
+        let window: NSWindow
+        if let existing = dashboardWindow {
+            window = existing
+        } else {
+            window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1050, height: 750),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Claude Dashboard"
+            window.center()
+            window.setFrameAutosaveName("ClaudeDashboardWindow")
+            window.minSize = NSSize(width: 600, height: 450)
+            window.isReleasedWhenClosed = false
+            window.delegate = self
+            dashboardWindow = window
         }
 
-        dashboardWindow = window
+        window.contentView = NSHostingView(rootView: contentView)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
