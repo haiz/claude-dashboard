@@ -52,18 +52,52 @@ curl -fsSL https://raw.githubusercontent.com/haiz/claude-dashboard/main/install.
 
 ## Terminal CLI
 
-A terminal dashboard is available via the `claude-dashboard-cli` Homebrew formula. It reuses the same account storage as the menu bar app.
+A terminal dashboard is available via the `claude-dashboard-cli` Homebrew formula. It reuses the same account storage as the menu bar app — so after `sync`, every account shows up in both the GUI and the terminal.
+
+![CLI Dashboard](docs/screenshot/cli.png)
+
+### Quick Start
 
 ```bash
-# One-time: scan Chrome profiles and save accounts
+# 1. Install
+brew install haiz/claude-dashboard/claude-dashboard-cli
+
+# 2. Scan Chrome profiles for Claude sessions and save accounts
 claude-dashboard-cli sync
 
-# Live dashboard (refreshes every 5 minutes)
+# 3. Launch the live dashboard
 claude-dashboard-cli
-
-# Render once and exit
-claude-dashboard-cli --once
 ```
+
+`sync` opens Chrome's cookie database, validates each session against the Claude.ai API, detects the plan (Pro / Max 5x / Max 20x), and saves the accounts to `~/Library/Preferences/com.claude-dashboard.app.plist` (shared with the menu bar app).
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `claude-dashboard-cli` | Launch the live dashboard (default: refresh every 5 min) |
+| `claude-dashboard-cli sync` | Re-scan Chrome and add any new accounts |
+| `claude-dashboard-cli --once` | Render the dashboard once and exit (useful for scripts) |
+| `claude-dashboard-cli --interval <sec>` | Change the refresh interval (e.g. `--interval 60`) |
+| `claude-dashboard-cli --no-color` | Disable ANSI colors |
+| `claude-dashboard-cli --version` | Print the CLI version |
+| `claude-dashboard-cli --help` | Show help |
+
+### What each row means
+
+Each account card shows three usage bars:
+
+- **5h** — 5-hour rolling window utilization
+- **7d** — 7-day rolling window utilization
+- **S** — 7-day Sonnet-specific utilization (Max plans only)
+
+The `resets` column shows when each window resets (local time). Progress bars transition green → yellow → red as utilization approaches 100%.
+
+### Tips
+
+- Re-run `claude-dashboard-cli sync` whenever you log into a new Claude account in Chrome, or after a session expires.
+- To manage accounts (rename, delete, re-sync), open the menu bar app — both share the same storage.
+- Press `Ctrl+C` to quit the live dashboard.
 
 ## Requirements
 
