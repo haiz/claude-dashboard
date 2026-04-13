@@ -44,12 +44,12 @@ jobs:
 
       - name: Package CLI
         run: |
-          mkdir -p cli-dist/bin
-          cp build/Build/Products/Release/claude-dashboard-helper cli-dist/bin/
-          cp cli/claude-dashboard-cli cli-dist/bin/
-          chmod +x cli-dist/bin/claude-dashboard-cli
+          mkdir -p cli-dist/claude-dashboard-cli-${GITHUB_REF_NAME}
+          cp build/Build/Products/Release/claude-dashboard-helper cli-dist/claude-dashboard-cli-${GITHUB_REF_NAME}/
+          cp cli/claude-dashboard-cli cli-dist/claude-dashboard-cli-${GITHUB_REF_NAME}/
+          chmod +x cli-dist/claude-dashboard-cli-${GITHUB_REF_NAME}/claude-dashboard-cli
           cd cli-dist
-          tar czf "$GITHUB_WORKSPACE/claude-dashboard-cli.tar.gz" bin/
+          tar czf "$GITHUB_WORKSPACE/claude-dashboard-cli.tar.gz" claude-dashboard-cli-${GITHUB_REF_NAME}/
 
       - name: Compute SHA256
         run: |

@@ -9,8 +9,8 @@ class ClaudeDashboardCli < Formula
   depends_on :macos => :ventura
 
   def install
-    bin.install "bin/claude-dashboard-helper"
-    bin.install "bin/claude-dashboard-cli"
+    bin.install "claude-dashboard-helper"
+    bin.install "claude-dashboard-cli"
   end
 
   test do
