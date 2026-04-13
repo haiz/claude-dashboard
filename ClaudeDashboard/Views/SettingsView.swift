@@ -52,6 +52,17 @@ struct SettingsView: View {
                 }
             }
             .padding()
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Text("Claude Dashboard v\(AppVersion.string)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.vertical, 6)
         }
         .frame(width: 500, height: 400)
         .sheet(isPresented: $showingSetup) {

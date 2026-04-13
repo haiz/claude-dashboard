@@ -60,3 +60,15 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 - **XcodeGen** manages the `.xcodeproj` from `project.yml` — edit `project.yml` for target/build setting changes, then run `xcodegen generate`
 - Tests use `MockURLProtocol` for network mocking and isolated `UserDefaults` suites
 - **ISO8601 date parsing** — Custom decoder handles both with and without fractional seconds (`.SSS`); this is a known API inconsistency
+
+## Releasing
+
+Version is tracked in a single `VERSION` file at repo root. To cut a new release:
+
+1. Edit `VERSION` to the new semver.
+2. Run `./scripts/sync-version.sh` — propagates to `Info.plist`, `cli/claude-dashboard-cli`, `Formula/`, and `Casks/`.
+3. Build and upload release artifacts.
+4. Manually update `sha256` lines in `Formula/claude-dashboard-cli.rb` and `Casks/claude-dashboard.rb` (these can't be known until artifacts exist).
+5. Commit, tag, push.
+
+Validate the script at any time with `./scripts/test-sync-version.sh`.
