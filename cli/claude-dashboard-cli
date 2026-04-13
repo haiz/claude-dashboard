@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # --- Configuration ---
-VERSION="1.0.0"
+VERSION="1.1.1"
 DEFAULT_INTERVAL=300
 CARD_WIDTH=46
 BAR_WIDTH=16
@@ -137,6 +137,7 @@ progress_bar() {
     color=$(color_for_pct "$pct")
 
     printf '%b' "$color"
+    local i
     for (( i=0; i<filled; i++ )); do printf '%s' "$FILLED"; done
     printf '%b' "$RESET$DIM"
     for (( i=0; i<empty; i++ )); do printf '%s' "$EMPTY"; done
@@ -176,6 +177,7 @@ render_header() {
     for (( i=0; i<padding; i++ )); do printf ' '; done
     printf '%b%s%b\n' "$DIM" "$right" "$RESET"
     printf ' '
+    local i
     for (( i=0; i<CARD_WIDTH; i++ )); do printf '%s' "$H"; done
     printf '\n'
 }
@@ -188,6 +190,8 @@ render_card() {
 
     local pcolor
     pcolor=$(plan_color "$plan")
+
+    local i
 
     # Header: ┌─ email ─────────── Plan ──┐
     local inner=$(( CARD_WIDTH - 2 ))
@@ -256,6 +260,7 @@ render_usage_row() {
     progress_bar "$pct"
     # Print rest
     printf '%s' "$mid$reset_display"
+    local i
     for (( i=0; i<pad; i++ )); do printf ' '; done
     printf '%s\n' "$V"
 }
@@ -286,13 +291,13 @@ fetch_and_render() {
     render_header
     printf '\n'
 
-    for (( i=0; i<count; i++ )); do
+    for (( idx=0; idx<count; idx++ )); do
         local name plan status orgId sessionKey
-        name=$(echo "$accounts_json" | jq -r ".[$i].name")
-        plan=$(echo "$accounts_json" | jq -r ".[$i].plan")
-        status=$(echo "$accounts_json" | jq -r ".[$i].status")
-        orgId=$(echo "$accounts_json" | jq -r ".[$i].orgId")
-        sessionKey=$(echo "$accounts_json" | jq -r ".[$i].sessionKey")
+        name=$(echo "$accounts_json" | jq -r ".[$idx].name")
+        plan=$(echo "$accounts_json" | jq -r ".[$idx].plan")
+        status=$(echo "$accounts_json" | jq -r ".[$idx].status")
+        orgId=$(echo "$accounts_json" | jq -r ".[$idx].orgId")
+        sessionKey=$(echo "$accounts_json" | jq -r ".[$idx].sessionKey")
 
         if [[ "$status" != "active" || -z "$orgId" || "$orgId" == "null" || -z "$sessionKey" || "$sessionKey" == "null" ]]; then
             render_card "$name" "$plan" "$status" 0 "" 0 "" "" ""
@@ -300,14 +305,10 @@ fetch_and_render() {
             continue
         fi
 
-        # Fetch usage
+        # Fetch usage via helper (uses URLSession to bypass Cloudflare)
         local usage_json
-        usage_json=$(curl -s --max-time 10 \
-            -H "accept: */*" \
-            -H "content-type: application/json" \
-            -H "anthropic-client-platform: web_claude_ai" \
-            -H "Cookie: sessionKey=$sessionKey" \
-            "${API_BASE}/organizations/${orgId}/usage" 2>/dev/null) || usage_json="{}"
+        usage_json=$("$HELPER" usage "$orgId" "$sessionKey" 2>/dev/null) || usage_json="{}"
+        [[ -z "$usage_json" ]] && usage_json="{}"
 
         local pct_5h pct_7d reset_5h_raw reset_7d_raw reset_5h reset_7d pct_sonnet reset_sonnet_raw reset_sonnet
 

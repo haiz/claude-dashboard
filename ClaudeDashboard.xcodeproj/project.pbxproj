@@ -48,6 +48,7 @@
 		E53BC1DBE702E2298D98F974 /* UsageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36CFE6B80C6A187D9A176752 /* UsageBar.swift */; };
 		EB9BD3D5123C7ED0209085E9 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */; };
 		F25AC7AD4FA98DC521351742 /* UsageLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */; };
+		FCCE3539EE2070BD2C37E455 /* UsageCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9E7C0511055F46A89CEB231 /* UsageCommand.swift */; };
 		FE8FF5E441863A71BB60B928 /* BurnRateTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95A99A9BA83C1C687A1C2E17 /* BurnRateTrackerTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -101,6 +102,7 @@
 		D2535C231EBCF76F786F7B7E /* Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Account.swift; sourceTree = "<group>"; };
 		D572159B978911BF3D1EDAC0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E4BAD55D59287038F16012AE /* ClaudeDashboardTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeDashboardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E9E7C0511055F46A89CEB231 /* UsageCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageCommand.swift; sourceTree = "<group>"; };
 		ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -226,6 +228,7 @@
 				4EB2623CB6EC20CACFF82236 /* HelperAccountStore.swift */,
 				BA09806794F5E11A193DC9E0 /* main.swift */,
 				CBFA427293BFC51355250BB1 /* SyncCommand.swift */,
+				E9E7C0511055F46A89CEB231 /* UsageCommand.swift */,
 			);
 			name = Helper;
 			path = cli/Helper;
@@ -387,6 +390,7 @@
 				203ACE14CE6715FA4B712065 /* HelperAccountStore.swift in Sources */,
 				A45521DA5ED20F5EEDA1F30E /* SyncCommand.swift in Sources */,
 				46ACA4D872B48395C5A010F6 /* UsageAPIService.swift in Sources */,
+				FCCE3539EE2070BD2C37E455 /* UsageCommand.swift in Sources */,
 				74AAC2BB9743F4E1DDA24F4B /* UsageData.swift in Sources */,
 				A6DAAE7B2732C3395271F7BB /* main.swift in Sources */,
 			);
