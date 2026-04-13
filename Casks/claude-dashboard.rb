@@ -11,6 +11,15 @@ cask "claude-dashboard" do
 
   app "ClaudeDashboard.app"
 
+  postflight do
+    # App is ad-hoc signed (no Apple Developer ID / notarization yet), so
+    # Gatekeeper blocks it with "could not verify ... free of malware".
+    # Clear all extended attributes (quarantine, provenance, etc.) so the app
+    # can launch on macOS 14+ including Sequoia (15) and Tahoe (26).
+    system_command "/usr/bin/xattr",
+                   args: ["-cr", "#{appdir}/ClaudeDashboard.app"]
+  end
+
   zap trash: [
     "~/Library/Preferences/com.claude-dashboard.app.plist",
     "~/Library/Application Support/ClaudeDashboard",
