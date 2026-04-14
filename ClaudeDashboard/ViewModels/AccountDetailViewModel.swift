@@ -34,7 +34,7 @@ final class AccountDetailViewModel: ObservableObject {
                 from: cycle.firstRecordedAt.addingTimeInterval(-1),
                 to: cycle.resetsAt
             )
-            logs = cycleLogs
+            logs = cycleLogs.withResetTransitions()
         } else {
             // Refresh range to current time so we always include the latest data
             let duration = visibleRange.upperBound.timeIntervalSince(visibleRange.lowerBound)
@@ -45,7 +45,7 @@ final class AccountDetailViewModel: ObservableObject {
                 accountId: accountId, window: selectedWindow,
                 from: visibleRange.lowerBound, to: visibleRange.upperBound
             )
-            logs = allLogs
+            logs = allLogs.withResetTransitions()
         }
     }
 

@@ -12,11 +12,12 @@ struct OverviewChartView: View {
     }()
     @State private var selectedAccounts: Set<UUID> = []
     @State private var logs: [UsageLogEntry] = []
+    @State private var showTotalLine: Bool = false
     @State private var hoverDate: Date?
     @State private var hoverX: CGFloat = 0
     @State private var chartWidth: CGFloat = 1
 
-    private static let totalColor = Color.white.opacity(0.85)
+    private static let totalColor = Color.white.opacity(0.5)
 
     private static let lineColors: [Color] = [
         .orange, .cyan, .green, .purple, .pink, .blue, .yellow, .mint, .indigo, .red
@@ -122,15 +123,17 @@ struct OverviewChartView: View {
                 }
 
                 // Total line
-                ForEach(computeTotalLine(), id: \.time) { point in
-                    LineMark(
-                        x: .value("Time", point.time),
-                        y: .value("Usage", point.value),
-                        series: .value("Account", "Total")
-                    )
-                    .foregroundStyle(by: .value("Account", "Total"))
-                    .lineStyle(StrokeStyle(lineWidth: 3, dash: [6, 3]))
-                    .interpolationMethod(.monotone)
+                if showTotalLine {
+                    ForEach(computeTotalLine(), id: \.time) { point in
+                        LineMark(
+                            x: .value("Time", point.time),
+                            y: .value("Usage", point.value),
+                            series: .value("Account", "Total")
+                        )
+                        .foregroundStyle(by: .value("Account", "Total"))
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 3]))
+                        .interpolationMethod(.monotone)
+                    }
                 }
 
                 // Limit markers
@@ -295,19 +298,25 @@ struct OverviewChartView: View {
         ScrollView {
             VStack(spacing: 4) {
                 // Total row
-                HStack {
-                    Circle()
-                        .fill(Self.totalColor)
-                        .frame(width: 8, height: 8)
-                    Text("Total")
-                        .font(.caption.bold())
-                    Text("(dashed)")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Spacer()
+                Button {
+                    showTotalLine.toggle()
+                } label: {
+                    HStack {
+                        Circle()
+                            .fill(showTotalLine ? Self.totalColor : Color.secondary.opacity(0.3))
+                            .frame(width: 8, height: 8)
+                        Text("Total")
+                            .font(.caption.bold())
+                            .foregroundStyle(showTotalLine ? .primary : .secondary)
+                        Text("(dashed)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 4)
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 4)
+                .buttonStyle(.plain)
 
                 ForEach(Array(viewModel.accountStates.enumerated()), id: \.element.id) { index, state in
                     let color = Self.lineColors[index % Self.lineColors.count]
@@ -439,5 +448,6 @@ struct OverviewChartView: View {
 
         let store = viewModel.logStore
         logs = await store.allLogs(window: selectedWindow, from: effectiveRange.lowerBound, to: effectiveRange.upperBound)
+            .withResetTransitions()
     }
 }
