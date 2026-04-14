@@ -35,6 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // this as "last window closed" and terminating the menu-bar-only app.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard sender === dashboardWindow else { return true }
+        // Dismiss any presented sheets (Settings, Setup) so AppKit
+        // removes the dimming overlay before we hide the window.
+        while let sheet = sender.attachedSheet {
+            sender.endSheet(sheet)
+        }
         // Reset navigation so chart/detail subviews are released.
         currentViewModel?.navigation = .dashboard
         // Drop the SwiftUI view hierarchy to free memory while hidden.
@@ -51,6 +56,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let window: NSWindow
         if let existing = dashboardWindow {
             window = existing
+            // Dismiss any lingering sheets from a previous session.
+            while let sheet = window.attachedSheet {
+                window.endSheet(sheet)
+            }
         } else {
             window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 1050, height: 750),
