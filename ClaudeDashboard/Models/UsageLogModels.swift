@@ -64,3 +64,73 @@ struct BurnRates: Equatable {
     var sevenDay: BurnRateResult?
     var sonnet: BurnRateResult?
 }
+
+// MARK: - Reset Transition Injection
+
+extension Array where Element == UsageLogEntry {
+    /// Injects synthetic data points at reset boundaries so chart lines show
+    /// accurate step-down transitions instead of diagonal slopes.
+    ///
+    /// For each consecutive pair of logs (same account) where `resetsAt` changes,
+    /// inserts up to two points:
+    /// 1. A "hold" point at `prev.resetsAt - 1s` with the previous utilization
+    /// 2. A "drop" point at `prev.resetsAt` with 0% utilization
+    func withResetTransitions() -> [UsageLogEntry] {
+        guard count >= 2 else { return self }
+
+        var syntheticId: Int64 = -1
+        var result: [UsageLogEntry] = []
+
+        let grouped = Dictionary(grouping: self) { $0.accountId }
+
+        for (_, accountLogs) in grouped {
+            let sorted = accountLogs.sorted { $0.recordedAt < $1.recordedAt }
+
+            for i in 0..<sorted.count {
+                let current = sorted[i]
+
+                if i > 0 {
+                    let prev = sorted[i - 1]
+
+                    if prev.resetsAt != current.resetsAt
+                        && prev.resetsAt > prev.recordedAt
+                        && prev.resetsAt <= current.recordedAt
+                    {
+                        let holdTime = prev.resetsAt.addingTimeInterval(-1)
+
+                        // Point 1: hold at old utilization (skip if too close to prev log)
+                        if holdTime > prev.recordedAt {
+                            result.append(UsageLogEntry(
+                                id: syntheticId,
+                                accountId: current.accountId,
+                                window: current.window,
+                                resetsAt: prev.resetsAt,
+                                recordedAt: holdTime,
+                                utilization: prev.utilization,
+                                isLimited: prev.isLimited
+                            ))
+                            syntheticId -= 1
+                        }
+
+                        // Point 2: drop to 0%
+                        result.append(UsageLogEntry(
+                            id: syntheticId,
+                            accountId: current.accountId,
+                            window: current.window,
+                            resetsAt: current.resetsAt,
+                            recordedAt: prev.resetsAt,
+                            utilization: 0.0,
+                            isLimited: false
+                        ))
+                        syntheticId -= 1
+                    }
+                }
+
+                result.append(current)
+            }
+        }
+
+        result.sort { $0.recordedAt < $1.recordedAt }
+        return result
+    }
+}
