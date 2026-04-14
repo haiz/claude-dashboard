@@ -63,12 +63,22 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 
 ## Releasing
 
-Version is tracked in a single `VERSION` file at repo root. To cut a new release:
+Run the automated release script:
 
-1. Edit `VERSION` to the new semver.
-2. Run `./scripts/sync-version.sh` — propagates to `Info.plist`, `cli/claude-dashboard-cli`, `Formula/`, and `Casks/`.
-3. Build and upload release artifacts.
-4. Manually update `sha256` lines in `Formula/claude-dashboard-cli.rb` and `Casks/claude-dashboard.rb` (these can't be known until artifacts exist).
-5. Commit, tag, push.
+```bash
+./scripts/release.sh <new-version>   # e.g. ./scripts/release.sh 1.3.0
+```
 
-Validate the script at any time with `./scripts/test-sync-version.sh`.
+The script handles everything: version bump, sync, xcodegen, build (app + helper), tests, artifact creation with correct names/contents, Homebrew sha256 update, commit, tag, push, and `gh release create`.
+
+**Manual steps (only if the script fails):**
+
+1. Edit `VERSION` to the new semver, then run `./scripts/sync-version.sh`.
+2. Build `ClaudeDashboard` and `ClaudeDashboardHelper` schemes (Release config).
+3. Create artifacts — names matter:
+   - `ClaudeDashboard.app.zip` (Cask URL expects this exact name)
+   - `claude-dashboard-cli.tar.gz` (must contain both `claude-dashboard-cli` AND `claude-dashboard-helper`)
+4. Update `sha256` in `Formula/claude-dashboard-cli.rb` and `Casks/claude-dashboard.rb`.
+5. Commit, tag, push, `gh release create` with both artifacts.
+
+Validate version sync at any time with `./scripts/test-sync-version.sh`.
