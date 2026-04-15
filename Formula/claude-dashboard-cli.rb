@@ -1,9 +1,9 @@
 class ClaudeDashboardCli < Formula
   desc "Terminal dashboard for Claude.ai token usage"
   homepage "https://github.com/haiz/claude-dashboard"
-  url "https://github.com/haiz/claude-dashboard/releases/download/v1.2.2/claude-dashboard-cli.tar.gz"
-  sha256 "db1ac00e455f5c54e2109ddf33f0bb3af3191a20030d531ac71aeeb31c173c87"
-  version "1.2.2"
+  url "https://github.com/haiz/claude-dashboard/releases/download/v1.3.0/claude-dashboard-cli.tar.gz"
+  sha256 "4793ba2c5059042c7a0de58995a2b8fbe0e9968527fd5c4bbdbf334cbd84a7d9"
+  version "1.3.0"
 
   depends_on "jq"
   depends_on :macos => :ventura
