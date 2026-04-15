@@ -152,4 +152,22 @@ final class DashboardViewModelTests: XCTestCase {
         vm.sortStates()
         XCTAssertEqual(vm.accountStates.map(\.account.name), ["A", "B"])
     }
+
+    func testSortStates_activeCCNotBoosted_whenOtherAccountIsPinned() throws {
+        let vm = try makeViewModel(detectorOrgId: "org-active")
+        // C is pinned. B is the active CC account but unpinned.
+        // A is unpinned with a higher burn rate than B.
+        // Expected: C first (pinned), then A and B by burn rate (CC boost is inactive
+        // because some account is pinned).
+        let a = makeAccount(orgId: "org-a", pinned: false, name: "A")
+        let b = makeAccount(orgId: "org-active", pinned: false, name: "B")
+        let c = makeAccount(orgId: "org-c", pinned: true, name: "C")
+        vm.accountStates = [
+            makeState(account: b, utilization: 10, resetsIn: 3600),
+            makeState(account: a, utilization: 90, resetsIn: 3600),
+            makeState(account: c, utilization: 50, resetsIn: 3600),
+        ]
+        vm.sortStates()
+        XCTAssertEqual(vm.accountStates.map(\.account.name), ["C", "A", "B"])
+    }
 }
