@@ -78,4 +78,78 @@ final class DashboardViewModelTests: XCTestCase {
         let state = AccountUsageState(id: UUID(), account: makeAccount(orgId: nil))
         XCTAssertFalse(vm.isActiveClaudeCodeAccount(state))
     }
+
+    // MARK: - sortStates
+
+    /// Builds a state whose burn rate resolves to `utilization / timeRemaining`.
+    /// Higher burn rate sorts earlier under the existing logic.
+    private func makeState(account: Account, utilization: Double, resetsIn: TimeInterval) -> AccountUsageState {
+        let fiveHour = UsageLimit(
+            utilization: utilization,
+            resetsAt: Date().addingTimeInterval(resetsIn)
+        )
+        let sevenDay = UsageLimit(utilization: 0, resetsAt: nil)
+        let usage = UsageData(
+            fiveHour: fiveHour,
+            sevenDay: sevenDay,
+            sevenDaySonnet: nil
+        )
+        return AccountUsageState(id: account.id, account: account, usage: usage)
+    }
+
+    func testSortStates_pinnedRespectedOverActiveCC() throws {
+        let vm = try makeViewModel(detectorOrgId: "org-active")
+        // A is pinned but NOT the active CC account.
+        // B matches the active CC account but is not pinned.
+        // Expected order: A (pinned), then B (active).
+        let a = makeAccount(orgId: "org-other", pinned: true, name: "A")
+        let b = makeAccount(orgId: "org-active", pinned: false, name: "B")
+        vm.accountStates = [
+            makeState(account: b, utilization: 10, resetsIn: 3600),
+            makeState(account: a, utilization: 10, resetsIn: 3600),
+        ]
+        vm.sortStates()
+        XCTAssertEqual(vm.accountStates.map(\.account.name), ["A", "B"])
+    }
+
+    func testSortStates_activeCCBoostedWhenNoPin() throws {
+        let vm = try makeViewModel(detectorOrgId: "org-active")
+        // No pins. A has HIGHER burn rate than B. B matches active CC.
+        // Expected order: B (active CC) first, A second.
+        let a = makeAccount(orgId: "org-other", pinned: false, name: "A")
+        let b = makeAccount(orgId: "org-active", pinned: false, name: "B")
+        vm.accountStates = [
+            makeState(account: a, utilization: 90, resetsIn: 3600),  // high burn rate
+            makeState(account: b, utilization: 10, resetsIn: 3600),  // low burn rate but active
+        ]
+        vm.sortStates()
+        XCTAssertEqual(vm.accountStates.map(\.account.name), ["B", "A"])
+    }
+
+    func testSortStates_fallsBackToBurnRate_whenNoMatch() throws {
+        let vm = try makeViewModel(detectorOrgId: "org-nonexistent")
+        // No pins. No account matches active CC orgId.
+        // Expected: sorted by burn rate alone (A before B).
+        let a = makeAccount(orgId: "org-a", pinned: false, name: "A")
+        let b = makeAccount(orgId: "org-b", pinned: false, name: "B")
+        vm.accountStates = [
+            makeState(account: b, utilization: 10, resetsIn: 3600),
+            makeState(account: a, utilization: 90, resetsIn: 3600),
+        ]
+        vm.sortStates()
+        XCTAssertEqual(vm.accountStates.map(\.account.name), ["A", "B"])
+    }
+
+    func testSortStates_fallsBackToBurnRate_whenDetectorHasNoOrgId() throws {
+        let vm = try makeViewModel(detectorOrgId: nil)
+        // Detector returned nil, so active-CC layer is inert.
+        let a = makeAccount(orgId: "org-a", pinned: false, name: "A")
+        let b = makeAccount(orgId: "org-b", pinned: false, name: "B")
+        vm.accountStates = [
+            makeState(account: b, utilization: 10, resetsIn: 3600),
+            makeState(account: a, utilization: 90, resetsIn: 3600),
+        ]
+        vm.sortStates()
+        XCTAssertEqual(vm.accountStates.map(\.account.name), ["A", "B"])
+    }
 }

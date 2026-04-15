@@ -166,11 +166,8 @@ final class DashboardViewModel: ObservableObject {
             }
         }
 
-        // Sort by burn rate after refresh (pinned first)
-        accountStates.sort {
-            if $0.account.isPinned != $1.account.isPinned { return $0.account.isPinned }
-            return DashboardViewModel.burnRate(for: $0) > DashboardViewModel.burnRate(for: $1)
-        }
+        // Sort: pinned > (active Claude Code if no pin) > burn rate
+        sortStates()
     }
 
     func resyncAccount(_ accountId: UUID) async {
@@ -298,10 +295,25 @@ final class DashboardViewModel: ObservableObject {
             }
             return AccountUsageState(id: account.id, account: account)
         }
-        // Sort by burn rate (pinned first)
-        accountStates.sort {
-            if $0.account.isPinned != $1.account.isPinned { return $0.account.isPinned }
-            return DashboardViewModel.burnRate(for: $0) > DashboardViewModel.burnRate(for: $1)
+        // Sort: pinned > (active Claude Code if no pin) > burn rate
+        sortStates()
+    }
+
+    func sortStates() {
+        let anyPinned = accountStates.contains { $0.account.isPinned }
+        accountStates.sort { lhs, rhs in
+            // 1. Pinned first
+            if lhs.account.isPinned != rhs.account.isPinned {
+                return lhs.account.isPinned
+            }
+            // 2. If no account is pinned anywhere, active Claude Code account next
+            if !anyPinned {
+                let lhsActive = isActiveClaudeCodeAccount(lhs)
+                let rhsActive = isActiveClaudeCodeAccount(rhs)
+                if lhsActive != rhsActive { return lhsActive }
+            }
+            // 3. Burn rate (unchanged)
+            return DashboardViewModel.burnRate(for: lhs) > DashboardViewModel.burnRate(for: rhs)
         }
     }
 }
