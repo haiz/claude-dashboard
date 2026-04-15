@@ -13,17 +13,19 @@ struct MenuBarPopover: View {
 
                 Spacer()
 
-                Button(action: {
-                    Task { await viewModel.refreshAll() }
-                }) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.caption)
-                        .frame(width: 24, height: 24)
-                        .background(.quaternary)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                if !viewModel.accountStates.isEmpty {
+                    Button(action: {
+                        Task { await viewModel.refreshAll() }
+                    }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption)
+                            .frame(width: 24, height: 24)
+                            .background(.quaternary)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(viewModel.isRefreshing)
                 }
-                .buttonStyle(.borderless)
-                .disabled(viewModel.isRefreshing)
 
                 Button(action: {
                     let popover = NSApp.keyWindow
@@ -97,9 +99,15 @@ struct MenuBarPopover: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            Text("Open Settings to sync from Chrome")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+            Button(action: {
+                let popover = NSApp.keyWindow
+                onOpenWindow()
+                popover?.close()
+            }) {
+                Text("Add Account")
+                    .font(.subheadline.weight(.medium))
+            }
+            .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
