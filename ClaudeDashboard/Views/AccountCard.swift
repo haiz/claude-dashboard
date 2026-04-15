@@ -5,6 +5,7 @@ struct AccountCard: View {
     let onResync: () -> Void
     let onTogglePin: () -> Void
     var onTap: (() -> Void)? = nil
+    var isActiveClaudeCodeAccount: Bool = false
 
     var body: some View {
         GroupBox {
@@ -12,8 +13,16 @@ struct AccountCard: View {
                 // Header
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(state.account.name)
-                            .font(.title3)
+                        HStack(spacing: 6) {
+                            Text(state.account.name)
+                                .font(.title3)
+                            if isActiveClaudeCodeAccount {
+                                Circle()
+                                    .fill(.green)
+                                    .frame(width: 8, height: 8)
+                                    .help("Currently active in Claude Code")
+                            }
+                        }
                         if let email = state.account.email, email != state.account.name {
                             Text(email)
                                 .font(.subheadline)
