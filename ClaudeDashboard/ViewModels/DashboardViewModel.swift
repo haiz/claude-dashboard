@@ -15,6 +15,7 @@ struct AccountUsageState: Identifiable {
 final class DashboardViewModel: ObservableObject {
     @Published var accountStates: [AccountUsageState] = []
     @Published var isRefreshing = false
+    @Published var activeClaudeCodeOrgId: String?
 
     @Published var autoRefreshEnabled: Bool {
         didSet { UserDefaults.standard.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
@@ -33,12 +34,18 @@ final class DashboardViewModel: ObservableObject {
 
     let accountStore: AccountStore
     private let apiService: UsageAPIService
+    private let ccDetector: ClaudeCodeAccountDetector
     private var cancellables = Set<AnyCancellable>()
     private var autoRefreshTask: Task<Void, Never>?
     private let burnRateTracker: BurnRateTracker
     let logStore: UsageLogStore
 
-    init(accountStore: AccountStore = AccountStore(), apiService: UsageAPIService = UsageAPIService(), logStore: UsageLogStore? = nil) {
+    init(
+        accountStore: AccountStore = AccountStore(),
+        apiService: UsageAPIService = UsageAPIService(),
+        logStore: UsageLogStore? = nil,
+        ccDetector: ClaudeCodeAccountDetector = ClaudeCodeAccountDetector()
+    ) {
         self.autoRefreshEnabled = UserDefaults.standard.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.autoRefreshMinutes = {
             let val = UserDefaults.standard.integer(forKey: "autoRefreshMinutes")
@@ -46,9 +53,11 @@ final class DashboardViewModel: ObservableObject {
         }()
         self.accountStore = accountStore
         self.apiService = apiService
+        self.ccDetector = ccDetector
         let store = logStore ?? UsageLogStore()
         self.logStore = store
         self.burnRateTracker = BurnRateTracker(logStore: store)
+        self.activeClaudeCodeOrgId = ccDetector.activeOrgId()
 
         // Cleanup old logs on launch
         Task {
@@ -87,6 +96,7 @@ final class DashboardViewModel: ObservableObject {
     func refreshAll() async {
         isRefreshing = true
         defer { isRefreshing = false }
+        activeClaudeCodeOrgId = ccDetector.activeOrgId()
 
         await withTaskGroup(of: (UUID, UsageData?, String?, AccountPlan?).self) { group in
             for state in accountStates where state.account.status != .expired {
@@ -189,6 +199,13 @@ final class DashboardViewModel: ObservableObject {
         Task {
             await refreshAll()
         }
+    }
+
+    // MARK: - Active Claude Code Account
+
+    func isActiveClaudeCodeAccount(_ state: AccountUsageState) -> Bool {
+        guard let active = activeClaudeCodeOrgId else { return false }
+        return state.account.orgId == active
     }
 
     // MARK: - Pin
