@@ -109,7 +109,7 @@ struct DashboardWindowWrapper: View {
     @State private var showingSetup = false
 
     var body: some View {
-        DashboardWindow(viewModel: viewModel)
+        DashboardWindow(viewModel: viewModel, onAddAccount: { showingSetup = true })
             .onAppear {
                 if showSetupOnAppear {
                     showingSetup = true

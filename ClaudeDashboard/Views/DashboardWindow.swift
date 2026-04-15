@@ -3,7 +3,7 @@ import SwiftUI
 struct DashboardWindow: View {
     @ObservedObject var viewModel: DashboardViewModel
     @State private var showingSettings = false
-    @State private var showingSetup = false
+    var onAddAccount: (() -> Void)?
 
     var body: some View {
         Group {
@@ -32,11 +32,6 @@ struct DashboardWindow: View {
         .frame(minWidth: 600, minHeight: 450)
         .sheet(isPresented: $showingSettings) {
             SettingsView(viewModel: viewModel)
-        }
-        .sheet(isPresented: $showingSetup) {
-            SetupView(viewModel: viewModel) {
-                showingSetup = false
-            }
         }
     }
 
@@ -104,7 +99,7 @@ struct DashboardWindow: View {
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button(action: { showingSetup = true }) {
+            Button(action: { onAddAccount?() }) {
                 Text("Add Account")
                     .font(.body.weight(.medium))
             }
