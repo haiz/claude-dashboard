@@ -1,6 +1,6 @@
 cask "claude-dashboard" do
-  version "1.3.0"
-  sha256 "0f7fa455f2780c291eefde196859c5d9fa553f0aaabc5ec92f6caf0aea4e2329"
+  version "1.4.0"
+  sha256 "3c1ccaaea571f73d7b575cad664117d5947dc820261e918bd42fa3829b055ea7"
 
   url "https://github.com/haiz/claude-dashboard/releases/download/v#{version}/ClaudeDashboard.app.zip"
   name "Claude Dashboard"
