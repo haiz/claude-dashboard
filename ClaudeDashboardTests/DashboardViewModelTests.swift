@@ -5,6 +5,7 @@ import XCTest
 final class DashboardViewModelTests: XCTestCase {
 
     private var tempDir: URL!
+    private var defaultsSuiteName: String!
     private var defaults: UserDefaults!
 
     override func setUp() {
@@ -12,12 +13,13 @@ final class DashboardViewModelTests: XCTestCase {
         tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("DashboardViewModelTests-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defaults = UserDefaults(suiteName: "com.claude-dashboard.vm-tests-\(UUID().uuidString)")!
+        defaultsSuiteName = "com.claude-dashboard.vm-tests-\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: defaultsSuiteName)!
     }
 
     override func tearDown() {
         try? FileManager.default.removeItem(at: tempDir)
-        defaults.removePersistentDomain(forName: defaults.dictionaryRepresentation().keys.first ?? "")
+        defaults.removePersistentDomain(forName: defaultsSuiteName)
         super.tearDown()
     }
 
@@ -38,13 +40,13 @@ final class DashboardViewModelTests: XCTestCase {
         )
     }
 
-    private func makeViewModel(detectorOrgId: String? = nil) -> DashboardViewModel {
+    private func makeViewModel(detectorOrgId: String? = nil) throws -> DashboardViewModel {
         let detectorFile = tempDir.appendingPathComponent(".claude.json-\(UUID().uuidString)")
         if let orgId = detectorOrgId {
             let body = """
             {"oauthAccount":{"organizationUuid":"\(orgId)"}}
             """
-            try? body.write(to: detectorFile, atomically: true, encoding: .utf8)
+            try body.write(to: detectorFile, atomically: true, encoding: .utf8)
         }
         let detector = ClaudeCodeAccountDetector(fileURL: detectorFile)
         let store = AccountStore(defaults: defaults)
@@ -53,26 +55,26 @@ final class DashboardViewModelTests: XCTestCase {
 
     // MARK: - isActiveClaudeCodeAccount
 
-    func testIsActiveClaudeCodeAccount_matchesByOrgId() {
-        let vm = makeViewModel(detectorOrgId: "org-abc")
+    func testIsActiveClaudeCodeAccount_matchesByOrgId() throws {
+        let vm = try makeViewModel(detectorOrgId: "org-abc")
         let state = AccountUsageState(id: UUID(), account: makeAccount(orgId: "org-abc"))
         XCTAssertTrue(vm.isActiveClaudeCodeAccount(state))
     }
 
-    func testIsActiveClaudeCodeAccount_falseWhenOrgIdsDiffer() {
-        let vm = makeViewModel(detectorOrgId: "org-abc")
+    func testIsActiveClaudeCodeAccount_falseWhenOrgIdsDiffer() throws {
+        let vm = try makeViewModel(detectorOrgId: "org-abc")
         let state = AccountUsageState(id: UUID(), account: makeAccount(orgId: "org-xyz"))
         XCTAssertFalse(vm.isActiveClaudeCodeAccount(state))
     }
 
-    func testIsActiveClaudeCodeAccount_falseWhenDetectorReturnsNil() {
-        let vm = makeViewModel(detectorOrgId: nil)
+    func testIsActiveClaudeCodeAccount_falseWhenDetectorReturnsNil() throws {
+        let vm = try makeViewModel(detectorOrgId: nil)
         let state = AccountUsageState(id: UUID(), account: makeAccount(orgId: "org-abc"))
         XCTAssertFalse(vm.isActiveClaudeCodeAccount(state))
     }
 
-    func testIsActiveClaudeCodeAccount_falseWhenAccountOrgIdNil() {
-        let vm = makeViewModel(detectorOrgId: "org-abc")
+    func testIsActiveClaudeCodeAccount_falseWhenAccountOrgIdNil() throws {
+        let vm = try makeViewModel(detectorOrgId: "org-abc")
         let state = AccountUsageState(id: UUID(), account: makeAccount(orgId: nil))
         XCTAssertFalse(vm.isActiveClaudeCodeAccount(state))
     }
