@@ -11,6 +11,13 @@ struct ClaudeDashboardApp: App {
             MenuBarPopover(viewModel: viewModel) {
                 appDelegate.openDashboardWindow(viewModel: viewModel)
             }
+            .onAppear {
+                let key = "claude-dashboard.hasLaunchedBefore"
+                if !UserDefaults.standard.bool(forKey: key) {
+                    UserDefaults.standard.set(true, forKey: key)
+                    appDelegate.openDashboardWindow(viewModel: viewModel)
+                }
+            }
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "chart.bar.fill")
