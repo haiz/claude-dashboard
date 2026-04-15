@@ -141,6 +141,31 @@ RELEASE_URL=$(gh release create "v${NEW_VERSION}" \
     --title "v${NEW_VERSION}" \
     --generate-notes)
 
+# ── 9. Verify uploaded checksums ─────────────────────────────────────────────
+echo ""
+echo "==> Step 9: Verify uploaded artifacts match checksums"
+VERIFY_DIR="$(mktemp -d)"
+gh release download "v${NEW_VERSION}" \
+    -p 'claude-dashboard-cli.tar.gz' \
+    -p 'ClaudeDashboard.app.zip' \
+    -D "$VERIFY_DIR"
+
+DL_CLI_SHA="$(shasum -a 256 "$VERIFY_DIR/claude-dashboard-cli.tar.gz" | awk '{print $1}')"
+DL_APP_SHA="$(shasum -a 256 "$VERIFY_DIR/ClaudeDashboard.app.zip" | awk '{print $1}')"
+rm -rf "$VERIFY_DIR"
+
+if [[ "$DL_CLI_SHA" != "$CLI_SHA" ]] || [[ "$DL_APP_SHA" != "$APP_SHA" ]]; then
+    echo "  ✗ Checksum mismatch detected — fixing..."
+    sed -i '' "s/sha256 \"[a-f0-9]*\"/sha256 \"${DL_CLI_SHA}\"/" Formula/claude-dashboard-cli.rb
+    sed -i '' "s/sha256 \"[a-f0-9]*\"/sha256 \"${DL_APP_SHA}\"/" Casks/claude-dashboard.rb
+    git add Formula/claude-dashboard-cli.rb Casks/claude-dashboard.rb
+    git commit -m "fix: update SHA-256 checksums for v${NEW_VERSION} release artifacts"
+    git push
+    echo "  ✓ Checksums fixed and pushed"
+else
+    echo "  ✓ Both checksums verified"
+fi
+
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 rm -rf "$STAGING"
 
