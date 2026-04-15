@@ -45,6 +45,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Drop the SwiftUI view hierarchy to free memory while hidden.
         sender.contentView = nil
         sender.orderOut(nil)
+        NSApp.setActivationPolicy(.accessory)  // hide dock icon
+        return false
+    }
+
+    // Re-raise the dashboard when the user clicks the dock icon or re-launches the app
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if let window = dashboardWindow, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else if let viewModel = currentViewModel {
+            openDashboardWindow(viewModel: viewModel)
+        }
         return false
     }
 
@@ -77,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         window.contentView = NSHostingView(rootView: contentView)
+        NSApp.setActivationPolicy(.regular)  // show dock icon
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
