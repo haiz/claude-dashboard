@@ -15,7 +15,7 @@ struct AccountUsageState: Identifiable {
 final class DashboardViewModel: ObservableObject {
     @Published var accountStates: [AccountUsageState] = []
     @Published var isRefreshing = false
-    @Published var activeClaudeCodeOrgId: String?
+    @Published var activeClaudeCodeEmail: String?
 
     @Published var autoRefreshEnabled: Bool {
         didSet { UserDefaults.standard.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
@@ -57,7 +57,7 @@ final class DashboardViewModel: ObservableObject {
         let store = logStore ?? UsageLogStore()
         self.logStore = store
         self.burnRateTracker = BurnRateTracker(logStore: store)
-        self.activeClaudeCodeOrgId = ccDetector.activeOrgId()
+        self.activeClaudeCodeEmail = ccDetector.activeEmail()
 
         // Cleanup old logs on launch
         Task {
@@ -96,7 +96,7 @@ final class DashboardViewModel: ObservableObject {
     func refreshAll() async {
         isRefreshing = true
         defer { isRefreshing = false }
-        activeClaudeCodeOrgId = ccDetector.activeOrgId()
+        activeClaudeCodeEmail = ccDetector.activeEmail()
 
         await withTaskGroup(of: (UUID, UsageData?, String?, AccountPlan?).self) { group in
             for state in accountStates where state.account.status != .expired {
@@ -201,8 +201,8 @@ final class DashboardViewModel: ObservableObject {
     // MARK: - Active Claude Code Account
 
     func isActiveClaudeCodeAccount(_ state: AccountUsageState) -> Bool {
-        guard let active = activeClaudeCodeOrgId else { return false }
-        return state.account.orgId == active
+        guard let active = activeClaudeCodeEmail else { return false }
+        return state.account.email == active
     }
 
     // MARK: - Pin

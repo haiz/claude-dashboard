@@ -23,7 +23,7 @@ final class ClaudeCodeAccountDetectorTests: XCTestCase {
         return url
     }
 
-    func testReturnsOrgId_whenValidJson() throws {
+    func testReturnsEmail_whenValidJson() throws {
         let url = try writeClaudeJson("""
         {
           "oauthAccount": {
@@ -34,19 +34,19 @@ final class ClaudeCodeAccountDetectorTests: XCTestCase {
         }
         """)
         let detector = ClaudeCodeAccountDetector(fileURL: url)
-        XCTAssertEqual(detector.activeOrgId(), "d9687f13-3bbe-4738-b68f-454c2171cc5d")
+        XCTAssertEqual(detector.activeEmail(), "test@example.com")
     }
 
     func testReturnsNil_whenFileMissing() {
         let url = tempDir.appendingPathComponent("nonexistent.json")
         let detector = ClaudeCodeAccountDetector(fileURL: url)
-        XCTAssertNil(detector.activeOrgId())
+        XCTAssertNil(detector.activeEmail())
     }
 
     func testReturnsNil_whenMalformedJson() throws {
         let url = try writeClaudeJson("this is not json {")
         let detector = ClaudeCodeAccountDetector(fileURL: url)
-        XCTAssertNil(detector.activeOrgId())
+        XCTAssertNil(detector.activeEmail())
     }
 
     func testReturnsNil_whenOauthAccountAbsent() throws {
@@ -54,14 +54,14 @@ final class ClaudeCodeAccountDetectorTests: XCTestCase {
         { "something": "else" }
         """)
         let detector = ClaudeCodeAccountDetector(fileURL: url)
-        XCTAssertNil(detector.activeOrgId())
+        XCTAssertNil(detector.activeEmail())
     }
 
-    func testReturnsNil_whenOrganizationUuidAbsent() throws {
+    func testReturnsNil_whenEmailAddressAbsent() throws {
         let url = try writeClaudeJson("""
-        { "oauthAccount": { "emailAddress": "test@example.com" } }
+        { "oauthAccount": { "organizationUuid": "abc-123" } }
         """)
         let detector = ClaudeCodeAccountDetector(fileURL: url)
-        XCTAssertNil(detector.activeOrgId())
+        XCTAssertNil(detector.activeEmail())
     }
 }
