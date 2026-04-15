@@ -3,6 +3,7 @@ import SwiftUI
 struct DashboardWindow: View {
     @ObservedObject var viewModel: DashboardViewModel
     @State private var showingSettings = false
+    @State private var showingSetup = false
 
     var body: some View {
         Group {
@@ -32,6 +33,11 @@ struct DashboardWindow: View {
         .sheet(isPresented: $showingSettings) {
             SettingsView(viewModel: viewModel)
         }
+        .sheet(isPresented: $showingSetup) {
+            SetupView(viewModel: viewModel) {
+                showingSetup = false
+            }
+        }
     }
 
     private var dashboardContent: some View {
@@ -43,16 +49,18 @@ struct DashboardWindow: View {
 
                 Spacer()
 
-                Button(action: { viewModel.navigation = .overview }) {
-                    Label("Overview", systemImage: "chart.xyaxis.line")
-                }
+                if !viewModel.accountStates.isEmpty {
+                    Button(action: { viewModel.navigation = .overview }) {
+                        Label("Overview", systemImage: "chart.xyaxis.line")
+                    }
 
-                Button(action: {
-                    Task { await viewModel.refreshAll() }
-                }) {
-                    Label("Refresh", systemImage: "arrow.clockwise")
+                    Button(action: {
+                        Task { await viewModel.refreshAll() }
+                    }) {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(viewModel.isRefreshing)
                 }
-                .disabled(viewModel.isRefreshing)
 
                 Button(action: { showingSettings = true }) {
                     Label("Settings", systemImage: "gearshape")
@@ -85,17 +93,22 @@ struct DashboardWindow: View {
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             Spacer()
             Image(systemName: "person.crop.circle.badge.plus")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
             Text("No Accounts")
                 .font(.title3.bold())
-            Text("Open Settings to sync accounts from Chrome.")
+            Text("Sync your Claude accounts from Chrome to get started.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            Button(action: { showingSetup = true }) {
+                Text("Add Account")
+                    .font(.body.weight(.medium))
+            }
+            .buttonStyle(.borderedProminent)
             Spacer()
         }
         .padding()
