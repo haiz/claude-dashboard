@@ -52,11 +52,12 @@ struct MenuBarPopover: View {
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(viewModel.accountStates) { state in
-                            AccountCard(state: state, onResync: {
-                                Task { await viewModel.resyncAccount(state.id) }
-                            }, onTogglePin: {
-                                viewModel.togglePin(for: state.id)
-                            })
+                            AccountCard(
+                                state: state,
+                                onResync: { Task { await viewModel.resyncAccount(state.id) } },
+                                onTogglePin: { viewModel.togglePin(for: state.id) },
+                                isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state)
+                            )
                         }
                     }
                     .padding(12)
