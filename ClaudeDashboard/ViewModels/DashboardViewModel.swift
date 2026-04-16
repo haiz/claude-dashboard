@@ -227,15 +227,14 @@ final class DashboardViewModel: ObservableObject {
     // MARK: - Menubar Label
 
     var menuBarLabel: String {
-        // Prefer pinned account's usage, fallback to highest 5h utilization
+        // Prefer pinned account's usage, fallback to first sorted account
+        // (sorted by active CC account → burn rate via sortStates)
         let source: UsageLimit? = {
             if let pinned = accountStates.first(where: { $0.account.isPinned }),
                let usage = pinned.usage {
                 return usage.fiveHour
             }
-            return accountStates
-                .compactMap { $0.usage?.fiveHour }
-                .max(by: { $0.utilization < $1.utilization })
+            return accountStates.first { $0.usage != nil }?.usage?.fiveHour
         }()
 
         guard let limit = source else { return "--" }

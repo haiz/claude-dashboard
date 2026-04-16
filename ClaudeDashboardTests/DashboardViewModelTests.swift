@@ -153,6 +153,39 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(vm.accountStates.map(\.account.name), ["A", "B"])
     }
 
+    // MARK: - menuBarLabel
+
+    func testMenuBarLabel_showsPinnedAccount() throws {
+        let vm = try makeViewModel(detectorEmail: nil)
+        let a = makeAccount(pinned: true, name: "A")
+        let b = makeAccount(pinned: false, name: "B")
+        vm.accountStates = [
+            makeState(account: a, utilization: 30, resetsIn: 3600),
+            makeState(account: b, utilization: 90, resetsIn: 3600),
+        ]
+        vm.sortStates()
+        // Menu bar should show pinned account A (30%), not B (90%)
+        XCTAssertTrue(vm.menuBarLabel.hasPrefix("30%"))
+    }
+
+    func testMenuBarLabel_showsFirstSortedAccount_whenNoPinned() throws {
+        let vm = try makeViewModel(detectorEmail: "active@x.com")
+        // B is active CC account with low utilization.
+        // A has higher utilization but is not the active CC account.
+        // After sort: B first (active CC), then A.
+        // Menu bar should show B's data (first sorted), not A's (highest utilization).
+        let a = makeAccount(pinned: false, name: "A", email: "other@x.com")
+        let b = makeAccount(pinned: false, name: "B", email: "active@x.com")
+        vm.accountStates = [
+            makeState(account: a, utilization: 90, resetsIn: 3600),
+            makeState(account: b, utilization: 10, resetsIn: 3600),
+        ]
+        vm.sortStates()
+        // Before fix: would show "90%" (max utilization = A)
+        // After fix: shows "10%" (first sorted = B, the active CC account)
+        XCTAssertTrue(vm.menuBarLabel.hasPrefix("10%"))
+    }
+
     func testSortStates_activeCCNotBoosted_whenOtherAccountIsPinned() throws {
         let vm = try makeViewModel(detectorEmail: "active@x.com")
         // C is pinned. B is the active CC account but unpinned.
