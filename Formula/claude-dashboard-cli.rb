@@ -9,7 +9,6 @@ class ClaudeDashboardCli < Formula
   depends_on :macos => :ventura
 
   def install
-    cd "claude-dashboard-cli-v#{version}"
     bin.install "claude-dashboard-helper"
     bin.install "claude-dashboard-cli"
   end
