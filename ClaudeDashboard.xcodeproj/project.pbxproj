@@ -33,14 +33,17 @@
 		861BA6B0F607213E156F515D /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A87EC4F90E188AAAFB660C3 /* AppVersion.swift */; };
 		8A05B43134B187D33EE15895 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		8C6A56AA09D21B951F1E7863 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D572159B978911BF3D1EDAC0 /* Assets.xcassets */; };
+		8E1EEC3CBBD3A1C11213166D /* UpdateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101FB3B509DBD5E1813FDABE /* UpdateViewModel.swift */; };
 		94BDC42C46406C1E227F11FA /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */; };
 		952383DC16D74D6BF7106040 /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7E115BD84248989BAA883F /* CryptoService.swift */; };
 		9759697B6C02F84B6EF06C09 /* DashboardViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690E18B51A43CF7A0BFFA627 /* DashboardViewModelTests.swift */; };
 		98FD479769E1857F43E86CCB /* UsageLogModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8ADAEF8BBFC797B0D4950E3 /* UsageLogModelsTests.swift */; };
 		9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF469D724BE1FCA1D071131F /* AccountStore.swift */; };
+		9C1660C69D3A0A2D926B179E /* UpdateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 373E95B92E85447700BA3DEF /* UpdateServiceTests.swift */; };
 		A2A5D0F022E7A798045D105C /* DashboardWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA0F9129D3367D395937E5E /* DashboardWindow.swift */; };
 		A39C01692A8EA4FA3A76ED88 /* AccountStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */; };
 		A45521DA5ED20F5EEDA1F30E /* SyncCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFA427293BFC51355250BB1 /* SyncCommand.swift */; };
+		A5773DFB86E3CE93696F9B7F /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54CFBC6B0C4EF6B9A3099D2 /* UpdateService.swift */; };
 		A695D976DBF8E5BBF704DC8D /* AppVersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D99517C3BBF094ACC2BA1B74 /* AppVersionTests.swift */; };
 		A6DAAE7B2732C3395271F7BB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA09806794F5E11A193DC9E0 /* main.swift */; };
 		AAEAB48A072B469189CCA747 /* UsageAPIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64695012FC6F1C08762E7E77 /* UsageAPIServiceTests.swift */; };
@@ -72,6 +75,7 @@
 		044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
 		066B8B1E829B2024AB298464 /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
 		0CC442D5CD274FE704D4AC0F /* AccountDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDetailViewModel.swift; sourceTree = "<group>"; };
+		101FB3B509DBD5E1813FDABE /* UpdateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateViewModel.swift; sourceTree = "<group>"; };
 		141FB3A6068D99AD9485D6FB /* ChromeCookieService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromeCookieService.swift; sourceTree = "<group>"; };
 		185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogStoreTests.swift; sourceTree = "<group>"; };
 		1B626BA4B6B77C9127190E09 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
@@ -83,6 +87,7 @@
 		2CECA8F5BDB86E3741F82280 /* ClaudeCodeAccountDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeAccountDetector.swift; sourceTree = "<group>"; };
 		2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
 		36CFE6B80C6A187D9A176752 /* UsageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageBar.swift; sourceTree = "<group>"; };
+		373E95B92E85447700BA3DEF /* UpdateServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateServiceTests.swift; sourceTree = "<group>"; };
 		4AF7DEAC28930337FB1D5772 /* DecryptCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecryptCommand.swift; sourceTree = "<group>"; };
 		4EB2623CB6EC20CACFF82236 /* HelperAccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperAccountStore.swift; sourceTree = "<group>"; };
 		52F459D10501056C193989A6 /* MenuBarPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPopover.swift; sourceTree = "<group>"; };
@@ -113,6 +118,7 @@
 		D572159B978911BF3D1EDAC0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D99517C3BBF094ACC2BA1B74 /* AppVersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersionTests.swift; sourceTree = "<group>"; };
 		E4BAD55D59287038F16012AE /* ClaudeDashboardTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeDashboardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E54CFBC6B0C4EF6B9A3099D2 /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
 		E9E7C0511055F46A89CEB231 /* UsageCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageCommand.swift; sourceTree = "<group>"; };
 		ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -142,6 +148,7 @@
 			children = (
 				0CC442D5CD274FE704D4AC0F /* AccountDetailViewModel.swift */,
 				044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */,
+				101FB3B509DBD5E1813FDABE /* UpdateViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -155,6 +162,7 @@
 				9602F34D10F24B11C7B02DF3 /* ChromeCookieServiceTests.swift */,
 				75A3660023E6BA291B7932FE /* ClaudeCodeAccountDetectorTests.swift */,
 				690E18B51A43CF7A0BFFA627 /* DashboardViewModelTests.swift */,
+				373E95B92E85447700BA3DEF /* UpdateServiceTests.swift */,
 				64695012FC6F1C08762E7E77 /* UsageAPIServiceTests.swift */,
 				61CE79EE895C0FE88D1ED98A /* UsageDataTests.swift */,
 				C8ADAEF8BBFC797B0D4950E3 /* UsageLogModelsTests.swift */,
@@ -192,6 +200,7 @@
 				D13B511083DF4FE0C75FA0DD /* BurnRateTracker.swift */,
 				2CECA8F5BDB86E3741F82280 /* ClaudeCodeAccountDetector.swift */,
 				8BDD5471D1B082F49E424611 /* KeychainService.swift */,
+				E54CFBC6B0C4EF6B9A3099D2 /* UpdateService.swift */,
 				6A9C824A446A4513554E6BC5 /* UsageLogStore.swift */,
 			);
 			path = Services;
@@ -391,6 +400,7 @@
 				5B7E2C4AE91767C8329E200E /* ChromeCookieServiceTests.swift in Sources */,
 				F6F423B9B14E2440A491018C /* ClaudeCodeAccountDetectorTests.swift in Sources */,
 				9759697B6C02F84B6EF06C09 /* DashboardViewModelTests.swift in Sources */,
+				9C1660C69D3A0A2D926B179E /* UpdateServiceTests.swift in Sources */,
 				AAEAB48A072B469189CCA747 /* UsageAPIServiceTests.swift in Sources */,
 				1F6E690999CAFDD5752BF11E /* UsageDataTests.swift in Sources */,
 				98FD479769E1857F43E86CCB /* UsageLogModelsTests.swift in Sources */,
@@ -440,6 +450,8 @@
 				5994EEF08661FBAD5564707D /* OverviewChartView.swift in Sources */,
 				EB9BD3D5123C7ED0209085E9 /* SettingsView.swift in Sources */,
 				211F98E0C0F99203EF129492 /* SetupView.swift in Sources */,
+				A5773DFB86E3CE93696F9B7F /* UpdateService.swift in Sources */,
+				8E1EEC3CBBD3A1C11213166D /* UpdateViewModel.swift in Sources */,
 				8A05B43134B187D33EE15895 /* UsageAPIService.swift in Sources */,
 				E53BC1DBE702E2298D98F974 /* UsageBar.swift in Sources */,
 				94BDC42C46406C1E227F11FA /* UsageData.swift in Sources */,

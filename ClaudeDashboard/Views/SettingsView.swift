@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var viewModel: DashboardViewModel
+    @EnvironmentObject var updateViewModel: UpdateViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var showingSetup = false
 
@@ -30,6 +31,39 @@ struct SettingsView: View {
 
                     if viewModel.autoRefreshEnabled {
                         Stepper("Every \(viewModel.autoRefreshMinutes) min", value: $viewModel.autoRefreshMinutes, in: 1...60)
+                    }
+                }
+
+                Section("Updates") {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Current: v\(AppVersion.string)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if let latest = updateViewModel.latestVersion {
+                                Text("Latest: v\(latest)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if !updateViewModel.state.statusLabel.isEmpty {
+                                Text(updateViewModel.state.statusLabel)
+                                    .font(.caption)
+                                    .foregroundStyle(
+                                        updateStatusColor(updateViewModel.state)
+                                    )
+                            }
+                        }
+                        Spacer()
+                        #if DEBUG
+                        Button("Check for Updates") {}
+                            .disabled(true)
+                            .help("Updates only run in release builds")
+                        #else
+                        Button(updateViewModel.state.isWorking ? "Working…" : "Check for Updates") {
+                            Task { await updateViewModel.checkNow(autoInstall: true) }
+                        }
+                        .disabled(updateViewModel.state.isWorking)
+                        #endif
                     }
                 }
             }
@@ -69,6 +103,14 @@ struct SettingsView: View {
             SetupView(viewModel: viewModel) {
                 showingSetup = false
             }
+        }
+    }
+
+    private func updateStatusColor(_ state: UpdateViewModel.State) -> Color {
+        switch state {
+        case .error: return .red
+        case .upToDate: return .green
+        default: return .secondary
         }
     }
 

@@ -4,25 +4,38 @@ import AppKit
 @main
 struct ClaudeDashboardApp: App {
     @StateObject private var viewModel = DashboardViewModel()
+    @StateObject private var updateViewModel = UpdateViewModel()
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarPopover(viewModel: viewModel) {
-                appDelegate.openDashboardWindow(viewModel: viewModel)
+                appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
             }
+            .environmentObject(updateViewModel)
             .onAppear {
+                appDelegate.updateViewModel = updateViewModel
+                updateViewModel.startBackgroundChecks()
                 let key = "claude-dashboard.hasLaunchedBefore"
                 if !UserDefaults.standard.bool(forKey: key) {
                     UserDefaults.standard.set(true, forKey: key)
-                    appDelegate.openDashboardWindow(viewModel: viewModel)
+                    appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 }
             }
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "chart.bar.fill")
-                Text(viewModel.menuBarLabel)
-                    .monospacedDigit()
+                VStack(alignment: .trailing, spacing: 1) {
+                    if let time = viewModel.menuBarTimeText {
+                        Text(time)
+                            .font(.system(size: 9, weight: .regular))
+                            .monospacedDigit()
+                    }
+                    Text(viewModel.menuBarPercentText)
+                        .font(.system(size: 13, weight: .semibold))
+                        .monospacedDigit()
+                }
+                .fixedSize()
             }
         }
         .menuBarExtraStyle(.window)
@@ -32,6 +45,7 @@ struct ClaudeDashboardApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var dashboardWindow: NSWindow?
     private weak var currentViewModel: DashboardViewModel?
+    weak var updateViewModel: UpdateViewModel?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
@@ -62,15 +76,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         } else if let viewModel = currentViewModel {
-            openDashboardWindow(viewModel: viewModel)
+            openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
         }
         return false
     }
 
-    func openDashboardWindow(viewModel: DashboardViewModel) {
+    @MainActor func openDashboardWindow(viewModel: DashboardViewModel, updateViewModel: UpdateViewModel? = nil) {
         currentViewModel = viewModel
+        if let uvm = updateViewModel { self.updateViewModel = uvm }
         let showSetup = viewModel.accountStore.accounts.isEmpty
+        let uvm = self.updateViewModel ?? UpdateViewModel()
         let contentView = DashboardWindowWrapper(viewModel: viewModel, showSetupOnAppear: showSetup)
+            .environmentObject(uvm)
 
         let window: NSWindow
         if let existing = dashboardWindow {

@@ -165,7 +165,7 @@ final class DashboardViewModelTests: XCTestCase {
         ]
         vm.sortStates()
         // Menu bar should show pinned account A (30%), not B (90%)
-        XCTAssertTrue(vm.menuBarLabel.hasPrefix("30%"))
+        XCTAssertTrue(vm.menuBarPercentText.hasPrefix("30%"))
     }
 
     func testMenuBarLabel_showsFirstSortedAccount_whenNoPinned() throws {
@@ -183,7 +183,7 @@ final class DashboardViewModelTests: XCTestCase {
         vm.sortStates()
         // Before fix: would show "90%" (max utilization = A)
         // After fix: shows "10%" (first sorted = B, the active CC account)
-        XCTAssertTrue(vm.menuBarLabel.hasPrefix("10%"))
+        XCTAssertTrue(vm.menuBarPercentText.hasPrefix("10%"))
     }
 
     func testSortStates_activeCCNotBoosted_whenOtherAccountIsPinned() throws {

@@ -2,10 +2,18 @@ import SwiftUI
 
 struct MenuBarPopover: View {
     @ObservedObject var viewModel: DashboardViewModel
+    @EnvironmentObject var updateViewModel: UpdateViewModel
     let onOpenWindow: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
+            // Update banner shown while downloading/installing
+            if case .downloading = updateViewModel.state {
+                updateBanner
+            } else if case .installing = updateViewModel.state {
+                updateBanner
+            }
+
             // Header
             HStack {
                 Text("Claude Dashboard")
@@ -88,6 +96,19 @@ struct MenuBarPopover: View {
         }
         .frame(width: 320)
         .frame(maxHeight: 500)
+    }
+
+    private var updateBanner: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.small)
+            Text(updateViewModel.state.statusLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(.yellow.opacity(0.15))
     }
 
     private var emptyState: some View {

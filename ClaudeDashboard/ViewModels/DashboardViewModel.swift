@@ -226,29 +226,27 @@ final class DashboardViewModel: ObservableObject {
 
     // MARK: - Menubar Label
 
-    var menuBarLabel: String {
-        // Prefer pinned account's usage, fallback to first sorted account
-        // (sorted by active CC account → burn rate via sortStates)
-        let source: UsageLimit? = {
-            if let pinned = accountStates.first(where: { $0.account.isPinned }),
-               let usage = pinned.usage {
-                return usage.fiveHour
-            }
-            return accountStates.first { $0.usage != nil }?.usage?.fiveHour
-        }()
-
-        guard let limit = source else { return "--" }
-
-        let pct = Int(limit.utilization)
-        if let reset = limit.resetsAt {
-            let remaining = reset.timeIntervalSinceNow
-            if remaining > 0 {
-                let h = Int(remaining) / 3600
-                let m = (Int(remaining) % 3600) / 60
-                return "\(pct)% \u{00B7} \(h)h\(String(format: "%02d", m))m"
-            }
+    private var menuBarSource: UsageLimit? {
+        if let pinned = accountStates.first(where: { $0.account.isPinned }),
+           let usage = pinned.usage {
+            return usage.fiveHour
         }
-        return "\(pct)%"
+        return accountStates.first { $0.usage != nil }?.usage?.fiveHour
+    }
+
+    var menuBarPercentText: String {
+        guard let limit = menuBarSource else { return "--" }
+        return "\(Int(limit.utilization))%"
+    }
+
+    var menuBarTimeText: String? {
+        guard let limit = menuBarSource,
+              let reset = limit.resetsAt else { return nil }
+        let remaining = reset.timeIntervalSinceNow
+        guard remaining > 0 else { return nil }
+        let h = Int(remaining) / 3600
+        let m = (Int(remaining) % 3600) / 60
+        return "\(h)h\(String(format: "%02d", m))m"
     }
 
     // MARK: - Color
