@@ -1,6 +1,65 @@
 import SwiftUI
 import AppKit
 
+private enum MenuBarLabelRenderer {
+    private static let barH: CGFloat = 22
+
+    static func render(percent: String, time: String?) -> NSImage {
+        let pctFont = NSFont.monospacedDigitSystemFont(ofSize: 14, weight: .bold)
+        let timeFont = NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .bold)
+        let col = NSColor.black
+
+        let pctStr = NSAttributedString(string: percent,
+                                        attributes: [.font: pctFont, .foregroundColor: col])
+        let pctSz = pctStr.size()
+
+        var textW = ceil(pctSz.width)
+        var timeSz = CGSize.zero
+        var timeStr: NSAttributedString?
+        if let t = time {
+            let ts = NSAttributedString(string: t,
+                                        attributes: [.font: timeFont, .foregroundColor: col])
+            timeSz = ts.size()
+            timeStr = ts
+            textW = max(textW, ceil(timeSz.width))
+        }
+
+        let iconCfg = NSImage.SymbolConfiguration(pointSize: 20, weight: .regular)
+        let iconImg = (NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(iconCfg))!
+        let iconSz = iconImg.size
+
+        // Squeeze the 3-bar icon horizontally to 2/3 of its natural width, keep height.
+        let iconDrawW = ceil(iconSz.width * 2.0 / 3.0)
+        let iconGap: CGFloat = 3
+        let totalW = iconDrawW + iconGap + textW
+        let sz = NSSize(width: totalW, height: barH)
+
+        let lineGap: CGFloat = 0.5
+
+        let image = NSImage(size: sz, flipped: false) { _ in
+            iconImg.draw(in: NSRect(x: 0, y: (barH - iconSz.height) / 2,
+                                    width: iconDrawW, height: iconSz.height))
+            if let ts = timeStr {
+                // Bottom-align time so its descender tip sits at image bottom (y=0),
+                // then stack pct directly above time's cap top.
+                let timeCapTop = abs(timeFont.descender) + timeFont.capHeight
+                let timeOriginY: CGFloat = 0
+                let pctOriginY = timeCapTop + lineGap
+                pctStr.draw(at: NSPoint(x: totalW - pctSz.width, y: pctOriginY))
+                ts.draw(at: NSPoint(x: totalW - timeSz.width, y: timeOriginY))
+            } else {
+                let pctVisualH = abs(pctFont.descender) + pctFont.capHeight
+                let originY = (barH - pctVisualH) / 2
+                pctStr.draw(at: NSPoint(x: iconDrawW + iconGap, y: originY))
+            }
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+}
+
 @main
 struct ClaudeDashboardApp: App {
     @StateObject private var viewModel = DashboardViewModel()
@@ -23,20 +82,10 @@ struct ClaudeDashboardApp: App {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "chart.bar.fill")
-                VStack(alignment: .trailing, spacing: 1) {
-                    if let time = viewModel.menuBarTimeText {
-                        Text(time)
-                            .font(.system(size: 9, weight: .regular))
-                            .monospacedDigit()
-                    }
-                    Text(viewModel.menuBarPercentText)
-                        .font(.system(size: 13, weight: .semibold))
-                        .monospacedDigit()
-                }
-                .fixedSize()
-            }
+            Image(nsImage: MenuBarLabelRenderer.render(
+                percent: viewModel.menuBarPercentText,
+                time: viewModel.menuBarTimeText
+            ))
         }
         .menuBarExtraStyle(.window)
     }
