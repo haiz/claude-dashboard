@@ -6,6 +6,7 @@ struct AccountCard: View {
     let onTogglePin: () -> Void
     var onTap: (() -> Void)? = nil
     var isActiveClaudeCodeAccount: Bool = false
+    var isCompact: Bool = true
 
     var body: some View {
         GroupBox {
@@ -36,7 +37,7 @@ struct AccountCard: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Spacer()
+                    Spacer(minLength: 0)
 
                     // Plan badge
                     Text(state.account.plan.rawValue)
@@ -74,6 +75,7 @@ struct AccountCard: View {
                         .foregroundStyle(.red)
                 }
             }
+            .padding(.horizontal, 8)
             .padding(.vertical, 4)
         }
         .contextMenu {
@@ -93,11 +95,11 @@ struct AccountCard: View {
     }
 
     private func usageContent(_ usage: UsageData) -> some View {
-        VStack(spacing: 8) {
-            UsageBar(label: "5h", utilization: usage.fiveHour.utilization, resetsAt: usage.fiveHour.resetsAt, totalSeconds: 18000, animal: state.burnRates?.fiveHour?.animal)
-            UsageBar(label: "7d", utilization: usage.sevenDay.utilization, resetsAt: usage.sevenDay.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sevenDay?.animal)
+        HStack(alignment: .top, spacing: isCompact ? 20 : 30) {
+            UsageBar(label: "5h", utilization: usage.fiveHour.utilization, resetsAt: usage.fiveHour.resetsAt, totalSeconds: 18000, animal: state.burnRates?.fiveHour?.animal, isCompact: isCompact)
+            UsageBar(label: "7d", utilization: usage.sevenDay.utilization, resetsAt: usage.sevenDay.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sevenDay?.animal, isCompact: isCompact)
             if let sonnet = usage.sevenDaySonnet {
-                UsageBar(label: "S", utilization: sonnet.utilization, resetsAt: sonnet.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sonnet?.animal, showCountdown: false)
+                UsageBar(label: "S", utilization: sonnet.utilization, resetsAt: sonnet.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sonnet?.animal, showCountdown: false, isCompact: isCompact)
             }
         }
     }

@@ -4,45 +4,53 @@ struct UsageBar: View {
     let label: String           // "5h", "7d", or "S"
     let utilization: Double     // 0-100
     let resetsAt: Date?
-    let totalSeconds: TimeInterval  // total window: 18000 for 5h, 604800 for 7d
+    let totalSeconds: TimeInterval
     let animal: String?
     let showCountdown: Bool
+    let isCompact: Bool         // true = widget/popover, false = dashboard
 
-    init(label: String, utilization: Double, resetsAt: Date?, totalSeconds: TimeInterval = 18000, animal: String? = nil, showCountdown: Bool = true) {
+    init(label: String, utilization: Double, resetsAt: Date?, totalSeconds: TimeInterval = 18000, animal: String? = nil, showCountdown: Bool = true, isCompact: Bool = true) {
         self.label = label
         self.utilization = utilization
         self.resetsAt = resetsAt
         self.totalSeconds = totalSeconds
         self.animal = animal
         self.showCountdown = showCountdown
+        self.isCompact = isCompact
     }
+
+    private var largeDiameter: CGFloat { isCompact ? 52 : 68 }
+    private var smallDiameter: CGFloat { isCompact ? 34 : 44 }
+    private var largeLineWidth: CGFloat { isCompact ? 6 : 8 }
+    private var smallLineWidth: CGFloat { isCompact ? 4 : 5 }
+    private var labelFontSize: CGFloat { isCompact ? 10 : 13 }
 
     /// Number of countdown segments: 5 for 5h window, 7 for 7d and Sonnet windows.
-    private var segmentCount: Int {
-        totalSeconds <= 18000 ? 5 : 7
-    }
+    private var segmentCount: Int { totalSeconds <= 18000 ? 5 : 7 }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        VStack(alignment: .center, spacing: 5) {
             Text(label)
-                .font(.system(.body, design: .monospaced))
+                .font(.system(size: labelFontSize, design: .monospaced))
                 .foregroundStyle(.secondary)
-                .frame(width: 24, alignment: .leading)
-                .padding(.top, 14)
 
-            CircularProgressView(utilization: utilization, animal: animal)
+            HStack(alignment: .bottom, spacing: isCompact ? 5 : 8) {
+                CircularProgressView(
+                    utilization: utilization,
+                    animal: animal,
+                    diameter: largeDiameter,
+                    lineWidth: largeLineWidth
+                )
 
-            if showCountdown, let resetsAt {
-                VStack(spacing: 4) {
-                    CircularCountdownView(
+                if showCountdown, let resetsAt {
+                    CountdownColumn(
                         resetsAt: resetsAt,
                         totalSeconds: totalSeconds,
                         segmentCount: segmentCount,
-                        color: segmentColor(resetsAt)
+                        color: segmentColor(resetsAt),
+                        diameter: smallDiameter,
+                        lineWidth: smallLineWidth
                     )
-                    Text(formatResetTime(resetsAt))
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -57,6 +65,44 @@ struct UsageBar: View {
         }
         let greenIntensity = 1.0 - (fraction / 0.3)
         return Color(hue: 120.0 / 360.0, saturation: 0.6 * greenIntensity + 0.1, brightness: 0.5 + 0.35 * greenIntensity)
+    }
+}
+
+private struct CountdownColumn: View {
+    let resetsAt: Date
+    let totalSeconds: TimeInterval
+    let segmentCount: Int
+    let color: Color
+    let diameter: CGFloat
+    let lineWidth: CGFloat
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(formatResetTime(resetsAt))
+                .font(.system(size: 8, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize()
+
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                ZStack {
+                    CircularCountdownView(
+                        resetsAt: resetsAt,
+                        totalSeconds: totalSeconds,
+                        segmentCount: segmentCount,
+                        color: color,
+                        diameter: diameter,
+                        lineWidth: lineWidth
+                    )
+                    Text(formattedCountdown(resetsAt))
+                        .font(.system(size: diameter * 0.24, design: .monospaced))
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                        .foregroundStyle(.primary.opacity(0.85))
+                }
+                .frame(width: diameter, height: diameter)
+            }
+        }
     }
 
     private func formatResetTime(_ date: Date) -> String {
@@ -73,29 +119,59 @@ struct UsageBar: View {
         let raw = formatter.string(from: date).lowercased()
         return raw.prefix(1).uppercased() + raw.dropFirst()
     }
-}
 
+    private func formattedCountdown(_ date: Date) -> String {
+        let remaining = date.timeIntervalSinceNow
+        guard remaining > 0 else { return "0:00" }
+        let totalSecs = Int(remaining)
+        if totalSeconds <= 18000 {
+            let hours = totalSecs / 3600
+            let minutes = (totalSecs % 3600) / 60
+            let seconds = totalSecs % 60
+            if hours > 0 {
+                return "\(hours):\(String(format: "%02d", minutes))"
+            }
+            return "\(minutes):\(String(format: "%02d", seconds))"
+        } else {
+            let days = totalSecs / 86400
+            let hours = (totalSecs % 86400) / 3600
+            let minutes = (totalSecs % 3600) / 60
+            if days > 0 {
+                return "\(days)d\(hours)h"
+            }
+            return "\(hours):\(String(format: "%02d", minutes))"
+        }
+    }
+}
 
 private struct CircularProgressView: View {
     let utilization: Double
     let animal: String?
+    let diameter: CGFloat
+    let lineWidth: CGFloat
 
     private var fillFraction: Double { min(utilization / 100.0, 1.0) }
 
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.primary.opacity(0.2), lineWidth: 5)
+                .stroke(Color.primary.opacity(0.2), lineWidth: lineWidth)
             Circle()
                 .trim(from: 0, to: fillFraction)
                 .stroke(
                     DashboardViewModel.usageColor(for: utilization),
-                    style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-            Text("\(Int(utilization))%")
-                .font(.system(size: 11, design: .monospaced))
-                .minimumScaleFactor(0.8)
+
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text("\(Int(utilization))")
+                    .font(.system(size: diameter * 0.33, weight: .semibold, design: .rounded))
+                    .minimumScaleFactor(0.7)
+                Text("%")
+                    .font(.system(size: diameter * 0.20, weight: .regular))
+            }
+            .lineLimit(1)
         }
         .overlay(alignment: .bottomTrailing) {
             if let animal {
@@ -104,7 +180,7 @@ private struct CircularProgressView: View {
                     .offset(x: 4, y: 4)
             }
         }
-        .frame(width: 48, height: 48)
+        .frame(width: diameter, height: diameter)
     }
 }
 
@@ -113,9 +189,10 @@ private struct CircularCountdownView: View {
     let totalSeconds: TimeInterval
     let segmentCount: Int
     let color: Color
+    let diameter: CGFloat
+    let lineWidth: CGFloat
 
-    // circumference = π * 48pt ≈ 150.796pt; each gap = 2pt
-    private let gapFraction: Double = 2.0 / (Double.pi * 48.0)
+    private var gapFraction: Double { 2.0 / (Double.pi * diameter) }
 
     private var segmentFraction: Double {
         (1.0 - Double(segmentCount) * gapFraction) / Double(segmentCount)
@@ -129,35 +206,32 @@ private struct CircularCountdownView: View {
         segStart(i) + segmentFraction
     }
 
-    private func fillFraction(for index: Int) -> Double {
-        let remaining = resetsAt.timeIntervalSinceNow
-        guard remaining > 0, totalSeconds > 0 else { return 0 }
-        let elapsed = max(0, totalSeconds - remaining)
-        let secondsPerSegment = totalSeconds / Double(segmentCount)
-        let timeStart = Double(index) * secondsPerSegment
-        let timeEnd = Double(index + 1) * secondsPerSegment
-        if elapsed >= timeEnd { return 0.0 }
-        else if elapsed <= timeStart { return 1.0 }
-        else { return (timeEnd - elapsed) / secondsPerSegment }
-    }
-
     var body: some View {
+        let remaining = max(0, resetsAt.timeIntervalSinceNow)
+        let fillFrac = totalSeconds > 0 ? min(1.0, remaining / totalSeconds) : 0.0
+        // Arc ends at segEnd(last), i.e. 1 - gapFraction; start moves forward as time passes.
+        let arcRange = 1.0 - gapFraction
+
         ZStack {
             ForEach(0..<segmentCount, id: \.self) { i in
                 Circle()
                     .trim(from: segStart(i), to: segEnd(i))
-                    .stroke(Color.primary.opacity(0.08), style: StrokeStyle(lineWidth: 5, lineCap: .butt))
+                    .stroke(Color.primary.opacity(0.08), style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
             }
-            ForEach(0..<segmentCount, id: \.self) { i in
-                let fill = fillFraction(for: i)
-                if fill > 0 {
-                    Circle()
-                        .trim(from: segStart(i), to: segStart(i) + segmentFraction * fill)
-                        .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .butt))
+            if fillFrac > 0 {
+                let fillStart = (1.0 - fillFrac) * arcRange
+                ForEach(0..<segmentCount, id: \.self) { i in
+                    let segS = segStart(i)
+                    let segE = segEnd(i)
+                    if segE > fillStart {
+                        Circle()
+                            .trim(from: max(segS, fillStart), to: segE)
+                            .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
+                    }
                 }
             }
         }
         .rotationEffect(.degrees(-90))
-        .frame(width: 48, height: 48)
+        .frame(width: diameter, height: diameter)
     }
 }

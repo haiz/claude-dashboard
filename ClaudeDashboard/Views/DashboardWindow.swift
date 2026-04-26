@@ -70,14 +70,19 @@ struct DashboardWindow: View {
                 emptyStateView
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 12) {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 440), spacing: 12, alignment: .top)],
+                        alignment: .leading,
+                        spacing: 12
+                    ) {
                         ForEach(viewModel.accountStates) { state in
                             AccountCard(
                                 state: state,
                                 onResync: { Task { await viewModel.resyncAccount(state.id) } },
                                 onTogglePin: { viewModel.togglePin(for: state.id) },
                                 onTap: { viewModel.navigation = .accountDetail(state.id) },
-                                isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state)
+                                isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
+                                isCompact: false
                             )
                         }
                     }

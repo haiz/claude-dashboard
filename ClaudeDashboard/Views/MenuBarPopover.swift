@@ -1,9 +1,18 @@
 import SwiftUI
 
+private struct ScrollItemOffsetKey: PreferenceKey {
+    static var defaultValue: [UUID: CGFloat] = [:]
+    static func reduce(value: inout [UUID: CGFloat], nextValue: () -> [UUID: CGFloat]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
 struct MenuBarPopover: View {
     @ObservedObject var viewModel: DashboardViewModel
     @EnvironmentObject var updateViewModel: UpdateViewModel
     let onOpenWindow: () -> Void
+
+    @State private var scrollAnchorId: UUID? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,18 +66,45 @@ struct MenuBarPopover: View {
             if viewModel.accountStates.isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(viewModel.accountStates) { state in
-                            AccountCard(
-                                state: state,
-                                onResync: { Task { await viewModel.resyncAccount(state.id) } },
-                                onTogglePin: { viewModel.togglePin(for: state.id) },
-                                isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state)
-                            )
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(viewModel.accountStates) { state in
+                                HStack(spacing: 0) {
+                                    AccountCard(
+                                        state: state,
+                                        onResync: { Task { await viewModel.resyncAccount(state.id) } },
+                                        onTogglePin: { viewModel.togglePin(for: state.id) },
+                                        isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
+                                        isCompact: true
+                                    )
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    Spacer(minLength: 0)
+                                }
+                                .id(state.id)
+                                .background(
+                                    GeometryReader { geo in
+                                        Color.clear.preference(
+                                            key: ScrollItemOffsetKey.self,
+                                            value: [state.id: geo.frame(in: .named("popoverScroll")).minY]
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                        .padding(12)
+                    }
+                    .coordinateSpace(name: "popoverScroll")
+                    .onPreferenceChange(ScrollItemOffsetKey.self) { positions in
+                        let topItem = positions.filter { $0.value >= -10 }.min { $0.value < $1.value }
+                        if let topItem {
+                            scrollAnchorId = topItem.key
                         }
                     }
-                    .padding(12)
+                    .onChange(of: viewModel.accountStates.map { $0.id }) { _ in
+                        guard let id = scrollAnchorId else { return }
+                        DispatchQueue.main.async { proxy.scrollTo(id, anchor: .top) }
+                    }
                 }
             }
 
