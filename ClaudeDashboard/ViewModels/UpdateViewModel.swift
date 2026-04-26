@@ -34,21 +34,37 @@ final class UpdateViewModel: ObservableObject {
 
     @Published var state: State = .idle
     @Published var latestVersion: String?
+    @Published var autoUpdateEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(autoUpdateEnabled, forKey: autoUpdateEnabledKey)
+            restartBackgroundChecks()
+        }
+    }
 
     private let service: UpdateService
     private var backgroundTimer: Timer?
     private let rateLimitKey = "claude-dashboard.lastUpdateCheckAt"
     private let rateLimitInterval: TimeInterval = 15 * 60
+    private let autoUpdateEnabledKey = "claude-dashboard.autoUpdateEnabled"
+    private let autoUpdateIntervalKey = "claude-dashboard.lastAutoUpdateAt"
+    private let autoUpdateInterval: TimeInterval = 24 * 3600
 
     init(service: UpdateService = UpdateService()) {
         self.service = service
+        self.autoUpdateEnabled = UserDefaults.standard.object(forKey: "claude-dashboard.autoUpdateEnabled") as? Bool ?? true
     }
 
     func startBackgroundChecks() {
         guard backgroundTimer == nil else { return }
-        Task { await checkNow(autoInstall: true, respectRateLimit: true) }
-        backgroundTimer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in
-            Task { [weak self] in await self?.checkNow(autoInstall: true, respectRateLimit: false) }
+        guard autoUpdateEnabled else { return }
+        guard ProcessInfo.processInfo.environment["DISABLE_AUTOUPDATER"] != "1" else { return }
+
+        // Check immediately on launch if 24h have elapsed since last auto-update
+        Task { await checkNowIfDue() }
+
+        // Re-check every hour; actual install only runs when 24h gate passes
+        backgroundTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
+            Task { [weak self] in await self?.checkNowIfDue() }
         }
     }
 
@@ -76,6 +92,19 @@ final class UpdateViewModel: ObservableObject {
         } catch {
             state = .error(error.localizedDescription)
         }
+    }
+
+    private func checkNowIfDue() async {
+        let last = UserDefaults.standard.object(forKey: autoUpdateIntervalKey) as? Date
+        guard last == nil || Date().timeIntervalSince(last!) >= autoUpdateInterval else { return }
+        UserDefaults.standard.set(Date(), forKey: autoUpdateIntervalKey)
+        await checkNow(autoInstall: true, respectRateLimit: false)
+    }
+
+    private func restartBackgroundChecks() {
+        backgroundTimer?.invalidate()
+        backgroundTimer = nil
+        startBackgroundChecks()
     }
 
     private func downloadAndInstall(_ info: UpdateInfo) async {

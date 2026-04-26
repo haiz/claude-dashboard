@@ -35,6 +35,14 @@ struct SettingsView: View {
                 }
 
                 Section("Updates") {
+                    Toggle("Auto-update daily", isOn: $updateViewModel.autoUpdateEnabled)
+
+                    if updateViewModel.autoUpdateEnabled {
+                        Text("Checks GitHub once a day and installs new releases automatically.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Current: v\(AppVersion.string)")
