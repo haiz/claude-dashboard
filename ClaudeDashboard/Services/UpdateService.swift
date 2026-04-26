@@ -99,6 +99,8 @@ final class UpdateService {
             kill -0 \(pid) 2>/dev/null || break
             sleep 0.2
         done
+        kill -9 \(pid) 2>/dev/null
+        sleep 0.1
         rm -rf "\(bundleURL.path)"
         mv "\(stagedApp.path)" "\(bundleURL.path)"
         xattr -cr "\(bundleURL.path)"
