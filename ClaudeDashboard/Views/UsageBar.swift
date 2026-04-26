@@ -23,16 +23,17 @@ struct UsageBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             Text(label)
                 .font(.system(.body, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(width: 24, alignment: .leading)
+                .padding(.top, 14)
 
             CircularProgressView(utilization: utilization, animal: animal)
 
             if showCountdown, let resetsAt {
-                VStack(spacing: 2) {
+                VStack(spacing: 4) {
                     CircularCountdownView(
                         resetsAt: resetsAt,
                         totalSeconds: totalSeconds,
