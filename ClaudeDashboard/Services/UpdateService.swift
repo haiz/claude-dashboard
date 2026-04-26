@@ -63,18 +63,22 @@ final class UpdateService {
         return stableURL
     }
 
-    func installAndRelaunch(zipURL: URL) throws {
+    func installAndRelaunch(zipURL: URL) async throws {
         let bundleURL = Bundle.main.bundleURL
         let stagingDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("cd-update-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
 
-        let unzip = Process()
-        unzip.launchPath = "/usr/bin/ditto"
-        unzip.arguments = ["-x", "-k", zipURL.path, stagingDir.path]
-        try unzip.run()
-        unzip.waitUntilExit()
-        guard unzip.terminationStatus == 0 else { throw UpdateError.unzipFailed }
+        let zipPath = zipURL.path
+        let stagingPath = stagingDir.path
+        try await Task.detached(priority: .userInitiated) {
+            let unzip = Process()
+            unzip.launchPath = "/usr/bin/ditto"
+            unzip.arguments = ["-x", "-k", zipPath, stagingPath]
+            try unzip.run()
+            unzip.waitUntilExit()
+            guard unzip.terminationStatus == 0 else { throw UpdateError.unzipFailed }
+        }.value
 
         let stagedApp = stagingDir.appendingPathComponent("ClaudeDashboard.app")
         guard FileManager.default.fileExists(atPath: stagedApp.path) else {
@@ -112,8 +116,6 @@ final class UpdateService {
         launcher.launchPath = "/bin/bash"
         launcher.arguments = [scriptURL.path]
         try launcher.run()
-
-        DispatchQueue.main.async { NSApplication.shared.terminate(nil) }
     }
 
     func isNewer(remote: String, than current: String) -> Bool {

@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Combine
 
 @MainActor
@@ -83,7 +83,8 @@ final class UpdateViewModel: ObservableObject {
         do {
             let zipURL = try await service.download(info)
             state = .installing
-            try service.installAndRelaunch(zipURL: zipURL)
+            try await service.installAndRelaunch(zipURL: zipURL)
+            NSApplication.shared.terminate(nil)
         } catch {
             state = .error(error.localizedDescription)
         }
