@@ -68,9 +68,20 @@ struct ClaudeDashboardApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarPopover(viewModel: viewModel) {
-                appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
-            }
+            MenuBarPopover(
+                viewModel: viewModel,
+                onOpenWindow: {
+                    appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
+                },
+                onOpenOverview: {
+                    viewModel.navigation = .overview
+                    appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
+                },
+                onOpenSettings: {
+                    viewModel.isPresentingSettings = true
+                    appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
+                }
+            )
             .environmentObject(updateViewModel)
             .onAppear {
                 appDelegate.updateViewModel = updateViewModel

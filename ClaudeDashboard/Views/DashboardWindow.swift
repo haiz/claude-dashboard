@@ -2,7 +2,6 @@ import SwiftUI
 
 struct DashboardWindow: View {
     @ObservedObject var viewModel: DashboardViewModel
-    @State private var showingSettings = false
     var onAddAccount: (() -> Void)?
 
     var body: some View {
@@ -30,7 +29,7 @@ struct DashboardWindow: View {
             }
         }
         .frame(minWidth: 600, minHeight: 450)
-        .sheet(isPresented: $showingSettings) {
+        .sheet(isPresented: $viewModel.isPresentingSettings) {
             SettingsView(viewModel: viewModel)
         }
     }
@@ -57,7 +56,7 @@ struct DashboardWindow: View {
                     .disabled(viewModel.isRefreshing)
                 }
 
-                Button(action: { showingSettings = true }) {
+                Button(action: { viewModel.isPresentingSettings = true }) {
                     Label("Settings", systemImage: "gearshape")
                 }
             }

@@ -11,6 +11,8 @@ struct MenuBarPopover: View {
     @ObservedObject var viewModel: DashboardViewModel
     @EnvironmentObject var updateViewModel: UpdateViewModel
     let onOpenWindow: () -> Void
+    let onOpenOverview: () -> Void
+    let onOpenSettings: () -> Void
 
     @State private var scrollAnchorId: UUID? = nil
 
@@ -50,6 +52,32 @@ struct MenuBarPopover: View {
                     popover?.close()
                 }) {
                     Image(systemName: "rectangle.expand.vertical")
+                        .font(.caption)
+                        .frame(width: 24, height: 24)
+                        .background(.quaternary)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.borderless)
+
+                Button(action: {
+                    let popover = NSApp.keyWindow
+                    onOpenOverview()
+                    popover?.close()
+                }) {
+                    Image(systemName: "chart.xyaxis.line")
+                        .font(.caption)
+                        .frame(width: 24, height: 24)
+                        .background(.quaternary)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.borderless)
+
+                Button(action: {
+                    let popover = NSApp.keyWindow
+                    onOpenSettings()
+                    popover?.close()
+                }) {
+                    Image(systemName: "gearshape")
                         .font(.caption)
                         .frame(width: 24, height: 24)
                         .background(.quaternary)

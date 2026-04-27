@@ -31,6 +31,7 @@ final class DashboardViewModel: ObservableObject {
     }
 
     @Published var navigation: NavigationDestination = .dashboard
+    @Published var isPresentingSettings = false
 
     let accountStore: AccountStore
     private let apiService: UsageAPIService
