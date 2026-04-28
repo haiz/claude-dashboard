@@ -109,13 +109,17 @@ final class DashboardViewModel: ObservableObject {
 
                 group.addTask { [apiService, accountStore] in
                     do {
-                        let (usage, planHint, newKey) = try await apiService.fetchFullUsage(orgId: orgId, sessionKey: sessionKey)
+                        let (usage, planHint, newKey) = try await Self.fetchWithRetry {
+                            try await apiService.fetchFullUsage(orgId: orgId, sessionKey: sessionKey)
+                        }
                         if let newKey {
                             await MainActor.run { accountStore.saveSessionKey(newKey, for: account.id) }
                         }
                         return (account.id, usage, nil, planHint)
                     } catch UsageAPIError.authExpired {
                         return (account.id, nil, "expired", nil)
+                    } catch is DecodingError {
+                        return (account.id, nil, "Temporary read error. Try refreshing.", nil)
                     } catch {
                         return (account.id, nil, error.localizedDescription, nil)
                     }
@@ -295,6 +299,27 @@ final class DashboardViewModel: ObservableObject {
         }
         // Sort: pinned > (active Claude Code if no pin) > burn rate
         sortStates()
+    }
+
+    private static func fetchWithRetry<T>(
+        maxAttempts: Int = 3,
+        delay: TimeInterval = 1.0,
+        operation: () async throws -> T
+    ) async throws -> T {
+        var lastError: Error?
+        for attempt in 0..<maxAttempts {
+            do {
+                return try await operation()
+            } catch UsageAPIError.authExpired {
+                throw UsageAPIError.authExpired
+            } catch {
+                lastError = error
+                if attempt < maxAttempts - 1 {
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                }
+            }
+        }
+        throw lastError!
     }
 
     func sortStates() {

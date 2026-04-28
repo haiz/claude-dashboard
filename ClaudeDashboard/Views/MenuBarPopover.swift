@@ -15,8 +15,10 @@ struct MenuBarPopover: View {
     let onOpenSettings: () -> Void
 
     @State private var scrollAnchorId: UUID? = nil
+    @State private var runCommandAccount: Account? = nil
 
     var body: some View {
+        ZStack {
         VStack(spacing: 0) {
             // Update banner shown while downloading/installing
             if case .downloading = updateViewModel.state {
@@ -103,6 +105,8 @@ struct MenuBarPopover: View {
                                         state: state,
                                         onResync: { Task { await viewModel.resyncAccount(state.id) } },
                                         onTogglePin: { viewModel.togglePin(for: state.id) },
+                                        onRefresh: { Task { await viewModel.refreshAll() } },
+                                        onRunCommand: { runCommandAccount = state.account },
                                         isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
                                         isCompact: true
                                     )
@@ -160,6 +164,26 @@ struct MenuBarPopover: View {
         }
         .frame(width: 320)
         .frame(maxHeight: 500)
+
+        if let account = runCommandAccount {
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+                .onTapGesture { runCommandAccount = nil }
+
+            RunCommandSheet(
+                account: account,
+                isPresented: Binding(
+                    get: { runCommandAccount != nil },
+                    set: { if !$0 { runCommandAccount = nil } }
+                ),
+                onRefresh: { Task { await viewModel.refreshAll() } }
+            )
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(12)
+            .frame(width: 320)
+        }
+        } // ZStack
     }
 
     private var updateBanner: some View {

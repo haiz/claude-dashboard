@@ -5,6 +5,8 @@ struct AccountCard: View {
     let onResync: () -> Void
     let onTogglePin: () -> Void
     var onTap: (() -> Void)? = nil
+    var onRefresh: (() -> Void)? = nil
+    var onRunCommand: (() -> Void)? = nil
     var isActiveClaudeCodeAccount: Bool = false
     var isCompact: Bool = true
 
@@ -38,6 +40,16 @@ struct AccountCard: View {
                     }
 
                     Spacer(minLength: 0)
+
+                    Button {
+                        onRunCommand?()
+                    } label: {
+                        Image(systemName: "terminal")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Run command")
 
                     // Plan badge
                     Text(state.account.plan.rawValue)

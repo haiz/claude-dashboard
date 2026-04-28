@@ -3,6 +3,7 @@ import SwiftUI
 struct DashboardWindow: View {
     @ObservedObject var viewModel: DashboardViewModel
     var onAddAccount: (() -> Void)?
+    @State private var runCommandAccount: Account? = nil
 
     var body: some View {
         Group {
@@ -31,6 +32,16 @@ struct DashboardWindow: View {
         .frame(minWidth: 600, minHeight: 450)
         .sheet(isPresented: $viewModel.isPresentingSettings) {
             SettingsView(viewModel: viewModel)
+        }
+        .sheet(item: $runCommandAccount) { account in
+            RunCommandSheet(
+                account: account,
+                isPresented: Binding(
+                    get: { runCommandAccount?.id == account.id },
+                    set: { if !$0 { runCommandAccount = nil } }
+                ),
+                onRefresh: { Task { await viewModel.refreshAll() } }
+            )
         }
     }
 
@@ -80,6 +91,8 @@ struct DashboardWindow: View {
                                 onResync: { Task { await viewModel.resyncAccount(state.id) } },
                                 onTogglePin: { viewModel.togglePin(for: state.id) },
                                 onTap: { viewModel.navigation = .accountDetail(state.id) },
+                                onRefresh: { Task { await viewModel.refreshAll() } },
+                                onRunCommand: { runCommandAccount = state.account },
                                 isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
                                 isCompact: false
                             )

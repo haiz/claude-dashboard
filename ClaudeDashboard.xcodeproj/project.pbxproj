@@ -54,6 +54,7 @@
 		C436B7F85AB4285388BE8869 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
 		CBA5F28B81C6FA6C0E24C610 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2535C231EBCF76F786F7B7E /* Account.swift */; };
 		E53BC1DBE702E2298D98F974 /* UsageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36CFE6B80C6A187D9A176752 /* UsageBar.swift */; };
+		E6585C166C57BFBA1B32371D /* RunCommandSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6EE45ADCEABD94EDD78D978 /* RunCommandSheet.swift */; };
 		EB9BD3D5123C7ED0209085E9 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */; };
 		F25AC7AD4FA98DC521351742 /* UsageLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */; };
 		F6F423B9B14E2440A491018C /* ClaudeCodeAccountDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A3660023E6BA291B7932FE /* ClaudeCodeAccountDetectorTests.swift */; };
@@ -107,6 +108,7 @@
 		95A99A9BA83C1C687A1C2E17 /* BurnRateTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnRateTrackerTests.swift; sourceTree = "<group>"; };
 		9602F34D10F24B11C7B02DF3 /* ChromeCookieServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromeCookieServiceTests.swift; sourceTree = "<group>"; };
 		A81A393416A5618902A5764C /* ClaudeDashboardHelper */ = {isa = PBXFileReference; includeInIndex = 0; path = ClaudeDashboardHelper; sourceTree = BUILT_PRODUCTS_DIR; };
+		B6EE45ADCEABD94EDD78D978 /* RunCommandSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunCommandSheet.swift; sourceTree = "<group>"; };
 		BA09806794F5E11A193DC9E0 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		BF469D724BE1FCA1D071131F /* AccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStore.swift; sourceTree = "<group>"; };
 		BFA0F9129D3367D395937E5E /* DashboardWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindow.swift; sourceTree = "<group>"; };
@@ -215,6 +217,7 @@
 				86AC4B09025CCFBC088F61A5 /* InteractiveChartContainer.swift */,
 				52F459D10501056C193989A6 /* MenuBarPopover.swift */,
 				2AA56B8E5252FD397123C6C2 /* OverviewChartView.swift */,
+				B6EE45ADCEABD94EDD78D978 /* RunCommandSheet.swift */,
 				ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */,
 				066B8B1E829B2024AB298464 /* SetupView.swift */,
 				36CFE6B80C6A187D9A176752 /* UsageBar.swift */,
@@ -448,6 +451,7 @@
 				5467470C8154768515DCC0EC /* KeychainService.swift in Sources */,
 				B38B8E482E1BC067FFD7AE74 /* MenuBarPopover.swift in Sources */,
 				5994EEF08661FBAD5564707D /* OverviewChartView.swift in Sources */,
+				E6585C166C57BFBA1B32371D /* RunCommandSheet.swift in Sources */,
 				EB9BD3D5123C7ED0209085E9 /* SettingsView.swift in Sources */,
 				211F98E0C0F99203EF129492 /* SetupView.swift in Sources */,
 				A5773DFB86E3CE93696F9B7F /* UpdateService.swift in Sources */,
