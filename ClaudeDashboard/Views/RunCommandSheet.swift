@@ -72,6 +72,7 @@ struct RunCommandSheet: View {
             let process = Process()
             process.launchPath = "/bin/zsh"
             process.arguments = ["-c", cmd]
+            process.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
 
             let outPipe = Pipe()
             let errPipe = Pipe()
@@ -101,7 +102,7 @@ struct RunCommandSheet: View {
             handleData(tail)
             handleData(errTail)
 
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
 
             await MainActor.run {
                 isPresented = false

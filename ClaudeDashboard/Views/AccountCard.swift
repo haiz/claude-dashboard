@@ -10,6 +10,8 @@ struct AccountCard: View {
     var isActiveClaudeCodeAccount: Bool = false
     var isCompact: Bool = true
 
+    @State private var isTerminalHovered = false
+
     var body: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
@@ -41,23 +43,31 @@ struct AccountCard: View {
 
                     Spacer(minLength: 0)
 
-                    Button {
-                        onRunCommand?()
-                    } label: {
-                        Image(systemName: "terminal")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Run command")
+                    HStack(spacing: 2) {
+                        Button {
+                            onRunCommand?()
+                        } label: {
+                            Image(systemName: "terminal")
+                                .font(.callout)
+                                .foregroundStyle(isTerminalHovered ? .primary : .secondary)
+                                .padding(.leading, 4)
+                                .padding(.trailing, 2)
+                                .padding(.vertical, 2)
+                                .background(isTerminalHovered ? Color.primary.opacity(0.1) : Color.clear)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { isTerminalHovered = $0 }
+                        .help("Run command")
 
-                    // Plan badge
-                    Text(state.account.plan.rawValue)
-                        .font(.caption.bold())
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(state.account.plan.badgeColor.opacity(0.15))
-                        .clipShape(Capsule())
+                        // Plan badge
+                        Text(state.account.plan.rawValue)
+                            .font(.caption.bold())
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(state.account.plan.badgeColor.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
 
                     if state.isLoading {
                         ProgressView()

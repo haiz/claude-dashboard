@@ -1,5 +1,23 @@
 import SwiftUI
 
+private struct HeaderIconButton: View {
+    let systemName: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.caption)
+                .frame(width: 24, height: 24)
+                .background(Color.primary.opacity(isHovered ? 0.15 : 0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.borderless)
+        .onHover { isHovered = $0 }
+    }
+}
+
 private struct ScrollItemOffsetKey: PreferenceKey {
     static var defaultValue: [UUID: CGFloat] = [:]
     static func reduce(value: inout [UUID: CGFloat], nextValue: () -> [UUID: CGFloat]) {
@@ -35,57 +53,29 @@ struct MenuBarPopover: View {
                 Spacer()
 
                 if !viewModel.accountStates.isEmpty {
-                    Button(action: {
+                    HeaderIconButton(systemName: "arrow.clockwise") {
                         Task { await viewModel.refreshAll() }
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.caption)
-                            .frame(width: 24, height: 24)
-                            .background(.quaternary)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
-                    .buttonStyle(.borderless)
                     .disabled(viewModel.isRefreshing)
                 }
 
-                Button(action: {
+                HeaderIconButton(systemName: "rectangle.expand.vertical") {
                     let popover = NSApp.keyWindow
                     onOpenWindow()
                     popover?.close()
-                }) {
-                    Image(systemName: "rectangle.expand.vertical")
-                        .font(.caption)
-                        .frame(width: 24, height: 24)
-                        .background(.quaternary)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
-                .buttonStyle(.borderless)
 
-                Button(action: {
+                HeaderIconButton(systemName: "chart.xyaxis.line") {
                     let popover = NSApp.keyWindow
                     onOpenOverview()
                     popover?.close()
-                }) {
-                    Image(systemName: "chart.xyaxis.line")
-                        .font(.caption)
-                        .frame(width: 24, height: 24)
-                        .background(.quaternary)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
-                .buttonStyle(.borderless)
 
-                Button(action: {
+                HeaderIconButton(systemName: "gearshape") {
                     let popover = NSApp.keyWindow
                     onOpenSettings()
                     popover?.close()
-                }) {
-                    Image(systemName: "gearshape")
-                        .font(.caption)
-                        .frame(width: 24, height: 24)
-                        .background(.quaternary)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
-                .buttonStyle(.borderless)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)

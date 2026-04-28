@@ -38,6 +38,8 @@ final class DashboardViewModel: ObservableObject {
     private let ccDetector: ClaudeCodeAccountDetector
     private var cancellables = Set<AnyCancellable>()
     private var autoRefreshTask: Task<Void, Never>?
+    private var resetMonitorTask: Task<Void, Never>?
+    private var consumedResets: Set<String> = []
     private let burnRateTracker: BurnRateTracker
     let logStore: UsageLogStore
 
@@ -73,6 +75,7 @@ final class DashboardViewModel: ObservableObject {
             .store(in: &cancellables)
 
         scheduleAutoRefresh()
+        startResetMonitor()
 
         // Auto-load data on launch
         Task { await self.refreshAll() }
@@ -89,6 +92,43 @@ final class DashboardViewModel: ObservableObject {
                 guard !Task.isCancelled else { break }
                 await self?.refreshAll()
             }
+        }
+    }
+
+    // MARK: - Reset Monitor
+
+    private func startResetMonitor() {
+        resetMonitorTask?.cancel()
+        resetMonitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard !Task.isCancelled else { break }
+                await self?.checkResetTriggers()
+            }
+        }
+    }
+
+    private func checkResetTriggers() async {
+        let triggerBefore = Date().addingTimeInterval(-10)
+        var needsRefresh = false
+
+        for state in accountStates {
+            guard state.account.status == .active, let usage = state.usage else { continue }
+            let windows: [(String, Date?)] = [
+                ("5h", usage.fiveHour.resetsAt),
+                ("7d", usage.sevenDay.resetsAt)
+            ]
+            for (label, resetsAt) in windows {
+                guard let date = resetsAt, date <= triggerBefore else { continue }
+                let key = "\(state.id)-\(label)-\(Int(date.timeIntervalSince1970))"
+                guard !consumedResets.contains(key) else { continue }
+                consumedResets.insert(key)
+                needsRefresh = true
+            }
+        }
+
+        if needsRefresh {
+            await refreshAll()
         }
     }
 
