@@ -110,6 +110,7 @@ final class DashboardViewModel: ObservableObject {
 
     private func checkResetTriggers() async {
         let triggerBefore = Date().addingTimeInterval(-10)
+        var commandsToRun: [String] = []
         var needsRefresh = false
 
         for state in accountStates {
@@ -124,11 +125,36 @@ final class DashboardViewModel: ObservableObject {
                 guard !consumedResets.contains(key) else { continue }
                 consumedResets.insert(key)
                 needsRefresh = true
+                let cmdKey = "runCommand_\(state.account.id.uuidString)"
+                if let cmd = UserDefaults.standard.string(forKey: cmdKey), !cmd.isEmpty {
+                    commandsToRun.append(cmd)
+                }
+            }
+        }
+
+        if !commandsToRun.isEmpty {
+            await withTaskGroup(of: Void.self) { group in
+                for cmd in commandsToRun {
+                    group.addTask { await self.runShellCommand(cmd) }
+                }
             }
         }
 
         if needsRefresh {
             await refreshAll()
+        }
+    }
+
+    private func runShellCommand(_ command: String) async {
+        await withCheckedContinuation { continuation in
+            let process = Process()
+            process.launchPath = "/bin/zsh"
+            process.arguments = ["-c", command]
+            process.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
+            process.standardOutput = Pipe()
+            process.standardError = Pipe()
+            process.terminationHandler = { _ in continuation.resume() }
+            try? process.run()
         }
     }
 
