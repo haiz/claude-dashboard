@@ -12,9 +12,27 @@ cd "$REPO_ROOT"
 
 # ── Args ──────────────────────────────────────────────────────────────────────
 NEW_VERSION="${1:-}"
+RELEASE_NOTES_ARG=""
+
+# Parse optional --notes "..." flag
+shift || true
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --notes)
+            RELEASE_NOTES_ARG="${2:-}"
+            shift 2
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
 if [[ -z "$NEW_VERSION" ]]; then
-    echo "Usage: $0 <new-version>"
+    echo "Usage: $0 <new-version> [--notes \"release notes\"]"
     echo "  e.g. $0 1.3.0"
+    echo "  e.g. $0 1.3.0 --notes \"- Fixed X\n- Added Y\""
     exit 1
 fi
 
@@ -135,63 +153,19 @@ git push --tags
 # ── 8. Create GitHub release ─────────────────────────────────────────────────
 echo ""
 echo "==> Step 8: Create GitHub release"
-PREV_TAG="v${OLD_VERSION}"
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-    echo "error: ANTHROPIC_API_KEY is not set" >&2
-    exit 1
+if [[ -n "$RELEASE_NOTES_ARG" ]]; then
+    echo "  Using provided release notes."
+    NOTES_FLAGS=(--notes "$RELEASE_NOTES_ARG")
+else
+    echo "  No release notes provided — using auto-generated GitHub notes."
+    NOTES_FLAGS=(--generate-notes)
 fi
-
-COMMITS=$(git log "${PREV_TAG}..HEAD" --pretty=format:"%s" --no-merges | grep -v "chore: release")
-
-echo "  Generating release notes with AI..."
-RELEASE_NOTES=$(python3 - <<PYEOF
-import urllib.request, json, sys, os
-
-commits = """${COMMITS}"""
-prompt = f"""Write release notes for v${NEW_VERSION} of Claude Dashboard — a macOS menu bar app that monitors Claude.ai token usage.
-
-Commits:
-{commits}
-
-Instructions:
-- 2-5 bullet points in plain English from a user perspective
-- Focus on what users will notice or benefit from
-- No commit hashes, no technical jargon, no mention of "commits"
-- Use "-" bullets, no header needed
-"""
-
-body = json.dumps({
-    "model": "claude-haiku-4-5-20251001",
-    "max_tokens": 400,
-    "messages": [{"role": "user", "content": prompt}]
-}).encode()
-
-req = urllib.request.Request(
-    "https://api.anthropic.com/v1/messages",
-    data=body,
-    headers={
-        "x-api-key": os.environ["ANTHROPIC_API_KEY"],
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-)
-resp = json.loads(urllib.request.urlopen(req).read())
-print(resp["content"][0]["text"])
-PYEOF
-)
-
-if [[ -z "$RELEASE_NOTES" ]]; then
-    echo "error: failed to generate release notes" >&2
-    exit 1
-fi
-
-echo "$RELEASE_NOTES"
 
 RELEASE_URL=$(gh release create "v${NEW_VERSION}" \
     "$STAGING/ClaudeDashboard.app.zip" \
     "$STAGING/claude-dashboard-cli.tar.gz" \
     --title "v${NEW_VERSION}" \
-    --notes "$RELEASE_NOTES")
+    "${NOTES_FLAGS[@]}")
 
 # ── 9. Verify uploaded checksums ─────────────────────────────────────────────
 echo ""

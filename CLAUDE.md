@@ -63,13 +63,23 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 
 ## Releasing
 
-Run the automated release script:
+When asked to create a release:
 
-```bash
-./scripts/release.sh <new-version>   # e.g. ./scripts/release.sh 1.3.0
-```
+1. Determine the new semver (ask if unclear).
+2. Commit any uncommitted changes first.
+3. Generate release notes from the git log since the last tag:
+   ```bash
+   git log "v$(cat VERSION)..HEAD" --pretty=format:"%s" --no-merges | grep -v "chore: release"
+   ```
+   Write 2-5 plain-English bullet points from a user perspective (what users notice/benefit from). Use `-` bullets, no header.
+4. Pass the notes directly to the script:
+   ```bash
+   ./scripts/release.sh <new-version> --notes "- Fixed X\n- Added Y"
+   ```
 
-The script handles everything: version bump, sync, xcodegen, build (app + helper), tests, artifact creation with correct names/contents, Homebrew sha256 update, commit, tag, push, and `gh release create`.
+The script handles everything else: version bump, sync, xcodegen, build (app + helper), tests, artifact creation, Homebrew sha256 update, commit, tag, push, and `gh release create`.
+
+If no `--notes` flag is passed, the script falls back to GitHub's auto-generated notes.
 
 **Manual steps (only if the script fails):**
 
