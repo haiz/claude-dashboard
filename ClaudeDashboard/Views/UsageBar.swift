@@ -9,7 +9,9 @@ struct UsageBar: View {
     let showCountdown: Bool
     let isCompact: Bool         // true = widget/popover, false = dashboard
 
-    init(label: String, utilization: Double, resetsAt: Date?, totalSeconds: TimeInterval = 18000, animal: String? = nil, showCountdown: Bool = true, isCompact: Bool = true) {
+    var onTap: (() -> Void)? = nil
+
+    init(label: String, utilization: Double, resetsAt: Date?, totalSeconds: TimeInterval = 18000, animal: String? = nil, showCountdown: Bool = true, isCompact: Bool = true, onTap: (() -> Void)? = nil) {
         self.label = label
         self.utilization = utilization
         self.resetsAt = resetsAt
@@ -17,6 +19,7 @@ struct UsageBar: View {
         self.animal = animal
         self.showCountdown = showCountdown
         self.isCompact = isCompact
+        self.onTap = onTap
     }
 
     private var largeDiameter: CGFloat { isCompact ? 52 : 68 }
@@ -39,7 +42,8 @@ struct UsageBar: View {
                     utilization: utilization,
                     animal: animal,
                     diameter: largeDiameter,
-                    lineWidth: largeLineWidth
+                    lineWidth: largeLineWidth,
+                    onTap: onTap
                 )
 
                 if showCountdown, let resetsAt {
@@ -49,7 +53,8 @@ struct UsageBar: View {
                         segmentCount: segmentCount,
                         color: segmentColor(resetsAt),
                         diameter: smallDiameter,
-                        lineWidth: smallLineWidth
+                        lineWidth: smallLineWidth,
+                        onTap: onTap
                     )
                 }
             }
@@ -75,6 +80,9 @@ private struct CountdownColumn: View {
     let color: Color
     let diameter: CGFloat
     let lineWidth: CGFloat
+    var onTap: (() -> Void)? = nil
+
+    @State private var isHovered = false
 
     var body: some View {
         VStack(spacing: 2) {
@@ -84,24 +92,44 @@ private struct CountdownColumn: View {
                 .lineLimit(1)
                 .fixedSize()
 
-            TimelineView(.periodic(from: .now, by: 1)) { _ in
-                ZStack {
-                    CircularCountdownView(
-                        resetsAt: resetsAt,
-                        totalSeconds: totalSeconds,
-                        segmentCount: segmentCount,
-                        color: color,
-                        diameter: diameter,
-                        lineWidth: lineWidth
-                    )
-                    Text(formattedCountdown(resetsAt))
-                        .font(.system(size: diameter * 0.24, design: .monospaced))
-                        .minimumScaleFactor(0.6)
-                        .lineLimit(1)
-                        .foregroundStyle(.primary.opacity(0.85))
+            Group {
+                if let action = onTap {
+                    Button(action: action) { clockContent }
+                        .buttonStyle(.plain)
+                } else {
+                    clockContent
                 }
-                .frame(width: diameter, height: diameter)
             }
+            .scaleEffect(isHovered ? 1.06 : 1.0)
+            .shadow(color: color.opacity(isHovered ? 0.35 : 0), radius: isHovered ? 6 : 0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.75), value: isHovered)
+            .onHover { hovering in
+                isHovered = hovering
+                if onTap != nil {
+                    if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                }
+            }
+        }
+    }
+
+    private var clockContent: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            ZStack {
+                CircularCountdownView(
+                    resetsAt: resetsAt,
+                    totalSeconds: totalSeconds,
+                    segmentCount: segmentCount,
+                    color: color,
+                    diameter: diameter,
+                    lineWidth: lineWidth
+                )
+                Text(formattedCountdown(resetsAt))
+                    .font(.system(size: diameter * 0.24, design: .monospaced))
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                    .foregroundStyle(.primary.opacity(0.85))
+            }
+            .frame(width: diameter, height: diameter)
         }
     }
 
@@ -149,17 +177,41 @@ private struct CircularProgressView: View {
     let animal: String?
     let diameter: CGFloat
     let lineWidth: CGFloat
+    var onTap: (() -> Void)? = nil
+
+    @State private var isHovered = false
 
     private var fillFraction: Double { min(utilization / 100.0, 1.0) }
+    private var ringColor: Color { DashboardViewModel.usageColor(for: utilization) }
 
     var body: some View {
+        Group {
+            if let action = onTap {
+                Button(action: action) { circleContent }
+                    .buttonStyle(.plain)
+            } else {
+                circleContent
+            }
+        }
+        .scaleEffect(isHovered ? 1.06 : 1.0)
+        .shadow(color: ringColor.opacity(isHovered ? 0.35 : 0), radius: isHovered ? 6 : 0)
+        .animation(.spring(response: 0.28, dampingFraction: 0.75), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
+            if onTap != nil {
+                if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
+        }
+    }
+
+    private var circleContent: some View {
         ZStack {
             Circle()
                 .stroke(Color.primary.opacity(0.2), lineWidth: lineWidth)
             Circle()
                 .trim(from: 0, to: fillFraction)
                 .stroke(
-                    DashboardViewModel.usageColor(for: utilization),
+                    ringColor.opacity(isHovered ? 1.0 : 0.92),
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))

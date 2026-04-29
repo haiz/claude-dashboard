@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 private enum MenuBarLabelRenderer {
     private static let barH: CGFloat = 22
@@ -80,6 +81,10 @@ struct ClaudeDashboardApp: App {
                 onOpenSettings: {
                     viewModel.isPresentingSettings = true
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
+                },
+                onOpenAccountDetail: { accountId, window in
+                    viewModel.navigation = .accountDetail(accountId, window)
+                    appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 }
             )
             .environmentObject(updateViewModel)
@@ -106,6 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var dashboardWindow: NSWindow?
     private weak var currentViewModel: DashboardViewModel?
     weak var updateViewModel: UpdateViewModel?
+    private var navigationCancellable: AnyCancellable?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
@@ -158,24 +164,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         } else {
             window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1050, height: 750),
+                contentRect: NSRect(x: 0, y: 0, width: 1050, height: 700),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
             )
             window.title = "Claude Dashboard"
             window.center()
-            window.setFrameAutosaveName("ClaudeDashboardWindow")
-            window.minSize = NSSize(width: 600, height: 450)
+            window.minSize = NSSize(width: 1050, height: 450)
             window.isReleasedWhenClosed = false
             window.delegate = self
             dashboardWindow = window
         }
 
         window.contentView = NSHostingView(rootView: contentView)
+        resizeWindowToFitContent(window: window, viewModel: viewModel)
+        navigationCancellable = viewModel.$navigation
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, let win = self.dashboardWindow, let vm = self.currentViewModel else { return }
+                    self.resizeWindowToFitContent(window: win, viewModel: vm)
+                }
+            }
         NSApp.setActivationPolicy(.regular)  // show dock icon
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @MainActor private func resizeWindowToFitContent(window: NSWindow, viewModel: DashboardViewModel) {
+        let height = idealContentHeight(for: viewModel, in: window)
+        let width = max(window.frame.width, 1050)
+        let old = window.frame
+        window.setFrame(
+            NSRect(x: old.origin.x, y: old.origin.y + old.height - height, width: width, height: height),
+            display: true, animate: false
+        )
+    }
+
+    @MainActor private func idealContentHeight(for viewModel: DashboardViewModel, in window: NSWindow) -> CGFloat {
+        let n = viewModel.accountStates.count
+        let screenMax = (window.screen?.visibleFrame.height ?? 1200) - 80
+        let raw: CGFloat
+        switch viewModel.navigation {
+        case .overview:
+            // header 50 + chart container (toolbar 36 + chart 300) + 2 dividers
+            // + legend rows (accounts + 1 Total) * 28 + separator + padding
+            raw = 50 + 336 + 2 + CGFloat(max(1, n + 1)) * 28 + 12 + 16
+        case .dashboard:
+            // header 50 + grid rows * (card ~320 + spacing 12) + outer padding 24
+            let cols = 2  // adaptive(min: 440) at 1050 width → 2 columns
+            let rows = max(1, (n + cols - 1) / cols)
+            raw = 50 + CGFloat(rows) * (320 + 12) + 24
+        case .accountDetail:
+            raw = 720
+        }
+        return max(450, min(raw, screenMax))
     }
 }
 

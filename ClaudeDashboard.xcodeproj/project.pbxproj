@@ -20,6 +20,7 @@
 		411CACBC4F1791E139BDF4BA /* AccountDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CC442D5CD274FE704D4AC0F /* AccountDetailViewModel.swift */; };
 		46ACA4D872B48395C5A010F6 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		4BA658DB89EAC4997E431C13 /* ClaudeCodeAccountDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CECA8F5BDB86E3741F82280 /* ClaudeCodeAccountDetector.swift */; };
+		4CA534BEA7CEF61184000A1A /* HoverableButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E104FF0D60CC558E8D93B0 /* HoverableButtonStyle.swift */; };
 		4E96F2399828773E0E34BC8A /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2535C231EBCF76F786F7B7E /* Account.swift */; };
 		5467470C8154768515DCC0EC /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BDD5471D1B082F49E424611 /* KeychainService.swift */; };
 		56CDB1C08E0C2EB2BED3CE7D /* AccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 268FCC5C51E46A928607748C /* AccountDetailView.swift */; };
@@ -82,6 +83,7 @@
 		1B626BA4B6B77C9127190E09 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAPIService.swift; sourceTree = "<group>"; };
 		23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreTests.swift; sourceTree = "<group>"; };
+		23E104FF0D60CC558E8D93B0 /* HoverableButtonStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverableButtonStyle.swift; sourceTree = "<group>"; };
 		268FCC5C51E46A928607748C /* AccountDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDetailView.swift; sourceTree = "<group>"; };
 		2A87EC4F90E188AAAFB660C3 /* AppVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersion.swift; sourceTree = "<group>"; };
 		2AA56B8E5252FD397123C6C2 /* OverviewChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewChartView.swift; sourceTree = "<group>"; };
@@ -221,6 +223,7 @@
 				ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */,
 				066B8B1E829B2024AB298464 /* SetupView.swift */,
 				36CFE6B80C6A187D9A176752 /* UsageBar.swift */,
+				B51AEE5520251B7CA6015A18 /* Components */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -259,6 +262,14 @@
 			);
 			name = Helper;
 			path = cli/Helper;
+			sourceTree = "<group>";
+		};
+		B51AEE5520251B7CA6015A18 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				23E104FF0D60CC558E8D93B0 /* HoverableButtonStyle.swift */,
+			);
+			path = Components;
 			sourceTree = "<group>";
 		};
 		B641D65413ACAD21C9A8FF6B /* Shared */ = {
@@ -447,6 +458,7 @@
 				0924D8F9139A4EE436ABEA8C /* CryptoService.swift in Sources */,
 				C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */,
 				A2A5D0F022E7A798045D105C /* DashboardWindow.swift in Sources */,
+				4CA534BEA7CEF61184000A1A /* HoverableButtonStyle.swift in Sources */,
 				04AD291FD33FFB834B40D945 /* InteractiveChartContainer.swift in Sources */,
 				5467470C8154768515DCC0EC /* KeychainService.swift in Sources */,
 				B38B8E482E1BC067FFD7AE74 /* MenuBarPopover.swift in Sources */,

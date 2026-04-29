@@ -7,6 +7,7 @@ struct AccountCard: View {
     var onTap: (() -> Void)? = nil
     var onRefresh: (() -> Void)? = nil
     var onRunCommand: (() -> Void)? = nil
+    var onOpenChart: ((UsageWindow) -> Void)? = nil
     var isActiveClaudeCodeAccount: Bool = false
     var isCompact: Bool = true
 
@@ -118,10 +119,10 @@ struct AccountCard: View {
 
     private func usageContent(_ usage: UsageData) -> some View {
         HStack(alignment: .top, spacing: isCompact ? 20 : 30) {
-            UsageBar(label: "5h", utilization: usage.fiveHour.utilization, resetsAt: usage.fiveHour.resetsAt, totalSeconds: 18000, animal: state.burnRates?.fiveHour?.animal, isCompact: isCompact)
-            UsageBar(label: "7d", utilization: usage.sevenDay.utilization, resetsAt: usage.sevenDay.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sevenDay?.animal, isCompact: isCompact)
+            UsageBar(label: "5h", utilization: usage.fiveHour.utilization, resetsAt: usage.fiveHour.resetsAt, totalSeconds: 18000, animal: state.burnRates?.fiveHour?.animal, isCompact: isCompact, onTap: onOpenChart.map { cb in { cb(.fiveHour) } })
+            UsageBar(label: "7d", utilization: usage.sevenDay.utilization, resetsAt: usage.sevenDay.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sevenDay?.animal, isCompact: isCompact, onTap: onOpenChart.map { cb in { cb(.sevenDay) } })
             if let sonnet = usage.sevenDaySonnet {
-                UsageBar(label: "S", utilization: sonnet.utilization, resetsAt: sonnet.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sonnet?.animal, showCountdown: false, isCompact: isCompact)
+                UsageBar(label: "S", utilization: sonnet.utilization, resetsAt: sonnet.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sonnet?.animal, showCountdown: false, isCompact: isCompact, onTap: onOpenChart.map { cb in { cb(.sonnet) } })
             }
         }
     }

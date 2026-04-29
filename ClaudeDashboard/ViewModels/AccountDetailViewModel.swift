@@ -17,11 +17,12 @@ final class AccountDetailViewModel: ObservableObject {
         return now.addingTimeInterval(-86400)...now
     }()
 
-    init(accountId: UUID, accountName: String, accountPlan: AccountPlan, logStore: UsageLogStore) {
+    init(accountId: UUID, accountName: String, accountPlan: AccountPlan, logStore: UsageLogStore, preselectedWindow: UsageWindow = .fiveHour) {
         self.accountId = accountId
         self.accountName = accountName
         self.accountPlan = accountPlan
         self.logStore = logStore
+        self.selectedWindow = preselectedWindow
     }
 
     func loadData() async {

@@ -30,7 +30,7 @@ struct OverviewChartView: View {
                 Button(action: onBack) {
                     Label("Back", systemImage: "chevron.left")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(HoverableButtonStyle(prominent: true))
 
                 Text("Overview")
                     .font(.title2.bold())
@@ -100,6 +100,7 @@ struct OverviewChartView: View {
         }
         .task { await loadLogs() }
         .onChange(of: selectedWindow) { _ in Task { await loadLogs() } }
+        .onChange(of: viewModel.lastLogsUpdatedAt) { _ in Task { await loadLogs() } }
     }
 
     // MARK: - Chart
@@ -297,27 +298,6 @@ struct OverviewChartView: View {
     private var legendView: some View {
         ScrollView {
             VStack(spacing: 4) {
-                // Total row
-                Button {
-                    showTotalLine.toggle()
-                } label: {
-                    HStack {
-                        Circle()
-                            .fill(showTotalLine ? Self.totalColor : Color.secondary.opacity(0.3))
-                            .frame(width: 8, height: 8)
-                        Text("Total")
-                            .font(.caption.bold())
-                            .foregroundStyle(showTotalLine ? .primary : .secondary)
-                        Text("(dashed)")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 4)
-                }
-                .buttonStyle(.plain)
-
                 ForEach(Array(viewModel.accountStates.enumerated()), id: \.element.id) { index, state in
                     let color = Self.lineColors[index % Self.lineColors.count]
                     let isSelected = selectedAccounts.contains(state.id)
@@ -353,11 +333,35 @@ struct OverviewChartView: View {
                         .padding(.horizontal)
                         .padding(.vertical, 4)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HoverableRowStyle(selected: isSelected))
                 }
+
+                Divider()
+                    .padding(.vertical, 2)
+
+                // Total row
+                Button {
+                    showTotalLine.toggle()
+                } label: {
+                    HStack {
+                        Circle()
+                            .fill(showTotalLine ? Self.totalColor : Color.secondary.opacity(0.3))
+                            .frame(width: 8, height: 8)
+                        Text("Total")
+                            .font(.caption.bold())
+                            .foregroundStyle(showTotalLine ? .primary : .secondary)
+                        Text("(dashed)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(HoverableRowStyle(selected: showTotalLine))
             }
         }
-        .frame(maxHeight: 120)
+        .frame(maxHeight: .infinity)
     }
 
     // MARK: - Data Helpers

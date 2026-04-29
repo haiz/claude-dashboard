@@ -31,6 +31,7 @@ struct MenuBarPopover: View {
     let onOpenWindow: () -> Void
     let onOpenOverview: () -> Void
     let onOpenSettings: () -> Void
+    let onOpenAccountDetail: (UUID, UsageWindow) -> Void
 
     @State private var scrollAnchorId: UUID? = nil
     @State private var runCommandAccount: Account? = nil
@@ -97,6 +98,11 @@ struct MenuBarPopover: View {
                                         onTogglePin: { viewModel.togglePin(for: state.id) },
                                         onRefresh: { Task { await viewModel.refreshAll() } },
                                         onRunCommand: { runCommandAccount = state.account },
+                                        onOpenChart: { window in
+                                            let popover = NSApp.keyWindow
+                                            onOpenAccountDetail(state.id, window)
+                                            popover?.close()
+                                        },
                                         isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
                                         isCompact: true
                                     )
@@ -140,12 +146,8 @@ struct MenuBarPopover: View {
                     Label("Quit Claude Dashboard", systemImage: "power")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.quaternary)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(HoverableButtonStyle())
 
                 Spacer()
             }

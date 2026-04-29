@@ -10,16 +10,19 @@ struct DashboardWindow: View {
             switch viewModel.navigation {
             case .dashboard:
                 dashboardContent
-            case .accountDetail(let accountId):
+            case .accountDetail(let accountId, let preselectedWindow):
                 if let state = viewModel.accountStates.first(where: { $0.id == accountId }) {
                     AccountDetailView(
                         viewModel: AccountDetailViewModel(
                             accountId: accountId,
                             accountName: state.account.name,
                             accountPlan: state.account.plan,
-                            logStore: viewModel.logStore
+                            logStore: viewModel.logStore,
+                            preselectedWindow: preselectedWindow
                         ),
-                        onBack: { viewModel.navigation = .dashboard }
+                        dashboardViewModel: viewModel,
+                        onBack: { viewModel.navigation = .dashboard },
+                        onAllAccounts: { viewModel.navigation = .overview }
                     )
                 }
             case .overview:
@@ -29,7 +32,7 @@ struct DashboardWindow: View {
                 )
             }
         }
-        .frame(minWidth: 600, minHeight: 450)
+        .frame(minWidth: 1050, minHeight: 450)
         .sheet(isPresented: $viewModel.isPresentingSettings) {
             SettingsView(viewModel: viewModel)
         }
@@ -58,18 +61,21 @@ struct DashboardWindow: View {
                     Button(action: { viewModel.navigation = .overview }) {
                         Label("Overview", systemImage: "chart.xyaxis.line")
                     }
+                    .buttonStyle(HoverableButtonStyle(prominent: true))
 
                     Button(action: {
                         Task { await viewModel.refreshAll() }
                     }) {
                         Label("Refresh", systemImage: "arrow.clockwise")
                     }
+                    .buttonStyle(HoverableButtonStyle(prominent: true))
                     .disabled(viewModel.isRefreshing)
                 }
 
                 Button(action: { viewModel.isPresentingSettings = true }) {
                     Label("Settings", systemImage: "gearshape")
                 }
+                .buttonStyle(HoverableButtonStyle(prominent: true))
             }
             .padding()
 
@@ -90,9 +96,9 @@ struct DashboardWindow: View {
                                 state: state,
                                 onResync: { Task { await viewModel.resyncAccount(state.id) } },
                                 onTogglePin: { viewModel.togglePin(for: state.id) },
-                                onTap: { viewModel.navigation = .accountDetail(state.id) },
                                 onRefresh: { Task { await viewModel.refreshAll() } },
                                 onRunCommand: { runCommandAccount = state.account },
+                                onOpenChart: { window in viewModel.navigation = .accountDetail(state.id, window) },
                                 isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
                                 isCompact: false
                             )

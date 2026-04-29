@@ -153,7 +153,7 @@ struct SettingsView: View {
             }) {
                 Image(systemName: "trash")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(HoverableButtonStyle(horizontalPadding: 6, verticalPadding: 4))
             .foregroundStyle(.red)
         }
         .padding(.vertical, 2)

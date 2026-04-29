@@ -3,7 +3,9 @@ import Charts
 
 struct AccountDetailView: View {
     @StateObject var viewModel: AccountDetailViewModel
+    @ObservedObject var dashboardViewModel: DashboardViewModel
     let onBack: () -> Void
+    let onAllAccounts: () -> Void
 
     @State private var hoverDate: Date?
     @State private var hoverX: CGFloat = 0
@@ -17,7 +19,12 @@ struct AccountDetailView: View {
                 Button(action: onBack) {
                     Label("Back", systemImage: "chevron.left")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(HoverableButtonStyle(prominent: true))
+
+                Button(action: onAllAccounts) {
+                    Label("All accounts", systemImage: "rectangle.grid.2x2")
+                }
+                .buttonStyle(HoverableButtonStyle(prominent: true))
 
                 Text(viewModel.accountName)
                     .font(.title2.bold())
@@ -79,7 +86,7 @@ struct AccountDetailView: View {
                             Button("Show All") {
                                 viewModel.selectCycle(nil)
                             }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(HoverableButtonStyle(verticalPadding: 3))
                             .font(.caption)
                         }
                     }
@@ -93,6 +100,9 @@ struct AccountDetailView: View {
             }
         }
         .task { await viewModel.loadData() }
+        .onChange(of: dashboardViewModel.lastLogsUpdatedAt) { _ in
+            Task { await viewModel.loadData() }
+        }
     }
 
     private var usageChart: some View {
@@ -276,9 +286,8 @@ struct AccountDetailView: View {
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 8)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HoverableRowStyle())
 
             // Collapsible content
             if cyclesExpanded {
@@ -304,13 +313,8 @@ struct AccountDetailView: View {
                                 }
                                 .padding(.horizontal)
                                 .padding(.vertical, 6)
-                                .background(
-                                    viewModel.selectedCycle?.resetsAt == cycle.resetsAt
-                                        ? Color.accentColor.opacity(0.1)
-                                        : Color.clear
-                                )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(HoverableRowStyle(selected: viewModel.selectedCycle?.resetsAt == cycle.resetsAt))
                         }
                     }
                 }

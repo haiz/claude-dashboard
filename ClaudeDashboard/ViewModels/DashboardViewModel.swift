@@ -26,12 +26,13 @@ final class DashboardViewModel: ObservableObject {
 
     enum NavigationDestination: Equatable {
         case dashboard
-        case accountDetail(UUID)
+        case accountDetail(UUID, UsageWindow)
         case overview
     }
 
     @Published var navigation: NavigationDestination = .dashboard
     @Published var isPresentingSettings = false
+    @Published var lastLogsUpdatedAt: Date = .distantPast
 
     let accountStore: AccountStore
     private let apiService: UsageAPIService
@@ -239,6 +240,7 @@ final class DashboardViewModel: ObservableObject {
 
         // Sort: pinned > (active Claude Code if no pin) > burn rate
         sortStates()
+        lastLogsUpdatedAt = Date()
     }
 
     func resyncAccount(_ accountId: UUID) async {
