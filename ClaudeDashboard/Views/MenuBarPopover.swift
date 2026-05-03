@@ -37,7 +37,6 @@ struct MenuBarPopover: View {
     @State private var runCommandAccount: Account? = nil
 
     var body: some View {
-        ZStack {
         VStack(spacing: 0) {
             // Update banner shown while downloading/installing
             if case .downloading = updateViewModel.state {
@@ -87,53 +86,28 @@ struct MenuBarPopover: View {
             if viewModel.accountStates.isEmpty {
                 emptyState
             } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 8) {
-                            ForEach(viewModel.accountStates) { state in
-                                HStack(spacing: 0) {
-                                    AccountCard(
-                                        state: state,
-                                        onResync: { Task { await viewModel.resyncAccount(state.id) } },
-                                        onTogglePin: { viewModel.togglePin(for: state.id) },
-                                        onRefresh: { Task { await viewModel.refreshAll() } },
-                                        onRunCommand: { runCommandAccount = state.account },
-                                        onOpenChart: { window in
-                                            let popover = NSApp.keyWindow
-                                            onOpenAccountDetail(state.id, window)
-                                            popover?.close()
-                                        },
-                                        isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
-                                        isCompact: true
-                                    )
-                                    .fixedSize(horizontal: true, vertical: false)
-                                    Spacer(minLength: 0)
-                                }
-                                .id(state.id)
-                                .background(
-                                    GeometryReader { geo in
-                                        Color.clear.preference(
-                                            key: ScrollItemOffsetKey.self,
-                                            value: [state.id: geo.frame(in: .named("popoverScroll")).minY]
-                                        )
-                                    }
-                                )
-                            }
-                        }
-                        .padding(12)
-                    }
-                    .coordinateSpace(name: "popoverScroll")
-                    .onPreferenceChange(ScrollItemOffsetKey.self) { positions in
-                        let topItem = positions.filter { $0.value >= -10 }.min { $0.value < $1.value }
-                        if let topItem {
-                            scrollAnchorId = topItem.key
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(viewModel.accountStates) { state in
+                            AccountCard(
+                                state: state,
+                                onResync: { Task { await viewModel.resyncAccount(state.id) } },
+                                onTogglePin: { viewModel.togglePin(for: state.id) },
+                                onRefresh: { Task { await viewModel.refreshAll() } },
+                                onRunCommand: { runCommandAccount = state.account },
+                                onOpenChart: { window in
+                                    let popover = NSApp.keyWindow
+                                    onOpenAccountDetail(state.id, window)
+                                    popover?.close()
+                                },
+                                isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
+                                isCompact: true
+                            )
                         }
                     }
-                    .onChange(of: viewModel.accountStates.map { $0.id }) { _ in
-                        guard let id = scrollAnchorId else { return }
-                        DispatchQueue.main.async { proxy.scrollTo(id, anchor: .top) }
-                    }
+                    .padding(12)
                 }
+                .frame(maxHeight: 400)
             }
 
             Divider()
@@ -155,27 +129,29 @@ struct MenuBarPopover: View {
             .padding(.vertical, 8)
         }
         .frame(width: 320)
-        .frame(maxHeight: 500)
+        .fixedSize(horizontal: false, vertical: true)
+        .overlay {
+            if let account = runCommandAccount {
+                ZStack {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .onTapGesture { runCommandAccount = nil }
 
-        if let account = runCommandAccount {
-            Color.black.opacity(0.4)
-                .ignoresSafeArea()
-                .onTapGesture { runCommandAccount = nil }
-
-            RunCommandSheet(
-                account: account,
-                isPresented: Binding(
-                    get: { runCommandAccount != nil },
-                    set: { if !$0 { runCommandAccount = nil } }
-                ),
-                onRefresh: { Task { await viewModel.refreshAll() } }
-            )
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .padding(12)
-            .frame(width: 320)
+                    RunCommandSheet(
+                        account: account,
+                        isPresented: Binding(
+                            get: { runCommandAccount != nil },
+                            set: { if !$0 { runCommandAccount = nil } }
+                        ),
+                        onRefresh: { Task { await viewModel.refreshAll() } }
+                    )
+                    .background(.regularMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(12)
+                    .frame(width: 320)
+                }
+            }
         }
-        } // ZStack
     }
 
     private var updateBanner: some View {
