@@ -12,6 +12,7 @@ final class AccountDetailViewModel: ObservableObject {
     @Published var logs: [UsageLogEntry] = []
     @Published var resetCycles: [ResetCycle] = []
     @Published var selectedCycle: ResetCycle?
+    @Published var fiveHourResetMarkers: [Date] = []
     @Published var visibleRange: ClosedRange<Date> = {
         let now = Date()
         return now.addingTimeInterval(-86400)...now
@@ -25,7 +26,7 @@ final class AccountDetailViewModel: ObservableObject {
         self.selectedWindow = preselectedWindow
     }
 
-    func loadData() async {
+    func loadData(keepRange: Bool = false) async {
         let cycles = await logStore.resetCycles(accountId: accountId, window: selectedWindow)
         resetCycles = cycles
 
@@ -37,10 +38,12 @@ final class AccountDetailViewModel: ObservableObject {
             )
             logs = cycleLogs.withResetTransitions()
         } else {
-            // Refresh range to current time so we always include the latest data
-            let duration = visibleRange.upperBound.timeIntervalSince(visibleRange.lowerBound)
-            let now = Date()
-            visibleRange = now.addingTimeInterval(-duration)...now
+            if !keepRange {
+                // Refresh range to current time so we always include the latest data
+                let duration = visibleRange.upperBound.timeIntervalSince(visibleRange.lowerBound)
+                let now = Date()
+                visibleRange = now.addingTimeInterval(-duration)...now
+            }
 
             let allLogs = await logStore.logs(
                 accountId: accountId, window: selectedWindow,
@@ -48,17 +51,24 @@ final class AccountDetailViewModel: ObservableObject {
             )
             logs = allLogs.withResetTransitions()
         }
+
+        if selectedWindow == .sevenDay {
+            let fiveHourCycles = await logStore.resetCycles(accountId: accountId, window: .fiveHour)
+            fiveHourResetMarkers = fiveHourCycles.map { $0.resetsAt }.filter { visibleRange.contains($0) }
+        } else {
+            fiveHourResetMarkers = []
+        }
     }
 
     func updateRange(_ range: ClosedRange<Date>) {
         visibleRange = range
-        Task { await loadData() }
+        Task { await loadData(keepRange: true) }
     }
 
     func selectWindow(_ window: UsageWindow) {
         selectedWindow = window
         selectedCycle = nil
-        Task { await loadData() }
+        Task { await loadData(keepRange: true) }
     }
 
     func selectCycle(_ cycle: ResetCycle?) {

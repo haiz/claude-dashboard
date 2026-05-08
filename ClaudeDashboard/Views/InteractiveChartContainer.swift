@@ -33,7 +33,7 @@ enum TimeRangePreset: String, CaseIterable, Identifiable {
 struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
     // MARK: External
 
-    let chartContent: () -> ChartContent
+    let chartContent: (ClosedRange<Date>) -> ChartContent
     let toolbarExtra: () -> ToolbarExtra
     let dataPoints: [UsageLogEntry]
     let averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)?
@@ -56,7 +56,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         chartHeight: CGFloat = 300,
         averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)? = nil,
         onRangeChanged: @escaping (ClosedRange<Date>) -> Void,
-        @ViewBuilder chartContent: @escaping () -> ChartContent,
+        @ViewBuilder chartContent: @escaping (ClosedRange<Date>) -> ChartContent,
         @ViewBuilder toolbarExtra: @escaping () -> ToolbarExtra
     ) {
         self.dataPoints = dataPoints
@@ -148,7 +148,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         GeometryReader { geometry in
             ZStack(alignment: .topTrailing) {
                 // Chart content — gesture applied here so onContinuousHover in chartOverlay still works
-                chartContent()
+                chartContent(visibleRange)
                     .simultaneousGesture(combinedGesture(geometry: geometry))
 
                 // Zoom selection highlight (drawn on top during zoom drag)

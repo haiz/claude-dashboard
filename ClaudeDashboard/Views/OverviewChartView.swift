@@ -77,8 +77,8 @@ struct OverviewChartView: View {
                         visibleRange = range
                         Task { await loadLogs(range: range) }
                     },
-                    chartContent: {
-                        overviewChart
+                    chartContent: { range in
+                        overviewChart(range: range)
                     },
                     toolbarExtra: {
                         Picker("Window", selection: $selectedWindow) {
@@ -99,13 +99,13 @@ struct OverviewChartView: View {
             legendView
         }
         .task { await loadLogs() }
-        .onChange(of: selectedWindow) { _ in Task { await loadLogs() } }
-        .onChange(of: viewModel.lastLogsUpdatedAt) { _ in Task { await loadLogs() } }
+        .onChange(of: selectedWindow) { _ in Task { await loadLogs(range: visibleRange) } }
+        .onChange(of: viewModel.lastLogsUpdatedAt) { _ in Task { await loadLogs(range: visibleRange) } }
     }
 
     // MARK: - Chart
 
-    private var overviewChart: some View {
+    private func overviewChart(range: ClosedRange<Date>) -> some View {
         ZStack(alignment: hoverX > chartWidth / 2 ? .topLeading : .topTrailing) {
             Chart {
                 // Per-account lines
@@ -149,11 +149,30 @@ struct OverviewChartView: View {
                     }
                 }
 
+                ForEach(noonMarkers(in: range), id: \.self) { noon in
+                    RuleMark(x: .value("Noon", noon))
+                        .foregroundStyle(.secondary.opacity(0.15))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 4]))
+                }
+
                 // Hover vertical line
                 if let hoverDate {
                     RuleMark(x: .value("Hover", hoverDate))
                         .foregroundStyle(.secondary.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                }
+            }
+            .chartXScale(domain: range.lowerBound...range.upperBound)
+            .chartXAxis {
+                let marks = axisMarkDates(for: range)
+                AxisMarks(values: marks) { value in
+                    AxisGridLine()
+                    if let date = value.as(Date.self) {
+                        AxisValueLabel {
+                            Text(axisLabel(for: date, in: range))
+                                .font(.caption2)
+                        }
+                    }
                 }
             }
             .chartForegroundStyleScale(domain: chartColorDomain, range: chartColorRange)
@@ -308,7 +327,7 @@ struct OverviewChartView: View {
                         } else {
                             selectedAccounts.insert(state.id)
                         }
-                        Task { await loadLogs() }
+                        Task { await loadLogs(range: visibleRange) }
                     } label: {
                         HStack {
                             Circle()
@@ -432,6 +451,61 @@ struct OverviewChartView: View {
         case .sevenDay: return rates?.sevenDay?.animal
         case .sonnet: return rates?.sonnet?.animal
         }
+    }
+
+    private func axisMarkDates(for range: ClosedRange<Date>) -> [Date] {
+        let duration = range.upperBound.timeIntervalSince(range.lowerBound)
+        let cal = Calendar.current
+        var dates: [Date] = []
+        if duration <= 6 * 3600 {
+            var comps = cal.dateComponents([.year, .month, .day, .hour], from: range.lowerBound)
+            comps.minute = 0
+            var t = cal.date(from: comps)!
+            if t < range.lowerBound { t = cal.date(byAdding: .hour, value: 1, to: t)! }
+            while t <= range.upperBound {
+                dates.append(t)
+                t = cal.date(byAdding: .hour, value: 1, to: t)!
+            }
+        } else {
+            let includeNoon = duration <= 7 * 86400
+            var day = cal.startOfDay(for: range.lowerBound)
+            while day <= range.upperBound {
+                if day >= range.lowerBound { dates.append(day) }
+                if includeNoon,
+                   let noon = cal.date(bySettingHour: 12, minute: 0, second: 0, of: day),
+                   noon >= range.lowerBound, noon <= range.upperBound {
+                    dates.append(noon)
+                }
+                day = cal.date(byAdding: .day, value: 1, to: day)!
+            }
+        }
+        return dates.sorted()
+    }
+
+    private func axisLabel(for date: Date, in range: ClosedRange<Date>) -> String {
+        let duration = range.upperBound.timeIntervalSince(range.lowerBound)
+        let df = DateFormatter()
+        if duration <= 6 * 3600 {
+            df.dateFormat = "ha"
+            return df.string(from: date)
+        }
+        let hour = Calendar.current.component(.hour, from: date)
+        df.dateFormat = hour == 0 ? "MMM d" : "MMM d ha"
+        return df.string(from: date)
+    }
+
+    private func noonMarkers(in range: ClosedRange<Date>) -> [Date] {
+        let cal = Calendar.current
+        var result: [Date] = []
+        var day = cal.startOfDay(for: range.lowerBound)
+        while day <= range.upperBound {
+            if let noon = cal.date(bySettingHour: 12, minute: 0, second: 0, of: day),
+               range.contains(noon) {
+                result.append(noon)
+            }
+            day = cal.date(byAdding: .day, value: 1, to: day)!
+        }
+        return result
     }
 
     private func loadLogs(range: ClosedRange<Date>? = nil) async {

@@ -66,8 +66,8 @@ struct AccountDetailView: View {
                     onRangeChanged: { range in
                         viewModel.updateRange(range)
                     },
-                    chartContent: {
-                        usageChart
+                    chartContent: { range in
+                        usageChart(range: range)
                     },
                     toolbarExtra: {
                         Picker("Window", selection: Binding(
@@ -101,13 +101,92 @@ struct AccountDetailView: View {
         }
         .task { await viewModel.loadData() }
         .onChange(of: dashboardViewModel.lastLogsUpdatedAt) { _ in
-            Task { await viewModel.loadData() }
+            Task { await viewModel.loadData(keepRange: true) }
         }
     }
 
-    private var usageChart: some View {
+    private func axisMarkDates(for range: ClosedRange<Date>) -> [Date] {
+        let duration = range.upperBound.timeIntervalSince(range.lowerBound)
+        let cal = Calendar.current
+        var dates: [Date] = []
+        if duration <= 6 * 3600 {
+            var comps = cal.dateComponents([.year, .month, .day, .hour], from: range.lowerBound)
+            comps.minute = 0
+            var t = cal.date(from: comps)!
+            if t < range.lowerBound { t = cal.date(byAdding: .hour, value: 1, to: t)! }
+            while t <= range.upperBound {
+                dates.append(t)
+                t = cal.date(byAdding: .hour, value: 1, to: t)!
+            }
+        } else {
+            let includeNoon = duration <= 7 * 86400
+            var day = cal.startOfDay(for: range.lowerBound)
+            while day <= range.upperBound {
+                if day >= range.lowerBound { dates.append(day) }
+                if includeNoon,
+                   let noon = cal.date(bySettingHour: 12, minute: 0, second: 0, of: day),
+                   noon >= range.lowerBound, noon <= range.upperBound {
+                    dates.append(noon)
+                }
+                day = cal.date(byAdding: .day, value: 1, to: day)!
+            }
+        }
+        return dates.sorted()
+    }
+
+    private func axisLabel(for date: Date, in range: ClosedRange<Date>) -> String {
+        let duration = range.upperBound.timeIntervalSince(range.lowerBound)
+        let df = DateFormatter()
+        if duration <= 6 * 3600 {
+            df.dateFormat = "ha"
+            return df.string(from: date)
+        }
+        let hour = Calendar.current.component(.hour, from: date)
+        df.dateFormat = hour == 0 ? "MMM d" : "MMM d ha"
+        return df.string(from: date)
+    }
+
+    private func noonMarkers(in range: ClosedRange<Date>) -> [Date] {
+        let cal = Calendar.current
+        var result: [Date] = []
+        var day = cal.startOfDay(for: range.lowerBound)
+        while day <= range.upperBound {
+            if let noon = cal.date(bySettingHour: 12, minute: 0, second: 0, of: day),
+               range.contains(noon) {
+                result.append(noon)
+            }
+            day = cal.date(byAdding: .day, value: 1, to: day)!
+        }
+        return result
+    }
+
+    private var chartDayBands: [(index: Int, start: Date, end: Date)] {
+        guard let first = viewModel.logs.map(\.recordedAt).min(),
+              let last = viewModel.logs.map(\.recordedAt).max() else { return [] }
+        let cal = Calendar.current
+        var bands: [(start: Date, end: Date)] = []
+        var day = cal.startOfDay(for: first)
+        while day < last {
+            let next = cal.date(byAdding: .day, value: 1, to: day)!
+            bands.append((start: day, end: next))
+            day = next
+        }
+        return bands.enumerated().map { (index: $0.offset, start: $0.element.start, end: $0.element.end) }
+    }
+
+    private func usageChart(range: ClosedRange<Date>) -> some View {
         ZStack(alignment: hoverX > chartWidth / 2 ? .topLeading : .topTrailing) {
             Chart {
+                ForEach(chartDayBands, id: \.index) { band in
+                    if band.index % 2 == 1 {
+                        RectangleMark(
+                            xStart: .value("DayStart", band.start),
+                            xEnd: .value("DayEnd", band.end)
+                        )
+                        .foregroundStyle(.primary.opacity(0.04))
+                    }
+                }
+
                 ForEach(viewModel.logs) { log in
                     LineMark(
                         x: .value("Time", log.recordedAt),
@@ -129,15 +208,42 @@ struct AccountDetailView: View {
                     }
                 }
 
+                ForEach(noonMarkers(in: range), id: \.self) { noon in
+                    RuleMark(x: .value("Noon", noon))
+                        .foregroundStyle(.secondary.opacity(0.15))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 4]))
+                }
+
                 RuleMark(y: .value("Limit", 100))
                     .foregroundStyle(.red.opacity(0.3))
                     .lineStyle(StrokeStyle(dash: [5, 5]))
+
+                if viewModel.selectedWindow == .sevenDay {
+                    ForEach(viewModel.fiveHourResetMarkers, id: \.self) { resetTime in
+                        RuleMark(x: .value("5h reset", resetTime))
+                            .foregroundStyle(.secondary.opacity(0.2))
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 4]))
+                    }
+                }
 
                 // Hover vertical line
                 if let hoverDate {
                     RuleMark(x: .value("Hover", hoverDate))
                         .foregroundStyle(.secondary.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                }
+            }
+            .chartXScale(domain: range.lowerBound...range.upperBound)
+            .chartXAxis {
+                let marks = axisMarkDates(for: range)
+                AxisMarks(values: marks) { value in
+                    AxisGridLine()
+                    if let date = value.as(Date.self) {
+                        AxisValueLabel {
+                            Text(axisLabel(for: date, in: range))
+                                .font(.caption2)
+                        }
+                    }
                 }
             }
             .chartYScale(domain: 0...105)
