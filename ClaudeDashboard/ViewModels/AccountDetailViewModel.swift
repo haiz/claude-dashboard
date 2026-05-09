@@ -49,12 +49,23 @@ final class AccountDetailViewModel: ObservableObject {
                 accountId: accountId, window: selectedWindow,
                 from: visibleRange.lowerBound, to: visibleRange.upperBound
             )
-            logs = allLogs.withResetTransitions()
+            let bufferBefore = await logStore.logsBefore(accountId: accountId, window: selectedWindow, before: visibleRange.lowerBound, limit: 2)
+            let bufferAfter = await logStore.logsAfter(accountId: accountId, window: selectedWindow, after: visibleRange.upperBound, limit: 2)
+            logs = (bufferBefore + allLogs + bufferAfter).withResetTransitions()
         }
 
         if selectedWindow == .sevenDay {
             let fiveHourCycles = await logStore.resetCycles(accountId: accountId, window: .fiveHour)
-            fiveHourResetMarkers = fiveHourCycles.map { $0.resetsAt }.filter { visibleRange.contains($0) }
+            let candidates = fiveHourCycles.map { $0.resetsAt }
+                .filter { visibleRange.contains($0) }
+                .sorted()
+            // Deduplicate: keep one marker per 30-minute window (API jitter produces near-duplicate resetsAt)
+            var deduped: [Date] = []
+            for date in candidates {
+                if let last = deduped.last, date.timeIntervalSince(last) < 1800 { continue }
+                deduped.append(date)
+            }
+            fiveHourResetMarkers = deduped
         } else {
             fiveHourResetMarkers = []
         }

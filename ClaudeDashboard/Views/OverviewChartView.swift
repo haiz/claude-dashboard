@@ -525,7 +525,12 @@ struct OverviewChartView: View {
         }
 
         let store = viewModel.logStore
-        logs = await store.allLogs(window: selectedWindow, from: effectiveRange.lowerBound, to: effectiveRange.upperBound)
-            .withResetTransitions()
+        let rangeLogs = await store.allLogs(window: selectedWindow, from: effectiveRange.lowerBound, to: effectiveRange.upperBound)
+        var borderLogs: [UsageLogEntry] = []
+        for accountId in viewModel.accountStates.map(\.id) {
+            borderLogs += await store.logsBefore(accountId: accountId, window: selectedWindow, before: effectiveRange.lowerBound, limit: 2)
+            borderLogs += await store.logsAfter(accountId: accountId, window: selectedWindow, after: effectiveRange.upperBound, limit: 2)
+        }
+        logs = (rangeLogs + borderLogs).sorted { $0.recordedAt < $1.recordedAt }.withResetTransitions()
     }
 }

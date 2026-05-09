@@ -152,6 +152,58 @@ actor UsageLogStore {
         return results
     }
 
+    // Returns up to `limit` entries just before `before`, ordered ASC.
+    func logsBefore(accountId: UUID, window: UsageWindow, before: Date, limit: Int) -> [UsageLogEntry] {
+        guard let aid = lookupAccountId(accountId) else { return [] }
+        let sql = "SELECT id, t, u, lim, rat FROM usage_logs WHERE aid = ? AND w = ? AND t < ? ORDER BY t DESC LIMIT ?"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(aid))
+        sqlite3_bind_int(stmt, 2, Int32(window.rawValue))
+        sqlite3_bind_int64(stmt, 3, Int64(before.timeIntervalSince1970))
+        sqlite3_bind_int(stmt, 4, Int32(limit))
+        var results: [UsageLogEntry] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            results.append(UsageLogEntry(
+                id: sqlite3_column_int64(stmt, 0),
+                accountId: accountId,
+                window: window,
+                resetsAt: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 4))),
+                recordedAt: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 1))),
+                utilization: Double(sqlite3_column_int64(stmt, 2)) / 100.0,
+                isLimited: sqlite3_column_int(stmt, 3) != 0
+            ))
+        }
+        return results.reversed()
+    }
+
+    // Returns up to `limit` entries just after `after`, ordered ASC.
+    func logsAfter(accountId: UUID, window: UsageWindow, after: Date, limit: Int) -> [UsageLogEntry] {
+        guard let aid = lookupAccountId(accountId) else { return [] }
+        let sql = "SELECT id, t, u, lim, rat FROM usage_logs WHERE aid = ? AND w = ? AND t > ? ORDER BY t ASC LIMIT ?"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(aid))
+        sqlite3_bind_int(stmt, 2, Int32(window.rawValue))
+        sqlite3_bind_int64(stmt, 3, Int64(after.timeIntervalSince1970))
+        sqlite3_bind_int(stmt, 4, Int32(limit))
+        var results: [UsageLogEntry] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            results.append(UsageLogEntry(
+                id: sqlite3_column_int64(stmt, 0),
+                accountId: accountId,
+                window: window,
+                resetsAt: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 4))),
+                recordedAt: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 1))),
+                utilization: Double(sqlite3_column_int64(stmt, 2)) / 100.0,
+                isLimited: sqlite3_column_int(stmt, 3) != 0
+            ))
+        }
+        return results
+    }
+
     func deleteOlderThan(_ date: Date) {
         let timestamp = Int64(date.timeIntervalSince1970)
         let sql = "DELETE FROM usage_logs WHERE t < ?"

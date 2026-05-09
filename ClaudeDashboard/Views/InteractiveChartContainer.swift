@@ -39,6 +39,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
     let averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)?
     let onRangeChanged: (ClosedRange<Date>) -> Void
     let chartHeight: CGFloat
+    let isInteractionDisabled: Bool
 
     // MARK: State
 
@@ -54,6 +55,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         initialPreset: TimeRangePreset = .day,
         dataPoints: [UsageLogEntry],
         chartHeight: CGFloat = 300,
+        isInteractionDisabled: Bool = false,
         averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)? = nil,
         onRangeChanged: @escaping (ClosedRange<Date>) -> Void,
         @ViewBuilder chartContent: @escaping (ClosedRange<Date>) -> ChartContent,
@@ -61,6 +63,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
     ) {
         self.dataPoints = dataPoints
         self.chartHeight = chartHeight
+        self.isInteractionDisabled = isInteractionDisabled
         self.averageRateProvider = averageRateProvider
         self.onRangeChanged = onRangeChanged
         self.chartContent = chartContent
@@ -85,30 +88,34 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
 
     private var toolbar: some View {
         HStack(spacing: 6) {
-            // Mode toggle
-            Button {
-                mode = (mode == .pan) ? .zoom : .pan
-            } label: {
-                Image(systemName: mode == .pan ? "hand.raised" : "magnifyingglass")
-                    .frame(width: 20, height: 20)
-            }
-            .buttonStyle(.borderless)
-            .help(mode == .pan ? "Switch to zoom mode" : "Switch to pan mode")
+            Group {
+                // Mode toggle
+                Button {
+                    mode = (mode == .pan) ? .zoom : .pan
+                } label: {
+                    Image(systemName: mode == .pan ? "hand.raised" : "magnifyingglass")
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.borderless)
+                .help(mode == .pan ? "Switch to zoom mode" : "Switch to pan mode")
 
-            Divider().frame(height: 16)
+                Divider().frame(height: 16)
 
-            // Preset buttons
-            ForEach(TimeRangePreset.allCases) { preset in
-                presetButton(preset)
-            }
+                // Preset buttons
+                ForEach(TimeRangePreset.allCases) { preset in
+                    presetButton(preset)
+                }
 
-            // Custom indicator
-            if selectedPreset == nil {
-                Text("Custom")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
+                // Custom indicator
+                if selectedPreset == nil {
+                    Text("Custom")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                }
             }
+            .disabled(isInteractionDisabled)
+            .opacity(isInteractionDisabled ? 0.4 : 1)
 
             Spacer()
 
@@ -149,7 +156,10 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
             ZStack(alignment: .topTrailing) {
                 // Chart content — gesture applied here so onContinuousHover in chartOverlay still works
                 chartContent(visibleRange)
-                    .simultaneousGesture(combinedGesture(geometry: geometry))
+                    .simultaneousGesture(
+                        combinedGesture(geometry: geometry),
+                        including: isInteractionDisabled ? .subviews : .all
+                    )
 
                 // Zoom selection highlight (drawn on top during zoom drag)
                 if mode == .zoom, let zsr = zoomSelectionRange {

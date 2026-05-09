@@ -35,6 +35,7 @@ struct MenuBarPopover: View {
 
     @State private var scrollAnchorId: UUID? = nil
     @State private var runCommandAccount: Account? = nil
+    @State private var showHelp = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -70,6 +71,11 @@ struct MenuBarPopover: View {
                     onOpenOverview()
                     popover?.close()
                 }
+
+                HeaderIconButton(systemName: "questionmark.circle") {
+                    showHelp = true
+                }
+                .help("Help")
 
                 HeaderIconButton(systemName: "gearshape") {
                     let popover = NSApp.keyWindow
@@ -130,6 +136,9 @@ struct MenuBarPopover: View {
         }
         .frame(width: 320)
         .fixedSize(horizontal: false, vertical: true)
+        .sheet(isPresented: $showHelp) {
+            HelpView()
+        }
         .overlay {
             if let account = runCommandAccount {
                 ZStack {
