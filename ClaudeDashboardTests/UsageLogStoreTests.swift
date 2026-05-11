@@ -117,6 +117,7 @@ final class UsageLogStoreTests: XCTestCase {
 
         await store.record(accountId: accountId, window: .fiveHour, resetsAt: reset1, utilization: 30.0, isLimited: false)
         await store.record(accountId: accountId, window: .fiveHour, resetsAt: reset1, utilization: 60.0, isLimited: false)
+        await store.record(accountId: accountId, window: .fiveHour, resetsAt: reset2, utilization: 0.0, isLimited: false)
         await store.record(accountId: accountId, window: .fiveHour, resetsAt: reset2, utilization: 10.0, isLimited: false)
 
         let cycles = await store.resetCycles(accountId: accountId, window: .fiveHour)

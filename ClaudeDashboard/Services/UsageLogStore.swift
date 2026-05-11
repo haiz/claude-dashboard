@@ -160,8 +160,8 @@ actor UsageLogStore {
             if prev.u > 0 && curr.u == 0 {
                 cycles.append((firstT: cycleStart, lastT: prev.t, peakU: peakU, count: count, resetAt: curr.t))
                 cycleStart = curr.t
-                peakU = curr.u
-                count = 1
+                peakU = 0
+                count = 0  // u=0 is the reset event; don't count it as data in the new cycle
             } else {
                 peakU = max(peakU, curr.u)
                 count += 1
