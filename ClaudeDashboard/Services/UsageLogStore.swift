@@ -127,11 +127,10 @@ actor UsageLogStore {
 
     func resetCycles(accountId: UUID, window: UsageWindow) -> [ResetCycle] {
         guard let aid = lookupAccountId(accountId) else { return [] }
-        let sql = """
-            SELECT rat, MIN(t), MAX(t), MAX(u), COUNT(*)
-            FROM usage_logs WHERE aid = ? AND w = ?
-            GROUP BY rat ORDER BY rat DESC
-        """
+        // The API returns resetsAt = now + 5h (rolling), so GROUP BY rat produces one
+        // "cycle" per poll. Instead, detect actual resets by utilization dropping to 0
+        // from non-zero between consecutive logs.
+        let sql = "SELECT t, u, rat FROM usage_logs WHERE aid = ? AND w = ? ORDER BY t ASC"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
@@ -139,17 +138,47 @@ actor UsageLogStore {
         sqlite3_bind_int64(stmt, 1, Int64(aid))
         sqlite3_bind_int(stmt, 2, Int32(window.rawValue))
 
-        var results: [ResetCycle] = []
+        struct Row { let t: Int64; let u: Int64; let rat: Int64 }
+        var rows: [Row] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
-            results.append(ResetCycle(
-                resetsAt: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 0))),
-                firstRecordedAt: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 1))),
-                lastRecordedAt: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 2))),
-                peakUtilization: Double(sqlite3_column_int64(stmt, 3)) / 100.0,
-                dataPointCount: Int(sqlite3_column_int(stmt, 4))
+            rows.append(Row(
+                t: sqlite3_column_int64(stmt, 0),
+                u: sqlite3_column_int64(stmt, 1),
+                rat: sqlite3_column_int64(stmt, 2)
             ))
         }
-        return results
+        guard !rows.isEmpty else { return [] }
+
+        var cycles: [(firstT: Int64, lastT: Int64, peakU: Int64, count: Int, resetAt: Int64)] = []
+        var cycleStart = rows[0].t
+        var peakU = rows[0].u
+        var count = 1
+
+        for i in 1..<rows.count {
+            let prev = rows[i - 1]
+            let curr = rows[i]
+            if prev.u > 0 && curr.u == 0 {
+                cycles.append((firstT: cycleStart, lastT: prev.t, peakU: peakU, count: count, resetAt: curr.t))
+                cycleStart = curr.t
+                peakU = curr.u
+                count = 1
+            } else {
+                peakU = max(peakU, curr.u)
+                count += 1
+            }
+        }
+        let last = rows.last!
+        cycles.append((firstT: cycleStart, lastT: last.t, peakU: peakU, count: count, resetAt: last.rat))
+
+        return cycles.reversed().map { c in
+            ResetCycle(
+                resetsAt: Date(timeIntervalSince1970: TimeInterval(c.resetAt)),
+                firstRecordedAt: Date(timeIntervalSince1970: TimeInterval(c.firstT)),
+                lastRecordedAt: Date(timeIntervalSince1970: TimeInterval(c.lastT)),
+                peakUtilization: Double(c.peakU) / 100.0,
+                dataPointCount: c.count
+            )
+        }
     }
 
     // Returns up to `limit` entries just before `before`, ordered ASC.
