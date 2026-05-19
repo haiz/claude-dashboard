@@ -140,10 +140,6 @@ struct SetupView: View {
                 guard let orgId = item.cookies.orgId,
                       let sessionKey = item.cookies.sessionKey else { continue }
 
-                // Skip profiles already added
-                let alreadyAdded = viewModel.accountStore.accounts.contains { $0.chromeProfilePath == item.profile.path }
-                if alreadyAdded { continue }
-
                 // Validate session by fetching org info — skip if expired
                 guard let orgs = try? await apiService.fetchOrganizations(sessionKey: sessionKey),
                       !orgs.isEmpty else {
@@ -166,6 +162,20 @@ struct SetupView: View {
                 }
 
                 let accountName = email ?? item.profile.displayName
+
+                // Account identity = Claude account (email + orgId), NOT the Chrome
+                // profile path. Skip only if the same Claude account is already stored.
+                // Two different Claude accounts in the same Chrome profile are allowed
+                // (the stale one will fail to refresh and can be deleted manually).
+                let alreadyStored = viewModel.accountStore.accounts.contains { stored in
+                    if stored.orgId == orgId { return true }
+                    if let storedEmail = stored.email, let newEmail = email,
+                       storedEmail.caseInsensitiveCompare(newEmail) == .orderedSame {
+                        return true
+                    }
+                    return false
+                }
+                if alreadyStored { continue }
 
                 // Detect plan from usage response
                 var plan: AccountPlan? = nil
@@ -199,19 +209,21 @@ struct SetupView: View {
 
     private func addSelectedAccounts() async {
         for detected in detectedAccounts where detected.isSelected {
-            // Skip if already added
-            if viewModel.accountStore.accounts.contains(where: { $0.chromeProfilePath == detected.chromeProfilePath }) {
-                continue
+            // Belt-and-suspenders: scan() already skips by orgId/email, but in case
+            // the store changed between scan and add (or for safety), re-check here.
+            let dup = viewModel.accountStore.accounts.contains { stored in
+                if stored.orgId == detected.orgId { return true }
+                if let storedEmail = stored.email, let newEmail = detected.email,
+                   storedEmail.caseInsensitiveCompare(newEmail) == .orderedSame {
+                    return true
+                }
+                return false
             }
+            if dup { continue }
 
-            let displayName: String
-            if let email = detected.email {
-                displayName = email
-            } else {
-                displayName = detected.accountName
-            }
-
+            let displayName = detected.email ?? detected.accountName
             let chromeLabel = detected.chromeProfileGoogleEmail.isEmpty ? detected.chromeProfileName : detected.chromeProfileGoogleEmail
+            let encryptedSession = CryptoService.encrypt(detected.sessionKey) ?? detected.sessionKey
 
             let account = Account(
                 id: UUID(),
@@ -220,7 +232,7 @@ struct SetupView: View {
                 chromeProfilePath: detected.chromeProfilePath,
                 chromeProfileName: chromeLabel,
                 orgId: detected.orgId,
-                sessionKey: CryptoService.encrypt(detected.sessionKey) ?? detected.sessionKey,
+                sessionKey: encryptedSession,
                 plan: detected.plan ?? .pro,
                 lastSynced: Date(),
                 status: .active

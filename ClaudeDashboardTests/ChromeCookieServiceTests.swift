@@ -19,13 +19,15 @@ final class ChromeCookieServiceTests: XCTestCase {
 
         let profiles = ChromeCookieService.parseProfiles(from: json)
 
-        // Only active profiles (Default + Profile 1), not Profile 2
-        XCTAssertEqual(profiles.count, 2)
+        // All profiles in info_cache, regardless of last_active state — Chrome flushes
+        // last_active_profiles lazily, so a freshly-created profile may be missing
+        // from it even though its Cookies DB on disk is up to date.
+        XCTAssertEqual(profiles.count, 3)
         XCTAssertEqual(profiles.first(where: { $0.path == "Default" })?.displayName, "Person 1")
         XCTAssertEqual(profiles.first(where: { $0.path == "Profile 1" })?.displayName, "Work")
         XCTAssertEqual(profiles.first(where: { $0.path == "Profile 1" })?.googleEmail, "work@example.com")
         XCTAssertEqual(profiles.first(where: { $0.path == "Default" })?.googleEmail, "")
-        XCTAssertNil(profiles.first(where: { $0.path == "Profile 2" }))
+        XCTAssertEqual(profiles.first(where: { $0.path == "Profile 2" })?.displayName, "Personal")
     }
 
     func testPBKDF2KeyDerivation() throws {

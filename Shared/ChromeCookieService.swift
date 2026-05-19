@@ -38,12 +38,8 @@ enum ChromeCookieService {
             return []
         }
 
-        // Only include profiles that currently have open windows
-        let activeProfiles = Set(profile["last_active_profiles"] as? [String] ?? [])
-
         return infoCache.compactMap { (key, value) in
-            guard activeProfiles.contains(key),
-                  let info = value as? [String: Any],
+            guard let info = value as? [String: Any],
                   let name = info["name"] as? String else {
                 return nil
             }
