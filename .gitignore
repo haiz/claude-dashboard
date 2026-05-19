@@ -26,3 +26,6 @@ xcuserdata/
 docs/superpowers/
 .superpowers/
 .claude/
+
+# Local workflow files
+tasks/

@@ -135,30 +135,46 @@ struct SetupView: View {
 
             let apiService = UsageAPIService()
             var accounts: [DetectedAccount] = []
+            var duplicateCount = 0
+            var validationFailureCount = 0
 
             for item in results {
-                guard let orgId = item.cookies.orgId,
-                      let sessionKey = item.cookies.sessionKey else { continue }
+                guard let sessionKey = item.cookies.sessionKey else {
+                    validationFailureCount += 1
+                    continue
+                }
 
                 // Validate session by fetching org info — skip if expired
                 guard let orgs = try? await apiService.fetchOrganizations(sessionKey: sessionKey),
                       !orgs.isEmpty else {
-                    continue // session expired or invalid, skip this profile
+                    validationFailureCount += 1
+                    continue
                 }
 
+                // Walk orgs once: prefer the personal org's uuid and email
+                // (name pattern "{email}'s Organization").
+                var personalOrgId: String? = nil
                 var email: String? = nil
-
-                // Extract email from personal org name: "{email}'s Organization"
                 for org in orgs {
                     if org.name.hasSuffix("'s Organization"),
                        let emailPart = org.name.components(separatedBy: "'s Organization").first,
                        emailPart.contains("@") {
                         email = emailPart
+                        personalOrgId = org.uuid
                         break
                     }
                 }
                 if email == nil {
                     email = orgs.compactMap(\.email).first
+                }
+
+                // orgId priority: API-derived personal org → cookie's lastActiveOrg →
+                // first org from the API. The cookie is unreliable on fresh logins
+                // (claude.ai only sets lastActiveOrg after in-org navigation).
+                guard let orgId = personalOrgId ?? item.cookies.orgId ?? orgs.first?.uuid,
+                      !orgId.isEmpty else {
+                    validationFailureCount += 1
+                    continue
                 }
 
                 let accountName = email ?? item.profile.displayName
@@ -175,7 +191,10 @@ struct SetupView: View {
                     }
                     return false
                 }
-                if alreadyStored { continue }
+                if alreadyStored {
+                    duplicateCount += 1
+                    continue
+                }
 
                 // Detect plan from usage response
                 var plan: AccountPlan? = nil
@@ -201,7 +220,13 @@ struct SetupView: View {
                 self.detectedAccounts = accounts
                 self.isScanning = false
                 if accounts.isEmpty && !results.isEmpty {
-                    self.scanError = "All detected accounts are already added."
+                    if validationFailureCount > 0 && duplicateCount == 0 {
+                        self.scanError = "Couldn't validate sessions for the detected Chrome profiles. Make sure you're signed in to claude.ai and try again."
+                    } else if validationFailureCount > 0 {
+                        self.scanError = "Some accounts are already added; couldn't validate the rest. Make sure you're signed in to claude.ai and try again."
+                    } else {
+                        self.scanError = "All detected accounts are already added."
+                    }
                 }
             }
         }
