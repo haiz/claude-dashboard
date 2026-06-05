@@ -21,6 +21,7 @@ struct Account: Identifiable, Codable, Equatable {
     var chromeProfileName: String?
     var orgId: String?
     var sessionKey: String?
+    var browser: Browser = .chrome
     var plan: AccountPlan
     var lastSynced: Date?
     var status: AccountStatus
@@ -28,5 +29,31 @@ struct Account: Identifiable, Codable, Equatable {
 
     var isConfigured: Bool {
         orgId != nil
+    }
+}
+
+// Custom decode để tương thích JSON cũ (thiếu key "browser" → .chrome).
+// LƯU Ý: giữ CodingKeys và init(from:) đồng bộ với mọi stored property của Account;
+// thêm property mới mà quên cập nhật ở đây sẽ âm thầm mất dữ liệu khi round-trip.
+extension Account {
+    private enum CodingKeys: String, CodingKey {
+        case id, name, email, chromeProfilePath, chromeProfileName
+        case orgId, sessionKey, browser, plan, lastSynced, status, isPinned
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        email = try c.decodeIfPresent(String.self, forKey: .email)
+        chromeProfilePath = try c.decode(String.self, forKey: .chromeProfilePath)
+        chromeProfileName = try c.decodeIfPresent(String.self, forKey: .chromeProfileName)
+        orgId = try c.decodeIfPresent(String.self, forKey: .orgId)
+        sessionKey = try c.decodeIfPresent(String.self, forKey: .sessionKey)
+        browser = try c.decodeIfPresent(Browser.self, forKey: .browser) ?? .chrome
+        plan = try c.decode(AccountPlan.self, forKey: .plan)
+        lastSynced = try c.decodeIfPresent(Date.self, forKey: .lastSynced)
+        status = try c.decode(AccountStatus.self, forKey: .status)
+        isPinned = try c.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
     }
 }

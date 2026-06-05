@@ -1,14 +1,15 @@
 import SwiftUI
 
 struct DetectedAccount: Identifiable {
-    let id: String // chromeProfilePath (unique per profile)
+    var id: String { "\(browser.rawValue):\(chromeProfilePath)" }
+    let browser: Browser
     let orgId: String
     let chromeProfilePath: String
     let chromeProfileName: String
     let chromeProfileGoogleEmail: String
     let sessionKey: String
-    var accountName: String  // Claude account email from org API
-    var email: String?       // Claude account email
+    var accountName: String
+    var email: String?
     var plan: AccountPlan?
     var isSelected: Bool = true
 }
@@ -21,16 +22,35 @@ struct SetupView: View {
     @State private var detectedAccounts: [DetectedAccount] = []
     @State private var isScanning = false
     @State private var scanError: String?
+    @State private var selectedBrowser: Browser = .chrome
+    @State private var installedBrowsers: [Browser] = []
+    @State private var scanTask: Task<Void, Never>?
+
+    private static let preferredBrowserKey = "preferredScanBrowser"
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("Setup — Sync from Chrome")
+            Text("Setup — Sync from Browser")
                 .font(.title2.bold())
+
+            if !installedBrowsers.isEmpty {
+                Picker("Browser", selection: $selectedBrowser) {
+                    ForEach(installedBrowsers, id: \.self) { browser in
+                        Text(browser.displayName).tag(browser)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: 240)
+                .onChange(of: selectedBrowser) { newValue in
+                    UserDefaults.standard.set(newValue.rawValue, forKey: Self.preferredBrowserKey)
+                    scan()
+                }
+            }
 
             if isScanning {
                 VStack(spacing: 8) {
                     ProgressView()
-                    Text("Scanning Chrome profiles and detecting accounts...")
+                    Text("Scanning \(selectedBrowser.displayName) profiles and detecting accounts...")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -62,12 +82,27 @@ struct SetupView: View {
         }
         .padding(24)
         .frame(width: 520, height: 450)
-        .onAppear { scan() }
+        .onAppear {
+            installedBrowsers = BrowserCookieService.installedBrowsers()
+            selectedBrowser = resolveInitialBrowser()
+            scan()
+        }
     }
 
     private func dismissSelf() {
         onDone?()
         dismiss()
+    }
+
+    /// Ưu tiên browser đã nhớ (nếu vẫn cài); nếu không thì Chrome; nếu không thì cái đầu.
+    private func resolveInitialBrowser() -> Browser {
+        if let raw = UserDefaults.standard.string(forKey: Self.preferredBrowserKey),
+           let saved = Browser(rawValue: raw),
+           installedBrowsers.contains(saved) {
+            return saved
+        }
+        if installedBrowsers.contains(.chrome) { return .chrome }
+        return installedBrowsers.first ?? .chrome
     }
 
     private var noProfilesView: some View {
@@ -76,7 +111,9 @@ struct SetupView: View {
                 .font(.largeTitle)
                 .foregroundStyle(.orange)
 
-            Text(scanError ?? "No Chrome profiles found with active Claude sessions.")
+            Text(scanError ?? (installedBrowsers.isEmpty
+                ? "No supported browser found (Chrome, Arc, Brave, Edge)."
+                : "No \(selectedBrowser.displayName) profiles found with active Claude sessions."))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
@@ -103,8 +140,9 @@ struct SetupView: View {
                                         .clipShape(Capsule())
                                 }
                             }
+                            let browserLabel = account.browser.displayName
                             let chromeEmail = account.chromeProfileGoogleEmail
-                            Text("Chrome: \(chromeEmail.isEmpty ? account.chromeProfilePath : chromeEmail)")
+                            Text("\(browserLabel): \(chromeEmail.isEmpty ? account.chromeProfilePath : chromeEmail)")
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
@@ -116,19 +154,25 @@ struct SetupView: View {
     }
 
     private func scan() {
+        // Hủy scan đang chạy (vd user đổi picker, hoặc onAppear gán browser != .chrome
+        // làm onChange kích hoạt thêm một lần) — tránh hai Task ghi đè state lẫn nhau.
+        scanTask?.cancel()
         isScanning = true
         scanError = nil
 
-        Task {
+        scanTask = Task {
+            let browser = selectedBrowser
             let results = await Task.detached {
-                ChromeCookieService.profilesWithClaudeSessions()
+                BrowserCookieService.profilesWithClaudeSessions(browser: browser)
             }.value
+
+            if Task.isCancelled { return }
 
             if results.isEmpty {
                 await MainActor.run {
                     self.detectedAccounts = []
                     self.isScanning = false
-                    self.scanError = "No Chrome profiles found with active Claude sessions. Make sure you're logged into claude.ai in your Chrome profiles."
+                    self.scanError = "No \(selectedBrowser.displayName) profiles found with active Claude sessions. Make sure you're logged into claude.ai in \(selectedBrowser.displayName)."
                 }
                 return
             }
@@ -203,7 +247,7 @@ struct SetupView: View {
                 }
 
                 accounts.append(DetectedAccount(
-                    id: item.profile.path,
+                    browser: item.profile.browser,
                     orgId: orgId,
                     chromeProfilePath: item.profile.path,
                     chromeProfileName: item.profile.displayName,
@@ -216,12 +260,14 @@ struct SetupView: View {
                 ))
             }
 
+            if Task.isCancelled { return }
+
             await MainActor.run {
                 self.detectedAccounts = accounts
                 self.isScanning = false
                 if accounts.isEmpty && !results.isEmpty {
                     if validationFailureCount > 0 && duplicateCount == 0 {
-                        self.scanError = "Couldn't validate sessions for the detected Chrome profiles. Make sure you're signed in to claude.ai and try again."
+                        self.scanError = "Couldn't validate sessions for the detected \(selectedBrowser.displayName) profiles. Make sure you're signed in to claude.ai and try again."
                     } else if validationFailureCount > 0 {
                         self.scanError = "Some accounts are already added; couldn't validate the rest. Make sure you're signed in to claude.ai and try again."
                     } else {
@@ -258,6 +304,7 @@ struct SetupView: View {
                 chromeProfileName: chromeLabel,
                 orgId: detected.orgId,
                 sessionKey: encryptedSession,
+                browser: detected.browser,
                 plan: detected.plan ?? .pro,
                 lastSynced: Date(),
                 status: .active

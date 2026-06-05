@@ -246,13 +246,13 @@ final class DashboardViewModel: ObservableObject {
     func resyncAccount(_ accountId: UUID) async {
         guard let account = accountStore.accounts.first(where: { $0.id == accountId }) else { return }
 
-        let cookies = ChromeCookieService.extractCookies(for: account.chromeProfilePath)
+        let cookies = BrowserCookieService.extractCookies(for: account.chromeProfilePath, browser: account.browser)
 
         guard let sessionKey = cookies.sessionKey else {
             // Re-sync failed — keep expired status, update error message
             if let index = accountStates.firstIndex(where: { $0.id == accountId }) {
                 let profileName = account.chromeProfileName ?? account.chromeProfilePath
-                accountStates[index].error = "Re-sync failed. Open Chrome profile \"\(profileName)\" and login to claude.ai first."
+                accountStates[index].error = "Re-sync failed. Open \(account.browser.displayName) profile \"\(profileName)\" and login to claude.ai first."
             }
             return
         }

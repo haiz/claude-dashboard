@@ -3,13 +3,16 @@ import Foundation
 enum SyncCommand {
 
     static func run() -> Int32 {
-        fputs("Scanning Chrome profiles...\n", stderr)
+        fputs("Scanning installed browsers for Claude sessions...\n", stderr)
 
-        let results = ChromeCookieService.profilesWithClaudeSessions()
+        let installed = BrowserCookieService.installedBrowsers()
+        let results = installed.flatMap { browser in
+            BrowserCookieService.profilesWithClaudeSessions(browser: browser)
+        }
 
         if results.isEmpty {
-            fputs("No Chrome profiles found with active Claude sessions.\n", stderr)
-            fputs("Make sure you're logged into claude.ai in Chrome.\n", stderr)
+            fputs("No browser profiles found with active Claude sessions.\n", stderr)
+            fputs("Make sure you're logged into claude.ai in a supported browser.\n", stderr)
             return 1
         }
 
@@ -28,7 +31,9 @@ enum SyncCommand {
                       let sessionKey = item.cookies.sessionKey else { continue }
 
                 // Skip if already added
-                if existingAccounts.contains(where: { $0.chromeProfilePath == item.profile.path }) {
+                if existingAccounts.contains(where: {
+                    $0.browser == item.profile.browser && $0.chromeProfilePath == item.profile.path
+                }) {
                     fputs("  Skipping \(item.profile.displayName) (already added)\n", stderr)
                     continue
                 }
@@ -73,6 +78,7 @@ enum SyncCommand {
                     chromeProfileName: chromeLabel,
                     orgId: orgId,
                     sessionKey: CryptoService.encrypt(sessionKey) ?? sessionKey,
+                    browser: item.profile.browser,
                     plan: plan,
                     lastSynced: Date(),
                     status: .active

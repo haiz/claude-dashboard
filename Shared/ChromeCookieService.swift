@@ -2,10 +2,11 @@ import Foundation
 import CommonCrypto
 import SQLite3
 
-struct ChromeProfile {
+struct BrowserProfile {
     let path: String        // e.g. "Profile 1"
     let displayName: String // e.g. "Harry"
     let googleEmail: String // e.g. "hai@gotitapp.co" — from user_name field
+    let browser: Browser
 }
 
 struct ChromeCookieResult {
@@ -13,25 +14,30 @@ struct ChromeCookieResult {
     let orgId: String?
 }
 
-enum ChromeCookieService {
+enum BrowserCookieService {
 
-    private static let chromeBasePath = NSHomeDirectory()
-        + "/Library/Application Support/Google/Chrome"
-
-    /// Cached encryption key — avoids repeated Keychain prompts per app session
-    private static var cachedEncryptionKey: Data?
+    /// Cached encryption key theo từng browser — tránh prompt Keychain lặp lại.
+    private static var cachedEncryptionKeys: [Browser: Data] = [:]
 
     // MARK: - Profile Scanning
 
-    static func scanProfiles() -> [ChromeProfile] {
-        let localStatePath = chromeBasePath + "/Local State"
+    static func scanProfiles(browser: Browser) -> [BrowserProfile] {
+        let localStatePath = browser.basePath + "/Local State"
         guard let data = FileManager.default.contents(atPath: localStatePath) else {
             return []
         }
-        return parseProfiles(from: data)
+        let parsed = parseProfiles(from: data, browser: browser)
+        if !parsed.isEmpty { return parsed }
+
+        // Fallback: vài browser (vd Arc) có thể không điền info_cache như Chrome.
+        // Quét trực tiếp các thư mục con chứa file Cookies.
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: browser.basePath)) ?? []
+        return profilesFromDirectoryNames(names, browser: browser).filter { profile in
+            FileManager.default.fileExists(atPath: browser.basePath + "/\(profile.path)/Cookies")
+        }
     }
 
-    static func parseProfiles(from data: Data) -> [ChromeProfile] {
+    static func parseProfiles(from data: Data, browser: Browser) -> [BrowserProfile] {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let profile = json["profile"] as? [String: Any],
               let infoCache = profile["info_cache"] as? [String: Any] else {
@@ -44,28 +50,36 @@ enum ChromeCookieService {
                 return nil
             }
             let googleEmail = info["user_name"] as? String ?? ""
-            return ChromeProfile(path: key, displayName: name, googleEmail: googleEmail)
+            return BrowserProfile(path: key, displayName: name, googleEmail: googleEmail, browser: browser)
         }
         .sorted { $0.path < $1.path }
     }
 
-    // MARK: - Cookie Extraction
-
-    static func extractCookies(for profilePath: String) -> ChromeCookieResult {
-        guard let encryptionKey = getChromeEncryptionKey() else {
-            return ChromeCookieResult(sessionKey: nil, orgId: nil)
-        }
-        return extractCookies(for: profilePath, encryptionKey: encryptionKey)
+    /// Pure helper: lọc tên thư mục con theo pattern profile của Chromium ("Default", "Profile N").
+    static func profilesFromDirectoryNames(_ names: [String], browser: Browser) -> [BrowserProfile] {
+        names
+            .filter { $0 == "Default" || $0.hasPrefix("Profile ") }
+            .sorted()
+            .map { BrowserProfile(path: $0, displayName: $0, googleEmail: "", browser: browser) }
     }
 
-    static func extractCookies(for profilePath: String, encryptionKey: Data) -> ChromeCookieResult {
+    // MARK: - Cookie Extraction
 
-        let dbPath = chromeBasePath + "/\(profilePath)/Cookies"
+    static func extractCookies(for profilePath: String, browser: Browser) -> ChromeCookieResult {
+        guard let encryptionKey = getEncryptionKey(browser: browser) else {
+            return ChromeCookieResult(sessionKey: nil, orgId: nil)
+        }
+        return extractCookies(for: profilePath, browser: browser, encryptionKey: encryptionKey)
+    }
+
+    static func extractCookies(for profilePath: String, browser: Browser, encryptionKey: Data) -> ChromeCookieResult {
+
+        let dbPath = browser.basePath + "/\(profilePath)/Cookies"
 
         // Copy DB to temp location — Chrome holds WAL lock while running,
         // preventing direct read-only access
         let tempDir = NSTemporaryDirectory()
-        let tempPath = tempDir + "claude-dashboard-cookies-\(profilePath.replacingOccurrences(of: " ", with: "_")).db"
+        let tempPath = tempDir + "claude-dashboard-cookies-\(browser.rawValue)-\(profilePath.replacingOccurrences(of: " ", with: "_")).db"
         try? FileManager.default.removeItem(atPath: tempPath)
         guard (try? FileManager.default.copyItem(atPath: dbPath, toPath: tempPath)) != nil else {
             return ChromeCookieResult(sessionKey: nil, orgId: nil)
@@ -132,23 +146,30 @@ enum ChromeCookieService {
 
     // MARK: - Profiles with Claude Sessions
 
-    static func profilesWithClaudeSessions() -> [(profile: ChromeProfile, cookies: ChromeCookieResult)] {
-        guard let encryptionKey = getChromeEncryptionKey() else { return [] }
-        let profiles = scanProfiles()
+    static func profilesWithClaudeSessions(browser: Browser) -> [(profile: BrowserProfile, cookies: ChromeCookieResult)] {
+        guard let encryptionKey = getEncryptionKey(browser: browser) else { return [] }
+        let profiles = scanProfiles(browser: browser)
         return profiles.compactMap { profile in
-            let cookies = extractCookies(for: profile.path, encryptionKey: encryptionKey)
+            let cookies = extractCookies(for: profile.path, browser: browser, encryptionKey: encryptionKey)
             guard cookies.sessionKey != nil else { return nil }
             return (profile: profile, cookies: cookies)
         }
     }
 
+    /// Các browser đã cài (có "Local State"). Chrome đứng đầu nếu có.
+    static func installedBrowsers() -> [Browser] {
+        Browser.allCases.filter {
+            FileManager.default.fileExists(atPath: $0.basePath + "/Local State")
+        }
+    }
+
     // MARK: - Crypto
 
-    static func getChromeEncryptionKey() -> Data? {
-        if let cached = cachedEncryptionKey { return cached }
-        guard let passphrase = getChromeSafeStoragePassword() else { return nil }
+    static func getEncryptionKey(browser: Browser) -> Data? {
+        if let cached = cachedEncryptionKeys[browser] { return cached }
+        guard let passphrase = getSafeStoragePassword(browser: browser) else { return nil }
         let key = deriveKey(from: passphrase)
-        cachedEncryptionKey = key
+        cachedEncryptionKeys[browser] = key
         return key
     }
 
@@ -228,10 +249,10 @@ enum ChromeCookieService {
         return nil
     }
 
-    private static func getChromeSafeStoragePassword() -> String? {
+    private static func getSafeStoragePassword(browser: Browser) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Chrome Safe Storage",
+            kSecAttrService as String: browser.keychainService,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
