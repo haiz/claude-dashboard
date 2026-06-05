@@ -55,6 +55,7 @@
 		AE3B5F95AC15F193C1B2C9CE /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A87EC4F90E188AAAFB660C3 /* AppVersion.swift */; };
 		B38B8E482E1BC067FFD7AE74 /* MenuBarPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F459D10501056C193989A6 /* MenuBarPopover.swift */; };
 		BAAE906146838597BF21E53E /* BurnRateTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D13B511083DF4FE0C75FA0DD /* BurnRateTracker.swift */; };
+		BCF9465CD27C5B80FF29FE9A /* AccountCodableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBC96C2BB8D763106FBEA74A /* AccountCodableTests.swift */; };
 		C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */; };
 		C436B7F85AB4285388BE8869 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
 		CBA5F28B81C6FA6C0E24C610 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2535C231EBCF76F786F7B7E /* Account.swift */; };
@@ -120,6 +121,7 @@
 		BF469D724BE1FCA1D071131F /* AccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStore.swift; sourceTree = "<group>"; };
 		BFA0F9129D3367D395937E5E /* DashboardWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindow.swift; sourceTree = "<group>"; };
 		C8ADAEF8BBFC797B0D4950E3 /* UsageLogModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogModelsTests.swift; sourceTree = "<group>"; };
+		CBC96C2BB8D763106FBEA74A /* AccountCodableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountCodableTests.swift; sourceTree = "<group>"; };
 		CBFA427293BFC51355250BB1 /* SyncCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncCommand.swift; sourceTree = "<group>"; };
 		CEA505924741CE7A0DFBB32F /* ClaudeDashboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeDashboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D13B511083DF4FE0C75FA0DD /* BurnRateTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnRateTracker.swift; sourceTree = "<group>"; };
@@ -167,6 +169,7 @@
 		109421F311E289DC97EE7C52 /* ClaudeDashboardTests */ = {
 			isa = PBXGroup;
 			children = (
+				CBC96C2BB8D763106FBEA74A /* AccountCodableTests.swift */,
 				23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */,
 				D99517C3BBF094ACC2BA1B74 /* AppVersionTests.swift */,
 				E78303A2B3B9A1F15A814671 /* BrowserTests.swift */,
@@ -418,6 +421,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BCF9465CD27C5B80FF29FE9A /* AccountCodableTests.swift in Sources */,
 				A39C01692A8EA4FA3A76ED88 /* AccountStoreTests.swift in Sources */,
 				A695D976DBF8E5BBF704DC8D /* AppVersionTests.swift in Sources */,
 				7CF21E5F1DE379253A2A1CE7 /* BrowserTests.swift in Sources */,
