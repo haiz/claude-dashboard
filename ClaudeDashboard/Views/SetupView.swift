@@ -1,14 +1,15 @@
 import SwiftUI
 
 struct DetectedAccount: Identifiable {
-    let id: String // chromeProfilePath (unique per profile)
+    var id: String { "\(browser.rawValue):\(chromeProfilePath)" }
+    let browser: Browser
     let orgId: String
     let chromeProfilePath: String
     let chromeProfileName: String
     let chromeProfileGoogleEmail: String
     let sessionKey: String
-    var accountName: String  // Claude account email from org API
-    var email: String?       // Claude account email
+    var accountName: String
+    var email: String?
     var plan: AccountPlan?
     var isSelected: Bool = true
 }
@@ -21,6 +22,7 @@ struct SetupView: View {
     @State private var detectedAccounts: [DetectedAccount] = []
     @State private var isScanning = false
     @State private var scanError: String?
+    @State private var selectedBrowser: Browser = .chrome
 
     var body: some View {
         VStack(spacing: 16) {
@@ -62,7 +64,11 @@ struct SetupView: View {
         }
         .padding(24)
         .frame(width: 520, height: 450)
-        .onAppear { scan() }
+        .onAppear {
+            let installed = BrowserCookieService.installedBrowsers()
+            selectedBrowser = installed.first ?? .chrome
+            scan()
+        }
     }
 
     private func dismissSelf() {
@@ -120,8 +126,9 @@ struct SetupView: View {
         scanError = nil
 
         Task {
+            let browser = selectedBrowser
             let results = await Task.detached {
-                ChromeCookieService.profilesWithClaudeSessions()
+                BrowserCookieService.profilesWithClaudeSessions(browser: browser)
             }.value
 
             if results.isEmpty {
@@ -203,7 +210,7 @@ struct SetupView: View {
                 }
 
                 accounts.append(DetectedAccount(
-                    id: item.profile.path,
+                    browser: item.profile.browser,
                     orgId: orgId,
                     chromeProfilePath: item.profile.path,
                     chromeProfileName: item.profile.displayName,
@@ -258,6 +265,7 @@ struct SetupView: View {
                 chromeProfileName: chromeLabel,
                 orgId: detected.orgId,
                 sessionKey: encryptedSession,
+                browser: detected.browser,
                 plan: detected.plan ?? .pro,
                 lastSynced: Date(),
                 status: .active

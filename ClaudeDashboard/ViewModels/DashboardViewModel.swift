@@ -246,7 +246,7 @@ final class DashboardViewModel: ObservableObject {
     func resyncAccount(_ accountId: UUID) async {
         guard let account = accountStore.accounts.first(where: { $0.id == accountId }) else { return }
 
-        let cookies = ChromeCookieService.extractCookies(for: account.chromeProfilePath)
+        let cookies = BrowserCookieService.extractCookies(for: account.chromeProfilePath, browser: account.browser)
 
         guard let sessionKey = cookies.sessionKey else {
             // Re-sync failed — keep expired status, update error message

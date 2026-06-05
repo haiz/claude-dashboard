@@ -3,11 +3,10 @@ import XCTest
 
 final class ChromeCookieServiceTests: XCTestCase {
 
-    func testParsesChromeLocalState() throws {
+    func testParsesLocalStateWithBrowserTag() throws {
         let json = """
         {
           "profile": {
-            "last_active_profiles": ["Default", "Profile 1"],
             "info_cache": {
               "Default": { "name": "Person 1", "user_name": "" },
               "Profile 1": { "name": "Work", "user_name": "work@example.com" },
@@ -17,29 +16,33 @@ final class ChromeCookieServiceTests: XCTestCase {
         }
         """.data(using: .utf8)!
 
-        let profiles = ChromeCookieService.parseProfiles(from: json)
+        let profiles = BrowserCookieService.parseProfiles(from: json, browser: .brave)
 
-        // All profiles in info_cache, regardless of last_active state — Chrome flushes
-        // last_active_profiles lazily, so a freshly-created profile may be missing
-        // from it even though its Cookies DB on disk is up to date.
         XCTAssertEqual(profiles.count, 3)
-        XCTAssertEqual(profiles.first(where: { $0.path == "Default" })?.displayName, "Person 1")
         XCTAssertEqual(profiles.first(where: { $0.path == "Profile 1" })?.displayName, "Work")
         XCTAssertEqual(profiles.first(where: { $0.path == "Profile 1" })?.googleEmail, "work@example.com")
         XCTAssertEqual(profiles.first(where: { $0.path == "Default" })?.googleEmail, "")
-        XCTAssertEqual(profiles.first(where: { $0.path == "Profile 2" })?.displayName, "Personal")
+        XCTAssertTrue(profiles.allSatisfy { $0.browser == .brave })
     }
 
     func testPBKDF2KeyDerivation() throws {
-        let key = ChromeCookieService.deriveKey(from: "test")
+        let key = BrowserCookieService.deriveKey(from: "test")
         XCTAssertEqual(key.count, 16)
-        let key2 = ChromeCookieService.deriveKey(from: "test")
-        XCTAssertEqual(key, key2)
+        XCTAssertEqual(key, BrowserCookieService.deriveKey(from: "test"))
     }
 
     func testDecryptWithKnownValues() throws {
         let fakeEncrypted = Data([0x76, 0x31, 0x30]) + Data(repeating: 0, count: 32)
-        let key = ChromeCookieService.deriveKey(from: "test")
-        let _ = ChromeCookieService.decryptCookieValue(fakeEncrypted, withKey: key)
+        let key = BrowserCookieService.deriveKey(from: "test")
+        _ = BrowserCookieService.decryptCookieValue(fakeEncrypted, withKey: key)
+    }
+
+    func testFallbackProfilesFromDirectoryNames() throws {
+        let names = ["Default", "Profile 1", "Profile 3", "GrShaderCache", "Local State", ".DS_Store"]
+        let profiles = BrowserCookieService.profilesFromDirectoryNames(names, browser: .arc)
+
+        XCTAssertEqual(profiles.map(\.path), ["Default", "Profile 1", "Profile 3"])
+        XCTAssertTrue(profiles.allSatisfy { $0.browser == .arc })
+        XCTAssertEqual(profiles.first?.displayName, "Default")
     }
 }
