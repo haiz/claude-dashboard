@@ -252,7 +252,7 @@ final class DashboardViewModel: ObservableObject {
             // Re-sync failed — keep expired status, update error message
             if let index = accountStates.firstIndex(where: { $0.id == accountId }) {
                 let profileName = account.chromeProfileName ?? account.chromeProfilePath
-                accountStates[index].error = "Re-sync failed. Open Chrome profile \"\(profileName)\" and login to claude.ai first."
+                accountStates[index].error = "Re-sync failed. Open \(account.browser.displayName) profile \"\(profileName)\" and login to claude.ai first."
             }
             return
         }
