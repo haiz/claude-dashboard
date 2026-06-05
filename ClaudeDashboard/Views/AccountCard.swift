@@ -139,7 +139,7 @@ struct AccountCard: View {
                     .foregroundStyle(.secondary)
             }
 
-            Button("Re-sync from Chrome") {
+            Button("Re-sync") {
                 onResync()
             }
             .controlSize(.small)

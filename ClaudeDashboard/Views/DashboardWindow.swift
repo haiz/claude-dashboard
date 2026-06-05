@@ -118,7 +118,7 @@ struct DashboardWindow: View {
                 .foregroundStyle(.secondary)
             Text("No Accounts")
                 .font(.title3.bold())
-            Text("Sync your Claude accounts from Chrome to get started.")
+            Text("Sync your Claude accounts from your browser to get started.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

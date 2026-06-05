@@ -101,12 +101,12 @@ struct HelpView: View {
     private var managingAccountsSection: some View {
         helpSection(title: "Managing Accounts", icon: "person.2.circle") {
             VStack(alignment: .leading, spacing: 6) {
-                bullet(icon: "plus.circle",  text: "**Add an account** — Settings → **Add from Chrome**.")
-                bullet(icon: "arrow.clockwise", text: "**Re-sync** — Settings → **Re-sync All from Chrome**, or use the **Re-sync from Chrome** button on any expired card.")
+                bullet(icon: "plus.circle",  text: "**Add an account** — Settings → **Add Account**, then pick your browser (Chrome, Arc, Brave, Edge).")
+                bullet(icon: "arrow.clockwise", text: "**Re-sync** — Settings → **Re-sync All**, or use the **Re-sync** button on any expired card.")
                 bullet(icon: "trash",        text: "**Remove an account** — Settings → trash icon next to the account.")
             }
 
-            tip("If a card shows an orange triangle, the session has expired. Open the matching Chrome profile, log into claude.ai, then re-sync.")
+            tip("If a card shows an orange triangle, the session has expired. Open the matching browser profile, log into claude.ai, then re-sync.")
         }
     }
 
@@ -122,12 +122,12 @@ struct HelpView: View {
         helpSection(title: "Troubleshooting", icon: "wrench.and.screwdriver") {
             VStack(alignment: .leading, spacing: 10) {
                 problemAnswer(
-                    problem: "\"No Chrome profiles found\"",
-                    answer: "Chrome must be running with that profile open. Only profiles Chrome currently considers active are scanned. Click **Retry Scan** after opening Chrome."
+                    problem: "\"No profiles found\"",
+                    answer: "The browser must be running with that profile open. Only profiles the browser currently considers active are scanned. Click **Retry Scan** after opening the browser."
                 )
                 problemAnswer(
                     problem: "Account stuck on \"Session expired\"",
-                    answer: "Open the matching Chrome profile, log into claude.ai, then click **Re-sync from Chrome** on the card."
+                    answer: "Open the matching browser profile, log into claude.ai, then click **Re-sync** on the card."
                 )
                 problemAnswer(
                     problem: "macOS blocks the app on first launch",

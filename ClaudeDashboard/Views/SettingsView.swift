@@ -80,12 +80,12 @@ struct SettingsView: View {
 
             HStack {
                 Button(action: { showingSetup = true }) {
-                    Label("Add from Chrome", systemImage: "plus.circle")
+                    Label("Add Account", systemImage: "plus.circle")
                 }
 
                 Spacer()
 
-                Button("Re-sync All from Chrome") {
+                Button("Re-sync All") {
                     Task {
                         for account in viewModel.accountStore.accounts {
                             await viewModel.resyncAccount(account.id)
