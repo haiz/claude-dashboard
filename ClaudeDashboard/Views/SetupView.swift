@@ -25,6 +25,9 @@ struct SetupView: View {
     @State private var selectedBrowser: Browser = .chrome
     @State private var installedBrowsers: [Browser] = []
     @State private var scanTask: Task<Void, Never>?
+    /// Khi true: máy có 2+ browser và chưa có preference đã lưu, buộc người dùng
+    /// chọn browser trước. Chưa scan (nên prompt Keychain chưa xuất hiện).
+    @State private var awaitingBrowserChoice = false
 
     private static let preferredBrowserKey = "preferredScanBrowser"
 
@@ -33,31 +36,35 @@ struct SetupView: View {
             Text("Setup — Sync from Browser")
                 .font(.title2.bold())
 
-            if !installedBrowsers.isEmpty {
-                Picker("Browser", selection: $selectedBrowser) {
-                    ForEach(installedBrowsers, id: \.self) { browser in
-                        Text(browser.displayName).tag(browser)
+            if awaitingBrowserChoice {
+                browserChooserView
+            } else {
+                if !installedBrowsers.isEmpty {
+                    Picker("Browser", selection: $selectedBrowser) {
+                        ForEach(installedBrowsers, id: \.self) { browser in
+                            Text(browser.displayName).tag(browser)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 240)
+                    .onChange(of: selectedBrowser) { newValue in
+                        UserDefaults.standard.set(newValue.rawValue, forKey: Self.preferredBrowserKey)
+                        scan()
                     }
                 }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 240)
-                .onChange(of: selectedBrowser) { newValue in
-                    UserDefaults.standard.set(newValue.rawValue, forKey: Self.preferredBrowserKey)
-                    scan()
-                }
-            }
 
-            if isScanning {
-                VStack(spacing: 8) {
-                    ProgressView()
-                    Text("Scanning \(selectedBrowser.displayName) profiles and detecting accounts...")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if isScanning {
+                    VStack(spacing: 8) {
+                        ProgressView()
+                        Text("Scanning \(selectedBrowser.displayName) profiles and detecting accounts...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else if detectedAccounts.isEmpty {
+                    noProfilesView
+                } else {
+                    accountList
                 }
-            } else if detectedAccounts.isEmpty {
-                noProfilesView
-            } else {
-                accountList
             }
 
             HStack {
@@ -84,8 +91,23 @@ struct SetupView: View {
         .frame(width: 520, height: 450)
         .onAppear {
             installedBrowsers = BrowserCookieService.installedBrowsers()
-            selectedBrowser = resolveInitialBrowser()
-            scan()
+
+            if let saved = savedPreferredBrowser() {
+                // Đã có browser đã nhớ và vẫn cài: quét luôn như trước.
+                selectedBrowser = saved
+                scan()
+            } else if installedBrowsers.count == 1, let only = installedBrowsers.first {
+                // Chỉ một browser: không cần hỏi, quét luôn.
+                selectedBrowser = only
+                scan()
+            } else if installedBrowsers.count >= 2 {
+                // Nhiều browser và chưa có preference: buộc người dùng chọn trước.
+                // Chưa scan() để prompt truy cập cookies chỉ hiện sau khi đã chọn.
+                awaitingBrowserChoice = true
+            } else {
+                // Không có browser được hỗ trợ: scan() để hiển thị thông báo phù hợp.
+                scan()
+            }
         }
     }
 
@@ -94,15 +116,63 @@ struct SetupView: View {
         dismiss()
     }
 
-    /// Ưu tiên browser đã nhớ (nếu vẫn cài); nếu không thì Chrome; nếu không thì cái đầu.
-    private func resolveInitialBrowser() -> Browser {
-        if let raw = UserDefaults.standard.string(forKey: Self.preferredBrowserKey),
-           let saved = Browser(rawValue: raw),
-           installedBrowsers.contains(saved) {
-            return saved
+    /// Browser đã nhớ từ lần trước, nếu hợp lệ và vẫn còn cài. nil nếu chưa từng chọn.
+    private func savedPreferredBrowser() -> Browser? {
+        guard let raw = UserDefaults.standard.string(forKey: Self.preferredBrowserKey),
+              let saved = Browser(rawValue: raw),
+              installedBrowsers.contains(saved) else { return nil }
+        return saved
+    }
+
+    /// Người dùng chọn browser từ màn chooser: nhớ lựa chọn rồi bắt đầu quét.
+    private func chooseBrowser(_ browser: Browser) {
+        UserDefaults.standard.set(browser.rawValue, forKey: Self.preferredBrowserKey)
+        awaitingBrowserChoice = false
+        // Gán selectedBrowser có thể kích hoạt Picker.onChange gọi scan() thêm một lần;
+        // scanTask?.cancel() trong scan() đã xử lý trường hợp trùng này.
+        selectedBrowser = browser
+        scan()
+    }
+
+    private var browserChooserView: some View {
+        VStack(spacing: 12) {
+            Text("Choose the browser where you're signed in to Claude")
+                .font(.headline)
+                .multilineTextAlignment(.center)
+
+            Text("We'll only read cookies from the browser you pick.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            VStack(spacing: 8) {
+                ForEach(installedBrowsers, id: \.self) { browser in
+                    Button {
+                        chooseBrowser(browser)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "globe")
+                                .foregroundStyle(.secondary)
+                            Text(browser.displayName)
+                                .font(.body)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: 320)
+            .padding(.top, 4)
         }
-        if installedBrowsers.contains(.chrome) { return .chrome }
-        return installedBrowsers.first ?? .chrome
+        .frame(maxWidth: .infinity)
     }
 
     private var noProfilesView: some View {
