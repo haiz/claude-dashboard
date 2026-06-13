@@ -3,6 +3,7 @@ import SwiftUI
 struct DashboardWindow: View {
     @ObservedObject var viewModel: DashboardViewModel
     var onAddAccount: (() -> Void)?
+    var onOpenCommandLog: (() -> Void)?
     @State private var runCommandAccount: Account? = nil
 
     var body: some View {
@@ -43,6 +44,7 @@ struct DashboardWindow: View {
                     get: { runCommandAccount?.id == account.id },
                     set: { if !$0 { runCommandAccount = nil } }
                 ),
+                runner: viewModel.commandRunner,
                 onRefresh: { Task { await viewModel.refreshAll() } }
             )
         }
@@ -70,6 +72,13 @@ struct DashboardWindow: View {
                     }
                     .buttonStyle(HoverableButtonStyle(prominent: true))
                     .disabled(viewModel.isRefreshing)
+                }
+
+                if !viewModel.accountStates.isEmpty {
+                    Button(action: { onOpenCommandLog?() }) {
+                        Label("Command Log", systemImage: "list.bullet.rectangle")
+                    }
+                    .buttonStyle(HoverableButtonStyle(prominent: true))
                 }
 
                 Button(action: { viewModel.isPresentingSettings = true }) {

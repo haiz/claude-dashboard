@@ -43,11 +43,14 @@ final class DashboardViewModel: ObservableObject {
     private var consumedResets: Set<String> = []
     private let burnRateTracker: BurnRateTracker
     let logStore: UsageLogStore
+    let commandLogStore: CommandLogStore
+    let commandRunner: CommandRunner
 
     init(
         accountStore: AccountStore = AccountStore(),
         apiService: UsageAPIService = UsageAPIService(),
         logStore: UsageLogStore? = nil,
+        commandLogStore: CommandLogStore? = nil,
         ccDetector: ClaudeCodeAccountDetector = ClaudeCodeAccountDetector()
     ) {
         self.autoRefreshEnabled = UserDefaults.standard.object(forKey: "autoRefreshEnabled") as? Bool ?? true
@@ -61,6 +64,9 @@ final class DashboardViewModel: ObservableObject {
         let store = logStore ?? UsageLogStore()
         self.logStore = store
         self.burnRateTracker = BurnRateTracker(logStore: store)
+        let cmdStore = commandLogStore ?? CommandLogStore()
+        self.commandLogStore = cmdStore
+        self.commandRunner = CommandRunner(store: cmdStore)
         self.activeClaudeCodeEmail = ccDetector.activeEmail()
 
         // Cleanup old logs on launch
@@ -111,7 +117,7 @@ final class DashboardViewModel: ObservableObject {
 
     private func checkResetTriggers() async {
         let triggerBefore = Date().addingTimeInterval(-10)
-        var commandsToRun: [String] = []
+        var commandsToRun: [(accountId: UUID, command: String)] = []
         var needsRefresh = false
 
         for state in accountStates {
@@ -128,15 +134,19 @@ final class DashboardViewModel: ObservableObject {
                 needsRefresh = true
                 let cmdKey = "runCommand_\(state.account.id.uuidString)"
                 if let cmd = UserDefaults.standard.string(forKey: cmdKey), !cmd.isEmpty {
-                    commandsToRun.append(cmd)
+                    commandsToRun.append((state.account.id, cmd))
                 }
             }
         }
 
         if !commandsToRun.isEmpty {
+            // Copy to a local so the concurrent task closures don't capture @MainActor self.
+            let runner = commandRunner
             await withTaskGroup(of: Void.self) { group in
-                for cmd in commandsToRun {
-                    group.addTask { await self.runShellCommand(cmd) }
+                for item in commandsToRun {
+                    group.addTask {
+                        await runner.run(command: item.command, accountId: item.accountId, trigger: .autoReset)
+                    }
                 }
             }
         }
@@ -146,17 +156,12 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
-    private func runShellCommand(_ command: String) async {
-        await withCheckedContinuation { continuation in
-            let process = Process()
-            process.launchPath = "/bin/zsh"
-            process.arguments = ["-c", command]
-            process.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
-            process.standardOutput = Pipe()
-            process.standardError = Pipe()
-            process.terminationHandler = { _ in continuation.resume() }
-            try? process.run()
-        }
+    /// A refresh "produced no usage" when the fetch failed entirely (usage == nil)
+    /// or either tracked window (5h / 7d) reports zero utilization. In those cases
+    /// the account's saved command is run, if one exists.
+    static func shouldRunSavedCommand(for usage: UsageData?) -> Bool {
+        guard let usage else { return true }
+        return usage.fiveHour.utilization == 0 || usage.sevenDay.utilization == 0
     }
 
     // MARK: - Refresh
@@ -165,6 +170,9 @@ final class DashboardViewModel: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
         activeClaudeCodeEmail = ccDetector.activeEmail()
+
+        // Saved commands to run for accounts whose refresh produced no 5h/7d usage.
+        var autoCommands: [(accountId: UUID, command: String)] = []
 
         await withTaskGroup(of: (UUID, UsageData?, String?, AccountPlan?).self) { group in
             for state in accountStates where state.account.status != .expired {
@@ -197,6 +205,16 @@ final class DashboardViewModel: ObservableObject {
                 if let index = accountStates.firstIndex(where: { $0.id == accountId }) {
                     accountStates[index].usage = usage ?? accountStates[index].usage
                     accountStates[index].error = error
+
+                    // Run the account's saved command when this refresh produced no
+                    // 5h/7d usage (fetch failed, or either window sits at 0%).
+                    if Self.shouldRunSavedCommand(for: usage) {
+                        let acctId = accountStates[index].account.id
+                        let cmdKey = "runCommand_\(acctId.uuidString)"
+                        if let cmd = UserDefaults.standard.string(forKey: cmdKey), !cmd.isEmpty {
+                            autoCommands.append((acctId, cmd))
+                        }
+                    }
 
                     if error == "expired" {
                         var account = accountStates[index].account
@@ -233,6 +251,23 @@ final class DashboardViewModel: ObservableObject {
                             )
                         }
                         accountStates[index].burnRates = rates
+                    }
+                }
+            }
+        }
+
+        // Fire saved commands without blocking the refresh spinner. Each refresh
+        // cycle re-runs them while the no-usage condition still holds.
+        if !autoCommands.isEmpty {
+            let commands = autoCommands
+            // Copy to a local so the detached task doesn't capture @MainActor self.
+            let runner = commandRunner
+            Task.detached {
+                await withTaskGroup(of: Void.self) { group in
+                    for item in commands {
+                        group.addTask {
+                            await runner.run(command: item.command, accountId: item.accountId, trigger: .autoEmpty)
+                        }
                     }
                 }
             }
