@@ -4,6 +4,7 @@ struct RunCommandSheet: View {
     let account: Account
     @Binding var isPresented: Bool
     let onRefresh: () -> Void
+    let runner: CommandRunner
 
     @State private var command: String
     @State private var isRunning = false
@@ -12,9 +13,10 @@ struct RunCommandSheet: View {
 
     private var userDefaultsKey: String { "runCommand_\(account.id.uuidString)" }
 
-    init(account: Account, isPresented: Binding<Bool>, onRefresh: @escaping () -> Void) {
+    init(account: Account, isPresented: Binding<Bool>, runner: CommandRunner, onRefresh: @escaping () -> Void) {
         self.account = account
         self._isPresented = isPresented
+        self.runner = runner
         self.onRefresh = onRefresh
         let saved = UserDefaults.standard.string(forKey: "runCommand_\(account.id.uuidString)") ?? ""
         self._command = State(initialValue: saved)
@@ -67,44 +69,18 @@ struct RunCommandSheet: View {
         isRunning = true
         logLines = []
         let cmd = command
+        let acct = account.id
+        let runner = self.runner
 
-        Task.detached {
-            let process = Process()
-            process.launchPath = "/bin/zsh"
-            process.arguments = ["-c", cmd]
-            process.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
-
-            let outPipe = Pipe()
-            let errPipe = Pipe()
-            process.standardOutput = outPipe
-            process.standardError = errPipe
-
-            let handleData: @Sendable (Data) -> Void = { data in
-                guard !data.isEmpty,
-                      let s = String(data: data, encoding: .utf8) else { return }
-                let lines = s.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        Task {
+            await runner.run(command: cmd, accountId: acct, trigger: .manual) { chunk in
+                let lines = chunk.components(separatedBy: .newlines).filter { !$0.isEmpty }
                 guard !lines.isEmpty else { return }
                 DispatchQueue.main.async { logLines.append(contentsOf: lines) }
             }
-
-            outPipe.fileHandleForReading.readabilityHandler = { handleData($0.availableData) }
-            errPipe.fileHandleForReading.readabilityHandler = { handleData($0.availableData) }
-
-            try? process.run()
-            process.waitUntilExit()
-
-            outPipe.fileHandleForReading.readabilityHandler = nil
-            errPipe.fileHandleForReading.readabilityHandler = nil
-
-            // Drain any remaining buffered output
-            let tail = outPipe.fileHandleForReading.readDataToEndOfFile()
-            let errTail = errPipe.fileHandleForReading.readDataToEndOfFile()
-            handleData(tail)
-            handleData(errTail)
-
             try? await Task.sleep(nanoseconds: 2_000_000_000)
-
             await MainActor.run {
+                isRunning = false
                 isPresented = false
                 onRefresh()
             }

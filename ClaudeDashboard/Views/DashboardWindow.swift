@@ -43,6 +43,7 @@ struct DashboardWindow: View {
                     get: { runCommandAccount?.id == account.id },
                     set: { if !$0 { runCommandAccount = nil } }
                 ),
+                runner: viewModel.commandRunner,
                 onRefresh: { Task { await viewModel.refreshAll() } }
             )
         }

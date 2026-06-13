@@ -152,6 +152,7 @@ struct MenuBarPopover: View {
                             get: { runCommandAccount != nil },
                             set: { if !$0 { runCommandAccount = nil } }
                         ),
+                        runner: viewModel.commandRunner,
                         onRefresh: { Task { await viewModel.refreshAll() } }
                     )
                     .background(.regularMaterial)
