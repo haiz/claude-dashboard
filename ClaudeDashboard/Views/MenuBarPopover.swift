@@ -31,6 +31,7 @@ struct MenuBarPopover: View {
     let onOpenWindow: () -> Void
     let onOpenOverview: () -> Void
     let onOpenSettings: () -> Void
+    let onOpenCommandLog: () -> Void
     let onOpenAccountDetail: (UUID, UsageWindow) -> Void
 
     @State private var scrollAnchorId: UUID? = nil
@@ -76,6 +77,13 @@ struct MenuBarPopover: View {
                     showHelp = true
                 }
                 .help("Help")
+
+                HeaderIconButton(systemName: "list.bullet.rectangle") {
+                    let popover = NSApp.keyWindow
+                    onOpenCommandLog()
+                    popover?.close()
+                }
+                .help("Command Log")
 
                 HeaderIconButton(systemName: "gearshape") {
                     let popover = NSApp.keyWindow
