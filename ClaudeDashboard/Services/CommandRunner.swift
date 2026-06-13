@@ -18,7 +18,13 @@ struct CommandRunner: Sendable {
         let startedAt = Date()
         let process = Process()
         process.launchPath = "/bin/zsh"
-        process.arguments = ["-c", command]
+        // Source the user's ~/.zshrc first so shell functions, aliases, and custom
+        // PATH entries resolve. `zsh -c` is non-interactive and would otherwise only
+        // load ~/.zshenv, so a function like `ccbf` (defined in ~/.zshrc) that works
+        // in a terminal fails here with "command not found". stderr from sourcing is
+        // suppressed so interactive-only plugin noise (gitstatus, etc.) does not leak
+        // into the captured command output. The logged `command` stays the original.
+        process.arguments = ["-c", "source ~/.zshrc 2>/dev/null\n\(command)"]
         process.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
 
         let outPipe = Pipe()
