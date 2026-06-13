@@ -146,6 +146,14 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    /// A refresh "produced no usage" when the fetch failed entirely (usage == nil)
+    /// or either tracked window (5h / 7d) reports zero utilization. In those cases
+    /// the account's saved command is run, if one exists.
+    static func shouldRunSavedCommand(for usage: UsageData?) -> Bool {
+        guard let usage else { return true }
+        return usage.fiveHour.utilization == 0 || usage.sevenDay.utilization == 0
+    }
+
     private func runShellCommand(_ command: String) async {
         await withCheckedContinuation { continuation in
             let process = Process()
@@ -165,6 +173,9 @@ final class DashboardViewModel: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
         activeClaudeCodeEmail = ccDetector.activeEmail()
+
+        // Saved commands to run for accounts whose refresh produced no 5h/7d usage.
+        var autoCommands: [String] = []
 
         await withTaskGroup(of: (UUID, UsageData?, String?, AccountPlan?).self) { group in
             for state in accountStates where state.account.status != .expired {
@@ -197,6 +208,15 @@ final class DashboardViewModel: ObservableObject {
                 if let index = accountStates.firstIndex(where: { $0.id == accountId }) {
                     accountStates[index].usage = usage ?? accountStates[index].usage
                     accountStates[index].error = error
+
+                    // Run the account's saved command when this refresh produced no
+                    // 5h/7d usage (fetch failed, or either window sits at 0%).
+                    if Self.shouldRunSavedCommand(for: usage) {
+                        let cmdKey = "runCommand_\(accountStates[index].account.id.uuidString)"
+                        if let cmd = UserDefaults.standard.string(forKey: cmdKey), !cmd.isEmpty {
+                            autoCommands.append(cmd)
+                        }
+                    }
 
                     if error == "expired" {
                         var account = accountStates[index].account
@@ -233,6 +253,19 @@ final class DashboardViewModel: ObservableObject {
                             )
                         }
                         accountStates[index].burnRates = rates
+                    }
+                }
+            }
+        }
+
+        // Fire saved commands without blocking the refresh spinner. Each refresh
+        // cycle re-runs them while the no-usage condition still holds.
+        if !autoCommands.isEmpty {
+            let commands = autoCommands
+            Task.detached { [weak self] in
+                await withTaskGroup(of: Void.self) { group in
+                    for cmd in commands {
+                        group.addTask { await self?.runShellCommand(cmd) }
                     }
                 }
             }

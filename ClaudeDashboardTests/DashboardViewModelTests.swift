@@ -186,6 +186,32 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertTrue(vm.menuBarPercentText.hasPrefix("10%"))
     }
 
+    // MARK: - shouldRunSavedCommand
+
+    private func makeUsage(fiveHour: Double, sevenDay: Double) -> UsageData {
+        UsageData(
+            fiveHour: UsageLimit(utilization: fiveHour, resetsAt: nil),
+            sevenDay: UsageLimit(utilization: sevenDay, resetsAt: nil),
+            sevenDaySonnet: nil
+        )
+    }
+
+    func testShouldRunSavedCommand_trueWhenUsageNil() {
+        XCTAssertTrue(DashboardViewModel.shouldRunSavedCommand(for: nil))
+    }
+
+    func testShouldRunSavedCommand_trueWhenFiveHourZero() {
+        XCTAssertTrue(DashboardViewModel.shouldRunSavedCommand(for: makeUsage(fiveHour: 0, sevenDay: 40)))
+    }
+
+    func testShouldRunSavedCommand_trueWhenSevenDayZero() {
+        XCTAssertTrue(DashboardViewModel.shouldRunSavedCommand(for: makeUsage(fiveHour: 25, sevenDay: 0)))
+    }
+
+    func testShouldRunSavedCommand_falseWhenBothNonZero() {
+        XCTAssertFalse(DashboardViewModel.shouldRunSavedCommand(for: makeUsage(fiveHour: 10, sevenDay: 5)))
+    }
+
     func testSortStates_activeCCNotBoosted_whenOtherAccountIsPinned() throws {
         let vm = try makeViewModel(detectorEmail: "active@x.com")
         // C is pinned. B is the active CC account but unpinned.
