@@ -40,7 +40,10 @@ final class DashboardViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var autoRefreshTask: Task<Void, Never>?
     private var resetMonitorTask: Task<Void, Never>?
-    private var consumedResets: Set<String> = []
+    /// Accounts already pinged for the current "circle not started" episode. An account
+    /// is cleared once both its windows report a reset again, so the next reset re-fires
+    /// the command exactly once instead of on every refresh while `resetsAt` stays nil.
+    private var pingedAccounts: Set<UUID> = []
     private let burnRateTracker: BurnRateTracker
     let logStore: UsageLogStore
     let commandLogStore: CommandLogStore
@@ -115,53 +118,35 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    /// Once a window's reset time has passed, the next API fetch reports `resets_at:
+    /// null`. Refresh promptly so `refreshAll` can fire the saved command to restart
+    /// the circle within seconds, instead of waiting for the next auto-refresh. The
+    /// 10s grace avoids reacting to the sub-second jitter `resets_at` shows right at
+    /// the boundary. Firing and de-duplication live in `refreshAll`, not here, so the
+    /// command can never fire twice for one reset.
     private func checkResetTriggers() async {
-        let triggerBefore = Date().addingTimeInterval(-10)
-        var commandsToRun: [(accountId: UUID, command: String)] = []
-        var needsRefresh = false
-
-        for state in accountStates {
-            guard state.account.status == .active, let usage = state.usage else { continue }
-            let windows: [(String, Date?)] = [
-                ("5h", usage.fiveHour.resetsAt),
-                ("7d", usage.sevenDay.resetsAt)
-            ]
-            for (label, resetsAt) in windows {
-                guard let date = resetsAt, date <= triggerBefore else { continue }
-                let key = "\(state.id)-\(label)-\(Int(date.timeIntervalSince1970))"
-                guard !consumedResets.contains(key) else { continue }
-                consumedResets.insert(key)
-                needsRefresh = true
-                let cmdKey = "runCommand_\(state.account.id.uuidString)"
-                if let cmd = UserDefaults.standard.string(forKey: cmdKey), !cmd.isEmpty {
-                    commandsToRun.append((state.account.id, cmd))
-                }
-            }
+        let threshold = Date().addingTimeInterval(-10)
+        let circlePassed = accountStates.contains { state in
+            guard state.account.status == .active, let usage = state.usage else { return false }
+            let five = usage.fiveHour.resetsAt.map { $0 <= threshold } ?? false
+            let seven = usage.sevenDay.resetsAt.map { $0 <= threshold } ?? false
+            return five || seven
         }
-
-        if !commandsToRun.isEmpty {
-            // Copy to a local so the concurrent task closures don't capture @MainActor self.
-            let runner = commandRunner
-            await withTaskGroup(of: Void.self) { group in
-                for item in commandsToRun {
-                    group.addTask {
-                        await runner.run(command: item.command, accountId: item.accountId, trigger: .autoReset)
-                    }
-                }
-            }
-        }
-
-        if needsRefresh {
+        if circlePassed {
             await refreshAll()
         }
     }
 
-    /// A refresh "produced no usage" when the fetch failed entirely (usage == nil)
-    /// or either tracked window (5h / 7d) reports zero utilization. In those cases
-    /// the account's saved command is run, if one exists.
+    /// The saved command exists to (re)start a reset circle. The true signal is a nil
+    /// `resetsAt` on either tracked window (5h / 7d): Claude returns `resets_at: null`
+    /// after a window resets and until its next first request, which is exactly the
+    /// "circle not started" state. Utilization is the wrong signal — it sits at 0 for
+    /// any idle-but-running window, so the old `utilization == 0` check fired on every
+    /// refresh for unused accounts. A failed fetch (usage == nil) does NOT fire: we
+    /// can't read the window state, and a network blip must not trigger a ping.
     static func shouldRunSavedCommand(for usage: UsageData?) -> Bool {
-        guard let usage else { return true }
-        return usage.fiveHour.utilization == 0 || usage.sevenDay.utilization == 0
+        guard let usage else { return false }
+        return usage.fiveHour.resetsAt == nil || usage.sevenDay.resetsAt == nil
     }
 
     // MARK: - Refresh
@@ -206,14 +191,21 @@ final class DashboardViewModel: ObservableObject {
                     accountStates[index].usage = usage ?? accountStates[index].usage
                     accountStates[index].error = error
 
-                    // Run the account's saved command when this refresh produced no
-                    // 5h/7d usage (fetch failed, or either window sits at 0%).
-                    if Self.shouldRunSavedCommand(for: usage) {
-                        let acctId = accountStates[index].account.id
+                    // Run the account's saved command once when a window's circle has
+                    // reset (resets_at == nil). Evaluate against the stored usage so a
+                    // failed fetch keeps the prior state instead of re-arming. The ping
+                    // fills resets_at, ending the nil episode; `pingedAccounts` blocks a
+                    // re-fire until both circles are present again (re-arm below).
+                    let acctId = accountStates[index].account.id
+                    if Self.shouldRunSavedCommand(for: accountStates[index].usage) {
                         let cmdKey = "runCommand_\(acctId.uuidString)"
-                        if let cmd = UserDefaults.standard.string(forKey: cmdKey), !cmd.isEmpty {
+                        if let cmd = UserDefaults.standard.string(forKey: cmdKey), !cmd.isEmpty,
+                           !pingedAccounts.contains(acctId) {
+                            pingedAccounts.insert(acctId)
                             autoCommands.append((acctId, cmd))
                         }
+                    } else {
+                        pingedAccounts.remove(acctId)
                     }
 
                     if error == "expired" {
@@ -256,8 +248,9 @@ final class DashboardViewModel: ObservableObject {
             }
         }
 
-        // Fire saved commands without blocking the refresh spinner. Each refresh
-        // cycle re-runs them while the no-usage condition still holds.
+        // Fire the de-duplicated saved commands without blocking the refresh spinner.
+        // Each fires once per reset (see pingedAccounts), so the command log no longer
+        // fills with repeats while a window sits idle.
         if !autoCommands.isEmpty {
             let commands = autoCommands
             // Copy to a local so the detached task doesn't capture @MainActor self.
@@ -266,7 +259,7 @@ final class DashboardViewModel: ObservableObject {
                 await withTaskGroup(of: Void.self) { group in
                     for item in commands {
                         group.addTask {
-                            await runner.run(command: item.command, accountId: item.accountId, trigger: .autoEmpty)
+                            await runner.run(command: item.command, accountId: item.accountId, trigger: .autoReset)
                         }
                     }
                 }

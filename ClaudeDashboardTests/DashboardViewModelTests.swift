@@ -188,28 +188,46 @@ final class DashboardViewModelTests: XCTestCase {
 
     // MARK: - shouldRunSavedCommand
 
-    private func makeUsage(fiveHour: Double, sevenDay: Double) -> UsageData {
+    /// The command fires to (re)start a reset circle. The signal is `resetsAt == nil`
+    /// (Claude returns `resets_at: null` after a window resets, until the next first
+    /// request), NOT utilization — an idle window sits at 0% while its circle keeps
+    /// running. Utilization is therefore fixed at 0 here to prove it's irrelevant.
+    private func makeUsage(fiveHourReset: Date?, sevenDayReset: Date?) -> UsageData {
         UsageData(
-            fiveHour: UsageLimit(utilization: fiveHour, resetsAt: nil),
-            sevenDay: UsageLimit(utilization: sevenDay, resetsAt: nil),
+            fiveHour: UsageLimit(utilization: 0, resetsAt: fiveHourReset),
+            sevenDay: UsageLimit(utilization: 0, resetsAt: sevenDayReset),
             sevenDaySonnet: nil
         )
     }
 
-    func testShouldRunSavedCommand_trueWhenUsageNil() {
-        XCTAssertTrue(DashboardViewModel.shouldRunSavedCommand(for: nil))
+    func testShouldRunSavedCommand_falseWhenUsageNil() {
+        // Fetch failed → window state unknown → do not fire.
+        XCTAssertFalse(DashboardViewModel.shouldRunSavedCommand(for: nil))
     }
 
-    func testShouldRunSavedCommand_trueWhenFiveHourZero() {
-        XCTAssertTrue(DashboardViewModel.shouldRunSavedCommand(for: makeUsage(fiveHour: 0, sevenDay: 40)))
+    func testShouldRunSavedCommand_trueWhenFiveHourResetNil() {
+        let future = Date().addingTimeInterval(3600)
+        XCTAssertTrue(DashboardViewModel.shouldRunSavedCommand(
+            for: makeUsage(fiveHourReset: nil, sevenDayReset: future)))
     }
 
-    func testShouldRunSavedCommand_trueWhenSevenDayZero() {
-        XCTAssertTrue(DashboardViewModel.shouldRunSavedCommand(for: makeUsage(fiveHour: 25, sevenDay: 0)))
+    func testShouldRunSavedCommand_trueWhenSevenDayResetNil() {
+        let future = Date().addingTimeInterval(3600)
+        XCTAssertTrue(DashboardViewModel.shouldRunSavedCommand(
+            for: makeUsage(fiveHourReset: future, sevenDayReset: nil)))
     }
 
-    func testShouldRunSavedCommand_falseWhenBothNonZero() {
-        XCTAssertFalse(DashboardViewModel.shouldRunSavedCommand(for: makeUsage(fiveHour: 10, sevenDay: 5)))
+    func testShouldRunSavedCommand_trueWhenBothResetNil() {
+        XCTAssertTrue(DashboardViewModel.shouldRunSavedCommand(
+            for: makeUsage(fiveHourReset: nil, sevenDayReset: nil)))
+    }
+
+    func testShouldRunSavedCommand_falseWhenBothResetPresent_evenAtZeroUtilization() {
+        // The bug: an idle account (0% on both windows) whose circles are still
+        // running must NOT fire. Only a nil reset (circle gone) should.
+        let future = Date().addingTimeInterval(3600)
+        XCTAssertFalse(DashboardViewModel.shouldRunSavedCommand(
+            for: makeUsage(fiveHourReset: future, sevenDayReset: future)))
     }
 
     func testSortStates_activeCCNotBoosted_whenOtherAccountIsPinned() throws {
