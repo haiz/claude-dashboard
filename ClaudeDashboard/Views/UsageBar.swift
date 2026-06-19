@@ -143,8 +143,16 @@ private struct CountdownColumn: View {
             formatter.dateStyle = .none
             return formatter.string(from: date)
         }
-        formatter.dateFormat = "EEE ha"
-        let raw = formatter.string(from: date).lowercased()
+        // Long windows (7d/Sonnet) reset off-the-hour. Round to the nearest 10
+        // minutes so the wall-clock label matches the countdown instead of
+        // truncating minutes (e.g. 23:59 must read "Sat 12am", not "Fri 11pm").
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.minute, .second], from: date)
+        let minutesFloat = Double(comps.minute ?? 0) + Double(comps.second ?? 0) / 60.0
+        let deltaMin = (minutesFloat / 10.0).rounded() * 10.0 - minutesFloat
+        let rounded = date.addingTimeInterval(deltaMin * 60.0)
+        formatter.dateFormat = cal.component(.minute, from: rounded) == 0 ? "EEE ha" : "EEE h:mma"
+        let raw = formatter.string(from: rounded).lowercased()
         return raw.prefix(1).uppercased() + raw.dropFirst()
     }
 
