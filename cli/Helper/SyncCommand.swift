@@ -59,11 +59,9 @@ enum SyncCommand {
                     email = orgs.compactMap(\.email).first
                 }
 
-                // Detect plan
-                var plan: AccountPlan = .pro
-                if let fullUsage = try? await apiService.fetchFullUsage(orgId: orgId, sessionKey: sessionKey) {
-                    plan = fullUsage.planHint ?? .pro
-                }
+                // Plan tier from org capabilities (the usage endpoint has no
+                // reliable plan signal).
+                let plan = orgs.first(where: { $0.uuid == orgId })?.planHint ?? .pro
 
                 let displayName = email ?? item.profile.displayName
                 let chromeLabel = item.profile.googleEmail.isEmpty

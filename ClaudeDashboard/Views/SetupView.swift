@@ -310,11 +310,9 @@ struct SetupView: View {
                     continue
                 }
 
-                // Detect plan from usage response
-                var plan: AccountPlan? = nil
-                if let fullUsage = try? await apiService.fetchFullUsage(orgId: orgId, sessionKey: sessionKey) {
-                    plan = fullUsage.planHint
-                }
+                // Plan tier from org capabilities (the usage endpoint has no
+                // reliable plan signal).
+                let plan = orgs.first(where: { $0.uuid == orgId })?.planHint
 
                 accounts.append(DetectedAccount(
                     browser: item.profile.browser,

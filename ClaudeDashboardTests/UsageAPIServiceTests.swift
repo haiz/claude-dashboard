@@ -95,13 +95,14 @@ final class UsageAPIServiceTests: XCTestCase {
         }
     }
 
-    func testFetchFullUsageDetectsMaxPlan() async throws {
+    func testFetchFullUsageReturnsUsage() async throws {
+        // The usage endpoint no longer carries a plan signal; it just returns usage.
         let responseJSON = """
         {
           "five_hour": { "utilization": 30.0, "resets_at": null },
           "seven_day": { "utilization": 10.0, "resets_at": null },
           "seven_day_sonnet": { "utilization": 5.0, "resets_at": null },
-          "extra_usage": { "is_enabled": true }
+          "extra_usage": { "is_enabled": false, "disabled_reason": "out_of_credits" }
         }
         """.data(using: .utf8)!
 
@@ -118,20 +119,17 @@ final class UsageAPIServiceTests: XCTestCase {
         let session = URLSession(configuration: config)
 
         let service = UsageAPIService(session: session)
-        let (usage, planHint, _) = try await service.fetchFullUsage(orgId: "org-123", sessionKey: "sk-test")
+        let (usage, _) = try await service.fetchFullUsage(orgId: "org-123", sessionKey: "sk-test")
 
         XCTAssertEqual(usage.fiveHour.utilization, 30.0)
         XCTAssertEqual(usage.sevenDaySonnet?.utilization, 5.0)
-        XCTAssertEqual(planHint, .max200)  // extra_usage enabled but no tier info → fallback Max
     }
 
-    func testFetchFullUsageDetectsProPlan() async throws {
+    // Plan tier is derived solely from the organizations endpoint's capabilities.
+    private func planHint(forCapabilities caps: [String]) async throws -> AccountPlan? {
+        let capsJSON = caps.map { "\"\($0)\"" }.joined(separator: ", ")
         let responseJSON = """
-        {
-          "five_hour": { "utilization": 10.0, "resets_at": null },
-          "seven_day": { "utilization": 5.0, "resets_at": null },
-          "extra_usage": null
-        }
+        [ { "uuid": "org-123", "name": "test@example.com's Organization", "capabilities": [\(capsJSON)] } ]
         """.data(using: .utf8)!
 
         MockURLProtocol.requestHandler = { request in
@@ -147,9 +145,24 @@ final class UsageAPIServiceTests: XCTestCase {
         let session = URLSession(configuration: config)
 
         let service = UsageAPIService(session: session)
-        let (_, planHint, _) = try await service.fetchFullUsage(orgId: "org-123", sessionKey: "sk-test")
+        let orgs = try await service.fetchOrganizations(sessionKey: "sk-test")
+        return orgs.first?.planHint
+    }
 
-        XCTAssertEqual(planHint, .pro)
+    func testDetectsProFromClaudeProCapability() async throws {
+        let plan = try await planHint(forCapabilities: ["chat", "claude_pro"])
+        XCTAssertEqual(plan, .pro)
+    }
+
+    func testDetectsMaxFromChatOnlyCapability() async throws {
+        // A consumer chat org without `claude_pro` is Max (tier not exposed by API).
+        let plan = try await planHint(forCapabilities: ["chat"])
+        XCTAssertEqual(plan, .max200)
+    }
+
+    func testNonConsumerOrgHasNoPlan() async throws {
+        let plan = try await planHint(forCapabilities: ["api"])
+        XCTAssertNil(plan)
     }
 }
 

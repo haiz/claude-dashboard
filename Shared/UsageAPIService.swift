@@ -72,9 +72,13 @@ final class UsageAPIService {
         }
     }
 
-    // MARK: - Full Usage (with plan detection from raw response)
+    // MARK: - Full Usage
 
-    func fetchFullUsage(orgId: String, sessionKey: String) async throws -> (usage: UsageData, planHint: AccountPlan?, newSessionKey: String?) {
+    // The usage endpoint carries no reliable plan-tier signal — `extra_usage` is
+    // a pay-as-you-go overage toggle (it flips to is_enabled=false when out of
+    // credits) and has no tier/multiplier field. Plan tier comes solely from the
+    // organizations endpoint's capabilities (see `detectPlanTier`).
+    func fetchFullUsage(orgId: String, sessionKey: String) async throws -> (usage: UsageData, newSessionKey: String?) {
         guard let url = URL(string: "\(baseURL)/organizations/\(orgId)/usage") else {
             throw UsageAPIError.invalidResponse
         }
@@ -83,52 +87,23 @@ final class UsageAPIService {
         let (data, response) = try await session.data(for: request)
         let httpResponse = try validateResponse(response)
 
-        // DEBUG: log raw API response to see seven_day_sonnet field
-        if let rawJSON = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            let sonnetValue = rawJSON["seven_day_sonnet"] as Any
-            print("[UsageAPI] orgId=\(orgId) seven_day_sonnet=\(sonnetValue)")
-        }
-
         let usage = try UsageData.decode(from: data)
         let newSessionKey = parseSessionKey(from: httpResponse)
-
-        // Detect plan from raw JSON
-        // Max plans have extra_usage.is_enabled = true
-        var planHint: AccountPlan? = nil
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            if let extraUsage = json["extra_usage"] as? [String: Any],
-               let isEnabled = extraUsage["is_enabled"] as? Bool,
-               isEnabled {
-                // Check for tier/multiplier in extra_usage to distinguish Max 5x vs 20x
-                if let tier = extraUsage["tier"] as? String {
-                    if tier.contains("20x") { planHint = .max20x }
-                    else if tier.contains("5x") { planHint = .max5x }
-                    else { planHint = .max200 }
-                } else if let multiplier = extraUsage["multiplier"] as? Int {
-                    if multiplier >= 20 { planHint = .max20x }
-                    else if multiplier >= 5 { planHint = .max5x }
-                    else { planHint = .max200 }
-                } else {
-                    planHint = .max200
-                }
-            } else if json.keys.contains("extra_usage") {
-                // extra_usage is null or is_enabled is false → Pro plan
-                planHint = .pro
-            }
-            // If extra_usage key is absent entirely, leave planHint nil (unknown)
-        }
-
-        return (usage: usage, planHint: planHint, newSessionKey: newSessionKey)
+        return (usage: usage, newSessionKey: newSessionKey)
     }
 
     // MARK: - Private
 
+    // Plan tier from the organizations endpoint. The only stable consumer-plan
+    // markers the API exposes are the `claude_pro` / `claude_max` capabilities;
+    // the 5x vs 20x distinction is not exposed anywhere, so Max falls back to a
+    // generic "Max". A consumer chat org without `claude_pro` is treated as Max.
     private static func detectPlanTier(from dict: [String: Any], capabilities: [String]) -> AccountPlan? {
-        // Serialize the full org JSON to a string and search for tier patterns
+        let caps = Set(capabilities.map { $0.lowercased() })
+
+        // Explicit 5x/20x markers, if the org ever exposes them.
         let jsonString = (try? JSONSerialization.data(withJSONObject: dict))
             .flatMap { String(data: $0, encoding: .utf8) }?.lowercased() ?? ""
-
-        // Look for explicit 5x/20x markers anywhere in the org JSON
         if jsonString.contains("max_20x") || jsonString.contains("max20x") {
             return .max20x
         }
@@ -136,12 +111,14 @@ final class UsageAPIService {
             return .max5x
         }
 
-        // Check capabilities for known patterns
-        let capsJoined = capabilities.joined(separator: " ").lowercased()
-        if capsJoined.contains("max") || capsJoined.contains("extra_usage") {
-            return .max200  // Max but can't determine 5x/20x
-        }
+        // `claude_pro` is the authoritative Pro marker — check it before the chat
+        // fallback, since Pro orgs also carry the `chat` capability.
+        if caps.contains("claude_pro") { return .pro }
+        if caps.contains("claude_max") { return .max200 }
 
+        // A consumer chat org without the Pro marker is Max (tier unknown).
+        // Non-consumer orgs (api-only, etc.) are not a plan we display.
+        if caps.contains("chat") { return .max200 }
         return nil
     }
 

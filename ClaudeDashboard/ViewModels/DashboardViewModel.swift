@@ -169,12 +169,17 @@ final class DashboardViewModel: ObservableObject {
 
                 group.addTask { [apiService, accountStore] in
                     do {
-                        let (usage, planHint, newKey) = try await Self.fetchWithRetry {
+                        let (usage, newKey) = try await Self.fetchWithRetry {
                             try await apiService.fetchFullUsage(orgId: orgId, sessionKey: sessionKey)
                         }
                         if let newKey {
                             await MainActor.run { accountStore.saveSessionKey(newKey, for: account.id) }
                         }
+                        // Plan tier comes only from org capabilities (the usage endpoint
+                        // has no reliable plan signal). Best-effort: a nil result leaves
+                        // the stored plan unchanged in the update step below.
+                        let planHint = (try? await apiService.fetchOrganizations(sessionKey: sessionKey))?
+                            .first(where: { $0.uuid == orgId })?.planHint
                         return (account.id, usage, nil, planHint)
                     } catch UsageAPIError.authExpired {
                         return (account.id, nil, "expired", nil)
