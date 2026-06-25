@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct UsageBar: View {
-    let label: String           // "5h", "7d", or "S"
+    let label: String           // "5h" or "7d"
     let utilization: Double     // 0-100
     let resetsAt: Date?
     let totalSeconds: TimeInterval
@@ -28,7 +28,7 @@ struct UsageBar: View {
     private var smallLineWidth: CGFloat { isCompact ? 4 : 5 }
     private var labelFontSize: CGFloat { isCompact ? 10 : 13 }
 
-    /// Number of countdown segments: 5 for 5h window, 7 for 7d and Sonnet windows.
+    /// Number of countdown segments: 5 for the 5h window, 7 for the 7d window.
     private var segmentCount: Int { totalSeconds <= 18000 ? 5 : 7 }
 
     var body: some View {
@@ -143,7 +143,7 @@ private struct CountdownColumn: View {
             formatter.dateStyle = .none
             return formatter.string(from: date)
         }
-        // Long windows (7d/Sonnet) reset off-the-hour. Round to the nearest 10
+        // The 7d window resets off-the-hour. Round to the nearest 10
         // minutes so the wall-clock label matches the countdown instead of
         // truncating minutes (e.g. 23:59 must read "Sat 12am", not "Fri 11pm").
         let cal = Calendar.current

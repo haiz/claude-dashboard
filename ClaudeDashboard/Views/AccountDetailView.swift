@@ -92,7 +92,6 @@ struct AccountDetailView: View {
                         )) {
                             Text("5h").tag(UsageWindow.fiveHour)
                             Text("7d").tag(UsageWindow.sevenDay)
-                            Text("S").tag(UsageWindow.sonnet)
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()

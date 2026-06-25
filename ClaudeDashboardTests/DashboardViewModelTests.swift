@@ -91,8 +91,7 @@ final class DashboardViewModelTests: XCTestCase {
         let sevenDay = UsageLimit(utilization: 0, resetsAt: nil)
         let usage = UsageData(
             fiveHour: fiveHour,
-            sevenDay: sevenDay,
-            sevenDaySonnet: nil
+            sevenDay: sevenDay
         )
         return AccountUsageState(id: account.id, account: account, usage: usage)
     }
@@ -195,8 +194,7 @@ final class DashboardViewModelTests: XCTestCase {
     private func makeUsage(fiveHourReset: Date?, sevenDayReset: Date?) -> UsageData {
         UsageData(
             fiveHour: UsageLimit(utilization: 0, resetsAt: fiveHourReset),
-            sevenDay: UsageLimit(utilization: 0, resetsAt: sevenDayReset),
-            sevenDaySonnet: nil
+            sevenDay: UsageLimit(utilization: 0, resetsAt: sevenDayReset)
         )
     }
 

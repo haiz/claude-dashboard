@@ -4,13 +4,11 @@ import Foundation
 enum UsageWindow: Int, CaseIterable {
     case fiveHour = 0
     case sevenDay = 1
-    case sonnet = 2
 
     var label: String {
         switch self {
         case .fiveHour: return "5h"
         case .sevenDay: return "7d"
-        case .sonnet: return "S"
         }
     }
 }
@@ -62,7 +60,6 @@ struct BurnRateResult: Equatable {
 struct BurnRates: Equatable {
     var fiveHour: BurnRateResult?
     var sevenDay: BurnRateResult?
-    var sonnet: BurnRateResult?
 }
 
 // MARK: - Reset Transition Injection

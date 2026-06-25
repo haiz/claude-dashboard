@@ -121,10 +121,10 @@ struct AccountCard: View {
         HStack(alignment: .top, spacing: isCompact ? 20 : 30) {
             UsageBar(label: "5h", utilization: usage.fiveHour.utilization, resetsAt: usage.fiveHour.resetsAt, totalSeconds: 18000, animal: state.burnRates?.fiveHour?.animal, isCompact: isCompact, onTap: onOpenChart.map { cb in { cb(.fiveHour) } })
             UsageBar(label: "7d", utilization: usage.sevenDay.utilization, resetsAt: usage.sevenDay.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sevenDay?.animal, isCompact: isCompact, onTap: onOpenChart.map { cb in { cb(.sevenDay) } })
-            if let sonnet = usage.sevenDaySonnet {
-                UsageBar(label: "S", utilization: sonnet.utilization, resetsAt: sonnet.resetsAt, totalSeconds: 604800, animal: state.burnRates?.sonnet?.animal, showCountdown: false, isCompact: isCompact, onTap: onOpenChart.map { cb in { cb(.sonnet) } })
-            }
         }
+        // Center the two gauges so the row stays balanced within the card /
+        // popover, which is wider than the gauges themselves.
+        .frame(maxWidth: .infinity)
     }
 
     private var expiredContent: some View {

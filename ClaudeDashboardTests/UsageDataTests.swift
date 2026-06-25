@@ -8,7 +8,6 @@ final class UsageDataTests: XCTestCase {
         {
           "five_hour": { "utilization": 42.0, "resets_at": "2026-04-10T18:59:59.661633+00:00" },
           "seven_day": { "utilization": 18.0, "resets_at": "2026-04-14T16:59:59.661657+00:00" },
-          "seven_day_sonnet": { "utilization": 0.0, "resets_at": null },
           "seven_day_opus": null,
           "seven_day_oauth_apps": null,
           "seven_day_cowork": null,
@@ -54,46 +53,20 @@ final class UsageDataTests: XCTestCase {
         XCTAssertNotNil(usage.sevenDay.resetsAt)
     }
 
-    func testDecodesSevenDaySonnet() throws {
+    func testIgnoresUnknownFields() throws {
+        // Claude's usage endpoint carries extra windows we don't model (e.g. the
+        // former seven_day_sonnet). Decoding must ignore unknown keys.
         let json = """
         {
-          "five_hour": { "utilization": 42.0, "resets_at": "2026-04-10T18:59:59.661633+00:00" },
-          "seven_day": { "utilization": 18.0, "resets_at": "2026-04-14T16:59:59.661657+00:00" },
+          "five_hour": { "utilization": 10.0, "resets_at": null },
+          "seven_day": { "utilization": 5.0, "resets_at": null },
           "seven_day_sonnet": { "utilization": 25.0, "resets_at": "2026-04-12T10:00:00+00:00" }
         }
         """.data(using: .utf8)!
 
         let usage = try UsageData.decode(from: json)
 
-        XCTAssertNotNil(usage.sevenDaySonnet)
-        XCTAssertEqual(usage.sevenDaySonnet?.utilization, 25.0)
-        XCTAssertNotNil(usage.sevenDaySonnet?.resetsAt)
-    }
-
-    func testDecodesNullSevenDaySonnet() throws {
-        let json = """
-        {
-          "five_hour": { "utilization": 0.0, "resets_at": null },
-          "seven_day": { "utilization": 0.0, "resets_at": null },
-          "seven_day_sonnet": null
-        }
-        """.data(using: .utf8)!
-
-        let usage = try UsageData.decode(from: json)
-
-        XCTAssertNil(usage.sevenDaySonnet)
-    }
-
-    func testDecodesMissingSonnetField() throws {
-        let json = """
-        {
-          "five_hour": { "utilization": 10.0, "resets_at": null },
-          "seven_day": { "utilization": 5.0, "resets_at": null }
-        }
-        """.data(using: .utf8)!
-
-        let usage = try UsageData.decode(from: json)
-
-        XCTAssertNil(usage.sevenDaySonnet)
+        XCTAssertEqual(usage.fiveHour.utilization, 10.0)
+        XCTAssertEqual(usage.sevenDay.utilization, 5.0)
     }
 }

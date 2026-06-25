@@ -240,13 +240,6 @@ final class DashboardViewModel: ObservableObject {
                             utilization: currentUsage.sevenDay.utilization,
                             resetsAt: currentUsage.sevenDay.resetsAt ?? Date().addingTimeInterval(604800)
                         )
-                        if let sonnet = currentUsage.sevenDaySonnet {
-                            rates.sonnet = await burnRateTracker.record(
-                                accountId: accountId, window: .sonnet,
-                                utilization: sonnet.utilization,
-                                resetsAt: sonnet.resetsAt ?? Date().addingTimeInterval(604800)
-                            )
-                        }
                         accountStates[index].burnRates = rates
                     }
                 }

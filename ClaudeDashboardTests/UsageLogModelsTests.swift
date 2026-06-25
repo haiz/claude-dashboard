@@ -46,13 +46,11 @@ final class UsageLogModelsTests: XCTestCase {
     func testUsageWindowLabels() {
         XCTAssertEqual(UsageWindow.fiveHour.label, "5h")
         XCTAssertEqual(UsageWindow.sevenDay.label, "7d")
-        XCTAssertEqual(UsageWindow.sonnet.label, "S")
     }
 
     func testUsageWindowRawValues() {
         XCTAssertEqual(UsageWindow.fiveHour.rawValue, 0)
         XCTAssertEqual(UsageWindow.sevenDay.rawValue, 1)
-        XCTAssertEqual(UsageWindow.sonnet.rawValue, 2)
     }
 }
 

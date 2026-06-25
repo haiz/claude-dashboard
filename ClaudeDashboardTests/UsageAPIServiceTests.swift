@@ -101,7 +101,6 @@ final class UsageAPIServiceTests: XCTestCase {
         {
           "five_hour": { "utilization": 30.0, "resets_at": null },
           "seven_day": { "utilization": 10.0, "resets_at": null },
-          "seven_day_sonnet": { "utilization": 5.0, "resets_at": null },
           "extra_usage": { "is_enabled": false, "disabled_reason": "out_of_credits" }
         }
         """.data(using: .utf8)!
@@ -122,7 +121,7 @@ final class UsageAPIServiceTests: XCTestCase {
         let (usage, _) = try await service.fetchFullUsage(orgId: "org-123", sessionKey: "sk-test")
 
         XCTAssertEqual(usage.fiveHour.utilization, 30.0)
-        XCTAssertEqual(usage.sevenDaySonnet?.utilization, 5.0)
+        XCTAssertEqual(usage.sevenDay.utilization, 10.0)
     }
 
     // Plan tier is derived solely from the organizations endpoint's capabilities.
