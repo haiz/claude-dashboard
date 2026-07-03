@@ -96,11 +96,12 @@ struct DashboardWindow: View {
             } else {
                 ScrollView {
                     LazyVGrid(
-                        // Cards now show two gauges (5h, 7d) since Claude dropped
-                        // the Sonnet-only window. Size the column to that content
-                        // (was 440 for three gauges) and cap the max so cards
-                        // don't stretch and leave a blank band on the right.
-                        columns: [GridItem(.adaptive(minimum: 320, maximum: 400), spacing: 12, alignment: .top)],
+                        // Cards can show up to three gauges (5h, 7d, and the
+                        // Fable model window when present). Size the column to fit
+                        // three and cap the max so cards don't stretch and leave a
+                        // blank band on the right. Two-gauge cards center their
+                        // gauges within the same width.
+                        columns: [GridItem(.adaptive(minimum: 420, maximum: 480), spacing: 12, alignment: .top)],
                         alignment: .leading,
                         spacing: 12
                     ) {

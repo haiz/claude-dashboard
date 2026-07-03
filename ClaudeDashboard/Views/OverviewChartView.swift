@@ -84,10 +84,11 @@ struct OverviewChartView: View {
                         Picker("Window", selection: $selectedWindow) {
                             Text("5h").tag(UsageWindow.fiveHour)
                             Text("7d").tag(UsageWindow.sevenDay)
+                            Text("F").tag(UsageWindow.fable)
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
-                        .frame(width: 140)
+                        .frame(width: 180)
                     }
                 )
             }
@@ -448,6 +449,7 @@ struct OverviewChartView: View {
         switch selectedWindow {
         case .fiveHour: return rates?.fiveHour?.animal
         case .sevenDay: return rates?.sevenDay?.animal
+        case .fable: return rates?.fable?.animal
         }
     }
 

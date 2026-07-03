@@ -69,4 +69,58 @@ final class UsageDataTests: XCTestCase {
         XCTAssertEqual(usage.fiveHour.utilization, 10.0)
         XCTAssertEqual(usage.sevenDay.utilization, 5.0)
     }
+
+    // The usage endpoint has no `seven_day_fable` field. Fable is reported only
+    // as a `weekly_scoped` entry inside the `limits` array.
+    func testDecodesFableFromLimits() throws {
+        let json = """
+        {
+          "five_hour": { "utilization": 9.0, "resets_at": null },
+          "seven_day": { "utilization": 66.0, "resets_at": null },
+          "limits": [
+            { "kind": "session", "group": "session", "percent": 9, "resets_at": null, "scope": null },
+            { "kind": "weekly_all", "group": "weekly", "percent": 66, "resets_at": null, "scope": null },
+            { "kind": "weekly_scoped", "group": "weekly", "percent": 100,
+              "resets_at": "2026-07-03T17:00:00.283013+00:00",
+              "scope": { "model": { "id": null, "display_name": "Fable" }, "surface": null } }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let usage = try UsageData.decode(from: json)
+
+        XCTAssertNotNil(usage.fable)
+        XCTAssertEqual(usage.fable?.utilization, 100.0)
+        XCTAssertNotNil(usage.fable?.resetsAt)
+    }
+
+    func testFableNilWhenNoScopedLimit() throws {
+        let json = """
+        {
+          "five_hour": { "utilization": 9.0, "resets_at": null },
+          "seven_day": { "utilization": 66.0, "resets_at": null },
+          "limits": [
+            { "kind": "session", "group": "session", "percent": 9, "resets_at": null, "scope": null },
+            { "kind": "weekly_all", "group": "weekly", "percent": 66, "resets_at": null, "scope": null }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let usage = try UsageData.decode(from: json)
+
+        XCTAssertNil(usage.fable)
+    }
+
+    func testFableNilWhenNoLimitsArray() throws {
+        let json = """
+        {
+          "five_hour": { "utilization": 9.0, "resets_at": null },
+          "seven_day": { "utilization": 66.0, "resets_at": null }
+        }
+        """.data(using: .utf8)!
+
+        let usage = try UsageData.decode(from: json)
+
+        XCTAssertNil(usage.fable)
+    }
 }

@@ -46,11 +46,14 @@ final class UsageLogModelsTests: XCTestCase {
     func testUsageWindowLabels() {
         XCTAssertEqual(UsageWindow.fiveHour.label, "5h")
         XCTAssertEqual(UsageWindow.sevenDay.label, "7d")
+        XCTAssertEqual(UsageWindow.fable.label, "F")
     }
 
     func testUsageWindowRawValues() {
         XCTAssertEqual(UsageWindow.fiveHour.rawValue, 0)
         XCTAssertEqual(UsageWindow.sevenDay.rawValue, 1)
+        // Deliberately 3 (not 2) to avoid colliding with retired Sonnet logs.
+        XCTAssertEqual(UsageWindow.fable.rawValue, 3)
     }
 }
 

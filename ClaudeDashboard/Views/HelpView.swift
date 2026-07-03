@@ -60,11 +60,12 @@ struct HelpView: View {
 
     private var readingUsageSection: some View {
         helpSection(title: "Reading Your Usage", icon: "chart.bar.fill") {
-            bodyText("Each account card shows two usage bars:")
+            bodyText("Each account card shows up to three usage bars:")
 
             VStack(alignment: .leading, spacing: 6) {
                 bullet(icon: nil, text: "**5h** — tokens used in the rolling 5-hour window.")
                 bullet(icon: nil, text: "**7d** — tokens used in the rolling 7-day window.")
+                bullet(icon: nil, text: "**F** — 7-day usage for the Fable model (shown only when your plan scopes it).")
             }
 
             bodyText("Bar color signals how much is left: green (plenty), yellow (halfway), red (nearly out). The countdown next to each bar shows when that window resets.")

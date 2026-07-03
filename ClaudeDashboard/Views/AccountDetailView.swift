@@ -92,10 +92,11 @@ struct AccountDetailView: View {
                         )) {
                             Text("5h").tag(UsageWindow.fiveHour)
                             Text("7d").tag(UsageWindow.sevenDay)
+                            Text("F").tag(UsageWindow.fable)
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
-                        .frame(width: 140)
+                        .frame(width: 180)
 
                         if viewModel.selectedCycle != nil {
                             Button("Show All") {

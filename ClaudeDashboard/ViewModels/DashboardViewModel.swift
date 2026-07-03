@@ -240,6 +240,13 @@ final class DashboardViewModel: ObservableObject {
                             utilization: currentUsage.sevenDay.utilization,
                             resetsAt: currentUsage.sevenDay.resetsAt ?? Date().addingTimeInterval(604800)
                         )
+                        if let fable = currentUsage.fable {
+                            rates.fable = await burnRateTracker.record(
+                                accountId: accountId, window: .fable,
+                                utilization: fable.utilization,
+                                resetsAt: fable.resetsAt ?? Date().addingTimeInterval(604800)
+                            )
+                        }
                         accountStates[index].burnRates = rates
                     }
                 }

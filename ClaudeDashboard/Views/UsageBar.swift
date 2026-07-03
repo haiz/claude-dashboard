@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct UsageBar: View {
-    let label: String           // "5h" or "7d"
+    let label: String           // "5h", "7d", or "F"
     let utilization: Double     // 0-100
     let resetsAt: Date?
     let totalSeconds: TimeInterval

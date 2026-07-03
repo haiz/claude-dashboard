@@ -4,11 +4,15 @@ import Foundation
 enum UsageWindow: Int, CaseIterable {
     case fiveHour = 0
     case sevenDay = 1
+    // rawValue 3 (not 2) so Fable logs never collide with the retired Sonnet
+    // window that persisted rows at rawValue 2 in older databases.
+    case fable = 3
 
     var label: String {
         switch self {
         case .fiveHour: return "5h"
         case .sevenDay: return "7d"
+        case .fable: return "F"
         }
     }
 }
@@ -60,6 +64,7 @@ struct BurnRateResult: Equatable {
 struct BurnRates: Equatable {
     var fiveHour: BurnRateResult?
     var sevenDay: BurnRateResult?
+    var fable: BurnRateResult?
 }
 
 // MARK: - Reset Transition Injection
