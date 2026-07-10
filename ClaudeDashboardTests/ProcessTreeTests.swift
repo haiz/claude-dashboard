@@ -3,7 +3,9 @@ import Darwin
 @testable import ClaudeDashboard
 
 final class ProcessTreeTests: XCTestCase {
-    /// A zsh -c "sleep 30" has the sleep as a descendant; killTree must reap it.
+    /// A lone `zsh -c "sleep 30"` tail-call-execs into sleep (same pid, no child), so
+    /// the `&` forces a real forked child and `wait` keeps zsh alive as the parent;
+    /// that gives killTree an actual descendant to reap.
     func testKillTreeReapsGrandchild() throws {
         let p = Process()
         p.launchPath = "/bin/zsh"
