@@ -25,10 +25,11 @@ actor CommandLogStore {
 
     @discardableResult
     func record(accountId: UUID?, command: String, trigger: CommandTrigger,
-                startedAt: Date, finishedAt: Date?, exitCode: Int32?) -> Int64 {
+                startedAt: Date, finishedAt: Date?, status: CommandStatus,
+                exitCode: Int32?, output: String?) -> Int64 {
         let sql = """
-        INSERT INTO command_logs (account_id, cmd, trig, started, finished, exit_code)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO command_logs (account_id, cmd, trig, started, finished, exit_code, status, output)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return -1 }
@@ -52,6 +53,12 @@ actor CommandLogStore {
         } else {
             sqlite3_bind_null(stmt, 6)
         }
+        sqlite3_bind_int(stmt, 7, Int32(status.rawValue))
+        if let output {
+            output.withCString { sqlite3_bind_text(stmt, 8, $0, -1, SQLITE_TRANSIENT) }
+        } else {
+            sqlite3_bind_null(stmt, 8)
+        }
 
         guard sqlite3_step(stmt) == SQLITE_DONE else { return -1 }
         let id = sqlite3_last_insert_rowid(db)
@@ -63,7 +70,7 @@ actor CommandLogStore {
 
     func recent(limit: Int) -> [CommandLogEntry] {
         let sql = """
-        SELECT id, account_id, cmd, trig, started, finished, exit_code
+        SELECT id, account_id, cmd, trig, started, finished, exit_code, status, output
         FROM command_logs ORDER BY id DESC LIMIT ?
         """
         var stmt: OpaquePointer?
@@ -84,14 +91,14 @@ actor CommandLogStore {
                 ? nil : Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 5)))
             let exitCode: Int32? = sqlite3_column_type(stmt, 6) == SQLITE_NULL
                 ? nil : sqlite3_column_int(stmt, 6)
+            let status: CommandStatus = sqlite3_column_type(stmt, 7) == SQLITE_NULL
+                ? .exited : (CommandStatus(rawValue: Int(sqlite3_column_int(stmt, 7))) ?? .exited)
+            let output: String? = sqlite3_column_text(stmt, 8).map { String(cString: $0) }
             results.append(CommandLogEntry(
                 id: sqlite3_column_int64(stmt, 0),
-                accountId: accountId,
-                command: command,
-                trigger: trigger,
-                startedAt: started,
-                finishedAt: finished,
-                exitCode: exitCode
+                accountId: accountId, command: command, trigger: trigger,
+                startedAt: started, finishedAt: finished, exitCode: exitCode,
+                status: status, output: output
             ))
         }
         return results
@@ -132,10 +139,16 @@ actor CommandLogStore {
             trig INTEGER NOT NULL,
             started INTEGER NOT NULL,
             finished INTEGER,
-            exit_code INTEGER
+            exit_code INTEGER,
+            status INTEGER,
+            output TEXT
         )
         """
         sqlite3_exec(db, sql, nil, nil, nil)
+        // Migrate older DBs that predate these columns. ADD COLUMN errors with
+        // "duplicate column name" when they already exist; that return is ignored.
+        sqlite3_exec(db, "ALTER TABLE command_logs ADD COLUMN status INTEGER", nil, nil, nil)
+        sqlite3_exec(db, "ALTER TABLE command_logs ADD COLUMN output TEXT", nil, nil, nil)
     }
 
     static func defaultDBPath() -> String {
