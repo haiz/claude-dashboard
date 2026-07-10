@@ -71,7 +71,7 @@ struct CommandLogView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             VStack(alignment: .trailing, spacing: 4) {
-                exitView(entry.exitCode)
+                statusView(entry)
                 Text(durationText(entry))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
@@ -79,6 +79,7 @@ struct CommandLogView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+        .help(entry.output?.isEmpty == false ? entry.output! : "No output captured")
     }
 
     private func triggerBadge(_ trigger: CommandTrigger) -> some View {
@@ -109,6 +110,28 @@ struct CommandLogView: View {
             Text("—")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func statusView(_ entry: CommandLogEntry) -> some View {
+        switch entry.status {
+        case .exited:
+            exitView(entry.exitCode)
+        default:
+            Text(entry.status.label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(statusColor(entry.status))
+        }
+    }
+
+    private func statusColor(_ status: CommandStatus) -> Color {
+        switch status {
+        case .exited: return .secondary
+        case .timedOut: return .orange
+        case .cancelled: return .secondary
+        case .launchedInTerminal: return .blue
+        case .launchFailed: return .red
         }
     }
 
