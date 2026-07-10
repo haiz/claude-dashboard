@@ -62,6 +62,24 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertEqual(rows[0].status, .timedOut)
     }
 
+    func testTimeoutSigkillFallbackKillsStubbornProcess() async {
+        // Timeout must exceed the time it takes zsh to source ~/.zshrc (a few seconds on a
+        // loaded shell config), otherwise SIGTERM arrives before `trap` ever runs and the
+        // fixture dies from the default disposition instead of exercising the SIGKILL path.
+        let fastRunner = CommandRunner(store: store, timeout: 5)
+        let start = Date()
+        let result = await fastRunner.run(command: "trap '' TERM; while :; do sleep 0.2; done",
+                                           accountId: nil, trigger: .manual)
+        let elapsed = Date().timeIntervalSince(start)
+        // Must survive past the SIGTERM (t=5s) and only die once the grace period's SIGKILL
+        // lands (t=~7s) -- proving the fallback actually terminates a SIGTERM-ignoring tree.
+        XCTAssertGreaterThanOrEqual(elapsed, 5, "expected process to survive the initial SIGTERM, died too early after \(elapsed)s")
+        XCTAssertLessThan(elapsed, 10, "expected SIGKILL fallback to finish well under 10s, took \(elapsed)s")
+        XCTAssertEqual(result.status, .timedOut)
+        let rows = await store.recent(limit: 10)
+        XCTAssertEqual(rows[0].status, .timedOut)
+    }
+
     func testCancellationRecordsCancelled() async {
         let task = Task { await runner.run(command: "sleep 30", accountId: nil, trigger: .manual) }
         try? await Task.sleep(nanoseconds: 500_000_000)

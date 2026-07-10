@@ -68,7 +68,7 @@ struct CommandRunner: Sendable {
             try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
             guard !state.isFinished else { return }
             state.markTimedOut()
-            ProcessTree.killTree(pid, signal: SIGTERM)
+            if process.isRunning { ProcessTree.killTree(pid, signal: SIGTERM) }
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             if process.isRunning { ProcessTree.killTree(pid, signal: SIGKILL) }
         }
@@ -83,7 +83,7 @@ struct CommandRunner: Sendable {
             }
         } onCancel: {
             state.markCancelled()
-            ProcessTree.killTree(pid, signal: SIGKILL)
+            if process.isRunning { ProcessTree.killTree(pid, signal: SIGKILL) }
         }
 
         timeoutTask.cancel()
