@@ -31,4 +31,8 @@ final class TerminalLauncherTests: XCTestCase {
         try launcher.open(command: "ccbf ping")
         XCTAssertTrue(fake.last?.contains("do script \"ccbf ping\"") == true)
     }
+
+    func testOSAScriptExecutorThrowsOnInvalidScript() {
+        XCTAssertThrowsError(try OSAScriptExecutor().run("§§§ this is not valid applescript §§§"))
+    }
 }

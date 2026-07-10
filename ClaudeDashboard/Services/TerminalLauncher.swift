@@ -11,8 +11,20 @@ struct OSAScriptExecutor: TerminalScriptExecutor {
         let p = Process()
         p.launchPath = "/usr/bin/osascript"
         p.arguments = ["-e", script]
+        let errorPipe = Pipe()
+        p.standardError = errorPipe
         try p.run()
         p.waitUntilExit()
+        guard p.terminationStatus == 0 else {
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let stderrText = String(data: errorData, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let message = stderrText.isEmpty
+                ? "osascript exited with status \(p.terminationStatus)"
+                : stderrText
+            throw NSError(domain: "TerminalLauncher", code: Int(p.terminationStatus),
+                           userInfo: [NSLocalizedDescriptionKey: message])
+        }
     }
 }
 
