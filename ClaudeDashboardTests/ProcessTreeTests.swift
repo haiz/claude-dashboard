@@ -7,7 +7,7 @@ final class ProcessTreeTests: XCTestCase {
     func testKillTreeReapsGrandchild() throws {
         let p = Process()
         p.launchPath = "/bin/zsh"
-        p.arguments = ["-c", "sleep 30"]
+        p.arguments = ["-c", "sleep 30 & wait"]
         try p.run()
         let pid = p.processIdentifier
 
