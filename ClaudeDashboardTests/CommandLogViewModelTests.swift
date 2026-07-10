@@ -23,7 +23,7 @@ final class CommandLogViewModelTests: XCTestCase {
 
     func testLoadReturnsRecordedEntries() async {
         await store.record(accountId: nil, command: "echo a", trigger: .manual,
-                           startedAt: Date(), finishedAt: Date(), exitCode: 0)
+                           startedAt: Date(), finishedAt: Date(), status: .exited, exitCode: 0, output: nil)
         let vm = CommandLogViewModel(store: store, accountStore: accountStore)
         await vm.load()
         XCTAssertEqual(vm.entries.count, 1)
@@ -32,7 +32,7 @@ final class CommandLogViewModelTests: XCTestCase {
 
     func testClearEmptiesEntries() async {
         await store.record(accountId: nil, command: "x", trigger: .manual,
-                           startedAt: Date(), finishedAt: Date(), exitCode: 0)
+                           startedAt: Date(), finishedAt: Date(), status: .exited, exitCode: 0, output: nil)
         let vm = CommandLogViewModel(store: store, accountStore: accountStore)
         await vm.load()
         await vm.clear()

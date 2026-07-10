@@ -1,29 +1,33 @@
 // ClaudeDashboard/Services/CommandRunner.swift
 import Foundation
 
-/// The single place the app launches shell commands. Wraps `Process`, captures
-/// timing + exit code, and writes one row to `CommandLogStore`.
+/// The single place the app launches shell commands. Runs `command` via `/bin/zsh -c`
+/// in the user's home dir, sourcing ~/.zshrc so shell functions/aliases/PATH resolve.
+/// Enforces a timeout, supports cancellation, kills the whole process tree on
+/// timeout/cancel (so caffeinate/claude grandchildren do not leak), captures a bounded
+/// output tail, and records one row to CommandLogStore.
 struct CommandRunner: Sendable {
     let store: CommandLogStore
+    let registry: RunningProcessRegistry
+    let timeout: TimeInterval
 
-    /// Runs `command` via `/bin/zsh -c`, waits for it to exit, then records a log row.
-    /// - Parameter onOutput: optional callback fed decoded stdout/stderr chunks for
-    ///   live display. Called on a background queue.
-    /// - Returns: the process exit code, or nil if the process failed to launch.
+    init(store: CommandLogStore,
+         registry: RunningProcessRegistry = RunningProcessRegistry(),
+         timeout: TimeInterval = 60) {
+        self.store = store
+        self.registry = registry
+        self.timeout = timeout
+    }
+
     @discardableResult
     func run(command: String,
              accountId: UUID?,
              trigger: CommandTrigger,
-             onOutput: (@Sendable (String) -> Void)? = nil) async -> Int32? {
+             onOutput: (@Sendable (String) -> Void)? = nil) async -> CommandResult {
         let startedAt = Date()
         let process = Process()
         process.launchPath = "/bin/zsh"
-        // Source the user's ~/.zshrc first so shell functions, aliases, and custom
-        // PATH entries resolve. `zsh -c` is non-interactive and would otherwise only
-        // load ~/.zshenv, so a function like `ccbf` (defined in ~/.zshrc) that works
-        // in a terminal fails here with "command not found". stderr from sourcing is
-        // suppressed so interactive-only plugin noise (gitstatus, etc.) does not leak
-        // into the captured command output. The logged `command` stays the original.
+        // See design: source ~/.zshrc (stderr suppressed) so functions like `ccbf` resolve.
         process.arguments = ["-c", "source ~/.zshrc 2>/dev/null\n\(command)"]
         process.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
 
@@ -32,42 +36,110 @@ struct CommandRunner: Sendable {
         process.standardOutput = outPipe
         process.standardError = errPipe
 
-        if let onOutput {
-            let handle: @Sendable (Data) -> Void = { data in
-                guard !data.isEmpty, let s = String(data: data, encoding: .utf8) else { return }
-                onOutput(s)
-            }
-            outPipe.fileHandleForReading.readabilityHandler = { handle($0.availableData) }
-            errPipe.fileHandleForReading.readabilityHandler = { handle($0.availableData) }
+        let tail = OutputTail(maxBytes: 4096)
+        let sink: @Sendable (Data) -> Void = { data in
+            guard !data.isEmpty, let s = String(data: data, encoding: .utf8) else { return }
+            tail.append(s)
+            onOutput?(s)
         }
+        outPipe.fileHandleForReading.readabilityHandler = { sink($0.availableData) }
+        errPipe.fileHandleForReading.readabilityHandler = { sink($0.availableData) }
 
-        // Set terminationHandler BEFORE run() to avoid a fast-exit race. If run()
-        // throws, the handler never fires, so resume with launched=false there.
-        let launched: Bool = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-            process.terminationHandler = { _ in cont.resume(returning: true) }
-            do {
-                try process.run()
-            } catch {
-                process.terminationHandler = nil
-                cont.resume(returning: false)
-            }
-        }
-
-        let exitCode: Int32? = launched ? process.terminationStatus : nil
-        let finishedAt = Date()
-
-        if onOutput != nil {
+        // Launch. On failure, record and return immediately.
+        do {
+            try process.run()
+        } catch {
             outPipe.fileHandleForReading.readabilityHandler = nil
             errPipe.fileHandleForReading.readabilityHandler = nil
-            // Drain anything buffered after the last readability callback.
-            let tail = outPipe.fileHandleForReading.readDataToEndOfFile()
-            let errTail = errPipe.fileHandleForReading.readDataToEndOfFile()
-            if let s = String(data: tail, encoding: .utf8), !s.isEmpty { onOutput?(s) }
-            if let s = String(data: errTail, encoding: .utf8), !s.isEmpty { onOutput?(s) }
+            let msg = "launch failed: \(error.localizedDescription)"
+            await store.record(accountId: accountId, command: command, trigger: trigger,
+                               startedAt: startedAt, finishedAt: Date(),
+                               status: .launchFailed, exitCode: nil, output: msg)
+            return CommandResult(status: .launchFailed, exitCode: nil, outputTail: msg)
         }
 
+        let pid = process.processIdentifier
+        registry.add(process)
+        let state = RunState()
+
+        // Timeout watchdog: SIGTERM the tree, grace, then SIGKILL. Marks status first so
+        // the resume path (terminationHandler) reports .timedOut.
+        let timeoutTask = Task { [timeout] in
+            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            guard !state.isFinished else { return }
+            state.markTimedOut()
+            ProcessTree.killTree(pid, signal: SIGTERM)
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if process.isRunning { ProcessTree.killTree(pid, signal: SIGKILL) }
+        }
+
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                process.terminationHandler = { _ in
+                    if state.finish() { cont.resume() }
+                }
+                // Cover the race where the process exited before the handler was set.
+                if !process.isRunning, state.finish() { cont.resume() }
+            }
+        } onCancel: {
+            state.markCancelled()
+            ProcessTree.killTree(pid, signal: SIGKILL)
+        }
+
+        timeoutTask.cancel()
+        registry.remove(pid: pid)
+
+        // Drain anything buffered after the last readability callback.
+        outPipe.fileHandleForReading.readabilityHandler = nil
+        errPipe.fileHandleForReading.readabilityHandler = nil
+        let outRest = outPipe.fileHandleForReading.readDataToEndOfFile()
+        let errRest = errPipe.fileHandleForReading.readDataToEndOfFile()
+        if let s = String(data: outRest, encoding: .utf8), !s.isEmpty { tail.append(s); onOutput?(s) }
+        if let s = String(data: errRest, encoding: .utf8), !s.isEmpty { tail.append(s); onOutput?(s) }
+
+        let finishedAt = Date()
+        let status = state.status
+        let exitCode: Int32? = (status == .exited) ? process.terminationStatus : nil
+        let outputTail = tail.string
         await store.record(accountId: accountId, command: command, trigger: trigger,
-                           startedAt: startedAt, finishedAt: finishedAt, exitCode: exitCode)
-        return exitCode
+                           startedAt: startedAt, finishedAt: finishedAt,
+                           status: status, exitCode: exitCode, output: outputTail)
+        return CommandResult(status: status, exitCode: exitCode, outputTail: outputTail)
     }
+}
+
+/// One-shot completion + status latch guarding the run's continuation.
+private final class RunState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _finished = false
+    private var _status: CommandStatus = .exited
+
+    var isFinished: Bool { lock.lock(); defer { lock.unlock() }; return _finished }
+    var status: CommandStatus { lock.lock(); defer { lock.unlock() }; return _status }
+
+    /// Returns true exactly once, on the first caller; marks finished.
+    func finish() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if _finished { return false }
+        _finished = true
+        return true
+    }
+
+    func markTimedOut() { lock.lock(); if !_finished { _status = .timedOut }; lock.unlock() }
+    func markCancelled() { lock.lock(); if !_finished { _status = .cancelled }; lock.unlock() }
+}
+
+/// Thread-safe bounded tail of streamed output.
+private final class OutputTail: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buf = ""
+    private let maxBytes: Int
+    init(maxBytes: Int) { self.maxBytes = maxBytes }
+    func append(_ s: String) {
+        lock.lock()
+        buf += s
+        if buf.utf8.count > maxBytes { buf = String(buf.suffix(maxBytes)) }
+        lock.unlock()
+    }
+    var string: String { lock.lock(); defer { lock.unlock() }; return buf }
 }
