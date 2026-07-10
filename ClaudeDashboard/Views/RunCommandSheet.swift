@@ -12,6 +12,7 @@ struct RunCommandSheet: View {
     @State private var userTouchedToggle = false
     @State private var logLines: [String] = []
     @State private var runTask: Task<Void, Never>?
+    @State private var detectTask: Task<Void, Never>?
     @FocusState private var isFocused: Bool
 
     private let classifier = CommandClassifier(resolver: ShellCommandResolver())
@@ -79,14 +80,22 @@ struct RunCommandSheet: View {
         .padding(20)
         .frame(minWidth: 300)
         .onAppear { isFocused = true; detectMode() }
+        .onDisappear {
+            runTask?.cancel()
+            detectTask?.cancel()
+        }
     }
 
-    /// Async-classify the current command and, unless the user already flipped the
-    /// toggle, set the default mode. Guarded against races on stale command text.
+    /// Debounced, async-classify the current command and, unless the user already
+    /// flipped the toggle, set the default mode. Guarded against races on stale
+    /// command text. Debounce avoids launching a shell classifier on every keystroke.
     private func detectMode() {
+        detectTask?.cancel()
         let cmd = command
         guard !cmd.isEmpty else { return }
-        Task {
+        detectTask = Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            if Task.isCancelled { return }
             let kind = await classifier.classify(cmd)
             await MainActor.run {
                 guard !userTouchedToggle, cmd == command else { return }
