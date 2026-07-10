@@ -9,13 +9,16 @@ import Foundation
 struct CommandRunner: Sendable {
     let store: CommandLogStore
     let registry: RunningProcessRegistry
+    let terminalLauncher: TerminalLauncher
     let timeout: TimeInterval
 
     init(store: CommandLogStore,
          registry: RunningProcessRegistry = RunningProcessRegistry(),
+         terminalLauncher: TerminalLauncher = TerminalLauncher(),
          timeout: TimeInterval = 60) {
         self.store = store
         self.registry = registry
+        self.terminalLauncher = terminalLauncher
         self.timeout = timeout
     }
 
@@ -105,6 +108,25 @@ struct CommandRunner: Sendable {
                            startedAt: startedAt, finishedAt: finishedAt,
                            status: status, exitCode: exitCode, output: outputTail)
         return CommandResult(status: status, exitCode: exitCode, outputTail: outputTail)
+    }
+
+    /// Hand the command off to a real terminal (has a TTY) and log the handoff. The
+    /// process lives in the terminal's session, so no exit code is tracked.
+    @discardableResult
+    func launchInTerminal(command: String, accountId: UUID?, trigger: CommandTrigger) async -> CommandResult {
+        let startedAt = Date()
+        var status: CommandStatus = .launchedInTerminal
+        var output = ""
+        do {
+            try terminalLauncher.open(command: command)
+        } catch {
+            status = .launchFailed
+            output = "terminal launch failed: \(error.localizedDescription)"
+        }
+        await store.record(accountId: accountId, command: command, trigger: trigger,
+                           startedAt: startedAt, finishedAt: Date(),
+                           status: status, exitCode: nil, output: output.isEmpty ? nil : output)
+        return CommandResult(status: status, exitCode: nil, outputTail: output)
     }
 }
 
