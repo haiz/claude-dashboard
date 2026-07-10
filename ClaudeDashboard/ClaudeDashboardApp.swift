@@ -93,6 +93,7 @@ struct ClaudeDashboardApp: App {
             .environmentObject(updateViewModel)
             .onAppear {
                 appDelegate.updateViewModel = updateViewModel
+                appDelegate.runningProcesses = viewModel.commandRunner.registry
                 updateViewModel.startBackgroundChecks()
                 let key = "claude-dashboard.hasLaunchedBefore"
                 if !UserDefaults.standard.bool(forKey: key) {
@@ -116,10 +117,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var commandLogViewModel: CommandLogViewModel?
     private weak var currentViewModel: DashboardViewModel?
     weak var updateViewModel: UpdateViewModel?
+    var runningProcesses: RunningProcessRegistry?
     private var navigationCancellable: AnyCancellable?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Reap any in-flight background command trees so caffeinate/claude do not leak.
+        runningProcesses?.terminateAll()
     }
 
     // Intercept the red-X close: hide the window instead of closing it.
