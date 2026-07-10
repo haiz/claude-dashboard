@@ -48,6 +48,11 @@ struct CommandRunner: Sendable {
         outPipe.fileHandleForReading.readabilityHandler = { sink($0.availableData) }
         errPipe.fileHandleForReading.readabilityHandler = { sink($0.availableData) }
 
+        // Install the termination handler before launch so a process that exits (and is
+        // reaped) in the gap between run() and handler assignment cannot be missed.
+        let state = RunState()
+        process.terminationHandler = { _ in state.markTerminated() }
+
         // Launch. On failure, record and return immediately.
         do {
             try process.run()
@@ -63,7 +68,6 @@ struct CommandRunner: Sendable {
 
         let pid = process.processIdentifier
         registry.add(process)
-        let state = RunState()
 
         // Timeout watchdog: SIGTERM the tree, grace, then SIGKILL. Marks status first so
         // the resume path (terminationHandler) reports .timedOut.
@@ -78,11 +82,7 @@ struct CommandRunner: Sendable {
 
         await withTaskCancellationHandler {
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                process.terminationHandler = { _ in
-                    if state.finish() { cont.resume() }
-                }
-                // Cover the race where the process exited before the handler was set.
-                if !process.isRunning, state.finish() { cont.resume() }
+                state.attach(cont)
             }
         } onCancel: {
             state.markCancelled()
@@ -130,25 +130,45 @@ struct CommandRunner: Sendable {
     }
 }
 
-/// One-shot completion + status latch guarding the run's continuation.
+/// Brokers delivery of the run's continuation, safe whether termination happens before or
+/// after the continuation is attached. Resumes exactly once.
 private final class RunState: @unchecked Sendable {
     private let lock = NSLock()
-    private var _finished = false
+    private var terminated = false
+    private var resumed = false
+    private var continuation: CheckedContinuation<Void, Never>?
     private var _status: CommandStatus = .exited
 
-    var isFinished: Bool { lock.lock(); defer { lock.unlock() }; return _finished }
     var status: CommandStatus { lock.lock(); defer { lock.unlock() }; return _status }
+    var isFinished: Bool { lock.lock(); defer { lock.unlock() }; return terminated }
 
-    /// Returns true exactly once, on the first caller; marks finished.
-    func finish() -> Bool {
-        lock.lock(); defer { lock.unlock() }
-        if _finished { return false }
-        _finished = true
-        return true
+    /// Called from process.terminationHandler (may run before or after `attach`).
+    func markTerminated() {
+        lock.lock()
+        terminated = true
+        let cont = continuation
+        let shouldResume = (cont != nil && !resumed)
+        if shouldResume { resumed = true; continuation = nil }
+        lock.unlock()
+        cont.map { if shouldResume { $0.resume() } }
     }
 
-    func markTimedOut() { lock.lock(); if !_finished { _status = .timedOut }; lock.unlock() }
-    func markCancelled() { lock.lock(); if !_finished { _status = .cancelled }; lock.unlock() }
+    /// Called once, inside withCheckedContinuation. Resumes immediately if the
+    /// process already terminated; otherwise stores the continuation for markTerminated.
+    func attach(_ cont: CheckedContinuation<Void, Never>) {
+        lock.lock()
+        if terminated && !resumed {
+            resumed = true
+            lock.unlock()
+            cont.resume()
+        } else {
+            continuation = cont
+            lock.unlock()
+        }
+    }
+
+    func markTimedOut() { lock.lock(); if !terminated { _status = .timedOut }; lock.unlock() }
+    func markCancelled() { lock.lock(); if !terminated { _status = .cancelled }; lock.unlock() }
 }
 
 /// Thread-safe bounded tail of streamed output.
