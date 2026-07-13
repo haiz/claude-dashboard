@@ -79,6 +79,8 @@ struct AccountDetailView: View {
                     dataPoints: viewModel.logs,
                     chartHeight: 250,
                     isInteractionDisabled: measureToolActive,
+                    liveTick: dashboardViewModel.lastLogsUpdatedAt,
+                    autoFollowsLiveEdge: viewModel.selectedCycle == nil,
                     onRangeChanged: { range in
                         viewModel.updateRange(range)
                     },
@@ -137,8 +139,11 @@ struct AccountDetailView: View {
             }
         }
         .task { await viewModel.loadData() }
+        // While the chart is on screen, InteractiveChartContainer drives the per-refresh
+        // reload (advancing the live window as needed). Only bootstrap the empty state here,
+        // since the container isn't in the tree until there's data to show.
         .onChange(of: dashboardViewModel.lastLogsUpdatedAt) { _ in
-            Task { await viewModel.loadData(keepRange: true) }
+            if viewModel.logs.isEmpty { Task { await viewModel.loadData() } }
         }
         .onChange(of: viewModel.selectedWindow) { _ in measureSelection = nil }
         .onChange(of: viewModel.selectedCycle?.resetsAt) { _ in measureSelection = nil }

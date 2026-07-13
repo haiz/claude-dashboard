@@ -26,6 +26,12 @@ enum TimeRangePreset: String, CaseIterable, Identifiable {
         case .month: return 30 * 86400
         }
     }
+
+    /// The trailing window of this preset's duration ending at `end`. Single source
+    /// for how a preset maps to a visible range (init, preset buttons, live-edge follow).
+    func range(endingAt end: Date) -> ClosedRange<Date> {
+        end.addingTimeInterval(-seconds)...end
+    }
 }
 
 // MARK: - InteractiveChartContainer
@@ -40,6 +46,12 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
     let onRangeChanged: (ClosedRange<Date>) -> Void
     let chartHeight: CGFloat
     let isInteractionDisabled: Bool
+    /// Bumped by the parent whenever new data may have been recorded. When the chart
+    /// is following the live edge, this drives the visible window forward.
+    let liveTick: Date
+    /// Whether the window should auto-advance to `now` on each `liveTick`. Callers set
+    /// this to false while showing a frozen/historical view (e.g. a selected cycle).
+    let autoFollowsLiveEdge: Bool
 
     // MARK: State
 
@@ -56,6 +68,8 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         dataPoints: [UsageLogEntry],
         chartHeight: CGFloat = 300,
         isInteractionDisabled: Bool = false,
+        liveTick: Date,
+        autoFollowsLiveEdge: Bool,
         averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)? = nil,
         onRangeChanged: @escaping (ClosedRange<Date>) -> Void,
         @ViewBuilder chartContent: @escaping (ClosedRange<Date>) -> ChartContent,
@@ -64,14 +78,14 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         self.dataPoints = dataPoints
         self.chartHeight = chartHeight
         self.isInteractionDisabled = isInteractionDisabled
+        self.liveTick = liveTick
+        self.autoFollowsLiveEdge = autoFollowsLiveEdge
         self.averageRateProvider = averageRateProvider
         self.onRangeChanged = onRangeChanged
         self.chartContent = chartContent
         self.toolbarExtra = toolbarExtra
 
-        let now = Date()
-        let start = now.addingTimeInterval(-initialPreset.seconds)
-        _visibleRange = State(initialValue: start...now)
+        _visibleRange = State(initialValue: initialPreset.range(endingAt: Date()))
         _selectedPreset = State(initialValue: initialPreset)
     }
 
@@ -82,6 +96,28 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
             toolbar
             chartArea
         }
+        .onChange(of: liveTick) { _ in handleLiveTick() }
+    }
+
+    /// Reacts to a data refresh: slides the window to end at `now` while following the
+    /// live edge, then reloads the (possibly advanced) window so freshly recorded points
+    /// appear. This is the single reload path per refresh — parents only bootstrap the
+    /// empty state.
+    ///
+    /// - Following the live edge means a preset (5h/24h/…) is active and the caller opted
+    ///   in via `autoFollowsLiveEdge`; the window is defined as "last N ending now" so it
+    ///   should track new points. A manual pan/zoom clears the preset, freezing the window.
+    /// - An in-progress interaction is left untouched: the measure tool
+    ///   (`isInteractionDisabled`) anchors on absolute dates, and a live pan/zoom drag
+    ///   (`dragStartRange`/`zoomSelectionRange` still set) would commit against a shifted
+    ///   domain. Their own gesture end reloads when finished.
+    private func handleLiveTick() {
+        guard !isInteractionDisabled, dragStartRange == nil, zoomSelectionRange == nil else { return }
+
+        if autoFollowsLiveEdge, let preset = selectedPreset {
+            visibleRange = preset.range(endingAt: Date())
+        }
+        onRangeChanged(visibleRange)
     }
 
     // MARK: - Toolbar
@@ -309,9 +345,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
     // MARK: - Helpers
 
     private func applyPreset(_ preset: TimeRangePreset) {
-        let now = Date()
-        let start = now.addingTimeInterval(-preset.seconds)
-        visibleRange = start...now
+        visibleRange = preset.range(endingAt: Date())
         selectedPreset = preset
         onRangeChanged(visibleRange)
     }

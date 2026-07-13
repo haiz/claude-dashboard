@@ -59,6 +59,8 @@ struct OverviewChartView: View {
                     initialPreset: .day,
                     dataPoints: logs,
                     chartHeight: 300,
+                    liveTick: viewModel.lastLogsUpdatedAt,
+                    autoFollowsLiveEdge: true,
                     averageRateProvider: { range, allLogs in
                         let totalPoints = computeTotalLine().filter {
                             $0.time >= range.lowerBound && $0.time <= range.upperBound
@@ -100,7 +102,12 @@ struct OverviewChartView: View {
         }
         .task { await loadLogs() }
         .onChange(of: selectedWindow) { _ in Task { await loadLogs(range: visibleRange) } }
-        .onChange(of: viewModel.lastLogsUpdatedAt) { _ in Task { await loadLogs(range: visibleRange) } }
+        // While the chart is on screen, InteractiveChartContainer drives the per-refresh
+        // reload (advancing the live window as needed). Only bootstrap the empty state here,
+        // since the container isn't in the tree until there's data to show.
+        .onChange(of: viewModel.lastLogsUpdatedAt) { _ in
+            if logs.isEmpty { Task { await loadLogs() } }
+        }
     }
 
     // MARK: - Chart
