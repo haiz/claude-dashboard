@@ -1,0 +1,22 @@
+[
+  { "name": "6h projection is the slowest level",
+    "projected_seconds": 21600, "expect_level": 1, "expect_animal": "🐌" },
+  { "name": "exactly 5h is level 2, not 1 — the comparison is strictly greater-than",
+    "projected_seconds": 18000, "expect_level": 2, "expect_animal": "🐢" },
+  { "name": "4h sits inside the level 2 band",
+    "projected_seconds": 14400, "expect_level": 2, "expect_animal": "🐢" },
+  { "name": "exactly 3h is level 3, not 2",
+    "projected_seconds": 10800, "expect_level": 3, "expect_animal": "🐇" },
+  { "name": "2h sits inside the level 3 band",
+    "projected_seconds": 7200, "expect_level": 3, "expect_animal": "🐇" },
+  { "name": "exactly 1.5h is level 4, not 3",
+    "projected_seconds": 5400, "expect_level": 4, "expect_animal": "🐎" },
+  { "name": "1h sits inside the level 4 band",
+    "projected_seconds": 3600, "expect_level": 4, "expect_animal": "🐎" },
+  { "name": "exactly 30m is level 5, not 4",
+    "projected_seconds": 1800, "expect_level": 5, "expect_animal": "🐆" },
+  { "name": "10m is the fastest level",
+    "projected_seconds": 600, "expect_level": 5, "expect_animal": "🐆" },
+  { "name": "an already-exhausted window projects to zero and stays level 5",
+    "projected_seconds": 0, "expect_level": 5, "expect_animal": "🐆" }
+]
