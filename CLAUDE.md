@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-macOS menu bar app (SwiftUI) that monitors Claude.ai token usage across multiple accounts. Extracts session keys from Chrome's encrypted cookie database, fetches usage data from Claude.ai API, and displays real-time utilization with burn-rate-based sorting.
+macOS menu bar app (SwiftUI) that monitors Claude.ai token usage across multiple accounts. Extracts session keys from the encrypted cookie database of a supported Chromium browser (Chrome, Arc, Brave, or Edge), fetches usage data from Claude.ai API, and displays real-time utilization with burn-rate-based sorting.
 
 ## Build & Test Commands
 
@@ -29,7 +29,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 
 ## Architecture
 
-**Data flow:** Chrome cookies (SQLite + AES decryption) → Session keys (AES-GCM encrypted in UserDefaults) → Claude.ai API → Usage data → ViewModel → SwiftUI views
+**Data flow:** Browser cookies — Chrome/Arc/Brave/Edge (SQLite + AES decryption) → Session keys (AES-GCM encrypted in UserDefaults) → Claude.ai API → Usage data → ViewModel → SwiftUI views
 
 ### Services Layer
 - **BrowserCookieService** — Decrypts the SQLite cookie DB of Chrome, Arc, Brave, or Edge using PBKDF2-SHA1 + AES-128-CBC. The Safe Storage password is read from the Keychain per-browser, under that browser's own service name (e.g. "Chrome Safe Storage", "Brave Safe Storage" — see `Browser.swift`). Copies DB to avoid WAL locks.
@@ -50,8 +50,8 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 - **MenuBarPopover** — Compact menu bar dropdown. Expand button opens `DashboardWindow`.
 - **DashboardWindow** — Adaptive grid of `AccountCard` views with toolbar.
 - **AccountCard / UsageBar** — Per-account display with color-interpolated progress bars (green→red).
-- **SetupView** — Wizard scanning Chrome profiles for active Claude sessions.
-- **SettingsView** — Account management (rename, delete, re-sync).
+- **SetupView** — Wizard scanning browser profiles for active Claude sessions. Offers the installed browsers (Chrome, Arc, Brave, Edge) and scans the one the user picks, remembering the choice in `preferredScanBrowser`.
+- **SettingsView** — Account management (add via the `SetupView` sheet, delete, Re-sync All) plus the update check. There is no rename UI; an account's name is derived at sync time (email when available, else the browser profile name).
 
 ### Models
 - **Account** — Core model with `AccountPlan` enum (pro/max5x/max20x/max200) and `AccountStatus` (active/expired/error).
@@ -63,7 +63,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 ## Key Technical Details
 
 - **LSUIElement: true** in Info.plist — app runs as menu bar only (no Dock icon)
-- **App Sandbox disabled** — required for Chrome cookie DB access and Keychain reads
+- **App Sandbox disabled** — required for browser cookie DB access and Keychain reads (each browser's Safe Storage password)
 - **Deployment target:** macOS 13.0, Swift 5.0
 - **XcodeGen** manages the `.xcodeproj` from `project.yml` — edit `project.yml` for target/build setting changes, then run `xcodegen generate` from `apps/macos/`
 - Tests use `MockURLProtocol` for network mocking and isolated `UserDefaults` suites

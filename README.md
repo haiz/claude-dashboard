@@ -73,21 +73,21 @@ A terminal dashboard is available via the `claude-dashboard-cli` Homebrew formul
 # 1. Install
 brew install haiz/claude-dashboard/claude-dashboard-cli
 
-# 2. Scan Chrome profiles for Claude sessions and save accounts
+# 2. Scan installed browsers for Claude sessions and save accounts
 claude-dashboard-cli sync
 
 # 3. Launch the live dashboard
 claude-dashboard-cli
 ```
 
-`sync` opens Chrome's cookie database, validates each session against the Claude.ai API, detects the plan (Pro or Max), and saves the accounts to `~/Library/Preferences/com.claude-dashboard.app.plist` (shared with the menu bar app).
+`sync` opens the cookie database of every installed supported browser (Chrome, Arc, Brave, Edge), validates each session against the Claude.ai API, detects the plan (Pro or Max), and saves the accounts to `~/Library/Preferences/com.claude-dashboard.app.plist` (shared with the menu bar app).
 
 ### Commands
 
 | Command | Description |
 |---------|-------------|
 | `claude-dashboard-cli` | Launch the live dashboard (default: refresh every 5 min) |
-| `claude-dashboard-cli sync` | Re-scan Chrome and add any new accounts |
+| `claude-dashboard-cli sync` | Re-scan the installed browsers and add any new accounts |
 | `claude-dashboard-cli --once` | Render the dashboard once and exit (useful for scripts) |
 | `claude-dashboard-cli --interval <sec>` | Change the refresh interval (e.g. `--interval 60`) |
 | `claude-dashboard-cli --no-color` | Disable ANSI colors |
@@ -106,23 +106,23 @@ The `resets` column shows when each window resets (local time). Progress bars tr
 
 ### Tips
 
-- Re-run `claude-dashboard-cli sync` whenever you log into a new Claude account in Chrome, or after a session expires.
-- To manage accounts (rename, delete, re-sync), open the menu bar app — both share the same storage.
+- Re-run `claude-dashboard-cli sync` whenever you log into a new Claude account in a supported browser, or after a session expires.
+- To manage accounts (add, delete, re-sync), open the menu bar app — both share the same storage.
 - Press `Ctrl+C` to quit the live dashboard.
 
 ## Requirements
 
 - macOS 13.0 (Ventura) or later
-- Google Chrome (for automatic session key extraction)
+- One of Google Chrome, Arc, Brave, or Microsoft Edge (for automatic session key extraction)
 
 ## How It Works
 
-1. Reads Claude.ai session cookies from Chrome's encrypted cookie database
+1. Reads Claude.ai session cookies from a supported browser's encrypted cookie database (Chrome, Arc, Brave, or Edge)
 2. Encrypts session keys with AES-GCM (key derived from the machine's hardware UUID) and stores them in the app's preferences
 3. Fetches usage data from Claude.ai's API
 4. Displays real-time utilization with burn-rate-based sorting
 
-> **Note:** The app requires access to Chrome's cookie database and Keychain. App Sandbox is disabled for this reason.
+> **Note:** The app requires access to the browser's cookie database and Keychain (that browser's Safe Storage password). App Sandbox is disabled for this reason.
 
 ## Build from Source
 
