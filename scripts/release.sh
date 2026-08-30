@@ -71,7 +71,7 @@ printf '%s\n' "$NEW_VERSION" > VERSION
 # ── 2. Regenerate Xcode project ──────────────────────────────────────────────
 echo ""
 echo "==> Step 2: Regenerate Xcode project"
-xcodegen generate
+(cd apps/macos && xcodegen generate)
 
 # ── 3. Build ──────────────────────────────────────────────────────────────────
 echo ""
@@ -79,13 +79,13 @@ echo "==> Step 3: Build app + helper"
 DERIVED_DATA="$REPO_ROOT/.build/DerivedData"
 RELEASE_DIR="$DERIVED_DATA/Build/Products/Release"
 
-xcodebuild -project ClaudeDashboard.xcodeproj \
+xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj \
     -scheme ClaudeDashboard \
     -configuration Release \
     -derivedDataPath "$DERIVED_DATA" \
     build 2>&1 | tail -3
 
-xcodebuild -project ClaudeDashboard.xcodeproj \
+xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj \
     -scheme ClaudeDashboardHelper \
     -configuration Release \
     -derivedDataPath "$DERIVED_DATA" \
@@ -94,7 +94,7 @@ xcodebuild -project ClaudeDashboard.xcodeproj \
 # ── 4. Run tests ─────────────────────────────────────────────────────────────
 echo ""
 echo "==> Step 4: Run tests"
-xcodebuild -project ClaudeDashboard.xcodeproj \
+xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj \
     -scheme ClaudeDashboardTests \
     -derivedDataPath "$DERIVED_DATA" \
     test 2>&1 | tail -3
@@ -143,7 +143,7 @@ echo "  Cask    sha256: $APP_SHA"
 # ── 7. Commit, tag, push ─────────────────────────────────────────────────────
 echo ""
 echo "==> Step 7: Commit, tag, push"
-git add VERSION ClaudeDashboard/Info.plist cli/claude-dashboard-cli \
+git add VERSION apps/macos/ClaudeDashboard/Info.plist cli/claude-dashboard-cli \
     Formula/claude-dashboard-cli.rb Casks/claude-dashboard.rb
 git commit -m "chore: release v${NEW_VERSION}"
 git tag "v${NEW_VERSION}"

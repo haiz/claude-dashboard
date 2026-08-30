@@ -10,19 +10,19 @@ macOS menu bar app (SwiftUI) that monitors Claude.ai token usage across multiple
 
 ```bash
 # Generate Xcode project from project.yml (required after adding files/targets)
-xcodegen generate
+cd apps/macos && xcodegen generate
 
 # Build
-xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboard build
+xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboard build
 
 # Run all tests
-xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests test
+xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests test
 
 # Run a single test class
-xcodebuild test -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests -only-testing:ClaudeDashboardTests/UsageDataTests
+xcodebuild test -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests -only-testing:ClaudeDashboardTests/UsageDataTests
 
 # Run a single test method
-xcodebuild test -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests -only-testing:ClaudeDashboardTests/UsageDataTests/testDecodeUsageData
+xcodebuild test -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests -only-testing:ClaudeDashboardTests/UsageDataTests/testDecodeUsageData
 ```
 
 No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Security, CommonCrypto, SQLite3).

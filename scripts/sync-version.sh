@@ -42,7 +42,7 @@ report() {
 echo "Syncing version $VERSION..."
 
 # 1. Info.plist — replace the <string> on the line AFTER <key>CFBundleShortVersionString</key>.
-INFO_PLIST="ClaudeDashboard/Info.plist"
+INFO_PLIST="apps/macos/ClaudeDashboard/Info.plist"
 sed -i '' "/<key>CFBundleShortVersionString<\/key>/{n;s|<string>[^<]*</string>|<string>${VERSION}</string>|;}" "$INFO_PLIST"
 report "$INFO_PLIST" "<string>${VERSION}</string>"
 

@@ -323,8 +323,7 @@
 				CBFA427293BFC51355250BB1 /* SyncCommand.swift */,
 				E9E7C0511055F46A89CEB231 /* UsageCommand.swift */,
 			);
-			name = Helper;
-			path = cli/Helper;
+			path = Helper;
 			sourceTree = "<group>";
 		};
 		B51AEE5520251B7CA6015A18 /* Components */ = {

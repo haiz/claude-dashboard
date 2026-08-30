@@ -1,8 +1,8 @@
 run:
-	@xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboard build 2>&1 | tail -1 && killall ClaudeDashboard 2>/dev/null; sleep 1 && open ~/Library/Developer/Xcode/DerivedData/ClaudeDashboard-*/Build/Products/Debug/ClaudeDashboard.app
+	@xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboard build 2>&1 | tail -1 && killall ClaudeDashboard 2>/dev/null; sleep 1 && open ~/Library/Developer/Xcode/DerivedData/ClaudeDashboard-*/Build/Products/Debug/ClaudeDashboard.app
 
 cli-build:
-	@xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboardHelper -configuration Release build 2>&1 | tail -1
+	@xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardHelper -configuration Release build 2>&1 | tail -1
 
 cli-run: cli-build
 	@BINARY=$$(find ~/Library/Developer/Xcode/DerivedData/ClaudeDashboard-*/Build/Products/Release -name claude-dashboard-helper -type f | head -1) && \
