@@ -3,22 +3,22 @@
 ## Build & Project Generation
 ```bash
 # Generate Xcode project from project.yml (required after adding files/targets)
-xcodegen generate
+cd apps/macos && xcodegen generate
 
 # Build the app
-xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboard build
+xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboard build
 ```
 
 ## Testing
 ```bash
 # Run all tests
-xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests test
+xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests test
 
 # Run a single test class
-xcodebuild test -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests -only-testing:ClaudeDashboardTests/UsageDataTests
+xcodebuild test -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests -only-testing:ClaudeDashboardTests/UsageDataTests
 
 # Run a single test method
-xcodebuild test -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests -only-testing:ClaudeDashboardTests/UsageDataTests/testDecodeUsageData
+xcodebuild test -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests -only-testing:ClaudeDashboardTests/UsageDataTests/testDecodeUsageData
 ```
 
 ## Test Files
@@ -29,10 +29,10 @@ xcodebuild test -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests 
 
 ## System Commands (Darwin/macOS)
 - `git` — version control
-- `xcodegen generate` — regenerate .xcodeproj from project.yml
+- `cd apps/macos && xcodegen generate` — regenerate .xcodeproj from project.yml
 - `xcodebuild` — build and test
 
 ## Notes
 - No linting or formatting tools configured
 - No external dependencies to install
-- Edit `project.yml` for target/build setting changes, then run `xcodegen generate`
+- Edit `project.yml` for target/build setting changes, then run `cd apps/macos && xcodegen generate`

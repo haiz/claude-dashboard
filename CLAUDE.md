@@ -33,8 +33,13 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 
 ### Services Layer
 - **ChromeCookieService** — Decrypts Chrome's SQLite cookie DB using PBKDF2-SHA1 + AES-128-CBC with Chrome Safe Storage password from Keychain. Copies DB to avoid WAL locks.
-- **UsageAPIService** — Fetches `/api/organizations/{orgId}/usage` from claude.ai. Detects plan tier (Pro/Max 5x/Max 20x) from `extra_usage` response field. Handles session key refresh via Set-Cookie headers.
-- **KeychainService** — Wraps SecItem APIs with in-memory cache for session keys.
+- **UsageAPIService** — Fetches `/api/organizations/{orgId}/usage` from claude.ai. Plan tier
+  comes from the **organizations** endpoint's `capabilities` (`claude_pro` / `claude_max`),
+  never from the usage response — `extra_usage` is a pay-as-you-go overage toggle with no
+  tier field. The API exposes no Max 5x vs 20x signal, so consumer Max accounts resolve to
+  the generic `Max`. Handles session key refresh via Set-Cookie headers.
+- **CryptoService** — AES-GCM encryption of session keys at rest, with the key derived via HKDF from the machine's `IOPlatformUUID`. Session keys live inside the `Account` JSON in UserDefaults, not in the Keychain.
+- **KeychainService** — Wraps SecItem APIs. Currently unreferenced by production code; see `contract/account-schema.md`.
 - **AccountStore** — CRUD over UserDefaults JSON persistence. Publishes changes via Combine `@Published`.
 
 ### ViewModel
@@ -50,16 +55,24 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 
 ### Models
 - **Account** — Core model with `AccountPlan` enum (pro/max5x/max20x/max200) and `AccountStatus` (active/expired/error).
-- **UsageData** — Decoded API response with `UsageLimit` entries for 5-hour, 7-day, and Sonnet windows.
+- **UsageData** — Decoded API response with `UsageLimit` entries for the 5-hour and 7-day
+  windows, plus an optional Fable window. Fable has no top-level field: it is derived from
+  the `limits` array entry whose `scope.model.display_name` is `"Fable"`, reading `percent`
+  rather than `utilization`. `seven_day_sonnet` is a removed field the decoder ignores.
 
 ## Key Technical Details
 
 - **LSUIElement: true** in Info.plist — app runs as menu bar only (no Dock icon)
 - **App Sandbox disabled** — required for Chrome cookie DB access and Keychain reads
 - **Deployment target:** macOS 13.0, Swift 5.0
-- **XcodeGen** manages the `.xcodeproj` from `project.yml` — edit `project.yml` for target/build setting changes, then run `xcodegen generate`
+- **XcodeGen** manages the `.xcodeproj` from `project.yml` — edit `project.yml` for target/build setting changes, then run `xcodegen generate` from `apps/macos/`
 - Tests use `MockURLProtocol` for network mocking and isolated `UserDefaults` suites
 - **ISO8601 date parsing** — Custom decoder handles both with and without fractional seconds (`.SSS`); this is a known API inconsistency
+- **`contract/` is the source of truth for cross-platform behaviour** — plan detection, the
+  Fable window, burn-rate thresholds, the helper CLI surface, and the account schema. The
+  Swift tests under `apps/macos/ClaudeDashboardTests/*ContractTests.swift` read
+  `contract/cases/*.json` directly from the working tree; the Linux implementation reads the
+  same files. Change a rule there first, then both implementations.
 
 ## Releasing
 

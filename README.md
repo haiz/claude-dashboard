@@ -25,6 +25,17 @@ A macOS menu bar app that monitors your Claude.ai token usage across multiple ac
 |:---:|:---:|
 | ![Overview](docs/screenshot/overview-chart.png) | ![Detail](docs/screenshot/account-detail-chart.png) |
 
+## Repository Layout
+
+```
+apps/macos/       SwiftUI menu bar app, tests, and the Swift helper binary
+contract/         Behaviour shared across platforms: docs plus executable cases
+cli/              claude-dashboard-cli — the bash terminal dashboard
+scripts/          release, version sync
+Formula/ Casks/   Homebrew tap (must stay at the repo root)
+install.sh        one-liner installer (published URL, must stay at the repo root)
+```
+
 ## Installation
 
 ### Homebrew (recommended)
@@ -107,7 +118,7 @@ The `resets` column shows when each window resets (local time). Progress bars tr
 ## How It Works
 
 1. Reads Claude.ai session cookies from Chrome's encrypted cookie database
-2. Stores session keys securely in macOS Keychain
+2. Encrypts session keys with AES-GCM (key derived from the machine's hardware UUID) and stores them in the app's preferences
 3. Fetches usage data from Claude.ai's API
 4. Displays real-time utilization with burn-rate-based sorting
 
@@ -124,8 +135,8 @@ brew install xcodegen
 # Clone and build
 git clone https://github.com/haiz/claude-dashboard.git
 cd claude-dashboard
-xcodegen generate
-xcodebuild -project ClaudeDashboard.xcodeproj -scheme ClaudeDashboard -configuration Release build
+cd apps/macos && xcodegen generate
+xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboard -configuration Release build
 
 # The built app is in DerivedData
 open ~/Library/Developer/Xcode/DerivedData/ClaudeDashboard-*/Build/Products/Release/ClaudeDashboard.app
