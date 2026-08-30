@@ -29,7 +29,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 
 ## Architecture
 
-**Data flow:** Chrome cookies (SQLite + AES decryption) → Session keys (Keychain) → Claude.ai API → Usage data → ViewModel → SwiftUI views
+**Data flow:** Chrome cookies (SQLite + AES decryption) → Session keys (AES-GCM encrypted in UserDefaults) → Claude.ai API → Usage data → ViewModel → SwiftUI views
 
 ### Services Layer
 - **ChromeCookieService** — Decrypts Chrome's SQLite cookie DB using PBKDF2-SHA1 + AES-128-CBC with Chrome Safe Storage password from Keychain. Copies DB to avoid WAL locks.

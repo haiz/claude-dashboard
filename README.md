@@ -11,7 +11,7 @@ A macOS menu bar app that monitors your Claude.ai token usage across multiple ac
 - **Burn-rate sorting** — Accounts sorted by burn rate so you know which ones need attention
 - **Interactive charts** — Visualize usage trends over time with zoomable charts (5h, 24h, 3d, 7d, 30d)
 - **Reset cycle tracking** — See when your usage limits reset with countdown bars
-- **Plan detection** — Automatically detects Pro, Max 5x, and Max 20x plans
+- **Plan detection** — Detects Pro and Max plans from the account's org capabilities
 - **Color-coded progress** — Green-to-red bars show utilization at a glance
 - **Zero dependencies** — Pure native Swift (SwiftUI, AppKit, Combine)
 
@@ -80,7 +80,7 @@ claude-dashboard-cli sync
 claude-dashboard-cli
 ```
 
-`sync` opens Chrome's cookie database, validates each session against the Claude.ai API, detects the plan (Pro / Max 5x / Max 20x), and saves the accounts to `~/Library/Preferences/com.claude-dashboard.app.plist` (shared with the menu bar app).
+`sync` opens Chrome's cookie database, validates each session against the Claude.ai API, detects the plan (Pro or Max), and saves the accounts to `~/Library/Preferences/com.claude-dashboard.app.plist` (shared with the menu bar app).
 
 ### Commands
 
@@ -100,7 +100,7 @@ Each account card shows three usage bars:
 
 - **5h** — 5-hour rolling window utilization
 - **7d** — 7-day rolling window utilization
-- **S** — 7-day Sonnet-specific utilization (Max plans only)
+- **F** — 7-day Fable-scoped utilization (hidden when the account has no Fable-scoped limit)
 
 The `resets` column shows when each window resets (local time). Progress bars transition green → yellow → red as utilization approaches 100%.
 
@@ -135,7 +135,7 @@ brew install xcodegen
 # Clone and build
 git clone https://github.com/haiz/claude-dashboard.git
 cd claude-dashboard
-cd apps/macos && xcodegen generate
+(cd apps/macos && xcodegen generate)
 xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboard -configuration Release build
 
 # The built app is in DerivedData

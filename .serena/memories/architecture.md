@@ -27,7 +27,7 @@ ClaudeDashboard/
 
 ## Key Models
 - **Account** — id, name, email, chromeProfilePath, orgId, plan (AccountPlan enum: pro/max5x/max20x/max200), status (AccountStatus)
-- **UsageData** — fiveHour, sevenDay, sevenDaySonnet (UsageLimit entries)
+- **UsageData** — fiveHour, sevenDay, fable (optional; UsageLimit entries)
 - **UsageLimit** — utilization (Double), resetsAt (Date)
 
 ## Key Services
