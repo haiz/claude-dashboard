@@ -32,7 +32,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 **Data flow:** Chrome cookies (SQLite + AES decryption) → Session keys (AES-GCM encrypted in UserDefaults) → Claude.ai API → Usage data → ViewModel → SwiftUI views
 
 ### Services Layer
-- **ChromeCookieService** — Decrypts Chrome's SQLite cookie DB using PBKDF2-SHA1 + AES-128-CBC with Chrome Safe Storage password from Keychain. Copies DB to avoid WAL locks.
+- **BrowserCookieService** — Decrypts the SQLite cookie DB of Chrome, Arc, Brave, or Edge using PBKDF2-SHA1 + AES-128-CBC. The Safe Storage password is read from the Keychain per-browser, under that browser's own service name (e.g. "Chrome Safe Storage", "Brave Safe Storage" — see `Browser.swift`). Copies DB to avoid WAL locks.
 - **UsageAPIService** — Fetches `/api/organizations/{orgId}/usage` from claude.ai. Plan tier
   comes from the **organizations** endpoint's `capabilities` (`claude_pro` / `claude_max`),
   never from the usage response — `extra_usage` is a pay-as-you-go overage toggle with no

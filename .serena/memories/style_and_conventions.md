@@ -2,7 +2,7 @@
 
 ## Naming
 - Swift standard naming: camelCase for properties/methods, PascalCase for types
-- Services as enums (ChromeCookieService, KeychainService) for namespace-only types with static methods
+- Services as enums (BrowserCookieService, CryptoService) for namespace-only types with static methods
 - Services as classes (UsageAPIService, AccountStore) when instances with state are needed
 
 ## Patterns
