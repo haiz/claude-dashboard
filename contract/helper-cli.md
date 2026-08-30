@@ -1,0 +1,137 @@
+# Helper CLI
+
+The privileged helper binary (`apps/macos/Helper/main.swift`) exposes exactly
+three subcommands: `decrypt`, `usage`, `sync`. Their externally observable
+behaviour — input/output shape, exit codes, stderr text — is contract. How
+each subcommand is invoked from a wrapper script, and how `sync` persists
+accounts, is platform detail.
+
+Dispatch (`apps/macos/Helper/main.swift:20-30`): no subcommand, or an unknown
+one, prints a usage banner (or `Unknown command: <command>`) to stderr and
+exits 1. This is not itself a contract requirement — only the three named
+subcommands' behaviour below is.
+
+## `decrypt`
+
+Source: `apps/macos/Helper/DecryptCommand.swift`.
+
+Loads the persisted account list (`HelperAccountStore.loadAccounts()`, line
+15). Output is a **six-field projection**, not a serialized `Account`. The
+`DecryptedAccount` shape (lines 5-12):
+
+| Field | Type | Source |
+|---|---|---|
+| `name` | string | `account.name` |
+| `email` | string or null | `account.email` |
+| `orgId` | string or null | `account.orgId` |
+| `sessionKey` | string or null | see below |
+| `plan` | string | `account.plan.rawValue` (a wire value from `account-schema.md`) |
+| `status` | string | `account.status.rawValue` |
+
+**Inclusion filter** (lines 22-24): an account is included only when
+`account.status == .active` **and** `account.orgId != nil`. Note that
+`sessionKey` is *not* part of this filter — an included account can still
+have `sessionKey: null` in the output if the stored account itself has no
+session key.
+
+**`sessionKey` value** (lines 26-29): if the stored account has a
+`sessionKey`, the output value is `CryptoService.decrypt(encrypted) ??
+encrypted` — i.e. the plaintext session key on successful decryption, but
+**silently falls back to the still-encrypted ciphertext string** if
+decryption fails (wrong machine, corrupted value, etc.). There is no error
+path for a failed decrypt; the caller receives ciphertext masquerading as a
+plain value with no signal that decryption failed.
+
+**Encoding** (lines 46-47): `JSONEncoder` with `[.prettyPrinted,
+.sortedKeys]` — output keys are alphabetical (`email`, `name`, `orgId`,
+`plan`, `sessionKey`, `status`), not struct-declaration order.
+
+**Failure paths**, both to stderr with exit code 1:
+1. No accounts stored at all (line 17-20): stderr is exactly
+   `No accounts found. Run: claude-dashboard-cli sync\n`.
+2. Accounts stored but the inclusion filter above produces an empty list
+   (line 41-44): stderr is exactly `No active accounts with session keys
+   found.\n`. Note this message names "session keys" but the actual gate is
+   `status == active && orgId != nil` (see above) — the wording is a
+   misnomer in the source; a Rust port must match this stderr text
+   verbatim, not the more accurate description of the filter.
+
+Success: exit 0, pretty-printed JSON array printed to stdout (line 54).
+
+## `usage <orgId> <sessionKey>`
+
+Source: `apps/macos/Helper/UsageCommand.swift`. This is a **passthrough** —
+it does not parse or reshape the upstream payload in any way.
+
+Requires exactly two positional arguments (lines 6-9); fewer prints
+`Usage: claude-dashboard-helper usage <orgId> <sessionKey>\n` to stderr and
+exits 1.
+
+Request (lines 14-24): `GET
+https://claude.ai/api/organizations/<orgId>/usage` with headers:
+- `accept: */*`
+- `content-type: application/json`
+- `anthropic-client-platform: web_claude_ai`
+- `Cookie: sessionKey=<sessionKey>`
+
+These are the same four headers `UsageAPIService.makeRequest`
+(`apps/macos/Shared/UsageAPIService.swift:125-133`) sends from the main app
+— the helper does not add or omit anything.
+
+Timeout: 15 seconds (line 41, `semaphore.wait(timeout: .now() + 15)`).
+
+Exit 1, with the reason on stderr, on any of:
+- Timeout (line 41-45): `Request timed out.\n`.
+- Network error (line 47-50): `Network error: <localizedDescription>\n`.
+- Non-2xx HTTP status (line 52-55): `HTTP <status>\n`.
+- Empty or non-UTF8 body (line 57-61): `Empty response.\n`.
+
+Success: exit 0, the upstream response body printed to stdout **byte-for-byte
+unchanged** (line 63) — whatever JSON shape claude.ai returned that day,
+including fields the Swift `UsageData` decoder does not know about.
+
+### Why the passthrough shape matters
+
+`cli/claude-dashboard-cli` (the bash wrapper) does not call the API
+directly — it shells out to this helper and reads the printed body with
+`jq`, including this lookup (`cli/claude-dashboard-cli:322-324`):
+
+```sh
+pct_sonnet=$(echo "$usage_json" | jq -r '.seven_day_sonnet.utilization // empty' 2>/dev/null || echo "")
+reset_sonnet_raw=$(echo "$usage_json" | jq -r '.seven_day_sonnet.resets_at // ""' 2>/dev/null || echo "")
+```
+
+`seven_day_sonnet` is a field the current API no longer returns (see
+`README.md`'s "The Fable window" section) — the third usage window has been
+`fable` for some time. The `// empty` guard means this lookup produces an
+empty string rather than an error when the field is absent, so the bash CLI
+degrades silently: it just renders a blank Sonnet column instead of failing.
+This is precisely why the `usage` subcommand's contract is "print the
+upstream body verbatim": if a Rust reimplementation of `usage` decoded the
+payload into a typed struct and re-serialized only the fields it knew about,
+`seven_day_sonnet`-style dead lookups would keep silently returning empty —
+but so would every *other* field the bash CLI (or any other downstream
+consumer) reads that the Rust struct didn't happen to model, and nothing
+would catch it. The passthrough contract exists so that downstream text
+processing of the raw JSON keeps working exactly as it does against the
+Swift helper today.
+
+## `sync`
+
+Source: `apps/macos/Helper/SyncCommand.swift`. Scans installed browsers for
+Chromium-based Claude session cookies, validates each candidate session
+against `GET /api/organizations`, and persists newly-found accounts. The
+storage location and browser-cookie discovery mechanism are platform detail
+(see `README.md`'s "Scope" section); only the following shape is shared:
+
+- A profile already present in the account store — matched on `(browser,
+  chromeProfilePath)` (line 34-36) — is skipped, not duplicated.
+- A candidate session that fails `fetchOrganizations` (expired, revoked) is
+  skipped, not treated as an error for the whole run (line 42-46).
+- Plan tier for a newly-added account comes from `OrgInfo.planHint` for the
+  organization matching `orgId`, defaulting to `.pro` if no match is found
+  (line 64) — this is a fallback distinct from `detectPlanTier`'s own `nil`
+  case documented in `README.md`'s "Plan tier" section.
+- The command always exits 0 once it finishes scanning (line 102), even when
+  zero accounts were added; failure is only for the "no profiles with Claude
+  sessions found at all" case (line 13-17, exit 1).
