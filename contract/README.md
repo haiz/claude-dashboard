@@ -6,12 +6,20 @@ lives here, both implementations must satisfy it. If a rule is *not* here,
 each platform is free to do it its own way.
 
 The executable form of this contract is the JSON case files under
-`contract/cases/` (added by later tasks), backed by fixture payloads under
-`contract/fixtures/`. This README, and the sibling `.md` files in this
-directory, are the prose that explains *why* those cases say what they say
-— every claim below is checked against the current Swift source, with a
-citation, so the Rust implementation is built against what the code
-actually does rather than against a plausible-sounding description of it.
+`contract/cases/`. Every case is self-contained — its input is inline in
+the case object (`input`, `org`, `projected_seconds`, depending on the
+file), so there is **no `contract/fixtures/` directory and none is
+coming**. A real captured usage payload was used while writing these
+documents and was deliberately withheld from the repository: it carries the
+account's real `spend` figure and roughly eight top-level keys that are
+unreleased internal codenames, and this repository is public. Nothing in
+this contract depends on that payload; if you want a live response beyond
+what the cases carry, capture your own. This README, and the sibling `.md`
+files in this directory, are the prose that explains *why* those cases say
+what they say — every claim below is checked against the current Swift
+source, with a citation, so the Rust implementation is built against what
+the code actually does rather than against a plausible-sounding description
+of it.
 
 ## Scope
 
@@ -20,8 +28,17 @@ actually does rather than against a plausible-sounding description of it.
   section).
 - The `UsageData` decode shape, including how the Fable window is derived
   (this file's "The Fable window" section).
-- Burn-rate levels and thresholds, and the resulting sort order (this
-  file's "Burn-rate levels" and "Sort order" sections).
+- Burn-rate levels and thresholds, **and the stateful history rules that
+  produce the projected time those thresholds are applied to**, and the
+  resulting sort order (this file's "Burn-rate levels", "Burn-rate
+  projection", and "Sort order" sections). The thresholds alone are not
+  enough: two implementations fed the same poll history but projecting
+  differently will display different animals.
+- **Session-key refresh, and the mapping of HTTP 401/403 to the `expired`
+  account status** (this file's "Session-key refresh and auth expiry"
+  section). This is shared because the resulting account status is
+  user-visible, not because the transport is; *how* the HTTP request is
+  issued remains platform detail.
 - The helper CLI's three subcommands — `decrypt`, `usage`, `sync` — as
   externally observable behaviour (input/output shape, exit codes, stderr
   text): `helper-cli.md`.
@@ -33,9 +50,12 @@ actually does rather than against a plausible-sounding description of it.
 **Platform detail (deliberately free to differ):**
 - **Cookie decryption.** How a session key is extracted from the browser's
   cookie store is macOS/Chromium-specific (`apps/macos/Shared/ChromeCookieService.swift`
-  uses PBKDF2-SHA1 + AES-128-CBC keyed off the Keychain-held Chrome Safe
-  Storage password). A Linux implementation reading a different browser's
-  cookie store needs none of this.
+  uses PBKDF2-SHA1 + AES-128-CBC keyed off a Safe Storage password read
+  from the Keychain **per browser**, under that browser's own service name —
+  `"Chrome Safe Storage"`, `"Arc Safe Storage"`, `"Brave Safe Storage"`,
+  `"Microsoft Edge Safe Storage"` (`apps/macos/Shared/Browser.swift:35-42`,
+  read at `ChromeCookieService.swift:255` / `:261`). A Linux implementation
+  reading a different browser's cookie store needs none of this.
 - **At-rest session-key encryption.** `apps/macos/Shared/CryptoService.swift`
   derives an AES-GCM key via HKDF-SHA256 seeded from the machine's
   `IOPlatformUUID` (read in `hardwareUUID()`, lines 39–53). This ties
@@ -53,7 +73,7 @@ actually does rather than against a plausible-sounding description of it.
 
 ## The case-file convention
 
-Each file under `contract/cases/` (added in later tasks) is a JSON array of
+Each file under `contract/cases/` is a JSON array of
 objects. Every object has a `name` field identifying the case; every other
 field is specific to that case file and is documented in the matching
 section below (or in the `.md` file for that surface). Both test suites —
@@ -79,13 +99,26 @@ seconds is the one representation both an `NSDate`/`Date` value and an `i64`
 can produce identically, so every expected timestamp in a case file must be
 computed by truncating (not rounding) to the second.
 
+**This rule governs expected values inside `contract/cases/*.json` and
+nothing else.** In particular it is *not* the account store's wire format:
+`Account.lastSynced` is serialised by a bare `JSONEncoder()` as a
+*fractional Double on the 2001-01-01 epoch*, not an integer Unix second.
+See `account-schema.md`'s "Wire encoding of the non-string scalars" before
+modelling that field.
+
 ## Plan tier
 
 Plan tier is derived **only** from `GET /api/organizations` (specifically
 `UsageAPIService.fetchOrganizations`, `apps/macos/Shared/UsageAPIService.swift:49-73`)
-— **never** from the usage endpoint. This directly contradicts the current
-top-level `CLAUDE.md`, which says plan tier is detected "from `extra_usage`
-response field" — that line is wrong and this file is the corrected record.
+— **never** from the usage endpoint. The top-level `CLAUDE.md` *previously*
+said plan tier was detected "from `extra_usage` response field". That claim
+was false and **has since been corrected on this same branch**: the
+`UsageAPIService` entry under `CLAUDE.md`'s "Services Layer" now states that
+plan tier comes from the organizations endpoint's `capabilities` and never
+from the usage response. This section is where the reasoning behind that
+correction lives — and it remains the authoritative record for anyone
+reading a fork or an older checkout that still carries the `extra_usage`
+wording.
 
 The code's own comment states why (`apps/macos/Shared/UsageAPIService.swift:77-80`):
 
@@ -142,21 +175,58 @@ window" — that only happens when no matching entry exists at all, or the
 `limits` array itself is absent, in which case `fable` decodes to `nil` and
 the UI hides the gauge).
 
+**A malformed `limits` is silently swallowed, not surfaced.** Line 97 is
+`(try? container.decode([LimitEntry].self, forKey: .limits)) ?? []` — a
+`try?`, which discards failure exactly as it discards absence. So if
+`limits` is present but is not an array, or contains an element that is not
+an object, or an entry whose `percent` is not a number, or **any** entry
+(not only the Fable one) whose `resets_at` is present but unparseable by the
+two ISO8601 formatters, the array decode throws, the throw is dropped, the
+array becomes `[]`, and `fable` ends up `nil` with **no error reported
+anywhere**. A Rust port must reproduce that silence: a bad `limits` payload
+is not a failed decode of the response, it is simply "no Fable window".
+
+**`five_hour` and `seven_day` are REQUIRED — do not model them as
+optional.** `UsageData.swift:92-93` uses `container.decode(...)`, not
+`decodeIfPresent`, so a response missing either key, or carrying either with
+a missing or non-numeric `utilization`, or with a `resets_at` that is
+present but unparseable, throws and fails the entire
+`UsageData.decode(from:)`. Note the asymmetry with the paragraph above: an
+unparseable `resets_at` inside `limits[]` is swallowed into `fable = nil`,
+while an unparseable `resets_at` on `five_hour`/`seven_day` fails the whole
+decode. Absent or JSON-`null` is a different case from unparseable —
+`UsageLimit.resetsAt` is `Date?` (`UsageData.swift:5`) and `null` is
+preserved as `nil`, pinned by `contract/cases/usage-decoding.json`'s case
+"null resets_at is preserved, not defaulted".
+
 `seven_day_sonnet` is a field the current API no longer returns. The
 decoder's `RootKeys` (`apps/macos/Shared/UsageData.swift:60-64`) declares no
 case for it, so if a `seven_day_sonnet` key were ever present in a response
 it would be dropped the same way `JSONDecoder` drops any unrecognized key
 under a keyed container — there is no explicit skip/guard for it in the
-code, it simply isn't looked for. This directly contradicts top-level
-`CLAUDE.md`'s claim that `UsageData` has "5-hour, 7-day, and Sonnet
-windows" — the third window is Fable, not Sonnet, and has been since the
-`fable` field replaced it; this file is the corrected record.
+code, it simply isn't looked for. The top-level `CLAUDE.md` *previously*
+described `UsageData` as carrying "5-hour, 7-day, and Sonnet windows". That
+was false — the third window is Fable, not Sonnet, and has been since the
+`fable` field replaced it — and it **has since been corrected on this same
+branch**: the `UsageData` entry under `CLAUDE.md`'s "Models" heading now
+describes the 5-hour and 7-day windows plus an optional Fable window derived
+from `limits`, and calls out `seven_day_sonnet` as a removed field the
+decoder ignores. This section is where the reasoning behind that correction
+lives.
 
-A third place carrying the same stale claim, found while writing this
-document: `README.md:92` ("**S** — 7-day Sonnet-specific utilization (Max
-plans only)"), describing a row the bash CLI (`cli/claude-dashboard-cli`)
-renders. See `helper-cli.md` for why that row no longer renders in
-practice.
+A third place carried the same stale claim, found while writing this
+document: the top-level `README.md`'s "What each row means" section listed a
+bar labelled **S** as "7-day Sonnet-specific utilization (Max plans only)".
+That wording is gone. The surviving statement in that same section reads:
+
+> The CLI can also print a third bar labelled **S**, but it reads a
+> `seven_day_sonnet` field the Claude.ai API no longer returns, so that row
+> never appears today.
+
+The row is still coded into the bash CLI (`cli/claude-dashboard-cli`); see
+`helper-cli.md` for why it never renders in practice. (Quoted rather than
+cited by line number on purpose — this document has already been wrong once
+about a line number in a file it does not own.)
 
 ## Burn-rate levels
 
@@ -179,6 +249,109 @@ fails `> 5` and falls through to `> 3` (true), so it is **level 2, not
 level 1**. The same strict-inequality rule applies at every other
 boundary (exactly 3.0h → level 3, exactly 1.5h → level 4, exactly 0.5h →
 level 5).
+
+## Burn-rate projection
+
+`fromProjectedTime` above is only the *last* step. The number handed to it —
+projected seconds to 100% — is produced by a stateful, in-memory tracker
+whose rules a port cannot guess from the thresholds alone. Source:
+`apps/macos/ClaudeDashboard/Services/BurnRateTracker.swift` (107 lines;
+`record(...)` spans lines 25-106).
+
+### The call
+
+`record(accountId:window:utilization:resetsAt:recordedAt:)` is called once
+per window per refresh and returns `BurnRateResult?`. A `nil` return means
+"no animal to display yet" — it is not an error. `recordedAt` defaults to
+`Date()` (line 30) but is injectable, which is how the Swift tests drive it.
+
+### History key and lifetime
+
+- History is a dictionary keyed by
+  `"\(accountId.uuidString)_\(window.rawValue)"` (line 32) — one independent
+  history per *(account, window)* pair. `uuidString` is the uppercase
+  hyphenated form; `window.rawValue` is the `UsageWindow` **integer**:
+  `fiveHour = 0`, `sevenDay = 1`, `fable = 3` (`UsageLogModels.swift:4-9` —
+  `2` is deliberately skipped, it belonged to the retired Sonnet window).
+- The history lives only in memory, inside an `actor` (lines 4, 19). It is
+  never persisted. A process restart wipes it, so the first poll after every
+  launch takes rule 1 below.
+- Each entry holds three things (lines 13-17): `prev` and `current`, each a
+  `Measurement` of utilization + `recordedAt` + `resetsAt` (lines 7-11), and
+  `lastRate`, a rate in **percent per second**.
+
+### Unconditional side effect
+
+Before any history logic runs, every call writes one row to the usage log
+store (lines 36-39) with `isLimited = utilization >= 100.0` (line 33). This
+happens on the `nil`-returning paths too. `isLimited` is a log field only;
+it plays no part in the projection.
+
+### The rules, in the order the code evaluates them
+
+1. **First measurement** (lines 45-49). No entry for the key, or the entry's
+   `current` is `nil`: store
+   `HistoryEntry(prev: nil, current: <new>, lastRate: nil)`, return `nil`.
+2. **Different reset cycle** (lines 52-55). `resetsAt != current.resetsAt` —
+   **exact** instant equality, sub-second precision included — discards the
+   history: store a fresh `HistoryEntry(prev: nil, current: <new>,
+   lastRate: nil)`, return `nil`.
+3. **Utilization decreased** (lines 58-61). `utilization < current.utilization`:
+   the same full reset as rule 2, return `nil`. (Read as an anomaly or an
+   unnoticed post-reset.)
+4. **Utilization increased** (lines 64-79). `utilization > current.utilization`:
+   - `deltaPercent = utilization - current.utilization`
+   - `deltaTime = recordedAt - current.recordedAt`, in seconds
+   - If `deltaTime <= 0`: return `nil` **without touching the history**
+     (line 67). The new measurement is discarded and `current` stays the
+     older one — it was still logged, per "Unconditional side effect".
+   - `rate = deltaPercent / deltaTime`, percent per second (necessarily
+     `> 0` on this path)
+   - `remaining = 100.0 - utilization`
+   - `projectedTime = remaining / rate`, in seconds
+   - Store `prev = <old current>`, `current = <new>`, `lastRate = rate`;
+     return `fromProjectedTime(projectedTime)`.
+   - There is **no** `remaining > 0` guard here. At `utilization == 100` the
+     projection is `0` → level 5; above `100` it is negative, every `>`
+     comparison inside `fromProjectedTime` fails, and it is level 5 again.
+5. **Utilization unchanged** — exact `Double` equality, i.e. neither rule 3
+   nor rule 4 fired (lines 82-105). Let `gap = recordedAt - current.recordedAt`,
+   in seconds:
+   - **Stale, `gap >= 300`** (lines 84-89; 300 s = 5 minutes, and *exactly*
+     300 counts as stale): set `current = <new>` and **drop the carried
+     rate** (`lastRate = nil`), leaving `prev` as it was; return `nil`.
+     After five flat minutes the last observed rate is no longer trusted.
+   - **Fresh, `gap < 300`, no carried rate** (lines 92-96): if `lastRate` is
+     `nil` or `prev` is `nil`, set `current = <new>`, leave `lastRate`
+     untouched, return `nil`. Two notes for a reimplementation: `lastRate`
+     non-`nil` already implies `prev` non-`nil` (both are only ever set
+     together at lines 73-75, and only `lastRate` is cleared, at line 86), so
+     the `prev` half of that guard is redundant — a port that models the two
+     fields independently must not let them diverge. And a **negative** gap,
+     from an out-of-order or clock-skewed poll, falls into this `< 300`
+     branch, not the stale one.
+   - **Fresh, `gap < 300`, carried rate available** (lines 98-105):
+     - `remaining = 100.0 - utilization`
+     - If `remaining <= 0`: return `fromProjectedTime(0)` — level 5 —
+       **without updating the history** (lines 99-101); `current` stays the
+       older measurement.
+     - Otherwise `projectedTime = remaining / lastRate`; set
+       `current = <new>` (carrying `lastRate` and `prev` forward unchanged)
+       and return `fromProjectedTime(projectedTime)`.
+
+### Consequence of the macOS caller's `resetsAt` substitution
+
+This is caller behaviour rather than tracker behaviour, but it decides what
+a user actually sees, so a port copying the caller must copy it knowingly.
+`DashboardViewModel` (lines 231-249) substitutes a freshly computed
+`Date().addingTimeInterval(...)` whenever a window's `resets_at` is `nil` —
+`18000` for the 5-hour window (line 236), `604800` for 7-day (line 241) and
+for Fable (line 247). That substitute is a *new instant on every refresh*,
+so rule 2's exact-equality check fails on every poll: **a window whose
+`resets_at` is `null` resets its history every poll and therefore never
+produces a burn rate.** Only windows with a real `resets_at` ever show an
+animal. The Fable window is polled at all only when `fable != nil`
+(line 243).
 
 ## Sort order
 
@@ -209,3 +382,51 @@ This is a **three-tier** ordering, not a flat sort by burn rate:
    below every account with a real rate (since a real rate is always
    `>= 0`), i.e. expired/error/no-data accounts sink to the bottom within
    whatever tier they're in.
+
+## Session-key refresh and auth expiry
+
+Classified as **Shared** in the Scope section above, because the account
+status it produces is user-visible. Source:
+`apps/macos/Shared/UsageAPIService.swift`.
+
+`validateResponse` (lines 135-149) is applied to every response, from both
+the usage and the organizations endpoint:
+
+1. Not an HTTP response → `UsageAPIError.invalidResponse` (lines 136-138).
+2. Status is exactly `401` **or** `403` → `UsageAPIError.authExpired`
+   (lines 140-142). No other status reaches this case.
+3. Status outside `200...299` → `UsageAPIError.httpError(statusCode:)`
+   (lines 144-146).
+4. Otherwise the response is returned unchanged.
+
+`parseSessionKey` (lines 151-165) runs on the successful responses of
+`fetchUsage` (line 42) and `fetchFullUsage` (line 91) — but **not** on
+`fetchOrganizations`, which discards its validated response (line 56):
+
+1. Read the `Set-Cookie` response header. Absent → `nil` (lines 152-154).
+2. Split that header value on `;`, trim whitespace from each component, and
+   return the first component beginning with the literal prefix
+   `sessionKey=`, with the prefix removed (lines 156-162). The value is
+   taken verbatim — not URL-decoded, not unquoted, no length or format
+   check.
+3. No such component → `nil` (line 164).
+
+Note that step 1 reads *one* header value and step 2 splits only on `;`;
+the code has no handling for a server sending several separate `Set-Cookie`
+headers. A port must make sure it still finds the `sessionKey` cookie in
+that case, since HTTP clients differ in how they surface repeated headers.
+
+The user-visible consequences, which are the reason this is contract:
+
+- A non-`nil` parse result is persisted as the account's new session key
+  (`DashboardViewModel.swift:175-177`), replacing the one just sent.
+  Requests carry it as the raw header `Cookie: sessionKey=<value>`
+  (`UsageAPIService.swift:131`).
+- `authExpired` becomes the account status `expired`, written back to the
+  store (`DashboardViewModel.swift:184-185` and `216-219`), and an
+  `expired` account is skipped by subsequent refreshes
+  (`DashboardViewModel.swift:163`). Every other error leaves `status`
+  untouched and surfaces only as a transient per-card message
+  (lines 186-189). A Linux implementation that also mapped, say, `429` or a
+  network failure onto `expired` would silently retire accounts that the
+  macOS app keeps refreshing.

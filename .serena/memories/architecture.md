@@ -40,7 +40,7 @@ apps/macos/
 │       ├── MenuBarPopover.swift       # Compact menu bar dropdown
 │       ├── OverviewChartView.swift
 │       ├── RunCommandSheet.swift
-│       ├── SettingsView.swift         # Account management (rename, delete, re-sync)
+│       ├── SettingsView.swift         # Account management (add via SetupView sheet, delete, Re-sync All) + update check; no rename UI
 │       ├── SetupView.swift            # Wizard scanning browser profiles
 │       └── UsageBar.swift             # Color-interpolated progress bar (green→red)
 ├── Shared/                            # Used by both the app target and the Helper CLI binary
@@ -62,7 +62,7 @@ apps/macos/
 ## Key Models
 - **Account** — id, name, email, chromeProfilePath, orgId, plan (AccountPlan enum: pro/max5x/max20x/max200), status (AccountStatus)
 - **UsageData** — fiveHour, sevenDay, fable (optional; UsageLimit entries)
-- **UsageLimit** — utilization (Double), resetsAt (Date)
+- **UsageLimit** — utilization (Double, non-optional), resetsAt (`Date?` — nullable, and its nullability is contract: `UsageData.swift:5`, pinned by `contract/cases/usage-decoding.json` case "null resets_at is preserved, not defaulted")
 
 ## Key Services
 - **BrowserCookieService** (enum, in `ChromeCookieService.swift`) — Static methods. Scans profiles and extracts/decrypts cookies for Chrome, Arc, Brave, or Edge, reading each browser's Safe Storage password from the Keychain under that browser's own service name

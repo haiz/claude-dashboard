@@ -27,6 +27,36 @@ is platform detail; the shape below is contract.
 | `status` | `AccountStatus` | no | |
 | `isPinned` | Bool | no (defaults to `false` on decode) | See "Backward compatibility". |
 
+## Wire encoding of the non-string scalars
+
+Both writers use a **bare `JSONEncoder()`** with no strategy overrides —
+`AccountStore.persist()`
+(`apps/macos/ClaudeDashboard/Services/AccountStore.swift:44-47`, the encode
+at line 45) and `HelperAccountStore.saveAccounts(_:)`
+(`apps/macos/Helper/HelperAccountStore.swift:17-23`, the encode at line 19).
+Both readers use a bare `JSONDecoder()` (`AccountStore.swift:49-55` and
+`HelperAccountStore.swift:8-15`). Nothing sets `dateEncodingStrategy`,
+`dateDecodingStrategy`, or `keyEncodingStrategy` anywhere on this path, so
+Foundation's defaults are the wire format, and two of the fields encode in a
+way a Rust port will get wrong if it guesses:
+
+| Field | Swift type | JSON type | Encoding |
+|---|---|---|---|
+| `id` | `UUID` | string | The **uppercase, hyphenated** 36-character form, e.g. `"3B8C3678-3A00-425C-8D22-22BCA37AE65B"`. Not lowercase, not compact. A Rust `Uuid` must serialise uppercase-hyphenated and must accept that form on read. |
+| `lastSynced` | `Date?` | number or `null` | A **`Double` of seconds since 2001-01-01T00:00:00Z** — Foundation's `.deferredToDate` default, which encodes `Date.timeIntervalSinceReferenceDate`. It is **not** a Unix epoch and **not** an ISO8601 string, and it is fractional, not truncated. Convert with `unix_seconds = value + 978307200.0`. Absent or `null` means never synced. |
+
+The remaining fields hold no surprises: `name`, `email`,
+`chromeProfilePath`, `chromeProfileName`, `orgId` and `sessionKey` are JSON
+strings (or absent/`null` where optional); `browser`, `plan` and `status`
+are JSON strings carrying the raw values tabulated below; `isPinned` is a
+JSON boolean.
+
+**Do not confuse `lastSynced` with the case-file timestamp rule.**
+`README.md`'s "Timestamps" section requires every expected instant in
+`contract/cases/*.json` to be an integer Unix second truncated toward zero.
+That rule is about the *test vectors*, and applying it to this field would
+be wrong twice over — wrong epoch and wrong precision.
+
 ## Enum raw values (wire values, not display strings)
 
 These are the exact strings that appear in persisted JSON and in the
@@ -116,9 +146,17 @@ encryption" note. This value:
 - Must not be treated as a stable identifier or compared across machines or
   across a re-encryption; it is opaque bytes tied to one host's key.
 
-**A third prose/code disagreement, found while writing this document:**
-top-level `README.md:110` ("Stores session keys securely in macOS
-Keychain") is false. The app has a `KeychainService` actor
+**A third prose/code disagreement, found while writing this document:** the
+top-level `README.md`'s "How It Works" list used to say "Stores session keys
+securely in macOS Keychain". That was false, and it **has since been
+corrected on this same branch** — the step now reads:
+
+> Encrypts session keys with AES-GCM (key derived from the machine's
+> hardware UUID) and stores them in the app's preferences
+
+The reasoning behind that correction is kept here, because forks and older
+checkouts still carry the Keychain wording, and because the dead code that
+made it plausible is still in the tree. The app has a `KeychainService` actor
 (`apps/macos/ClaudeDashboard/Services/KeychainService.swift`, with
 `SecItemAdd`/`SecItemCopyMatching` wrappers and a
 `sessionKey(for accountId:)` key-naming helper suggesting it was built for
@@ -134,6 +172,6 @@ encrypted via `CryptoService.encrypt` (AES-GCM, key derived from
 `UserDefaults`, alongside every other account field — not written to the
 Keychain via `SecItem*` at all. A Rust port must not model "the Keychain"
 as part of the session-key storage contract; whatever at-rest scheme it
-picks is platform detail (see `README.md`'s "Scope" section), but it should
-not be misled by this line in the top-level `README.md` into thinking
-`SecItem`-style secure-storage APIs are the mechanism to reproduce.
+picks is platform detail (see `README.md`'s "Scope" section) — but it must
+not read the old Keychain wording, in a fork or an older checkout, as
+meaning `SecItem`-style secure-storage APIs are the mechanism to reproduce.
