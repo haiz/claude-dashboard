@@ -1,0 +1,49 @@
+[
+  {
+    "name": "claude_pro wins over the chat fallback",
+    "org": { "uuid": "org-1", "name": "Personal", "capabilities": ["chat", "claude_pro"] },
+    "expect_plan": "Pro"
+  },
+  {
+    "name": "claude_max resolves to generic Max — the API exposes no 5x/20x signal",
+    "org": { "uuid": "org-2", "name": "Personal", "capabilities": ["chat", "claude_max"] },
+    "expect_plan": "Max"
+  },
+  {
+    "name": "a consumer chat org with no plan marker is treated as Max",
+    "org": { "uuid": "org-3", "name": "Personal", "capabilities": ["chat"] },
+    "expect_plan": "Max"
+  },
+  {
+    "name": "an api-only org is not a displayable plan",
+    "org": { "uuid": "org-4", "name": "Acme API", "capabilities": ["api"] },
+    "expect_plan": null
+  },
+  {
+    "name": "an org with no capabilities at all is not a displayable plan",
+    "org": { "uuid": "org-5", "name": "Empty" },
+    "expect_plan": null
+  },
+  {
+    "name": "an explicit max_20x marker anywhere in the org JSON wins over capabilities",
+    "org": { "uuid": "org-6", "name": "Personal", "capabilities": ["chat", "claude_pro"],
+             "settings": { "tier": "max_20x" } },
+    "expect_plan": "Max 20x"
+  },
+  {
+    "name": "an explicit max_5x marker anywhere in the org JSON wins over capabilities",
+    "org": { "uuid": "org-7", "name": "Personal", "capabilities": ["chat", "claude_pro"],
+             "settings": { "tier": "max_5x" } },
+    "expect_plan": "Max 5x"
+  },
+  {
+    "name": "the marker scan is a substring match over the whole JSON, so an org NAME can trigger it",
+    "org": { "uuid": "org-8", "name": "max20x holdings", "capabilities": ["chat", "claude_pro"] },
+    "expect_plan": "Max 20x"
+  },
+  {
+    "name": "capability matching is case-insensitive",
+    "org": { "uuid": "org-9", "name": "Personal", "capabilities": ["CHAT", "Claude_Pro"] },
+    "expect_plan": "Pro"
+  }
+]

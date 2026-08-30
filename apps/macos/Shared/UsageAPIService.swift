@@ -98,7 +98,7 @@ final class UsageAPIService {
     // markers the API exposes are the `claude_pro` / `claude_max` capabilities;
     // the 5x vs 20x distinction is not exposed anywhere, so Max falls back to a
     // generic "Max". A consumer chat org without `claude_pro` is treated as Max.
-    private static func detectPlanTier(from dict: [String: Any], capabilities: [String]) -> AccountPlan? {
+    static func detectPlanTier(from dict: [String: Any], capabilities: [String]) -> AccountPlan? {
         let caps = Set(capabilities.map { $0.lowercased() })
 
         // Explicit 5x/20x markers, if the org ever exposes them.
