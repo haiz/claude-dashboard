@@ -1,0 +1,127 @@
+[
+  {
+    "name": "fractional-second timestamps parse",
+    "input": {
+      "five_hour": { "utilization": 42.0, "resets_at": "2026-04-10T18:59:59.661633+00:00" },
+      "seven_day": { "utilization": 18.0, "resets_at": "2026-04-14T16:59:59.661657+00:00" },
+      "extra_usage": null
+    },
+    "expect": {
+      "five_hour_utilization": 42.0,
+      "five_hour_resets_at_epoch": 1775847599,
+      "seven_day_utilization": 18.0,
+      "seven_day_resets_at_epoch": 1776185999,
+      "fable_present": false,
+      "fable_utilization": null,
+      "fable_resets_at_epoch": null
+    }
+  },
+  {
+    "name": "whole-second timestamps parse (the API emits both forms)",
+    "input": {
+      "five_hour": { "utilization": 10.0, "resets_at": "2026-04-10T18:59:59.661633+00:00" },
+      "seven_day": { "utilization": 5.0, "resets_at": "2026-04-14T16:59:59+00:00" }
+    },
+    "expect": {
+      "five_hour_utilization": 10.0,
+      "five_hour_resets_at_epoch": 1775847599,
+      "seven_day_utilization": 5.0,
+      "seven_day_resets_at_epoch": 1776185999,
+      "fable_present": false,
+      "fable_utilization": null,
+      "fable_resets_at_epoch": null
+    }
+  },
+  {
+    "name": "null resets_at is preserved, not defaulted",
+    "input": {
+      "five_hour": { "utilization": 0.0, "resets_at": null },
+      "seven_day": { "utilization": 0.0, "resets_at": null }
+    },
+    "expect": {
+      "five_hour_utilization": 0.0,
+      "five_hour_resets_at_epoch": null,
+      "seven_day_utilization": 0.0,
+      "seven_day_resets_at_epoch": null,
+      "fable_present": false,
+      "fable_utilization": null,
+      "fable_resets_at_epoch": null
+    }
+  },
+  {
+    "name": "removed seven_day_sonnet field is ignored, not decoded",
+    "input": {
+      "five_hour": { "utilization": 10.0, "resets_at": null },
+      "seven_day": { "utilization": 5.0, "resets_at": null },
+      "seven_day_sonnet": { "utilization": 25.0, "resets_at": "2026-04-12T10:00:00+00:00" }
+    },
+    "expect": {
+      "five_hour_utilization": 10.0,
+      "five_hour_resets_at_epoch": null,
+      "seven_day_utilization": 5.0,
+      "seven_day_resets_at_epoch": null,
+      "fable_present": false,
+      "fable_utilization": null,
+      "fable_resets_at_epoch": null
+    }
+  },
+  {
+    "name": "fable comes from limits[].scope.model.display_name, reading percent",
+    "input": {
+      "five_hour": { "utilization": 9.0, "resets_at": null },
+      "seven_day": { "utilization": 66.0, "resets_at": null },
+      "limits": [
+        { "kind": "session", "group": "session", "percent": 9, "resets_at": null, "scope": null },
+        { "kind": "weekly_all", "group": "weekly", "percent": 66, "resets_at": null, "scope": null },
+        { "kind": "weekly_scoped", "group": "weekly", "percent": 100,
+          "resets_at": "2026-07-03T17:00:00.283013+00:00",
+          "scope": { "model": { "id": null, "display_name": "Fable" }, "surface": null } }
+      ]
+    },
+    "expect": {
+      "five_hour_utilization": 9.0,
+      "five_hour_resets_at_epoch": null,
+      "seven_day_utilization": 66.0,
+      "seven_day_resets_at_epoch": null,
+      "fable_present": true,
+      "fable_utilization": 100.0,
+      "fable_resets_at_epoch": 1783098000
+    }
+  },
+  {
+    "name": "limits present but no Fable-scoped entry yields no fable window",
+    "input": {
+      "five_hour": { "utilization": 9.0, "resets_at": null },
+      "seven_day": { "utilization": 66.0, "resets_at": null },
+      "limits": [
+        { "kind": "session", "group": "session", "percent": 9, "resets_at": null, "scope": null },
+        { "kind": "weekly_all", "group": "weekly", "percent": 66, "resets_at": null, "scope": null }
+      ]
+    },
+    "expect": {
+      "five_hour_utilization": 9.0,
+      "five_hour_resets_at_epoch": null,
+      "seven_day_utilization": 66.0,
+      "seven_day_resets_at_epoch": null,
+      "fable_present": false,
+      "fable_utilization": null,
+      "fable_resets_at_epoch": null
+    }
+  },
+  {
+    "name": "missing limits array yields no fable window",
+    "input": {
+      "five_hour": { "utilization": 9.0, "resets_at": null },
+      "seven_day": { "utilization": 66.0, "resets_at": null }
+    },
+    "expect": {
+      "five_hour_utilization": 9.0,
+      "five_hour_resets_at_epoch": null,
+      "seven_day_utilization": 66.0,
+      "seven_day_resets_at_epoch": null,
+      "fable_present": false,
+      "fable_utilization": null,
+      "fable_resets_at_epoch": null
+    }
+  }
+]
