@@ -6,9 +6,11 @@ behaviour — input/output shape, exit codes, stderr text — is contract. How
 each subcommand is invoked from a wrapper script, and how `sync` persists
 accounts, is platform detail.
 
-Dispatch (`apps/macos/Helper/main.swift:20-30`): no subcommand, or an unknown
-one, prints a usage banner (or `Unknown command: <command>`) to stderr and
-exits 1. This is not itself a contract requirement — only the three named
+Dispatch: no subcommand at all (`apps/macos/Helper/main.swift:5-16`) prints a
+usage banner to stderr and exits 1; an unrecognized subcommand
+(`apps/macos/Helper/main.swift:27-29`, the `default:` case of the switch at
+lines 20-30) prints `Unknown command: <command>\n` to stderr and exits 1.
+This is not itself a contract requirement — only the three named
 subcommands' behaviour below is.
 
 ## `decrypt`
@@ -46,7 +48,7 @@ plain value with no signal that decryption failed.
 .sortedKeys]` — output keys are alphabetical (`email`, `name`, `orgId`,
 `plan`, `sessionKey`, `status`), not struct-declaration order.
 
-**Failure paths**, both to stderr with exit code 1:
+**Failure paths**, all three to stderr with exit code 1:
 1. No accounts stored at all (line 17-20): stderr is exactly
    `No accounts found. Run: claude-dashboard-cli sync\n`.
 2. Accounts stored but the inclusion filter above produces an empty list
@@ -55,6 +57,12 @@ plain value with no signal that decryption failed.
    `status == active && orgId != nil` (see above) — the wording is a
    misnomer in the source; a Rust port must match this stderr text
    verbatim, not the more accurate description of the filter.
+3. JSON encoding itself fails (line 48-52 — `guard let data = try?
+   encoder.encode(decrypted), let json = String(data: data, encoding:
+   .utf8) else { ... }`): stderr is exactly `Failed to encode accounts.\n`.
+   This path exists for completeness of the contract even though it is not
+   expected to trigger in practice — `DecryptedAccount` only holds `String`
+   and `String?` fields, which `JSONEncoder` does not fail to encode.
 
 Success: exit 0, pretty-printed JSON array printed to stdout (line 54).
 
@@ -81,6 +89,10 @@ These are the same four headers `UsageAPIService.makeRequest`
 Timeout: 15 seconds (line 41, `semaphore.wait(timeout: .now() + 15)`).
 
 Exit 1, with the reason on stderr, on any of:
+- Invalid `orgId` (line 14-17 — `URL(string:
+  "https://claude.ai/api/organizations/\(orgId)/usage")` returns `nil`,
+  e.g. an `orgId` containing characters that are illegal in a URL path):
+  `Invalid orgId.\n`.
 - Timeout (line 41-45): `Request timed out.\n`.
 - Network error (line 47-50): `Network error: <localizedDescription>\n`.
 - Non-2xx HTTP status (line 52-55): `HTTP <status>\n`.
