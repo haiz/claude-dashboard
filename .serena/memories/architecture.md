@@ -66,7 +66,7 @@ apps/macos/
 
 ## Key Services
 - **BrowserCookieService** (enum, in `ChromeCookieService.swift`) — Static methods. Scans profiles and extracts/decrypts cookies for Chrome, Arc, Brave, or Edge, reading each browser's Safe Storage password from the Keychain under that browser's own service name
-- **UsageAPIService** (class) — Fetches `/api/organizations/{orgId}/usage`, detects plan tier from `extra_usage`, handles session key refresh via Set-Cookie
+- **UsageAPIService** (class) — Fetches `/api/organizations/{orgId}/usage`; plan tier comes from the `/api/organizations` endpoint's `capabilities` (`claude_pro`/`claude_max`), never from `extra_usage` (a pay-as-you-go overage toggle with no tier signal); handles session key refresh via Set-Cookie
 - **KeychainService** (actor) — SecItem wrapper with `servicePrefix` and an in-memory `cache`; `shared` singleton. save/load/delete/sessionKey. Currently unreferenced by production code — see `contract/account-schema.md`
 - **AccountStore** (class, ObservableObject) — @Published accounts, CRUD, UserDefaults persistence
 

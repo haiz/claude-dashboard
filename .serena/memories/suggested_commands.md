@@ -22,10 +22,10 @@ xcodebuild test -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDash
 ```
 
 ## Test Files
-- ClaudeDashboardTests/UsageAPIServiceTests.swift
-- ClaudeDashboardTests/UsageDataTests.swift
-- ClaudeDashboardTests/ChromeCookieServiceTests.swift
-- ClaudeDashboardTests/AccountStoreTests.swift
+- apps/macos/ClaudeDashboardTests/UsageAPIServiceTests.swift
+- apps/macos/ClaudeDashboardTests/UsageDataTests.swift
+- apps/macos/ClaudeDashboardTests/ChromeCookieServiceTests.swift
+- apps/macos/ClaudeDashboardTests/AccountStoreTests.swift
 
 ## System Commands (Darwin/macOS)
 - `git` — version control

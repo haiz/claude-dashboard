@@ -26,4 +26,4 @@
 ## API Patterns
 - ISO8601 date parsing handles both with and without fractional seconds (.SSS)
 - Session key refresh handled via Set-Cookie response headers
-- Plan tier detection from `extra_usage` API response field
+- Plan tier detection from the `/api/organizations` endpoint's `capabilities` field (`claude_pro`/`claude_max`); `extra_usage` is a pay-as-you-go overage toggle with no tier signal, not a plan-detection field
