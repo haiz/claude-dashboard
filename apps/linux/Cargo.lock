@@ -148,6 +148,7 @@ dependencies = [
  "claude-dashboard-core",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
