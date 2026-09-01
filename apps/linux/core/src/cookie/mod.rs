@@ -136,6 +136,31 @@ mod tests {
     use cbc::cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyIvInit};
     use sha2::{Digest, Sha256};
 
+    // Known-answer test: pins derive_key's PBKDF2 parameters (SHA1, salt
+    // "saltysalt", 1 iteration) to Chromium's published constants, verified
+    // in Spike 0 against Chromium source and a live Ubuntu run. The other 4
+    // tests below only prove decrypt is self-consistent with derive_key --
+    // they'd still pass if derive_key's parameters silently drifted (e.g. a
+    // higher iteration count). This test fails independently of that.
+    #[test]
+    fn derive_key_matches_chromium_known_answers() {
+        assert_eq!(
+            derive_key(b"peanuts"),
+            [
+                0xfd, 0x62, 0x1f, 0xe5, 0xa2, 0xb4, 0x02, 0x53, 0x9d, 0xfa, 0x14, 0x7c, 0xa9, 0x27,
+                0x27, 0x78,
+            ]
+        );
+        // Chromium's empty-key CBC fallback constant (encryptor.cc).
+        assert_eq!(
+            derive_key(b""),
+            [
+                0xd0, 0xd0, 0xec, 0x9c, 0x7d, 0x77, 0xd4, 0x3a, 0xc5, 0x41, 0x87, 0xfa, 0x48, 0x18,
+                0xd1, 0x7f,
+            ]
+        );
+    }
+
     fn v10_key() -> [u8; 16] {
         derive_key(b"peanuts")
     }
