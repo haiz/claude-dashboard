@@ -19,6 +19,7 @@
 //! the 15s timeout, `Set-Cookie` parsing) still applies verbatim.
 
 use std::error::Error as _;
+use std::io::Read;
 use std::time::Duration;
 
 /// Errors from a call to the claude.ai HTTP API.
@@ -149,13 +150,19 @@ fn classify_transport_error(err: ureq::Transport) -> ApiError {
 }
 
 /// Issues the shared GET request shape (headers, `Cookie: sessionKey=`,
-/// timeout) and returns the body together with every raw `Set-Cookie`
-/// header value on success. Non-2xx statuses (via either ureq's own
-/// `Error::Status` for `>= 400`, or [`map_status`] for the `1xx`/`3xx`
-/// range ureq treats as `Ok`) become `Err(ApiError::HttpError(status))`,
-/// discarding any `Set-Cookie` on the error response — matching the
-/// contract's `validateResponse`-before-`parseSessionKey` ordering.
-fn perform_get(url: &str, session_key: &str) -> Result<(String, Vec<String>), ApiError> {
+/// timeout) and returns the raw response body bytes together with every
+/// raw `Set-Cookie` header value on success. Non-2xx statuses (via either
+/// ureq's own `Error::Status` for `>= 400`, or [`map_status`] for the
+/// `1xx`/`3xx` range ureq treats as `Ok`) become
+/// `Err(ApiError::HttpError(status))`, discarding any `Set-Cookie` on the
+/// error response — matching the contract's
+/// `validateResponse`-before-`parseSessionKey` ordering. `Set-Cookie` is
+/// read off the response before its body reader is consumed: headers are
+/// already parsed by the time `call()` returns, and `into_reader` only
+/// consumes the body stream, so the read order below does not matter for
+/// correctness — but keeping cookie extraction textually first documents
+/// the dependency.
+fn perform_get_bytes(url: &str, session_key: &str) -> Result<(Vec<u8>, Vec<String>), ApiError> {
     let mut req = ureq::get(url).timeout(REQUEST_TIMEOUT);
     for (name, value) in REQUEST_HEADERS {
         req = req.set(name, value);
@@ -174,10 +181,33 @@ fn perform_get(url: &str, session_key: &str) -> Result<(String, Vec<String>), Ap
         .into_iter()
         .map(String::from)
         .collect::<Vec<_>>();
-    let body = resp
-        .into_string()
+    let mut body = Vec::new();
+    resp.into_reader()
+        .read_to_end(&mut body)
         .map_err(|e| ApiError::Network(e.to_string()))?;
     Ok((body, cookies))
+}
+
+/// [`perform_get_bytes`], with the body lossily decoded as UTF-8 (invalid
+/// sequences become U+FFFD) — the same decoding
+/// `ureq::Response::into_string` performs without the (unused) `charset`
+/// feature. Used by [`fetch_organizations`], which has no non-UTF-8
+/// contract case to honor, so its existing (lossy) behavior is preserved
+/// unchanged.
+fn perform_get(url: &str, session_key: &str) -> Result<(String, Vec<String>), ApiError> {
+    let (bytes, cookies) = perform_get_bytes(url, session_key)?;
+    Ok((String::from_utf8_lossy(&bytes).into_owned(), cookies))
+}
+
+/// Strictly decodes a response body as UTF-8, per `contract/helper-cli.md`
+/// "usage": an invalid-UTF-8 body is treated as *absent*, not lossily
+/// repaired — mirroring `UsageCommand.swift`'s `String(data:encoding:
+/// .utf8)`, which returns `nil` on the same input and whose caller then
+/// prints `Empty response.\n`. Returning `""` here lets `usage_raw`'s
+/// caller's existing `resp.body.is_empty()` check reproduce that same
+/// mapping, with no new `ApiError` variant needed.
+fn decode_body_strict(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes).unwrap_or_default()
 }
 
 /// Fetches `/api/organizations/{org_id}/usage`, the 5-hour/7-day/Fable
@@ -185,9 +215,9 @@ fn perform_get(url: &str, session_key: &str) -> Result<(String, Vec<String>), Ap
 pub fn usage_raw(org_id: &str, session_key: &str) -> Result<UsageResponse, ApiError> {
     validate_org_id(org_id)?;
     let url = format!("https://claude.ai/api/organizations/{org_id}/usage");
-    let (body, cookies) = perform_get(&url, session_key)?;
+    let (bytes, cookies) = perform_get_bytes(&url, session_key)?;
     Ok(UsageResponse {
-        body,
+        body: decode_body_strict(bytes),
         new_session_key: parse_session_key(&cookies),
     })
 }
@@ -324,5 +354,27 @@ mod tests {
     #[test]
     fn connection_reset_kind_is_not_timeout() {
         assert!(!is_timeout_kind(std::io::ErrorKind::ConnectionReset));
+    }
+
+    // -- decode_body_strict ------------------------------------------------
+
+    #[test]
+    fn decode_body_strict_valid_utf8_roundtrips() {
+        assert_eq!(decode_body_strict(b"hello world".to_vec()), "hello world");
+    }
+
+    #[test]
+    fn decode_body_strict_invalid_utf8_is_empty() {
+        // 0xff, 0xfe is not valid UTF-8 in any position; per
+        // `contract/helper-cli.md` "usage" this must NOT be lossily
+        // repaired (that would silently deviate from the contract's
+        // "Empty or non-UTF8 body -> Empty response." bucket) -- it must
+        // come back empty so the caller's is_empty() check fires.
+        assert_eq!(decode_body_strict(vec![0xff, 0xfe]), "");
+    }
+
+    #[test]
+    fn decode_body_strict_empty_bytes_is_empty() {
+        assert_eq!(decode_body_strict(Vec::new()), "");
     }
 }
