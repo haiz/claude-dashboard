@@ -79,18 +79,6 @@ impl Account {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct DecryptedAccount {
-    pub name: String,
-    pub email: Option<String>,
-    #[serde(rename = "orgId")]
-    pub org_id: Option<String>,
-    #[serde(rename = "sessionKey")]
-    pub session_key: Option<String>,
-    pub plan: String,
-    pub status: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
