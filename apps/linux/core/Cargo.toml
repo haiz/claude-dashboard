@@ -19,3 +19,4 @@ sha1 = "0.10"
 sha2 = "0.10"
 base64 = "0.22"
 ureq = { version = "2", features = ["tls"] }
+time = { version = "0.3", features = ["parsing"] }
