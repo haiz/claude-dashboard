@@ -49,6 +49,8 @@ pub struct Account {
     pub chrome_profile_name: Option<String>,
     #[serde(rename = "orgId", skip_serializing_if = "Option::is_none", default)]
     pub org_id: Option<String>,
+    #[serde(rename = "accountUuid", skip_serializing_if = "Option::is_none", default)]
+    pub account_uuid: Option<String>,
     #[serde(rename = "sessionKey", skip_serializing_if = "Option::is_none", default)]
     pub session_key: Option<String>,
     #[serde(default)]
@@ -120,5 +122,31 @@ mod tests {
             "status":"active","lastSynced":0.0}"#;
         let a = Account::from_json_object(json).unwrap();
         assert_eq!(a.last_synced_unix().unwrap(), 978307200.0);
+    }
+}
+
+#[cfg(test)]
+mod account_uuid_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_json_without_account_uuid_decodes() {
+        let json = r#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"person@example.com",
+            "chromeProfilePath":"Profile 1","orgId":"org-1","plan":"Max","status":"active"}]"#;
+        let accounts = Account::from_json(json).expect("decode");
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].account_uuid, None);
+    }
+
+    #[test]
+    fn account_uuid_round_trips_and_is_omitted_when_absent() {
+        let json = r#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"person@example.com",
+            "chromeProfilePath":"Profile 1","orgId":"org-1","accountUuid":"acct-1",
+            "plan":"Max","status":"active"}]"#;
+        let accounts = Account::from_json(json).expect("decode");
+        assert_eq!(accounts[0].account_uuid.as_deref(), Some("acct-1"));
+
+        let out = Account::to_json_array(&accounts).expect("encode");
+        assert!(out.contains(r#""accountUuid":"acct-1""#), "got {out}");
     }
 }

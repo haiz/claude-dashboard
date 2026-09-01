@@ -10,7 +10,7 @@ is platform detail; the shape below is contract.
 
 ## Fields
 
-`Account` (`apps/macos/Shared/Account.swift:16-33`):
+`Account` (`apps/macos/Shared/Account.swift:16-38`):
 
 | Field | Type | Optional | Notes |
 |---|---|---|---|
@@ -19,7 +19,8 @@ is platform detail; the shape below is contract.
 | `email` | String | yes | |
 | `chromeProfilePath` | String | no | Despite the name, holds the profile path for whichever `browser` the account came from — not Chrome-specific. |
 | `chromeProfileName` | String | yes | Same naming note as above. |
-| `orgId` | String | yes | `isConfigured` (line 30-32) is `orgId != nil`. |
+| `orgId` | String | yes | `isConfigured` (line 35-37) is `orgId != nil`. |
+| `accountUuid` | String | yes | The Claude account's own uuid, from `GET /api/account`. The identity key for dedupe. Absent on records written before this field existed; backfilled on the next successful refresh. `orgId` is **not** an identity and must never be compared as one. |
 | `sessionKey` | String | yes | Ciphertext — see "sessionKey is not portable" below. |
 | `browser` | `Browser` | no (defaults to `.chrome` on decode) | See "Backward compatibility". |
 | `plan` | `AccountPlan` | no | |
@@ -46,8 +47,8 @@ way a Rust port will get wrong if it guesses:
 | `lastSynced` | `Date?` | number or `null` | A **`Double` of seconds since 2001-01-01T00:00:00Z** — Foundation's `.deferredToDate` default, which encodes `Date.timeIntervalSinceReferenceDate`. It is **not** a Unix epoch and **not** an ISO8601 string, and it is fractional, not truncated. Convert with `unix_seconds = value + 978307200.0`. Absent or `null` means never synced. |
 
 The remaining fields hold no surprises: `name`, `email`,
-`chromeProfilePath`, `chromeProfileName`, `orgId` and `sessionKey` are JSON
-strings (or absent/`null` where optional); `browser`, `plan` and `status`
+`chromeProfilePath`, `chromeProfileName`, `orgId`, `accountUuid` and
+`sessionKey` are JSON strings (or absent/`null` where optional); `browser`, `plan` and `status`
 are JSON strings carrying the raw values tabulated below; `isPinned` is a
 JSON boolean.
 
@@ -88,17 +89,17 @@ already lowercase here).
 
 ## Backward compatibility
 
-The custom decoder (`Account.swift:38-59`, `init(from:)` at lines 44-58)
+The custom decoder (`Account.swift:43-65`, `init(from:)` at lines 49-64)
 enforces two defaults for keys that did not exist in older persisted JSON:
 
-1. **Missing `browser` defaults to `.chrome`** (line 53:
+1. **Missing `browser` defaults to `.chrome`** (line 59:
    `try c.decodeIfPresent(Browser.self, forKey: .browser) ?? .chrome`). This
    is exercised by
    `apps/macos/ClaudeDashboardTests/AccountCodableTests.swift:7-22`
    (`testDecodeLegacyJSONDefaultsToChrome`), which decodes a JSON object with
    no `"browser"` key and asserts `account.browser == .chrome`. This dates
    from before multi-browser support existed.
-2. **Missing `isPinned` defaults to `false`** (line 57:
+2. **Missing `isPinned` defaults to `false`** (line 63:
    `try c.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false`). Verified
    directly from source; there is no dedicated unit test for this specific
    default in the current test suite (only the `browser` default has one).
@@ -108,7 +109,7 @@ after accounts were already persisted on users' machines, and decoding must
 not throw on the old shape.
 
 The file carries its own warning about this decoder, at
-`Account.swift:35-37` (translated from the original Vietnamese comment):
+`Account.swift:40-42` (translated from the original Vietnamese comment):
 
 > Custom decode for compatibility with old JSON (missing key "browser" →
 > `.chrome`). NOTE: keep `CodingKeys` and `init(from:)` in sync with every
@@ -116,7 +117,7 @@ The file carries its own warning about this decoder, at
 > update here will silently lose data on round-trip.
 
 This is not a stylistic preference — `CodingKeys`
-(`Account.swift:39-42`) is a private, hand-maintained enum that does not
+(`Account.swift:44-47`) is a private, hand-maintained enum that does not
 auto-include new stored properties, and `init(from:)` is a fully custom
 initializer that does not fall back to memberwise decoding. A property added
 to the struct without a matching `CodingKeys` case and a matching

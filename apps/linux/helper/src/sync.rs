@@ -152,6 +152,7 @@ pub fn run_sync() -> i32 {
             chrome_profile_path: c.profile_dir.clone(),
             chrome_profile_name: Some(c.chrome_label.clone()),
             org_id: Some(org_id),
+            account_uuid: None,
             session_key: Some(store::encrypt_session_key(&c.session_key)),
             browser: c.browser.clone(),
             plan,

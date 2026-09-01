@@ -20,6 +20,11 @@ struct Account: Identifiable, Codable, Equatable {
     var chromeProfilePath: String
     var chromeProfileName: String?
     var orgId: String?
+    /// The Claude account's own uuid, from `GET /api/account`. This is the
+    /// identity key — `orgId` is a query parameter and identifies nothing.
+    /// Optional because records written before this field existed have no value;
+    /// it is backfilled on the next successful refresh.
+    var accountUuid: String?
     var sessionKey: String?
     var browser: Browser = .chrome
     var plan: AccountPlan
@@ -38,7 +43,7 @@ struct Account: Identifiable, Codable, Equatable {
 extension Account {
     private enum CodingKeys: String, CodingKey {
         case id, name, email, chromeProfilePath, chromeProfileName
-        case orgId, sessionKey, browser, plan, lastSynced, status, isPinned
+        case orgId, accountUuid, sessionKey, browser, plan, lastSynced, status, isPinned
     }
 
     init(from decoder: Decoder) throws {
@@ -49,6 +54,7 @@ extension Account {
         chromeProfilePath = try c.decode(String.self, forKey: .chromeProfilePath)
         chromeProfileName = try c.decodeIfPresent(String.self, forKey: .chromeProfileName)
         orgId = try c.decodeIfPresent(String.self, forKey: .orgId)
+        accountUuid = try c.decodeIfPresent(String.self, forKey: .accountUuid)
         sessionKey = try c.decodeIfPresent(String.self, forKey: .sessionKey)
         browser = try c.decodeIfPresent(Browser.self, forKey: .browser) ?? .chrome
         plan = try c.decode(AccountPlan.self, forKey: .plan)
