@@ -27,41 +27,35 @@ enum SyncCommand {
             let apiService = UsageAPIService()
 
             for item in results {
-                guard let orgId = item.cookies.orgId,
-                      let sessionKey = item.cookies.sessionKey else { continue }
+                guard let sessionKey = item.cookies.sessionKey else { continue }
 
-                // Skip if already added
-                if existingAccounts.contains(where: {
-                    $0.browser == item.profile.browser && $0.chromeProfilePath == item.profile.path
-                }) {
-                    fputs("  Skipping \(item.profile.displayName) (already added)\n", stderr)
-                    continue
-                }
-
-                // Validate session
-                guard let orgs = try? await apiService.fetchOrganizations(sessionKey: sessionKey),
-                      !orgs.isEmpty else {
+                // Identity from /api/account. A failure is an unusable session.
+                guard let info = try? await apiService.fetchAccount(sessionKey: sessionKey) else {
                     fputs("  Skipping \(item.profile.displayName) (session expired)\n", stderr)
                     continue
                 }
 
-                // Extract email
-                var email: String? = nil
-                for org in orgs {
-                    if org.name.hasSuffix("'s Organization"),
-                       let emailPart = org.name.components(separatedBy: "'s Organization").first,
-                       emailPart.contains("@") {
-                        email = emailPart
-                        break
-                    }
-                }
-                if email == nil {
-                    email = orgs.compactMap(\.email).first
+                let email = info.email
+
+                // Same dedupe rule as the app: the Claude account, not the
+                // browser profile. See contract/cases/dedupe.json.
+                if AccountIdentity.isDuplicate(
+                    candidateUuid: info.uuid,
+                    candidateEmail: email,
+                    against: existingAccounts.map(StoredIdentity.init)
+                ) {
+                    fputs("  Skipping \(item.profile.displayName) (already added)\n", stderr)
+                    continue
                 }
 
-                // Plan tier from org capabilities (the usage endpoint has no
-                // reliable plan signal).
-                let plan = orgs.first(where: { $0.uuid == orgId })?.planHint ?? .pro
+                guard let orgId = AccountIdentity.resolveOrgId(
+                    lastActiveOrg: item.cookies.orgId, memberships: info.memberships) else {
+                    fputs("  Skipping \(item.profile.displayName) (no usable org)\n", stderr)
+                    continue
+                }
+
+                let plan = (try? await apiService.fetchOrganizations(sessionKey: sessionKey))?
+                    .first(where: { $0.uuid == orgId })?.planHint ?? .pro
 
                 let displayName = email ?? item.profile.displayName
                 let chromeLabel = item.profile.googleEmail.isEmpty
@@ -75,6 +69,7 @@ enum SyncCommand {
                     chromeProfilePath: item.profile.path,
                     chromeProfileName: chromeLabel,
                     orgId: orgId,
+                    accountUuid: info.uuid,
                     sessionKey: CryptoService.encrypt(sessionKey) ?? sessionKey,
                     browser: item.profile.browser,
                     plan: plan,

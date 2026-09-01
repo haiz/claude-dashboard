@@ -131,19 +131,33 @@ Swift helper today.
 ## `sync`
 
 Source: `apps/macos/Helper/SyncCommand.swift`. Scans installed browsers for
-Chromium-based Claude session cookies, validates each candidate session
-against `GET /api/organizations`, and persists newly-found accounts. The
-storage location and browser-cookie discovery mechanism are platform detail
-(see `README.md`'s "Scope" section); only the following shape is shared:
+Chromium-based Claude session cookies, identifies each candidate session
+against `GET /api/account`, and persists newly-found accounts. The storage
+location and browser-cookie discovery mechanism are platform detail (see
+`README.md`'s "Scope" section); only the following shape is shared:
 
-- A profile already present in the account store — matched on `(browser,
-  chromeProfilePath)` (line 34-36) — is skipped, not duplicated.
-- A candidate session that fails `fetchOrganizations` (expired, revoked) is
-  skipped, not treated as an error for the whole run (line 42-46).
+- Identity comes from `GET /api/account` (line 33): the account's own `uuid`
+  and `email_address`. A candidate whose `/api/account` call fails or returns
+  no `uuid` (expired, revoked) is skipped with `  Skipping <profile> (session
+  expired)`, not treated as an error for the whole run (line 33-36).
+- A Claude account already present in the store is skipped with `  Skipping
+  <profile> (already added)` (line 42-49). "Already added" means **the same
+  Claude account**, decided by `AccountIdentity.isDuplicate` — *not* the same
+  browser profile, and never the same `orgId`. Two members of one
+  organization are two accounts; two Claude accounts reached from one browser
+  profile are also two accounts. `contract/cases/dedupe.json` is the rule.
+- The `orgId` written to the account is chosen by
+  `AccountIdentity.resolveOrgId` from the account's memberships, with the
+  `lastActiveOrg` cookie as a preference only (line 51-55).
+  `contract/cases/org-selection.json` is the rule. When it resolves to
+  nothing the candidate is skipped with `  Skipping <profile> (no usable
+  org)` — an unresolvable org is never persisted as a working account.
 - Plan tier for a newly-added account comes from `OrgInfo.planHint` for the
-  organization matching `orgId`, defaulting to `.pro` if no match is found
-  (line 64) — this is a fallback distinct from `detectPlanTier`'s own `nil`
-  case documented in `README.md`'s "Plan tier" section.
-- The command always exits 0 once it finishes scanning (line 102), even when
+  organization matching the resolved `orgId`, defaulting to `.pro` if no
+  match is found (line 57-58) — this is a fallback distinct from
+  `detectPlanTier`'s own `nil` case documented in `README.md`'s "Plan tier"
+  section. `GET /api/organizations` is consulted for this and nothing else.
+- Every persisted account carries `accountUuid` (line 72).
+- The command always exits 0 once it finishes scanning (line 97), even when
   zero accounts were added; failure is only for the "no profiles with Claude
   sessions found at all" case (line 13-17, exit 1).
