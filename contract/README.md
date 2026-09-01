@@ -437,15 +437,16 @@ The user-visible consequences, which are the reason this is contract:
 ## Account identity
 
 An account is identified by its own uuid, from `GET /api/account`'s `uuid`
-field, stored as `accountUuid` (`apps/macos/Shared/Account.swift`,
-`apps/linux/core/src/model.rs`). Dedupe compares that and nothing else, except
+field (`fetchAccount`, `apps/macos/Shared/UsageAPIService.swift:86-113`),
+stored as `accountUuid` (`apps/macos/Shared/Account.swift:27`,
+`apps/linux/core/src/model.rs:53`). Dedupe compares that and nothing else, except
 for one legacy fallback: a stored record written before `accountUuid` existed
 has none, and matches on `email` compared case-insensitively.
 
 `orgId` is **not** an identity. Every member of a company organisation shares
 its uuid, so keying dedupe on it rejects the second and every later colleague.
-The rule is implemented at `apps/macos/Shared/AccountIdentity.swift`
-(`isDuplicate`) and `apps/linux/core/src/identity.rs` (`is_duplicate`), and
+The rule is implemented at `apps/macos/Shared/AccountIdentity.swift:68-80`
+(`isDuplicate`) and `apps/linux/core/src/identity.rs:58-68` (`is_duplicate`), and
 driven by `cases/dedupe.json`.
 
 E-mail comes from `/api/account`'s `email_address`. It is never recovered by
@@ -464,7 +465,9 @@ else. It is resolved as:
 3. otherwise none — the account is not configurable and must be reported to the
    user rather than persisted
 
-A "chat org" is one whose `capabilities` contain `"chat"`. The gate excludes
+A "chat org" is one whose `capabilities` contain `"chat"`, compared
+case-insensitively (`isChatOrg`, `apps/macos/Shared/AccountIdentity.swift:10-12`;
+`is_chat_org`, `apps/linux/core/src/identity.rs:17-19`). The gate excludes
 API-console orgs, whose capabilities are `["api", "api_individual"]` and whose
 `/usage` is not meaningful.
 
@@ -474,6 +477,6 @@ a company org and its own personal org, that selects the personal org, whose
 `/usage` returns every window as `null`. A personal org remains eligible on its
 own merits — for a personal Pro or Max account it is the correct answer.
 
-Implemented at `apps/macos/Shared/AccountIdentity.swift` (`resolveOrgId`) and
-`apps/linux/core/src/identity.rs` (`resolve_org_id`), driven by
+Implemented at `apps/macos/Shared/AccountIdentity.swift:49-56` (`resolveOrgId`) and
+`apps/linux/core/src/identity.rs:29-41` (`resolve_org_id`), driven by
 `cases/org-selection.json`.
