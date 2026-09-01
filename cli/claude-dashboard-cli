@@ -90,8 +90,14 @@ fi
 # --- Locate helper binary ---
 HELPER="$(dirname "$0")/claude-dashboard-helper"
 if [[ ! -x "$HELPER" ]]; then
-    # Try Homebrew location
+    # Try Homebrew location (macOS)
     HELPER="$(brew --prefix 2>/dev/null)/bin/claude-dashboard-helper" 2>/dev/null || true
+fi
+if [[ ! -x "$HELPER" ]]; then
+    # Try PATH (Linux .deb / .AppImage install at /usr/bin)
+    if command -v claude-dashboard-helper >/dev/null 2>&1; then
+        HELPER="$(command -v claude-dashboard-helper)"
+    fi
 fi
 if [[ ! -x "$HELPER" ]]; then
     echo "Error: claude-dashboard-helper not found." >&2
