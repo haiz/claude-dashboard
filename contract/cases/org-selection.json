@@ -1,0 +1,68 @@
+[
+  {
+    "name": "the cookie's org wins when it is a chat org the account belongs to",
+    "last_active_org": "org-company",
+    "memberships": [
+      { "uuid": "org-company", "name": "Example Co", "capabilities": ["chat", "raven"] },
+      { "uuid": "org-personal", "name": "person@example.com's Organization", "capabilities": ["chat"] }
+    ],
+    "expect_org_id": "org-company"
+  },
+  {
+    "name": "an api-only cookie org is rejected and the chat org is chosen instead",
+    "last_active_org": "org-api",
+    "memberships": [
+      { "uuid": "org-api", "name": "Example API", "capabilities": ["api", "api_individual"] },
+      { "uuid": "org-personal", "name": "person@example.com's Organization", "capabilities": ["chat"] }
+    ],
+    "expect_org_id": "org-personal"
+  },
+  {
+    "name": "a cookie org the account is not a member of falls through to the first chat org",
+    "last_active_org": "org-stale",
+    "memberships": [
+      { "uuid": "org-company", "name": "Example Co", "capabilities": ["chat", "raven"] }
+    ],
+    "expect_org_id": "org-company"
+  },
+  {
+    "name": "no cookie, one chat org",
+    "last_active_org": null,
+    "memberships": [
+      { "uuid": "org-personal", "name": "person@example.com's Organization", "capabilities": ["chat"] }
+    ],
+    "expect_org_id": "org-personal"
+  },
+  {
+    "name": "no cookie, two chat orgs — the first the API returned wins",
+    "last_active_org": null,
+    "memberships": [
+      { "uuid": "org-company", "name": "Example Co", "capabilities": ["chat", "raven"] },
+      { "uuid": "org-personal", "name": "person@example.com's Organization", "capabilities": ["chat"] }
+    ],
+    "expect_org_id": "org-company"
+  },
+  {
+    "name": "a personal org is chosen on its own merits — the name pattern is not consulted",
+    "last_active_org": null,
+    "memberships": [
+      { "uuid": "org-api", "name": "Example API", "capabilities": ["api"] },
+      { "uuid": "org-personal", "name": "person@example.com's Organization", "capabilities": ["chat"] }
+    ],
+    "expect_org_id": "org-personal"
+  },
+  {
+    "name": "no chat org at all — the account is not configurable",
+    "last_active_org": "org-api",
+    "memberships": [
+      { "uuid": "org-api", "name": "Example API", "capabilities": ["api", "api_individual"] }
+    ],
+    "expect_org_id": null
+  },
+  {
+    "name": "no memberships at all",
+    "last_active_org": "org-company",
+    "memberships": [],
+    "expect_org_id": null
+  }
+]
