@@ -1,4 +1,5 @@
 mod decrypt;
+mod sync;
 mod usage;
 
 use std::process::exit;
@@ -13,7 +14,7 @@ fn main() {
     let code = match cmd.as_str() {
         "decrypt" => decrypt::run_decrypt(),
         "usage" => usage::run_usage(rest),
-        "sync" => { eprintln!("not yet implemented"); 1 }
+        "sync" => sync::run_sync(),
         other => { eprintln!("Unknown command: {other}"); 1 }
     };
     exit(code);

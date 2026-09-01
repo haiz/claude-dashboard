@@ -5,3 +5,4 @@ pub mod burn_rate;
 pub mod cookie;
 pub mod api;
 pub mod store;
+pub mod browser;
