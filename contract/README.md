@@ -46,6 +46,9 @@ of it.
   `account-schema.md`.
 - The `usage_logs` SQLite schema and its compression semantics:
   `usage-log.md`.
+- **Account identity and org selection** — which account a session belongs to,
+  and which org its usage is polled from (this file's "Account identity" and
+  "Org selection" sections, `cases/dedupe.json`, `cases/org-selection.json`).
 
 **Platform detail (deliberately free to differ):**
 - **Cookie decryption.** How a session key is extracted from the browser's
@@ -430,3 +433,47 @@ The user-visible consequences, which are the reason this is contract:
   (lines 186-189). A Linux implementation that also mapped, say, `429` or a
   network failure onto `expired` would silently retire accounts that the
   macOS app keeps refreshing.
+
+## Account identity
+
+An account is identified by its own uuid, from `GET /api/account`'s `uuid`
+field, stored as `accountUuid` (`apps/macos/Shared/Account.swift`,
+`apps/linux/core/src/model.rs`). Dedupe compares that and nothing else, except
+for one legacy fallback: a stored record written before `accountUuid` existed
+has none, and matches on `email` compared case-insensitively.
+
+`orgId` is **not** an identity. Every member of a company organisation shares
+its uuid, so keying dedupe on it rejects the second and every later colleague.
+The rule is implemented at `apps/macos/Shared/AccountIdentity.swift`
+(`isDuplicate`) and `apps/linux/core/src/identity.rs` (`is_duplicate`), and
+driven by `cases/dedupe.json`.
+
+E-mail comes from `/api/account`'s `email_address`. It is never recovered by
+parsing an organisation's name: observed live data includes orgs named
+`<Name>‘s Individual Org` with U+2018, which no `"'s Organization"` pattern
+matches.
+
+## Org selection
+
+`orgId` is the org whose `/usage` an account is polled against, and nothing
+else. It is resolved as:
+
+1. the cookie's `lastActiveOrg`, if that uuid is a chat org in the account's
+   memberships
+2. otherwise the first chat org, in the order `/api/account` returned them
+3. otherwise none — the account is not configurable and must be reported to the
+   user rather than persisted
+
+A "chat org" is one whose `capabilities` contain `"chat"`. The gate excludes
+API-console orgs, whose capabilities are `["api", "api_individual"]` and whose
+`/usage` is not meaningful.
+
+The organisation's *name* is never inspected. An earlier revision preferred the
+org whose name ended in `"'s Organization"`; on an account that belongs to both
+a company org and its own personal org, that selects the personal org, whose
+`/usage` returns every window as `null`. A personal org remains eligible on its
+own merits — for a personal Pro or Max account it is the correct answer.
+
+Implemented at `apps/macos/Shared/AccountIdentity.swift` (`resolveOrgId`) and
+`apps/linux/core/src/identity.rs` (`resolve_org_id`), driven by
+`cases/org-selection.json`.
