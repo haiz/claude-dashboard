@@ -230,6 +230,58 @@ pub fn fetch_organizations(session_key: &str) -> Result<String, ApiError> {
     Ok(body)
 }
 
+use crate::identity::OrgMembership;
+
+/// The account's own identity, from `GET /api/account`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParsedAccount {
+    pub uuid: String,
+    pub email: Option<String>,
+    pub memberships: Vec<OrgMembership>,
+}
+
+/// Fetches `/api/account`. Returns the raw body, matching `fetch_organizations`;
+/// parse it with [`parse_account`].
+pub fn fetch_account(session_key: &str) -> Result<String, ApiError> {
+    let (body, _cookies) = perform_get("https://claude.ai/api/account", session_key)?;
+    Ok(body)
+}
+
+/// Parses `/api/account`. `None` when the body is not JSON or carries no `uuid`
+/// — the same "could not identify this session" outcome as an expired session.
+pub fn parse_account(body: &str) -> Option<ParsedAccount> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    let uuid = v.get("uuid")?.as_str()?.to_string();
+    if uuid.is_empty() {
+        return None;
+    }
+    let email = v.get("email_address").and_then(|e| e.as_str()).map(String::from);
+    let memberships = v
+        .get("memberships")
+        .and_then(|m| m.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| {
+                    let org = m.get("organization")?;
+                    Some(OrgMembership {
+                        uuid: org.get("uuid")?.as_str()?.to_string(),
+                        name: org.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string(),
+                        capabilities: org
+                            .get("capabilities")
+                            .and_then(|c| c.as_array())
+                            .map(|a| {
+                                a.iter().filter_map(|x| x.as_str().map(String::from)).collect()
+                            })
+                            .unwrap_or_default(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Some(ParsedAccount { uuid, email, memberships })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,5 +428,31 @@ mod tests {
     #[test]
     fn decode_body_strict_empty_bytes_is_empty() {
         assert_eq!(decode_body_strict(Vec::new()), "");
+    }
+}
+
+#[cfg(test)]
+mod account_parse_tests {
+    use super::*;
+
+    #[test]
+    fn parses_uuid_email_and_memberships() {
+        let body = r#"{"uuid":"acct-1","email_address":"person@example.com",
+            "memberships":[
+              {"role":"user","organization":{"uuid":"org-company","name":"Example Co","capabilities":["chat","raven"]}},
+              {"role":"admin","organization":{"uuid":"org-personal","name":"person@example.com's Organization","capabilities":["chat"]}}
+            ]}"#;
+        let a = parse_account(body).expect("parse");
+        assert_eq!(a.uuid, "acct-1");
+        assert_eq!(a.email.as_deref(), Some("person@example.com"));
+        assert_eq!(a.memberships.len(), 2);
+        assert_eq!(a.memberships[0].uuid, "org-company");
+        assert_eq!(a.memberships[0].capabilities, vec!["chat", "raven"]);
+    }
+
+    #[test]
+    fn a_body_without_uuid_is_not_an_account() {
+        assert!(parse_account(r#"{"email_address":"person@example.com"}"#).is_none());
+        assert!(parse_account("not json").is_none());
     }
 }

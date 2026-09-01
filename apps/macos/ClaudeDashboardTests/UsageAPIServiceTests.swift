@@ -163,6 +163,55 @@ final class UsageAPIServiceTests: XCTestCase {
         let plan = try await planHint(forCapabilities: ["api"])
         XCTAssertNil(plan)
     }
+
+    func testFetchAccountParsesUuidEmailAndMemberships() async throws {
+        let json = """
+        {"uuid":"acct-1","email_address":"person@example.com","full_name":"Person Example",
+         "memberships":[
+           {"role":"user","organization":{"uuid":"org-company","name":"Example Co","capabilities":["chat","raven"]}},
+           {"role":"admin","organization":{"uuid":"org-personal","name":"person@example.com's Organization","capabilities":["chat"]}}
+         ]}
+        """
+        MockURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/account")
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, json.data(using: .utf8)!)
+        }
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let service = UsageAPIService(session: URLSession(configuration: config))
+
+        let info = try await service.fetchAccount(sessionKey: "sk-test")
+
+        XCTAssertEqual(info.uuid, "acct-1")
+        XCTAssertEqual(info.email, "person@example.com")
+        XCTAssertEqual(info.memberships.count, 2)
+        XCTAssertEqual(info.memberships[0].uuid, "org-company")
+        XCTAssertEqual(info.memberships[0].capabilities, ["chat", "raven"])
+    }
+
+    func testFetchAccountMapsAuthFailureToAuthExpired() async {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 403,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, Data("{}".utf8))
+        }
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let service = UsageAPIService(session: URLSession(configuration: config))
+
+        do {
+            _ = try await service.fetchAccount(sessionKey: "sk-test")
+            XCTFail("expected authExpired")
+        } catch UsageAPIError.authExpired {
+            // expected
+        } catch {
+            XCTFail("expected authExpired, got \(error)")
+        }
+    }
 }
 
 // MARK: - Mock

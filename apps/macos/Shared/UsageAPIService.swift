@@ -19,6 +19,12 @@ struct OrgInfo {
     let planHint: AccountPlan?
 }
 
+struct AccountInfo {
+    let uuid: String
+    let email: String?
+    let memberships: [OrgMembership]
+}
+
 final class UsageAPIService {
     private let session: URLSession
     private let baseURL = "https://claude.ai/api"
@@ -70,6 +76,40 @@ final class UsageAPIService {
             let planHint = Self.detectPlanTier(from: dict, capabilities: capabilities)
             return OrgInfo(uuid: uuid, name: name, email: email, capabilities: capabilities, planHint: planHint)
         }
+    }
+
+    // MARK: - Account identity
+
+    /// `GET /api/account` — the account's own uuid and email, plus the orgs it
+    /// belongs to. This is the identity source; `fetchOrganizations` stays the
+    /// plan-tier source and is deliberately untouched.
+    func fetchAccount(sessionKey: String) async throws -> AccountInfo {
+        guard let url = URL(string: "\(baseURL)/account") else {
+            throw UsageAPIError.invalidResponse
+        }
+        let request = makeRequest(url: url, sessionKey: sessionKey)
+
+        let (data, response) = try await session.data(for: request)
+        _ = try validateResponse(response)
+
+        guard let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let uuid = dict["uuid"] as? String, !uuid.isEmpty else {
+            throw UsageAPIError.invalidResponse
+        }
+
+        let email = dict["email_address"] as? String
+        let memberships = (dict["memberships"] as? [[String: Any]] ?? []).compactMap {
+            m -> OrgMembership? in
+            guard let org = m["organization"] as? [String: Any],
+                  let orgUuid = org["uuid"] as? String else { return nil }
+            return OrgMembership(
+                uuid: orgUuid,
+                name: org["name"] as? String ?? "",
+                capabilities: org["capabilities"] as? [String] ?? []
+            )
+        }
+
+        return AccountInfo(uuid: uuid, email: email, memberships: memberships)
     }
 
     // MARK: - Full Usage
