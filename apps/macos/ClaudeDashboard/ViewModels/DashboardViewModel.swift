@@ -159,13 +159,15 @@ final class DashboardViewModel: ObservableObject {
         // Saved commands to run for accounts whose refresh produced no 5h/7d usage.
         var autoCommands: [(accountId: UUID, command: String)] = []
 
-        await withTaskGroup(of: (UUID, UsageData?, String?, AccountPlan?).self) { group in
+        await withTaskGroup(of: (UUID, UsageData?, String?, AccountPlan?, AccountInfo?).self) { group in
             for state in accountStates where state.account.status != .expired {
                 let account = state.account
                 guard let sessionKey = accountStore.loadSessionKey(for: account.id),
                       let orgId = account.orgId else {
                     continue
                 }
+
+                let needsIdentity = account.accountUuid == nil
 
                 group.addTask { [apiService, accountStore] in
                     do {
@@ -180,18 +182,25 @@ final class DashboardViewModel: ObservableObject {
                         // the stored plan unchanged in the update step below.
                         let planHint = (try? await apiService.fetchOrganizations(sessionKey: sessionKey))?
                             .first(where: { $0.uuid == orgId })?.planHint
-                        return (account.id, usage, nil, planHint)
+                        // Backfill: records written before accountUuid existed
+                        // get it on the first successful refresh. Best-effort;
+                        // a failure leaves the record as it was.
+                        var info: AccountInfo? = nil
+                        if needsIdentity {
+                            info = try? await apiService.fetchAccount(sessionKey: sessionKey)
+                        }
+                        return (account.id, usage, nil, planHint, info)
                     } catch UsageAPIError.authExpired {
-                        return (account.id, nil, "expired", nil)
+                        return (account.id, nil, "expired", nil, nil)
                     } catch is DecodingError {
-                        return (account.id, nil, "Temporary read error. Try refreshing.", nil)
+                        return (account.id, nil, "Temporary read error. Try refreshing.", nil, nil)
                     } catch {
-                        return (account.id, nil, error.localizedDescription, nil)
+                        return (account.id, nil, error.localizedDescription, nil, nil)
                     }
                 }
             }
 
-            for await (accountId, usage, error, planHint) in group {
+            for await (accountId, usage, error, planHint, info) in group {
                 if let index = accountStates.firstIndex(where: { $0.id == accountId }) {
                     accountStates[index].usage = usage ?? accountStates[index].usage
                     accountStates[index].error = error
@@ -223,6 +232,13 @@ final class DashboardViewModel: ObservableObject {
                         account.lastSynced = Date()
                         if let planHint, account.plan != planHint {
                             account.plan = planHint
+                        }
+                        // Identity backfill. Never touches orgId: re-resolving a
+                        // stored account's org would silently rewrite a field the
+                        // user may have a working value in.
+                        if let info {
+                            if account.accountUuid == nil { account.accountUuid = info.uuid }
+                            if account.email == nil { account.email = info.email }
                         }
                         accountStore.updateAccount(account)
                     }

@@ -20,6 +20,7 @@ final class DashboardViewModelTests: XCTestCase {
     override func tearDown() {
         try? FileManager.default.removeItem(at: tempDir)
         defaults.removePersistentDomain(forName: defaultsSuiteName)
+        MockURLProtocol.requestHandler = nil
         super.tearDown()
     }
 
@@ -244,5 +245,87 @@ final class DashboardViewModelTests: XCTestCase {
         ]
         vm.sortStates()
         XCTAssertEqual(vm.accountStates.map(\.account.name), ["C", "A", "B"])
+    }
+
+    // MARK: - Identity backfill
+
+    /// A view model wired to an explicit store and a MockURLProtocol-backed
+    /// API service, so a refresh can be driven end to end.
+    private func makeViewModelWithStore() throws -> (DashboardViewModel, AccountStore) {
+        let detectorFile = tempDir.appendingPathComponent(".claude.json-\(UUID().uuidString)")
+        let detector = ClaudeCodeAccountDetector(fileURL: detectorFile)
+        let store = AccountStore(defaults: defaults)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let api = UsageAPIService(session: URLSession(configuration: config))
+        let vm = DashboardViewModel(accountStore: store, apiService: api, ccDetector: detector)
+        return (vm, store)
+    }
+
+    private static let emptyUsageJSON = """
+    {"five_hour":{"utilization":0,"resets_at":null},"seven_day":{"utilization":0,"resets_at":null}}
+    """
+
+    private func respond(accountBody: String) {
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            let body: String
+            if path == "/api/account" {
+                body = accountBody
+            } else if path.hasSuffix("/usage") {
+                body = Self.emptyUsageJSON
+            } else {
+                body = "[]"
+            }
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, Data(body.utf8))
+        }
+    }
+
+    func testRefreshBackfillsAccountUuidAndEmailWhenMissing() async throws {
+        let (vm, store) = try makeViewModelWithStore()
+        // A stored account written before accountUuid existed.
+        let account = makeAccount(orgId: "org-1", email: nil)
+        store.addAccount(account)
+        store.saveSessionKey("sk-test", for: account.id)
+
+        respond(accountBody: #"{"uuid":"acct-1","email_address":"person@example.com","memberships":[]}"#)
+
+        // AccountStore.$accounts reaches the view model via .receive(on: .main),
+        // which dispatches asynchronously; without yielding here, refreshAll's
+        // synchronous account-collection loop would run against the stale
+        // (pre-add) accountStates and never touch this account at all.
+        await Task.yield()
+        XCTAssertEqual(vm.accountStates.count, 1, "sanity: account must reach accountStates before refreshAll runs")
+
+        await vm.refreshAll()
+
+        let updated = store.accounts.first { $0.id == account.id }
+        XCTAssertEqual(updated?.accountUuid, "acct-1")
+        XCTAssertEqual(updated?.email, "person@example.com")
+    }
+
+    func testRefreshDoesNotOverwriteAnExistingEmailOrOrgId() async throws {
+        let (vm, store) = try makeViewModelWithStore()
+        let account = makeAccount(orgId: "org-1", email: "kept@example.com")
+        store.addAccount(account)
+        store.saveSessionKey("sk-test", for: account.id)
+
+        respond(accountBody: #"{"uuid":"acct-1","email_address":"other@example.com","memberships":[{"role":"user","organization":{"uuid":"org-other","name":"Other","capabilities":["chat"]}}]}"#)
+
+        // See the matching comment in testRefreshBackfillsAccountUuidAndEmailWhenMissing:
+        // the store's publish reaches accountStates asynchronously.
+        await Task.yield()
+        XCTAssertEqual(vm.accountStates.count, 1, "sanity: account must reach accountStates before refreshAll runs")
+
+        await vm.refreshAll()
+
+        let updated = store.accounts.first { $0.id == account.id }
+        XCTAssertEqual(updated?.accountUuid, "acct-1")
+        XCTAssertEqual(updated?.email, "kept@example.com",
+                       "backfill must not overwrite an existing email")
+        XCTAssertEqual(updated?.orgId, "org-1",
+                       "backfill must not re-resolve orgId")
     }
 }
