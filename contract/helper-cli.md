@@ -157,6 +157,11 @@ location and browser-cookie discovery mechanism are platform detail (see
   match is found (line 57-58) — this is a fallback distinct from
   `detectPlanTier`'s own `nil` case documented in `README.md`'s "Plan tier"
   section. `GET /api/organizations` is consulted for this and nothing else.
+- A failed or empty `/api/organizations` fetch does not skip the candidate:
+  session validity is established by `/api/account` above, not this call, so
+  a failure here only leaves the plan at the `.pro` fallback and the account
+  is still persisted (`apps/macos/Helper/SyncCommand.swift:57-58`,
+  `apps/linux/helper/src/sync.rs:161-165`).
 - Every persisted account carries `accountUuid` (line 72).
 - The command always exits 0 once it finishes scanning (line 97), even when
   zero accounts were added; failure is only for the "no profiles with Claude

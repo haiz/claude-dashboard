@@ -480,3 +480,13 @@ own merits — for a personal Pro or Max account it is the correct answer.
 Implemented at `apps/macos/Shared/AccountIdentity.swift:49-56` (`resolveOrgId`) and
 `apps/linux/core/src/identity.rs:29-41` (`resolve_org_id`), driven by
 `cases/org-selection.json`.
+
+`resyncAccount` writes the cookie's `lastActiveOrg` straight onto the stored
+account with no membership check and no chat-org gate —
+`apps/macos/ClaudeDashboard/ViewModels/DashboardViewModel.swift:312-314`. It is
+reachable from three UI surfaces: the "Re-sync All" button
+(`apps/macos/ClaudeDashboard/Views/SettingsView.swift:91`) and each account
+card's individual resync action
+(`apps/macos/ClaudeDashboard/Views/DashboardWindow.swift:111`,
+`apps/macos/ClaudeDashboard/Views/MenuBarPopover.swift:108`). This is a known
+exception to the rule above, not an intended part of it.
