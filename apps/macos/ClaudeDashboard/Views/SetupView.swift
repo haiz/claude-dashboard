@@ -4,6 +4,7 @@ struct DetectedAccount: Identifiable {
     var id: String { "\(browser.rawValue):\(chromeProfilePath)" }
     let browser: Browser
     let orgId: String
+    let accountUuid: String
     let chromeProfilePath: String
     let chromeProfileName: String
     let chromeProfileGoogleEmail: String
@@ -258,53 +259,35 @@ struct SetupView: View {
                     continue
                 }
 
-                // Validate session by fetching org info — skip if expired
-                guard let orgs = try? await apiService.fetchOrganizations(sessionKey: sessionKey),
-                      !orgs.isEmpty else {
+                // Identity comes from /api/account: the account's own uuid and
+                // email, not guessed from an org name. A failure here is the
+                // same outcome as an expired session.
+                guard let info = try? await apiService.fetchAccount(sessionKey: sessionKey) else {
                     validationFailureCount += 1
                     continue
                 }
 
-                // Walk orgs once: prefer the personal org's uuid and email
-                // (name pattern "{email}'s Organization").
-                var personalOrgId: String? = nil
-                var email: String? = nil
-                for org in orgs {
-                    if org.name.hasSuffix("'s Organization"),
-                       let emailPart = org.name.components(separatedBy: "'s Organization").first,
-                       emailPart.contains("@") {
-                        email = emailPart
-                        personalOrgId = org.uuid
-                        break
-                    }
-                }
-                if email == nil {
-                    email = orgs.compactMap(\.email).first
-                }
+                let email = info.email
 
-                // orgId priority: API-derived personal org → cookie's lastActiveOrg →
-                // first org from the API. The cookie is unreliable on fresh logins
-                // (claude.ai only sets lastActiveOrg after in-org navigation).
-                guard let orgId = personalOrgId ?? item.cookies.orgId ?? orgs.first?.uuid,
-                      !orgId.isEmpty else {
+                // The org to poll usage from. Never an identity — colleagues
+                // share one. See contract/cases/org-selection.json.
+                guard let orgId = AccountIdentity.resolveOrgId(
+                    lastActiveOrg: item.cookies.orgId, memberships: info.memberships) else {
                     validationFailureCount += 1
                     continue
                 }
 
                 let accountName = email ?? item.profile.displayName
 
-                // Account identity = Claude account (email + orgId), NOT the Chrome
-                // profile path. Skip only if the same Claude account is already stored.
-                // Two different Claude accounts in the same Chrome profile are allowed
-                // (the stale one will fail to refresh and can be deleted manually).
-                let alreadyStored = viewModel.accountStore.accounts.contains { stored in
-                    if stored.orgId == orgId { return true }
-                    if let storedEmail = stored.email, let newEmail = email,
-                       storedEmail.caseInsensitiveCompare(newEmail) == .orderedSame {
-                        return true
-                    }
-                    return false
-                }
+                // Account identity = the Claude account's own uuid. Two members
+                // of one organisation are two accounts; two Claude accounts in
+                // one browser profile are also two accounts.
+                // See contract/cases/dedupe.json.
+                let alreadyStored = AccountIdentity.isDuplicate(
+                    candidateUuid: info.uuid,
+                    candidateEmail: email,
+                    against: viewModel.accountStore.accounts.map(StoredIdentity.init)
+                )
                 if alreadyStored {
                     duplicateCount += 1
                     continue
@@ -312,11 +295,13 @@ struct SetupView: View {
 
                 // Plan tier from org capabilities (the usage endpoint has no
                 // reliable plan signal).
-                let plan = orgs.first(where: { $0.uuid == orgId })?.planHint
+                let plan = (try? await apiService.fetchOrganizations(sessionKey: sessionKey))?
+                    .first(where: { $0.uuid == orgId })?.planHint
 
                 accounts.append(DetectedAccount(
                     browser: item.profile.browser,
                     orgId: orgId,
+                    accountUuid: info.uuid,
                     chromeProfilePath: item.profile.path,
                     chromeProfileName: item.profile.displayName,
                     chromeProfileGoogleEmail: item.profile.googleEmail,
@@ -348,16 +333,13 @@ struct SetupView: View {
 
     private func addSelectedAccounts() async {
         for detected in detectedAccounts where detected.isSelected {
-            // Belt-and-suspenders: scan() already skips by orgId/email, but in case
+            // Belt-and-suspenders: scan() already skips duplicates, but in case
             // the store changed between scan and add (or for safety), re-check here.
-            let dup = viewModel.accountStore.accounts.contains { stored in
-                if stored.orgId == detected.orgId { return true }
-                if let storedEmail = stored.email, let newEmail = detected.email,
-                   storedEmail.caseInsensitiveCompare(newEmail) == .orderedSame {
-                    return true
-                }
-                return false
-            }
+            let dup = AccountIdentity.isDuplicate(
+                candidateUuid: detected.accountUuid,
+                candidateEmail: detected.email,
+                against: viewModel.accountStore.accounts.map(StoredIdentity.init)
+            )
             if dup { continue }
 
             let displayName = detected.email ?? detected.accountName
@@ -371,6 +353,7 @@ struct SetupView: View {
                 chromeProfilePath: detected.chromeProfilePath,
                 chromeProfileName: chromeLabel,
                 orgId: detected.orgId,
+                accountUuid: detected.accountUuid,
                 sessionKey: encryptedSession,
                 browser: detected.browser,
                 plan: detected.plan ?? .pro,
