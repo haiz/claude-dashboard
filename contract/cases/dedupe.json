@@ -1,0 +1,59 @@
+[
+  {
+    "name": "same account uuid is a duplicate",
+    "candidate": { "account_uuid": "acct-1", "email": "person@example.com" },
+    "stored": [ { "account_uuid": "acct-1", "email": "person@example.com" } ],
+    "expect_duplicate": true
+  },
+  {
+    "name": "a colleague in the same org is NOT a duplicate — this is the reported bug",
+    "candidate": { "account_uuid": "acct-2", "email": "other@example.com" },
+    "stored": [ { "account_uuid": "acct-1", "email": "person@example.com" } ],
+    "expect_duplicate": false
+  },
+  {
+    "name": "legacy record with no uuid matches on email",
+    "candidate": { "account_uuid": "acct-1", "email": "person@example.com" },
+    "stored": [ { "account_uuid": null, "email": "person@example.com" } ],
+    "expect_duplicate": true
+  },
+  {
+    "name": "legacy email match is case-insensitive",
+    "candidate": { "account_uuid": "acct-1", "email": "Person@Example.COM" },
+    "stored": [ { "account_uuid": null, "email": "person@example.com" } ],
+    "expect_duplicate": true
+  },
+  {
+    "name": "legacy record with no uuid and no email cannot match",
+    "candidate": { "account_uuid": "acct-1", "email": "person@example.com" },
+    "stored": [ { "account_uuid": null, "email": null } ],
+    "expect_duplicate": false
+  },
+  {
+    "name": "a candidate with no email cannot match a legacy record on email",
+    "candidate": { "account_uuid": "acct-1", "email": null },
+    "stored": [ { "account_uuid": null, "email": "person@example.com" } ],
+    "expect_duplicate": false
+  },
+  {
+    "name": "email is not consulted once the stored record has a uuid",
+    "candidate": { "account_uuid": "acct-2", "email": "person@example.com" },
+    "stored": [ { "account_uuid": "acct-1", "email": "person@example.com" } ],
+    "expect_duplicate": false
+  },
+  {
+    "name": "empty store",
+    "candidate": { "account_uuid": "acct-1", "email": "person@example.com" },
+    "stored": [],
+    "expect_duplicate": false
+  },
+  {
+    "name": "matches against any entry, not just the first",
+    "candidate": { "account_uuid": "acct-3", "email": "third@example.com" },
+    "stored": [
+      { "account_uuid": "acct-1", "email": "person@example.com" },
+      { "account_uuid": "acct-3", "email": "third@example.com" }
+    ],
+    "expect_duplicate": true
+  }
+]

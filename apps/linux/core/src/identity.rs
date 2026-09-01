@@ -39,3 +39,30 @@ pub fn resolve_org_id(
     }
     memberships.iter().find(|m| m.is_chat_org()).map(|m| m.uuid.clone())
 }
+
+/// The identity fields of an already-stored account, as dedupe sees them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredIdentity {
+    pub account_uuid: Option<String>,
+    pub email: Option<String>,
+}
+
+/// Whether `candidate_uuid` names an account already in the store.
+///
+/// 1. a stored `account_uuid` equal to the candidate's — duplicate
+/// 2. a stored record with **no** `account_uuid` whose email matches
+///    case-insensitively — duplicate. Legacy records only.
+/// 3. otherwise not a duplicate
+///
+/// `org_id` is never consulted.
+pub fn is_duplicate(
+    candidate_uuid: &str,
+    candidate_email: Option<&str>,
+    stored: &[StoredIdentity],
+) -> bool {
+    stored.iter().any(|entry| match (&entry.account_uuid, &entry.email, candidate_email) {
+        (Some(uuid), _, _) => uuid == candidate_uuid,
+        (None, Some(stored_email), Some(cand)) => stored_email.eq_ignore_ascii_case(cand),
+        _ => false,
+    })
+}

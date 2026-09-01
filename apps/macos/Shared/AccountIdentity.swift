@@ -12,6 +12,21 @@ struct OrgMembership: Equatable {
     }
 }
 
+/// The identity fields of an already-stored account, as dedupe sees them.
+struct StoredIdentity: Equatable {
+    let accountUuid: String?
+    let email: String?
+
+    init(accountUuid: String?, email: String?) {
+        self.accountUuid = accountUuid
+        self.email = email
+    }
+
+    init(_ account: Account) {
+        self.init(accountUuid: account.accountUuid, email: account.email)
+    }
+}
+
 /// The rules that decide *which account this is* and *which org to query usage
 /// from*. Both are contract rules — `contract/cases/org-selection.json` and
 /// `contract/cases/dedupe.json` drive them, and `apps/linux/core/src/identity.rs`
@@ -38,5 +53,29 @@ enum AccountIdentity {
             return cookieOrg.uuid
         }
         return memberships.first(where: \.isChatOrg)?.uuid
+    }
+
+    /// Whether `candidateUuid` names an account already in the store.
+    ///
+    /// 1. a stored `accountUuid` equal to the candidate's — duplicate
+    /// 2. a stored record with **no** `accountUuid` whose email matches
+    ///    case-insensitively — duplicate. Legacy records only; once a record
+    ///    has been backfilled its uuid is authoritative.
+    /// 3. otherwise not a duplicate
+    ///
+    /// `orgId` is never consulted. Colleagues share an org and are different
+    /// accounts.
+    static func isDuplicate(
+        candidateUuid: String,
+        candidateEmail: String?,
+        against stored: [StoredIdentity]
+    ) -> Bool {
+        stored.contains { entry in
+            if let storedUuid = entry.accountUuid {
+                return storedUuid == candidateUuid
+            }
+            guard let storedEmail = entry.email, let candidateEmail else { return false }
+            return storedEmail.caseInsensitiveCompare(candidateEmail) == .orderedSame
+        }
     }
 }

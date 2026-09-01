@@ -29,6 +29,7 @@
 		4DAC62ECE4128ED5AF364BE5 /* CommandLogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E980125C6DA9C24229B20C59 /* CommandLogModels.swift */; };
 		4E96F2399828773E0E34BC8A /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2535C231EBCF76F786F7B7E /* Account.swift */; };
 		4EF45D1F0BDF8870167BD5FE /* TerminalLauncherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61DBDB15BABBFD4D7ABC3047 /* TerminalLauncherTests.swift */; };
+		4F550FFDA427DD1820FBEF6C /* DedupeContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFD4C1EC6F97C4F34F204E5E /* DedupeContractTests.swift */; };
 		50FE2A805E6B114D3083E58E /* RunningProcessRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66B0B30FC2BF11A754E02CC /* RunningProcessRegistryTests.swift */; };
 		5467470C8154768515DCC0EC /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BDD5471D1B082F49E424611 /* KeychainService.swift */; };
 		54D5B307F0F74D250E1E46AF /* Browser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCBF1EA7D7222950388A01C /* Browser.swift */; };
@@ -156,6 +157,7 @@
 		9AEE29987B849E18AFE5E428 /* BurnRateContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnRateContractTests.swift; sourceTree = "<group>"; };
 		A23FF51936BD885B6281CE0F /* RunningProcessRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunningProcessRegistry.swift; sourceTree = "<group>"; };
 		A81A393416A5618902A5764C /* ClaudeDashboardHelper */ = {isa = PBXFileReference; includeInIndex = 0; path = ClaudeDashboardHelper; sourceTree = BUILT_PRODUCTS_DIR; };
+		AFD4C1EC6F97C4F34F204E5E /* DedupeContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DedupeContractTests.swift; sourceTree = "<group>"; };
 		B6EE45ADCEABD94EDD78D978 /* RunCommandSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunCommandSheet.swift; sourceTree = "<group>"; };
 		BA09806794F5E11A193DC9E0 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		BB103EAE410BFF80B23E7E73 /* CommandClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandClassifierTests.swift; sourceTree = "<group>"; };
@@ -232,6 +234,7 @@
 				94E3FA6DB98A5F3F847B13C2 /* CommandRunnerTests.swift */,
 				25E51410A9645A70619053EF /* ContractFixtures.swift */,
 				690E18B51A43CF7A0BFFA627 /* DashboardViewModelTests.swift */,
+				AFD4C1EC6F97C4F34F204E5E /* DedupeContractTests.swift */,
 				65B6FF0D0BD63D5125DBE9E9 /* OrgSelectionContractTests.swift */,
 				E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */,
 				3F6C06F755D5222731477EC6 /* ProcessTreeTests.swift */,
@@ -505,6 +508,7 @@
 				E2544EAE3689C2FE07794B07 /* CommandRunnerTests.swift in Sources */,
 				F27FC866A1F7BAFB51308009 /* ContractFixtures.swift in Sources */,
 				9759697B6C02F84B6EF06C09 /* DashboardViewModelTests.swift in Sources */,
+				4F550FFDA427DD1820FBEF6C /* DedupeContractTests.swift in Sources */,
 				69E5C98294531C72DBF1D4CC /* OrgSelectionContractTests.swift in Sources */,
 				C42D702D9ABD1294DCD9AD91 /* PlanDetectionContractTests.swift in Sources */,
 				2AD7F348C0B9F5BC6AB4D450 /* ProcessTreeTests.swift in Sources */,
