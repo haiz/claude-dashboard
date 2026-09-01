@@ -32,11 +32,13 @@ EMPTY='░'
 INTERVAL=$DEFAULT_INTERVAL
 ONCE=false
 SHOW_HELP=false
+DO_SYNC=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         sync)
-            exec "$(dirname "$0")/claude-dashboard-helper" sync
+            DO_SYNC=true
+            shift
             ;;
         --interval)
             INTERVAL="${2:?--interval requires a value}"
@@ -103,6 +105,10 @@ if [[ ! -x "$HELPER" ]]; then
     echo "Error: claude-dashboard-helper not found." >&2
     echo "Install via: brew install haiz/claude-dashboard/claude-dashboard-cli" >&2
     exit 1
+fi
+
+if $DO_SYNC; then
+    exec "$HELPER" sync
 fi
 
 # --- Helper Functions ---
