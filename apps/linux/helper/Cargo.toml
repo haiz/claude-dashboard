@@ -1,0 +1,13 @@
+[package]
+name = "claude-dashboard-helper"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "claude-dashboard-helper"
+path = "src/main.rs"
+
+[dependencies]
+claude-dashboard-core = { path = "../core" }
+serde.workspace = true
+serde_json.workspace = true

@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["core", "helper"]
+
+[workspace.package]
+edition = "2021"
+version = "1.15.1"   # kept in sync with /VERSION by a later plan's sync-version.sh
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
