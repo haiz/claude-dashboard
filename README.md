@@ -96,14 +96,13 @@ claude-dashboard-cli
 
 ### What each row means
 
-Each account card shows two usage bars:
+Each account card shows up to three usage bars:
 
 - **5h** — 5-hour rolling window utilization
 - **7d** — 7-day rolling window utilization
+- **F** — Fable weekly window utilization (only when the account has one)
 
 The `resets` column shows when each window resets (local time). Progress bars transition green → yellow → red as utilization approaches 100%. A card whose session has expired shows a status line in place of the bars.
-
-The CLI can also print a third bar labelled **S**, but it reads a `seven_day_sonnet` field the Claude.ai API no longer returns, so that row never appears today.
 
 ### Tips
 

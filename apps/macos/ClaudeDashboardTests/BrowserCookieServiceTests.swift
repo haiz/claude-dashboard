@@ -1,7 +1,7 @@
 import XCTest
 @testable import ClaudeDashboard
 
-final class ChromeCookieServiceTests: XCTestCase {
+final class BrowserCookieServiceTests: XCTestCase {
 
     func testParsesLocalStateWithBrowserTag() throws {
         let json = """

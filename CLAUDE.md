@@ -43,7 +43,6 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   not an account, and is never used for dedupe. See `contract/README.md`'s
   "Account identity" and "Org selection" sections.
 - **CryptoService** — AES-GCM encryption of session keys at rest, with the key derived via HKDF from the machine's `IOPlatformUUID`. Session keys live inside the `Account` JSON in UserDefaults, not in the Keychain.
-- **KeychainService** — Wraps SecItem APIs. Currently unreferenced by production code; see `contract/account-schema.md`.
 - **AccountStore** — CRUD over UserDefaults JSON persistence. Publishes changes via Combine `@Published`.
 
 ### ViewModel

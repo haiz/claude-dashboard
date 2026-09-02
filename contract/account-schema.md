@@ -156,17 +156,17 @@ corrected on this same branch** — the step now reads:
 > hardware UUID) and stores them in the app's preferences
 
 The reasoning behind that correction is kept here, because forks and older
-checkouts still carry the Keychain wording, and because the dead code that
-made it plausible is still in the tree. The app has a `KeychainService` actor
-(`apps/macos/ClaudeDashboard/Services/KeychainService.swift`, with
-`SecItemAdd`/`SecItemCopyMatching` wrappers and a
-`sessionKey(for accountId:)` key-naming helper suggesting it was built for
-exactly this purpose) but it is **dead code** — `KeychainService.shared` is
-referenced nowhere outside its own definition, and no `.save`/`.load` call
-site exists anywhere in the app or its tests. The only other Keychain
-consumer in the codebase is `ChromeCookieService`, which only *reads* the
+checkouts still carry the Keychain wording. The dead code that made it
+plausible — a `KeychainService` actor with `SecItemAdd`/`SecItemCopyMatching`
+wrappers and a `sessionKey(for accountId:)` key-naming helper suggesting it
+was built for exactly this purpose — sat unreferenced in the tree at
+`apps/macos/ClaudeDashboard/Services/KeychainService.swift` until it was
+deleted on this branch: `KeychainService.shared` was referenced nowhere
+outside its own definition, and no `.save`/`.load` call site existed anywhere
+in the app or its tests. The only Keychain
+consumer in the codebase is `BrowserCookieService`, which only *reads* each
 Chromium browser's own "Safe Storage" password (`SecItemCopyMatching`,
-`ChromeCookieService.swift:261`) — it never writes anything. What the code
+`BrowserCookieService.swift:261`) — it never writes anything. What the code
 actually does is what this section already describes: `sessionKey` is
 encrypted via `CryptoService.encrypt` (AES-GCM, key derived from
 `IOPlatformUUID`) and persisted as a field inside the `Account` JSON blob in

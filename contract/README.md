@@ -52,12 +52,12 @@ of it.
 
 **Platform detail (deliberately free to differ):**
 - **Cookie decryption.** How a session key is extracted from the browser's
-  cookie store is macOS/Chromium-specific (`apps/macos/Shared/ChromeCookieService.swift`
+  cookie store is macOS/Chromium-specific (`apps/macos/Shared/BrowserCookieService.swift`
   uses PBKDF2-SHA1 + AES-128-CBC keyed off a Safe Storage password read
   from the Keychain **per browser**, under that browser's own service name —
   `"Chrome Safe Storage"`, `"Arc Safe Storage"`, `"Brave Safe Storage"`,
   `"Microsoft Edge Safe Storage"` (`apps/macos/Shared/Browser.swift:35-42`,
-  read at `ChromeCookieService.swift:255` / `:261`). A Linux implementation
+  read at `BrowserCookieService.swift:255` / `:261`). A Linux implementation
   reading a different browser's cookie store needs none of this.
 - **At-rest session-key encryption.** `apps/macos/Shared/CryptoService.swift`
   derives an AES-GCM key via HKDF-SHA256 seeded from the machine's
