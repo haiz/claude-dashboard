@@ -19,7 +19,7 @@
 //!
 //! Key material (the Safe Storage secret) is *not* read here: the caller
 //! fetches it once per browser via [`crate::cookie::keyring_password`] and
-//! passes a [`crate::cookie::PasswordSource`] to the decrypt call.
+//! passes a [`crate::cookie::KeySources`] to the decrypt call.
 
 use std::collections::HashMap;
 use std::fs;

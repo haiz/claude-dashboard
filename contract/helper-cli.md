@@ -163,6 +163,14 @@ location and browser-cookie discovery mechanism are platform detail (see
   is still persisted (`apps/macos/Helper/SyncCommand.swift:57-58`,
   `apps/linux/helper/src/sync.rs:161-165`).
 - Every persisted account carries `accountUuid` (line 72).
+- **Linux only, no macOS counterpart:** a browser profile whose cookies are
+  `v12` (xdg secret-portal, AES-256-GCM) needs a secret fetched per `app_id`,
+  and when no candidate yields one that decrypts, the profile is skipped with
+  `  Skipping <profile> (portal-encrypted cookies, no usable secret)`
+  (`apps/linux/helper/src/sync.rs`). macOS cookies have no portal path, so
+  this line can never appear there; a future port to another platform without
+  the portal simply never emits it. The skip is a skip, not an error: the run
+  continues and its exit code is unaffected.
 - The command always exits 0 once it finishes scanning (line 97), even when
   zero accounts were added; failure is only for the "no profiles with Claude
   sessions found at all" case (line 13-17, exit 1).

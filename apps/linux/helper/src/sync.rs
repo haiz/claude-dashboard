@@ -17,9 +17,12 @@
 //!   chat org in the account's memberships. See
 //!   `contract/cases/org-selection.json`. `/api/organizations` is still the
 //!   source of the plan tier, and nothing else.
-//! - A `v12` (secret-portal) cookie makes the whole profile unreadable by
-//!   this port, so such a profile is silently skipped (out of scope, per
-//!   Spike 0).
+//! - A `v12` (secret-portal) cookie needs a secret this scan does not have
+//!   up front. Such a profile is re-scanned once per candidate `app_id` with
+//!   the portal secret fetched from the keyring; only if none of them decrypt
+//!   is the profile skipped. The fetch is **lazy** — a profile with no v12
+//!   cookie never touches the portal schema, so users on v10/v11 browsers
+//!   cannot be prompted to unlock a keyring they did not need.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -27,7 +30,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use claude_dashboard_core::api::{fetch_account, fetch_organizations, parse_account};
 use claude_dashboard_core::browser::{self, DiscoveredProfile};
-use claude_dashboard_core::cookie::{self, CookieError, PasswordSource};
+use claude_dashboard_core::cookie::{self, CookieError, KeySources};
 use claude_dashboard_core::identity::{is_duplicate, resolve_org_id, StoredIdentity};
 use claude_dashboard_core::model::{Account, AccountPlan, AccountStatus, Browser};
 use claude_dashboard_core::plan::detect_plan_tier;
@@ -79,20 +82,33 @@ pub fn run_sync() -> i32 {
 
     let profiles = browser::discover_profiles_under(&home_dir());
 
-    // Fetch each browser's Safe Storage secret at most once.
+    // Fetch each browser's Safe Storage secret at most once, and each
+    // portal secret at most once per app_id.
     let mut secrets: HashMap<String, Option<String>> = HashMap::new();
+    let mut portal_secrets: HashMap<String, Option<Vec<u8>>> = HashMap::new();
     let mut candidates: Vec<Candidate> = Vec::new();
 
     for profile in &profiles {
         let secret = secrets
             .entry(profile.keyring_app.clone())
-            .or_insert_with(|| cookie::keyring_password(&profile.keyring_app));
-        let source = match secret {
-            Some(s) => PasswordSource::Keyring(s.clone()),
-            None => PasswordSource::HardcodedV10,
-        };
+            .or_insert_with(|| cookie::keyring_password(&profile.keyring_app))
+            .clone();
+        let sources = KeySources::keyring(secret);
+        let app_ids = portal_app_id_candidates(profile);
 
-        match scan_profile(profile, &source) {
+        let scanned = scan_resolving_portal(
+            &sources,
+            &app_ids,
+            |app_id| {
+                portal_secrets
+                    .entry(app_id.to_string())
+                    .or_insert_with(|| cookie::portal_secret(app_id))
+                    .clone()
+            },
+            |sources| scan_profile(profile, sources),
+        );
+
+        match scanned {
             ProfileScan::Found {
                 session_key,
                 org_id,
@@ -106,7 +122,17 @@ pub fn run_sync() -> i32 {
                 session_key,
                 org_id,
             }),
-            ProfileScan::NoPortalSecret | ProfileScan::NoSession => continue,
+            ProfileScan::NoPortalSecret => {
+                // Linux-only diagnostic: the profile is portal-encrypted and
+                // no candidate app_id yielded a secret that decrypts it.
+                // Silence here would look identical to "not logged in".
+                eprintln!(
+                    "  Skipping {} (portal-encrypted cookies, no usable secret)",
+                    profile.resolved_display_name()
+                );
+                continue;
+            }
+            ProfileScan::NoSession => continue,
         }
     }
 
@@ -202,18 +228,95 @@ pub fn run_sync() -> i32 {
     0
 }
 
+/// The `app_id` values to try when a profile turns out to hold `v12`
+/// (secret-portal) cookies, in the order they are tried.
+///
+/// `app_id` is the *portal's* name for the browser, and it depends on how the
+/// browser was installed, not on the browser itself:
+///
+/// - `""` — an unsandboxed browser the desktop gave no app identity. This is
+///   what real Chromium produced in Spike 1, so it goes first.
+/// - the Flathub application id — a Flatpak install, where the sandbox names
+///   the app (ids verified against the Flathub API).
+/// - the keyring `application` name (`"chrome"`, `"brave"`,
+///   `"microsoft-edge"`) — a desktop that registered the browser under its
+///   own name via the systemd scope xdg-desktop-portal reads
+///   (`components/dbus/xdg/systemd.cc`).
+///
+/// Trying several is safe: a wrong secret fails AES-256-GCM authentication,
+/// so it can never yield a wrong plaintext.
+fn portal_app_id_candidates(profile: &DiscoveredProfile) -> Vec<String> {
+    let flatpak = match profile.browser {
+        Browser::Chrome => Some("com.google.Chrome"),
+        Browser::Brave => Some("com.brave.Browser"),
+        Browser::Edge => Some("com.microsoft.Edge"),
+        // Arc has no Linux build, so it never reaches a Linux portal.
+        Browser::Arc => None,
+    };
+    let mut out = vec![String::new()];
+    out.extend(flatpak.map(String::from));
+    if !profile.keyring_app.is_empty() {
+        out.push(profile.keyring_app.clone());
+    }
+    out
+}
+
+/// Scans a profile, resolving a `v12` portal secret only if the first pass
+/// reports one is needed.
+///
+/// `scan` is the profile scan and `fetch` the portal-secret lookup, both
+/// injected so this ordering is testable without a keyring or a cookie DB.
+/// Returns [`ProfileScan::NoPortalSecret`] when the profile needs a portal
+/// secret that no candidate provided — a wrong secret leaves the `sessionKey`
+/// cookie undecryptable, which the scan reports as
+/// [`ProfileScan::NoSession`], so that outcome moves on to the next
+/// candidate rather than ending the search.
+fn scan_resolving_portal<F, S>(
+    sources: &KeySources,
+    app_ids: &[String],
+    mut fetch: F,
+    mut scan: S,
+) -> ProfileScan
+where
+    F: FnMut(&str) -> Option<Vec<u8>>,
+    S: FnMut(&KeySources) -> ProfileScan,
+{
+    match scan(sources) {
+        ProfileScan::NoPortalSecret => {}
+        settled => return settled,
+    }
+    for app_id in app_ids {
+        let Some(secret) = fetch(app_id) else {
+            continue;
+        };
+        match scan(&sources.with_portal(secret)) {
+            ProfileScan::Found {
+                session_key,
+                org_id,
+            } => {
+                return ProfileScan::Found {
+                    session_key,
+                    org_id,
+                }
+            }
+            _ => continue,
+        }
+    }
+    ProfileScan::NoPortalSecret
+}
+
 /// Decrypts a profile's Claude cookies into a [`ProfileScan`]. A `v12`
 /// cookie short-circuits the whole profile; any other per-cookie decrypt
 /// error skips just that cookie (matching the Swift `guard let decrypted`
 /// `continue`).
-fn scan_profile(profile: &DiscoveredProfile, source: &PasswordSource) -> ProfileScan {
+fn scan_profile(profile: &DiscoveredProfile, sources: &KeySources) -> ProfileScan {
     let Some((schema, rows)) = browser::read_claude_cookie_db(&profile.cookies_db) else {
         return ProfileScan::NoSession;
     };
     let mut session_key = None;
     let mut org_id = None;
     for row in rows {
-        match cookie::decrypt_cookie_value(&row.encrypted_value, &row.host_key, schema, source) {
+        match cookie::decrypt_cookie_value(&row.encrypted_value, &row.host_key, schema, sources) {
             Ok(value) => match row.name.as_str() {
                 "sessionKey" => session_key = Some(value),
                 "lastActiveOrg" => org_id = Some(value),
@@ -317,6 +420,141 @@ fn now_reference_seconds() -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+    use std::path::PathBuf;
+
+    // -- portal_app_id_candidates ------------------------------------------
+
+    fn profile(browser: Browser, keyring_app: &str) -> DiscoveredProfile {
+        DiscoveredProfile {
+            browser,
+            keyring_app: keyring_app.into(),
+            profile_dir: "Default".into(),
+            display_name: None,
+            google_email: None,
+            cookies_db: PathBuf::from("/nonexistent/Cookies"),
+        }
+    }
+
+    #[test]
+    fn portal_candidates_try_the_unsandboxed_empty_app_id_first() {
+        let got = portal_app_id_candidates(&profile(Browser::Chrome, "chrome"));
+        assert_eq!(got, vec!["", "com.google.Chrome", "chrome"]);
+    }
+
+    #[test]
+    fn portal_candidates_cover_each_linux_browser_and_skip_arc() {
+        assert_eq!(
+            portal_app_id_candidates(&profile(Browser::Brave, "brave")),
+            vec!["", "com.brave.Browser", "brave"]
+        );
+        assert_eq!(
+            portal_app_id_candidates(&profile(Browser::Edge, "microsoft-edge")),
+            vec!["", "com.microsoft.Edge", "microsoft-edge"]
+        );
+        // Arc has no Linux build, so it contributes no Flatpak id.
+        assert_eq!(
+            portal_app_id_candidates(&profile(Browser::Arc, "arc")),
+            vec!["", "arc"]
+        );
+    }
+
+    // -- scan_resolving_portal ---------------------------------------------
+
+    const RIGHT: &[u8] = b"the-real-portal-secret";
+    const WRONG: &[u8] = b"a-secret-for-another-app";
+
+    fn found(session_key: &str) -> ProfileScan {
+        ProfileScan::Found {
+            session_key: session_key.into(),
+            org_id: None,
+        }
+    }
+
+    /// A scan that behaves like a v12 profile: unreadable without a portal
+    /// secret, unreadable with the wrong one, readable with `RIGHT`.
+    fn v12_scan(sources: &KeySources) -> ProfileScan {
+        match sources.portal.as_deref() {
+            None => ProfileScan::NoPortalSecret,
+            Some(s) if s == RIGHT => found("sk-ant-sid01-V12"),
+            Some(_) => ProfileScan::NoSession,
+        }
+    }
+
+    #[test]
+    fn no_portal_lookup_happens_when_the_profile_has_no_v12_cookie() {
+        // Laziness matters: a v10/v11 user must never be made to unlock a
+        // keyring for a secret their cookies do not use.
+        let fetched: RefCell<Vec<String>> = RefCell::new(Vec::new());
+        let got = scan_resolving_portal(
+            &KeySources::keyring(Some("safe-storage".into())),
+            &["".to_string(), "com.google.Chrome".to_string()],
+            |app_id| {
+                fetched.borrow_mut().push(app_id.to_string());
+                Some(RIGHT.to_vec())
+            },
+            |_| found("sk-ant-sid01-V11"),
+        );
+        assert!(matches!(got, ProfileScan::Found { ref session_key, .. } if session_key == "sk-ant-sid01-V11"));
+        assert!(fetched.borrow().is_empty(), "fetched {:?}", fetched.borrow());
+    }
+
+    #[test]
+    fn a_profile_without_a_session_does_not_trigger_a_portal_lookup() {
+        let fetched: RefCell<usize> = RefCell::new(0);
+        let got = scan_resolving_portal(
+            &KeySources::default(),
+            &["".to_string()],
+            |_| {
+                *fetched.borrow_mut() += 1;
+                Some(RIGHT.to_vec())
+            },
+            |_| ProfileScan::NoSession,
+        );
+        assert!(matches!(got, ProfileScan::NoSession));
+        assert_eq!(*fetched.borrow(), 0);
+    }
+
+    #[test]
+    fn candidates_are_tried_in_order_until_one_decrypts() {
+        let fetched: RefCell<Vec<String>> = RefCell::new(Vec::new());
+        let got = scan_resolving_portal(
+            &KeySources::default(),
+            &[
+                "".to_string(),
+                "com.google.Chrome".to_string(),
+                "chrome".to_string(),
+            ],
+            |app_id| {
+                fetched.borrow_mut().push(app_id.to_string());
+                match app_id {
+                    "" => None,                              // no such keyring item
+                    "com.google.Chrome" => Some(WRONG.to_vec()), // decrypts to nothing
+                    _ => Some(RIGHT.to_vec()),
+                }
+            },
+            v12_scan,
+        );
+        assert!(matches!(got, ProfileScan::Found { ref session_key, .. } if session_key == "sk-ant-sid01-V12"));
+        assert_eq!(*fetched.borrow(), vec!["", "com.google.Chrome", "chrome"]);
+    }
+
+    #[test]
+    fn the_profile_is_skipped_when_no_candidate_decrypts_it() {
+        let got = scan_resolving_portal(
+            &KeySources::default(),
+            &["".to_string(), "com.google.Chrome".to_string()],
+            |_| Some(WRONG.to_vec()),
+            v12_scan,
+        );
+        assert!(matches!(got, ProfileScan::NoPortalSecret));
+    }
+
+    #[test]
+    fn an_empty_candidate_list_leaves_a_v12_profile_skipped() {
+        let got = scan_resolving_portal(&KeySources::default(), &[], |_| None, v12_scan);
+        assert!(matches!(got, ProfileScan::NoPortalSecret));
+    }
 
     // -- parse_orgs ---------------------------------------------------------
 

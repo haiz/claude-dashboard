@@ -18,11 +18,10 @@
 //!   `"fdo_portal_secret_salt"`, info `"HKDF-SHA-256 AES-256-GCM"`, 32-byte
 //!   key: `secret_portal_key_provider.cc:38-39,200-205`), then AES-256-GCM
 //!   with the nonce as the first 12 bytes of the body
-//!   (`encryptor.cc:36,170-176`). Requires [`PasswordSource::Portal`];
-//!   without it a v12 blob reports [`CookieError::NoPortalSecret`].
-//!   *Fetching* the portal secret is not this module's job — see the sync
-//!   helper; as of this commit no fetcher exists yet, so v12 profiles are
-//!   still skipped at runtime.
+//!   (`encryptor.cc:36,170-176`). Needs [`KeySources::portal`], fetched with
+//!   [`portal_secret`]; without it a v12 blob reports
+//!   [`CookieError::NoPortalSecret`]. Pinned to real Chromium output by
+//!   `v12_known_answer_from_real_chromium_blob` below.
 //! - Cookie DB schema **>= 24**: the decrypted plaintext is prefixed with
 //!   `SHA256(host_key)` (32 bytes), which must be stripped
 //!   (`net/extras/sqlite/sqlite_persistent_cookie_store.cc:213-214,1042-1050`).
@@ -36,22 +35,44 @@ use std::process::Command;
 const SALT: &[u8] = b"saltysalt";
 const IV: [u8; 16] = [0x20; 16];
 
-/// Which key to derive for decryption. `HardcodedV10` covers the `v10` tag;
-/// `Keyring` carries an already-fetched Safe Storage secret for the `v11` tag
-/// (fetch it with [`keyring_password`] before calling
-/// [`decrypt_cookie_value`] — this module never shells out on the decrypt path
-/// itself).
-pub enum PasswordSource {
-    HardcodedV10,
-    Keyring(String),
-    /// Raw secret retrieved from the XDG secret portal, for `v12` cookies.
-    Portal(Vec<u8>),
+/// The keys available to a decrypt, picked by the cookie's own version tag —
+/// the same key-ring shape Chromium uses (`os_crypt_async.cc:88-92` keeps one
+/// key per tag and selects on read).
+///
+/// Both fields are optional and both are fetched by the caller, never on the
+/// decrypt path: `keyring` is the desktop Safe Storage secret for `v11`
+/// ([`keyring_password`]), `portal` the raw secret-portal secret for `v12`
+/// ([`portal_secret`]). A `v10` cookie needs neither — the default value
+/// decrypts it.
+#[derive(Default, Clone)]
+pub struct KeySources {
+    pub keyring: Option<String>,
+    pub portal: Option<Vec<u8>>,
+}
+
+impl KeySources {
+    /// Sources with only the v11 Safe Storage secret — the first pass over a
+    /// profile, before any v12 cookie has been seen.
+    pub fn keyring(secret: Option<String>) -> Self {
+        Self {
+            keyring: secret,
+            portal: None,
+        }
+    }
+
+    /// The same sources plus a portal secret, for the v12 retry.
+    pub fn with_portal(&self, portal: Vec<u8>) -> Self {
+        Self {
+            keyring: self.keyring.clone(),
+            portal: Some(portal),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub enum CookieError {
     /// The cookie is a v12 (secret-portal, AES-256-GCM) blob but no portal
-    /// secret was supplied ([`PasswordSource::Portal`]).
+    /// secret was supplied ([`KeySources::portal`]).
     NoPortalSecret,
     /// Fewer than 3 bytes — no room for the version tag.
     TooShort,
@@ -74,26 +95,26 @@ pub(crate) fn derive_key(password: &[u8]) -> [u8; 16] {
 ///
 /// `host_key` is the cookie's `host_key` column, used to verify/strip the
 /// schema->=24 domain-hash prefix. `db_schema_version` is the cookie DB's
-/// `meta.version`. `source` supplies the v11 keyring secret when the tag
-/// requires it (see [`PasswordSource`]).
+/// `meta.version`. `sources` carries the pre-fetched secrets; which one is
+/// used follows the version tag (see [`KeySources`]).
 pub fn decrypt_cookie_value(
     encrypted: &[u8],
     host_key: &str,
     db_schema_version: i64,
-    source: &PasswordSource,
+    sources: &KeySources,
 ) -> Result<String, CookieError> {
     if encrypted.len() < 3 {
         return Err(CookieError::TooShort);
     }
     let tag = &encrypted[..3];
     if tag == b"v12" {
-        let PasswordSource::Portal(portal_secret) = source else {
+        let Some(portal_secret) = sources.portal.as_deref() else {
             return Err(CookieError::NoPortalSecret);
         };
         return decrypt_v12(&encrypted[3..], portal_secret, host_key, db_schema_version);
     }
-    let key = match (tag, source) {
-        (b"v11", PasswordSource::Keyring(secret)) => derive_key(secret.as_bytes()),
+    let key = match (tag, sources.keyring.as_deref()) {
+        (b"v11", Some(secret)) => derive_key(secret.as_bytes()),
         _ => derive_key(b"peanuts"), // v10, or v11 falling back when no keyring secret
     };
     let body = &encrypted[3..];
@@ -172,6 +193,43 @@ pub fn keyring_password(app: &str) -> Option<String> {
     None
 }
 
+/// Fetches a `v12` secret-portal secret from the desktop keyring via
+/// `secret-tool`, keyed by the portal's own attributes: `app_id` plus
+/// `xdg:schema=org.freedesktop.portal.Secret` (gnome-keyring 50.0
+/// `daemon/dbus/gkd-secret-portal.c:290-405`, read in Spike 1).
+///
+/// Two ways this differs from [`keyring_password`], both deliberate:
+///
+/// - The bytes are returned **raw and untrimmed**. The portal secret is 64
+///   bytes of `gcry_randomize` output, so a trailing `0x0a` is data, not a
+///   line ending. `secret-tool` passes arbitrary bytes through unchanged —
+///   verified in Spike 1 against a real portal secret containing non-UTF-8
+///   bytes, byte-identical with no added newline.
+/// - There is no schema-less fallback lookup. The portal schema is the only
+///   place this secret lives.
+///
+/// `app_id` is the *portal's* view of the calling browser, not a browser
+/// name: **empty** for an unsandboxed browser whose desktop gave it no app
+/// identity (what real Chromium produced in Spike 1), the Flatpak/Snap app id
+/// for a sandboxed one. Callers try their candidates in turn; a wrong secret
+/// cannot yield garbage because AES-256-GCM authenticates.
+pub fn portal_secret(app_id: &str) -> Option<Vec<u8>> {
+    let out = Command::new("secret-tool")
+        .args([
+            "lookup",
+            "app_id",
+            app_id,
+            "xdg:schema",
+            "org.freedesktop.portal.Secret",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() || out.stdout.is_empty() {
+        return None;
+    }
+    Some(out.stdout)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,7 +281,7 @@ mod tests {
     #[test]
     fn v10_roundtrip_with_domain_prefix() {
         let blob = make_v10("claude.ai", "sk-ant-sid01-SPIKE");
-        let got = decrypt_cookie_value(&blob, "claude.ai", 24, &PasswordSource::HardcodedV10).unwrap();
+        let got = decrypt_cookie_value(&blob, "claude.ai", 24, &KeySources::default()).unwrap();
         assert_eq!(got, "sk-ant-sid01-SPIKE");
     }
 
@@ -241,7 +299,7 @@ mod tests {
             &blob,
             "claude.ai",
             24,
-            &PasswordSource::Keyring("the-safe-storage-secret".into()),
+            &KeySources::keyring(Some("the-safe-storage-secret".into())),
         )
         .unwrap();
         assert_eq!(got, "sk-ant-sid01-V11");
@@ -276,18 +334,66 @@ mod tests {
             &blob,
             "claude.ai",
             24,
-            &PasswordSource::Portal(b"portal-master-secret".to_vec()),
+            &KeySources::default().with_portal(b"portal-master-secret".to_vec()),
         )
         .unwrap();
         assert_eq!(got, "sk-ant-sid01-V12");
+    }
+
+    /// Hex -> bytes for the pinned known-answer blobs below.
+    fn unhex(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).expect("hex"))
+            .collect()
+    }
+
+    // Known-answer test against REAL Chromium output. Everything above only
+    // proves decrypt_v12 is self-consistent with a fixture this file builds
+    // itself; this pins it to bytes Chromium actually wrote.
+    //
+    // Provenance (Spike 1, 2026-09-03, Ubuntu 26.04 arm64 VM): Chromium
+    // 151.0.7922.34 launched with `--password-store=gnome-libsecret
+    // --enable-features=SecretPortalKeyProviderUseForEncryption` against
+    // xdg-desktop-portal 1.21.1 with gnome-keyring 50.0 as the
+    // org.freedesktop.impl.portal.Secret backend, wrote the sentinel cookie
+    // below; `Local State` recorded os_crypt.portal.prev_init_success = true
+    // and the on-disk tag was v12. The 64-byte portal secret is the one
+    // gnome-keyring minted for that run, fetched with
+    // `secret-tool lookup app_id "" xdg:schema org.freedesktop.portal.Secret`.
+    //
+    // Both constants are safe to publish: the secret belongs to a throwaway
+    // VM keyring that no longer exists, and the only thing it ever encrypted
+    // is this sentinel string.
+    #[test]
+    fn v12_known_answer_from_real_chromium_blob() {
+        let blob = unhex(
+            "7631324059DF1F739CD94CD1842BF4D54D7C518C0B6ABDF87183EAD40E6C9994\
+             723272B82D881CC98E298F3E393AF4C250D26824888DEE10C78CA885E5D9B70C\
+             4B294510E2F55E0D522C0C31DF721F71AAA3CAD4135596E215547E3DF04ED2",
+        );
+        let portal_secret = unhex(
+            "e6d4a11c2cd9116dcf93d02003b7a9ec601d2a4796b35d89664d328e71b55270\
+             1cb58770920c10806e7089d15216b4c0f6904178ef624fcbbbaad2bcc436a346",
+        );
+        assert_eq!(&blob[..3], b"v12");
+        assert_eq!(portal_secret.len(), 64); // PORTAL_DEFAULT_KEY_SIZE
+        let got = decrypt_cookie_value(
+            &blob,
+            "claude.ai",
+            24,
+            &KeySources::default().with_portal(portal_secret),
+        )
+        .expect("real Chromium v12 blob decrypts");
+        assert_eq!(got, "sk-ant-sid01-V12-REAL-PORTAL-abc");
     }
 
     #[test]
     fn v12_without_portal_secret_reports_no_portal_secret() {
         let blob = make_v12("claude.ai", "sk-ant-sid01-V12", b"portal-master-secret");
         for source in [
-            PasswordSource::HardcodedV10,
-            PasswordSource::Keyring("safe-storage".into()),
+            KeySources::default(),
+            KeySources::keyring(Some("safe-storage".into())),
         ] {
             assert!(matches!(
                 decrypt_cookie_value(&blob, "claude.ai", 24, &source),
@@ -306,7 +412,7 @@ mod tests {
                 &blob,
                 "claude.ai",
                 24,
-                &PasswordSource::Portal(b"portal-master-secret".to_vec()),
+                &KeySources::default().with_portal(b"portal-master-secret".to_vec()),
             ),
             Err(CookieError::DecryptFailed)
         );
@@ -321,7 +427,7 @@ mod tests {
                 &blob,
                 "claude.ai",
                 24,
-                &PasswordSource::Portal(b"portal-master-secret".to_vec()),
+                &KeySources::default().with_portal(b"portal-master-secret".to_vec()),
             ),
             Err(CookieError::DecryptFailed)
         );
@@ -335,7 +441,7 @@ mod tests {
             .encrypt_padded_vec_mut::<Pkcs7>(b"plain-no-prefix");
         let mut blob = b"v10".to_vec();
         blob.extend_from_slice(&ct);
-        let got = decrypt_cookie_value(&blob, "claude.ai", 23, &PasswordSource::HardcodedV10).unwrap();
+        let got = decrypt_cookie_value(&blob, "claude.ai", 23, &KeySources::default()).unwrap();
         assert_eq!(got, "plain-no-prefix");
     }
 }
