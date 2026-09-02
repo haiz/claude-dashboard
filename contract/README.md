@@ -481,12 +481,37 @@ Implemented at `apps/macos/Shared/AccountIdentity.swift:49-56` (`resolveOrgId`) 
 `apps/linux/core/src/identity.rs:29-41` (`resolve_org_id`), driven by
 `cases/org-selection.json`.
 
-`resyncAccount` writes the cookie's `lastActiveOrg` straight onto the stored
-account with no membership check and no chat-org gate —
-`apps/macos/ClaudeDashboard/ViewModels/DashboardViewModel.swift:312-314`. It is
-reachable from three UI surfaces: the "Re-sync All" button
-(`apps/macos/ClaudeDashboard/Views/SettingsView.swift:91`) and each account
-card's individual resync action
+`resyncCore` obeys the same rule. It re-reads one stored account's browser
+cookies and resolves `orgId` through `resolveOrgId` against the memberships
+`/api/account` returns for that session, never from the cookie alone —
+`apps/macos/ClaudeDashboard/ViewModels/DashboardViewModel.swift:346-362`. It is
+the single writer behind both re-sync entry points: `resyncAccount`, used by each
+account card's individual resync action
 (`apps/macos/ClaudeDashboard/Views/DashboardWindow.swift:111`,
-`apps/macos/ClaudeDashboard/Views/MenuBarPopover.swift:108`). This is a known
-exception to the rule above, not an intended part of it.
+`apps/macos/ClaudeDashboard/Views/MenuBarPopover.swift:108`), and `resyncAll`,
+used by the "Re-sync All" button
+(`apps/macos/ClaudeDashboard/Views/SettingsView.swift:89`).
+
+The refresh that follows a re-sync is scoped to the accounts that re-synced
+successfully (`refreshAll(only:)`, lines 380 and 393). An unscoped pass would
+overwrite the message left on a card whose re-sync failed, and re-syncing N
+accounts would cost N whole-fleet refresh passes instead of one.
+
+Resync updates a record that already holds a working `orgId`, so three outcomes
+differ from the add-an-account path:
+
+- `/api/account` unreachable. The new session key is saved and the account is
+  marked `active`, while `orgId`, `accountUuid` and `email` keep their stored
+  values (lines 343-344, 353). `refreshAll` skips `expired` accounts, so marking it
+  active is what makes any later retry possible; leaving `orgId` alone is what
+  keeps an unreadable session from erasing a correct one.
+- No chat org among the memberships. The stored `orgId` is kept and the card
+  reports it (lines 365-371). Rule 3's "never persisted" governs adding an
+  account; an existing one is reported rather than repointed or blanked.
+- The session identifies a different account than the stored `accountUuid`.
+  Nothing is written and the card reports it (lines 336-340) — a profile signed
+  in to another Claude login must not have its session key copied onto this
+  record, which is the same collision `isDuplicate` exists to prevent. A legacy
+  record without `accountUuid` has nothing to compare and is backfilled instead.
+
+The Linux side has no resync; `sync` is its only writer.

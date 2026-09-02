@@ -37,6 +37,9 @@ final class DashboardViewModel: ObservableObject {
     let accountStore: AccountStore
     private let apiService: UsageAPIService
     private let ccDetector: ClaudeCodeAccountDetector
+    /// Reads the browser cookies for one stored account. Injected so `resyncAccount`
+    /// can be driven in tests without a real Chromium cookie DB on disk.
+    private let cookieProvider: (String, Browser) -> ChromeCookieResult
     private var cancellables = Set<AnyCancellable>()
     private var autoRefreshTask: Task<Void, Never>?
     private var resetMonitorTask: Task<Void, Never>?
@@ -54,7 +57,9 @@ final class DashboardViewModel: ObservableObject {
         apiService: UsageAPIService = UsageAPIService(),
         logStore: UsageLogStore? = nil,
         commandLogStore: CommandLogStore? = nil,
-        ccDetector: ClaudeCodeAccountDetector = ClaudeCodeAccountDetector()
+        ccDetector: ClaudeCodeAccountDetector = ClaudeCodeAccountDetector(),
+        cookieProvider: @escaping (String, Browser) -> ChromeCookieResult
+            = BrowserCookieService.extractCookies(for:browser:)
     ) {
         self.autoRefreshEnabled = UserDefaults.standard.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.autoRefreshMinutes = {
@@ -64,6 +69,7 @@ final class DashboardViewModel: ObservableObject {
         self.accountStore = accountStore
         self.apiService = apiService
         self.ccDetector = ccDetector
+        self.cookieProvider = cookieProvider
         let store = logStore ?? UsageLogStore()
         self.logStore = store
         self.burnRateTracker = BurnRateTracker(logStore: store)
@@ -151,16 +157,25 @@ final class DashboardViewModel: ObservableObject {
 
     // MARK: - Refresh
 
-    func refreshAll() async {
+    /// `only` limits the pass to those accounts; `nil` refreshes the whole fleet.
+    /// A scoped pass is what lets a re-sync refresh the card it touched without
+    /// overwriting the error message another card is showing.
+    func refreshAll(only ids: Set<UUID>? = nil) async {
         isRefreshing = true
         defer { isRefreshing = false }
+        // The store publishes into `accountStates` asynchronously (`receive(on: .main)`),
+        // so a caller that just wrote an account and refreshed in the same turn would
+        // read its own stale copy here: a re-synced account would still look `.expired`
+        // and be filtered out, a freshly added one would be missing entirely.
+        syncStates(with: accountStore.accounts)
         activeClaudeCodeEmail = ccDetector.activeEmail()
 
         // Saved commands to run for accounts whose refresh produced no 5h/7d usage.
         var autoCommands: [(accountId: UUID, command: String)] = []
 
         await withTaskGroup(of: (UUID, UsageData?, String?, AccountPlan?, AccountInfo?).self) { group in
-            for state in accountStates where state.account.status != .expired {
+            for state in accountStates
+            where state.account.status != .expired && (ids?.contains(state.id) ?? true) {
                 let account = state.account
                 guard let sessionKey = accountStore.loadSessionKey(for: account.id),
                       let orgId = account.orgId else {
@@ -292,32 +307,95 @@ final class DashboardViewModel: ObservableObject {
         lastLogsUpdatedAt = Date()
     }
 
-    func resyncAccount(_ accountId: UUID) async {
-        guard let account = accountStore.accounts.first(where: { $0.id == accountId }) else { return }
+    /// Re-reads one account's browser cookies and writes the new session key, the
+    /// identity backfill and the resolved org. Returns `true` when the record is
+    /// ready for a usage refresh; on `false` the reason is already on the card as
+    /// an error message. Runs no refresh itself, so a caller re-syncing several
+    /// accounts pays for one refresh pass instead of one per account.
+    private func resyncCore(_ accountId: UUID) async -> Bool {
+        guard let account = accountStore.accounts.first(where: { $0.id == accountId }) else { return false }
 
-        let cookies = BrowserCookieService.extractCookies(for: account.chromeProfilePath, browser: account.browser)
+        let cookies = cookieProvider(account.chromeProfilePath, account.browser)
 
         guard let sessionKey = cookies.sessionKey else {
             // Re-sync failed — keep expired status, update error message
-            if let index = accountStates.firstIndex(where: { $0.id == accountId }) {
-                let profileName = account.chromeProfileName ?? account.chromeProfilePath
-                accountStates[index].error = "Re-sync failed. Open \(account.browser.displayName) profile \"\(profileName)\" and login to claude.ai first."
-            }
-            return
+            let profileName = account.chromeProfileName ?? account.chromeProfilePath
+            setError("Re-sync failed. Open \(account.browser.displayName) profile \"\(profileName)\" and login to claude.ai first.",
+                     for: accountId)
+            return false
+        }
+
+        // Who the profile is signed in as now, and which orgs that session may be
+        // polled against. A failure here is not fatal — see the org write below.
+        let info = try? await apiService.fetchAccount(sessionKey: sessionKey)
+
+        // The profile has been switched to a different Claude account. Writing its
+        // session key onto this record would point two cards at one account, the
+        // corruption the dedupe rule exists to prevent. A legacy record (no
+        // accountUuid) has nothing to compare against and is backfilled instead.
+        if let info, let storedUuid = account.accountUuid, info.uuid != storedUuid {
+            setError("Re-sync stopped. That browser profile is now signed in to a different Claude account.",
+                     for: accountId)
+            return false
         }
 
         var updated = account
         updated.sessionKey = CryptoService.encrypt(sessionKey) ?? sessionKey
         updated.status = .active
-        if let orgId = cookies.orgId {
-            updated.orgId = orgId
+
+        // orgId follows the org-selection rule (contract/cases/org-selection.json),
+        // never the raw cookie: `lastActiveOrg` may name an api-only org, or one this
+        // account is not a member of, and writing it blind overwrites an orgId that
+        // was resolved correctly. When /api/account is unreachable the stored orgId is
+        // left untouched — the new key is still worth saving, and `.active` is what
+        // lets `refreshAll` (which skips `.expired`) retry at all.
+        var orgUnresolved = false
+        if let info {
+            if updated.accountUuid == nil { updated.accountUuid = info.uuid }
+            if updated.email == nil { updated.email = info.email }
+            if let orgId = AccountIdentity.resolveOrgId(
+                lastActiveOrg: cookies.orgId, memberships: info.memberships) {
+                updated.orgId = orgId
+            } else {
+                orgUnresolved = true
+            }
         }
         accountStore.updateAccount(updated)
 
-        // Auto-refresh this account after re-sync
-        Task {
-            await refreshAll()
+        guard !orgUnresolved else {
+            // No chat org left to poll. Report it and skip the refresh, which would
+            // clear the message a second later.
+            setError("Re-sync incomplete. This account has no organization with chat access.",
+                     for: accountId)
+            return false
         }
+
+        return true
+    }
+
+    func resyncAccount(_ accountId: UUID) async {
+        guard await resyncCore(accountId) else { return }
+        // Refresh just this card. A whole-fleet pass would re-fetch usage nobody
+        // asked for and clear the error message any other card is showing.
+        await refreshAll(only: [accountId])
+    }
+
+    /// Re-syncs every stored account, then refreshes the ones that succeeded in a
+    /// single pass. Looping over `resyncAccount` instead would run N refresh passes
+    /// over the whole fleet (N x N usage fetches), and each pass would wipe the
+    /// message left by an account that failed to re-sync.
+    func resyncAll() async {
+        var refreshable: Set<UUID> = []
+        for account in accountStore.accounts {
+            if await resyncCore(account.id) { refreshable.insert(account.id) }
+        }
+        guard !refreshable.isEmpty else { return }
+        await refreshAll(only: refreshable)
+    }
+
+    private func setError(_ message: String, for accountId: UUID) {
+        guard let index = accountStates.firstIndex(where: { $0.id == accountId }) else { return }
+        accountStates[index].error = message
     }
 
     // MARK: - Active Claude Code Account

@@ -224,7 +224,11 @@ final class MockURLProtocol: URLProtocol {
 
     override func startLoading() {
         guard let handler = Self.requestHandler else {
-            client?.urlProtocolDidFinishLoading(self)
+            // Must fail, never "finish" empty: `URLSession.data(for:)` traps on a task
+            // that completes with no response and no error, taking the whole test
+            // bundle down. Requests still in flight when a tearDown clears the handler
+            // land here.
+            client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
             return
         }
 

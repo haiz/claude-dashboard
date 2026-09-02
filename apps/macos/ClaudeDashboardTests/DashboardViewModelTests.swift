@@ -26,14 +26,15 @@ final class DashboardViewModelTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeAccount(orgId: String? = nil, pinned: Bool = false, name: String = "Test", email: String? = nil) -> Account {
+    private func makeAccount(orgId: String? = nil, pinned: Bool = false, name: String = "Test", email: String? = nil, accountUuid: String? = nil, profilePath: String = "Profile 1") -> Account {
         Account(
             id: UUID(),
             name: name,
             email: email,
-            chromeProfilePath: "Profile 1",
+            chromeProfilePath: profilePath,
             chromeProfileName: nil,
             orgId: orgId,
+            accountUuid: accountUuid,
             plan: .max5x,
             lastSynced: nil,
             status: .active,
@@ -251,14 +252,27 @@ final class DashboardViewModelTests: XCTestCase {
 
     /// A view model wired to an explicit store and a MockURLProtocol-backed
     /// API service, so a refresh can be driven end to end.
-    private func makeViewModelWithStore() throws -> (DashboardViewModel, AccountStore) {
+    /// `cookieProvider` is keyed by the account's profile path, so a multi-account
+    /// test can hand one profile a working session and another none at all.
+    private func makeViewModelWithStore(
+        cookies: ChromeCookieResult = ChromeCookieResult(sessionKey: nil, orgId: nil),
+        cookieProvider: ((String, Browser) -> ChromeCookieResult)? = nil
+    ) throws -> (DashboardViewModel, AccountStore) {
         let detectorFile = tempDir.appendingPathComponent(".claude.json-\(UUID().uuidString)")
         let detector = ClaudeCodeAccountDetector(fileURL: detectorFile)
         let store = AccountStore(defaults: defaults)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
         let api = UsageAPIService(session: URLSession(configuration: config))
-        let vm = DashboardViewModel(accountStore: store, apiService: api, ccDetector: detector)
+        // Isolated SQLite files: a refresh this view model starts can outlive the test,
+        // and the default stores point at the user's real databases.
+        let vm = DashboardViewModel(
+            accountStore: store,
+            apiService: api,
+            logStore: UsageLogStore(dbPath: tempDir.appendingPathComponent("usage.sqlite").path),
+            commandLogStore: CommandLogStore(dbPath: tempDir.appendingPathComponent("commands.sqlite").path),
+            ccDetector: detector,
+            cookieProvider: cookieProvider ?? { _, _ in cookies })
         return (vm, store)
     }
 
@@ -327,5 +341,250 @@ final class DashboardViewModelTests: XCTestCase {
                        "backfill must not overwrite an existing email")
         XCTAssertEqual(updated?.orgId, "org-1",
                        "backfill must not re-resolve orgId")
+    }
+
+    // MARK: - Re-sync org resolution
+
+    /// `/api/account` for an account that belongs to an api-only org and a chat org.
+    private static func accountBody(uuid: String, email: String = "person@example.com") -> String {
+        """
+        {"uuid":"\(uuid)","email_address":"\(email)","memberships":[
+          {"organization":{"uuid":"org-api","name":"API","capabilities":["api","api_individual"]}},
+          {"organization":{"uuid":"org-good","name":"Example Co","capabilities":["chat"]}}
+        ]}
+        """
+    }
+
+    func testResyncResolvesOrgIdByRuleInsteadOfWritingTheCookieValue() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: "sk-new", orgId: "org-api"))
+        let account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        store.addAccount(account)
+
+        respond(accountBody: Self.accountBody(uuid: "acct-1", email: "other@example.com"))
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        XCTAssertEqual(store.accounts.first?.orgId, "org-good",
+                       "the cookie's lastActiveOrg is an api-only org; resync must fall through to the chat org")
+        XCTAssertEqual(store.accounts.first?.email, "person@example.com",
+                       "backfill must never overwrite an email the record already has")
+    }
+
+    /// Regression guard: an unreachable `/api/account` must not cost the user the
+    /// recovery path. `refreshAll` skips `.expired`, so resync has to save the key
+    /// and mark the account active for a retry to happen at all.
+    func testResyncKeepsTheStoredOrgIdWhenAccountFetchFails() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: "sk-new", orgId: "org-api"))
+        var account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            let status = path == "/api/account" ? 500 : 200
+            let body = path.hasSuffix("/usage") ? Self.emptyUsageJSON : "[]"
+            let response = HTTPURLResponse(url: request.url!, statusCode: status,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, Data(body.utf8))
+        }
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        let updated = store.accounts.first
+        XCTAssertEqual(updated?.orgId, "org-good", "an unresolvable org must never overwrite the stored one")
+        XCTAssertEqual(updated?.status, .active)
+        XCTAssertEqual(store.loadSessionKey(for: account.id), "sk-new")
+    }
+
+    func testResyncReportsAnAccountWithNoChatOrgAndLeavesOrgIdAlone() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: "sk-new", orgId: "org-api"))
+        let account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        store.addAccount(account)
+
+        respond(accountBody: #"{"uuid":"acct-1","email_address":"person@example.com","memberships":[{"organization":{"uuid":"org-api","name":"API","capabilities":["api","api_individual"]}}]}"#)
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        XCTAssertEqual(store.accounts.first?.orgId, "org-good")
+        XCTAssertNotNil(vm.accountStates.first?.error,
+                        "an account with no chat org must be reported, not silently left as-is")
+    }
+
+    func testResyncRefusesASessionBelongingToADifferentAccount() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: "sk-other", orgId: "org-good"))
+        let account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        store.addAccount(account)
+        store.saveSessionKey("sk-mine", for: account.id)
+
+        respond(accountBody: Self.accountBody(uuid: "acct-2", email: "other@example.com"))
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        XCTAssertEqual(store.loadSessionKey(for: account.id), "sk-mine",
+                       "another account's session key must never land on this record")
+        XCTAssertNotNil(vm.accountStates.first?.error)
+    }
+
+    func testResyncBackfillsAccountUuidAndEmailOnALegacyRecord() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: "sk-new", orgId: "org-good"))
+        let account = makeAccount(orgId: "org-good", email: nil, accountUuid: nil)
+        store.addAccount(account)
+
+        respond(accountBody: Self.accountBody(uuid: "acct-1"))
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        let updated = store.accounts.first
+        XCTAssertEqual(updated?.accountUuid, "acct-1")
+        XCTAssertEqual(updated?.email, "person@example.com")
+    }
+
+    // MARK: - Re-sync All
+
+    /// One mock for a two-account fleet: `/api/account` answers per session key, so
+    /// each browser profile resolves to its own identity, and every path is tallied.
+    private func respondPerSessionKey(_ counter: RequestCounter,
+                                      uuidForCookie: @escaping (String) -> String) {
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            counter.record(path)
+            let cookie = request.value(forHTTPHeaderField: "Cookie") ?? ""
+            let body: String
+            if path == "/api/account" {
+                body = Self.accountBody(uuid: uuidForCookie(cookie))
+            } else if path.hasSuffix("/usage") {
+                body = Self.emptyUsageJSON
+            } else {
+                body = "[]"
+            }
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, Data(body.utf8))
+        }
+    }
+
+    /// Regression guard for the "Re-sync All" loop: it used to await `resyncAccount`
+    /// per account, and each of those spawned a whole-fleet `refreshAll`, so N
+    /// accounts cost N refresh passes (N x N usage fetches). One scoped pass is enough.
+    func testResyncAllFetchesUsageOncePerAccount() async throws {
+        let counter = RequestCounter()
+        let (vm, store) = try makeViewModelWithStore(cookieProvider: { path, _ in
+            ChromeCookieResult(sessionKey: path == "Profile 1" ? "sk-1" : "sk-2", orgId: "org-good")
+        })
+        // The view model starts a whole-fleet refresh in `init`. Let it finish here,
+        // against an empty store, so it cannot land in the middle of what this test
+        // measures.
+        try await Task.sleep(nanoseconds: 100_000_000)
+        store.addAccount(makeAccount(orgId: "org-good", email: "a@example.com",
+                                     accountUuid: "acct-1", profilePath: "Profile 1"))
+        store.addAccount(makeAccount(orgId: "org-good", email: "b@example.com",
+                                     accountUuid: "acct-2", profilePath: "Profile 2"))
+        respondPerSessionKey(counter) { $0.contains("sk-1") ? "acct-1" : "acct-2" }
+        await Task.yield()
+        XCTAssertEqual(vm.accountStates.count, 2, "sanity: both accounts must reach accountStates")
+
+        await vm.resyncAll()
+        // A refresh pass left running by a fire-and-forget `Task {}` lands here.
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(counter.count(pathSuffix: "/usage"), 2,
+                       "one usage fetch per account; more means the loop is spawning extra refresh passes")
+        XCTAssertEqual(counter.count(path: "/api/account"), 2,
+                       "identity is read once per re-synced account")
+    }
+
+    /// Re-sync exists mostly for an expired account, so the pass that follows it must
+    /// actually fetch that account. It sees `accountStates`, which the store refreshes
+    /// asynchronously, and a stale `.expired` status there would silently skip the card.
+    func testResyncRefreshesAnAccountThatWasExpired() async throws {
+        let counter = RequestCounter()
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: "sk-new", orgId: "org-good"))
+        // The view model starts a whole-fleet refresh in `init`. Let it finish here,
+        // against an empty store, so it cannot land in the middle of what this test
+        // measures.
+        try await Task.sleep(nanoseconds: 100_000_000)
+        var account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        respondPerSessionKey(counter) { _ in "acct-1" }
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(counter.count(pathSuffix: "/usage"), 1,
+                       "the re-synced account must be refreshed, not skipped as still-expired")
+        XCTAssertNotNil(vm.accountStates.first?.usage, "the card must show the usage it just fetched")
+    }
+
+    /// A re-sync failure message must survive the refresh that follows another
+    /// account's successful re-sync.
+    func testResyncAllKeepsTheFailureMessageOfAnAccountWithNoCookies() async throws {
+        let counter = RequestCounter()
+        let broken = makeAccount(orgId: "org-good", email: "a@example.com",
+                                 accountUuid: "acct-1", profilePath: "Profile 1")
+        let healthy = makeAccount(orgId: "org-good", email: "b@example.com",
+                                  accountUuid: "acct-2", profilePath: "Profile 2")
+        let (vm, store) = try makeViewModelWithStore(cookieProvider: { path, _ in
+            path == "Profile 1"
+                ? ChromeCookieResult(sessionKey: nil, orgId: nil)
+                : ChromeCookieResult(sessionKey: "sk-2", orgId: "org-good")
+        })
+        // The view model starts a whole-fleet refresh in `init`. Let it finish here,
+        // against an empty store, so it cannot land in the middle of what this test
+        // measures.
+        try await Task.sleep(nanoseconds: 100_000_000)
+        store.addAccount(broken)
+        store.addAccount(healthy)
+        // The broken account stays `.active` and keeps a stored key, so a
+        // whole-fleet refresh would fetch it happily and clear the error.
+        store.saveSessionKey("sk-1-stale", for: broken.id)
+        respondPerSessionKey(counter) { _ in "acct-2" }
+        await Task.yield()
+        XCTAssertEqual(vm.accountStates.count, 2, "sanity: both accounts must reach accountStates")
+
+        await vm.resyncAll()
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        let state = vm.accountStates.first { $0.id == broken.id }
+        XCTAssertNotNil(state?.error, "a re-sync failure must outlive the other account's refresh")
+        XCTAssertTrue(state?.error?.contains("Re-sync failed") ?? false,
+                      "expected the re-sync failure message, got: \(state?.error ?? "nil")")
+    }
+}
+
+/// Thread-safe tally of the paths `MockURLProtocol` served: the handler runs on
+/// URLSession's threads and a refresh fires several requests at once.
+final class RequestCounter {
+    private let lock = NSLock()
+    private var paths: [String] = []
+
+    func record(_ path: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        paths.append(path)
+    }
+
+    func count(path: String) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return paths.filter { $0 == path }.count
+    }
+
+    func count(pathSuffix: String) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return paths.filter { $0.hasSuffix(pathSuffix) }.count
     }
 }

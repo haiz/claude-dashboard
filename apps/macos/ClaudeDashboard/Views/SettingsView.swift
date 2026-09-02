@@ -86,11 +86,7 @@ struct SettingsView: View {
                 Spacer()
 
                 Button("Re-sync All") {
-                    Task {
-                        for account in viewModel.accountStore.accounts {
-                            await viewModel.resyncAccount(account.id)
-                        }
-                    }
+                    Task { await viewModel.resyncAll() }
                 }
             }
             .padding()
