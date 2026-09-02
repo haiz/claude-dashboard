@@ -231,33 +231,34 @@ pub fn run_sync() -> i32 {
 /// The `app_id` values to try when a profile turns out to hold `v12`
 /// (secret-portal) cookies, in the order they are tried.
 ///
-/// `app_id` is the *portal's* name for the browser, and it depends on how the
-/// browser was installed, not on the browser itself:
+/// `app_id` is the *portal's* name for the caller. The xdg-desktop-portal
+/// frontend assigns it; the browser never sends one
+/// (`secret_portal_key_provider.cc` passes only the write fd and an options
+/// dict). How the frontend derives it depends on how the browser was
+/// installed, not on the browser itself:
 ///
-/// - `""` — an unsandboxed browser the desktop gave no app identity. This is
-///   what real Chromium produced in Spike 1, so it goes first.
-/// - the Flathub application id — a Flatpak install, where the sandbox names
-///   the app (ids verified against the Flathub API).
-/// - the keyring `application` name (`"chrome"`, `"brave"`,
-///   `"microsoft-edge"`) — a desktop that registered the browser under its
-///   own name via the systemd scope xdg-desktop-portal reads
-///   (`components/dbus/xdg/systemd.cc`).
+/// - `""` — a host (unsandboxed) browser the frontend could not identify.
+///   Real Chromium produced this in Spike 1, and a `.deb` install gets it on
+///   a systemd desktop too: `xdp-app-info-host.c` reads the reverse-DNS id
+///   Chromium puts in its transient scope (`app-com.google.Chrome-<pid>.scope`,
+///   from `version_info::nix::GetAppName`) but then requires a matching
+///   `com.google.Chrome.desktop`, which the `.deb` does not ship.
+/// - the Flathub id ([`browser::flathub_id`]) — a Flatpak install, where the
+///   frontend reads `/.flatpak-info`. For Chrome it equals the scope id
+///   above, so it also covers a host install that does carry that desktop
+///   file.
+///
+/// The libsecret `application` name (`"chrome"`, `"brave"`, ...) is
+/// deliberately *not* a candidate: no code path in Chromium or the portal
+/// produces it as an `app_id`. Not covered, and recorded as such in the
+/// spike doc: Brave/Edge scope ids (fork-defined, unverified) and Snap
+/// installs (`snap.<name>`, not discovered either).
 ///
 /// Trying several is safe: a wrong secret fails AES-256-GCM authentication,
 /// so it can never yield a wrong plaintext.
 fn portal_app_id_candidates(profile: &DiscoveredProfile) -> Vec<String> {
-    let flatpak = match profile.browser {
-        Browser::Chrome => Some("com.google.Chrome"),
-        Browser::Brave => Some("com.brave.Browser"),
-        Browser::Edge => Some("com.microsoft.Edge"),
-        // Arc has no Linux build, so it never reaches a Linux portal.
-        Browser::Arc => None,
-    };
     let mut out = vec![String::new()];
-    out.extend(flatpak.map(String::from));
-    if !profile.keyring_app.is_empty() {
-        out.push(profile.keyring_app.clone());
-    }
+    out.extend(browser::flathub_id(&profile.browser).map(String::from));
     out
 }
 
@@ -437,25 +438,26 @@ mod tests {
     }
 
     #[test]
-    fn portal_candidates_try_the_unsandboxed_empty_app_id_first() {
+    fn portal_candidates_are_the_empty_host_app_id_then_the_flathub_id() {
         let got = portal_app_id_candidates(&profile(Browser::Chrome, "chrome"));
-        assert_eq!(got, vec!["", "com.google.Chrome", "chrome"]);
+        assert_eq!(got, vec!["", "com.google.Chrome"]);
     }
 
     #[test]
     fn portal_candidates_cover_each_linux_browser_and_skip_arc() {
         assert_eq!(
             portal_app_id_candidates(&profile(Browser::Brave, "brave")),
-            vec!["", "com.brave.Browser", "brave"]
+            vec!["", "com.brave.Browser"]
         );
         assert_eq!(
             portal_app_id_candidates(&profile(Browser::Edge, "microsoft-edge")),
-            vec!["", "com.microsoft.Edge", "microsoft-edge"]
+            vec!["", "com.microsoft.Edge"]
         );
-        // Arc has no Linux build, so it contributes no Flatpak id.
+        // Arc has no Linux build, so it contributes no Flatpak id; the keyring
+        // `application` name is never a portal app_id (see the fn doc).
         assert_eq!(
             portal_app_id_candidates(&profile(Browser::Arc, "arc")),
-            vec!["", "arc"]
+            vec![""]
         );
     }
 

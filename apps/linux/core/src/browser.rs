@@ -4,8 +4,12 @@
 //! `BrowserCookieService`) for the observable parts that `sync`
 //! reproduces, adapted to Linux's Chromium layout (proven in Spike 0):
 //!
-//! - Profiles live under `~/.config/{google-chrome, BraveSoftware/Brave-
-//!   Browser, microsoft-edge}` (Arc has no Linux build, so it is omitted).
+//! - Profiles live under `$XDG_CONFIG_HOME/{google-chrome, BraveSoftware/
+//!   Brave-Browser, microsoft-edge}`, scanned at two roots: `~/.config`
+//!   (native install) and `~/.var/app/<flathub id>/config` (Flatpak
+//!   install; the three Flathub manifests keep Flatpak's default config
+//!   home and pass no `--user-data-dir`). Snap installs (`~/snap/...`) are
+//!   not scanned. Arc has no Linux build, so it is omitted.
 //! - A profile is any immediate subdirectory of that config dir that
 //!   contains a `Cookies` file (`Default`, `Profile 1`, ...).
 //! - The display name and Google account e-mail come from the browser's
@@ -31,14 +35,24 @@ use serde_json::Value;
 
 use crate::model::Browser;
 
-/// One supported Chromium browser's Linux config location and keyring
-/// application name.
+/// One supported Chromium browser's Linux config layout and keyring
+/// application name. The same browser can be installed natively or as a
+/// Flatpak; both installs share `subdir` and `keyring_app`, only the config
+/// root differs (see [`config_roots`]).
 struct BrowserSpec {
     browser: Browser,
-    /// Path components, relative to `$HOME`, of the browser's config dir.
-    config_rel: &'static [&'static str],
+    /// Path components of the browser's own config directory, relative to
+    /// `$XDG_CONFIG_HOME` (`~/.config` natively,
+    /// `~/.var/app/<flatpak_id>/config` inside the Flatpak sandbox).
+    subdir: &'static [&'static str],
+    /// The Flathub application id. Doubles as the portal `app_id` a
+    /// sandboxed install presents (`/.flatpak-info` `[Application] name`).
+    flatpak_id: &'static str,
     /// The `application` attribute used to look up the Safe Storage secret
-    /// via `secret-tool` (see [`crate::cookie::keyring_password`]).
+    /// via `secret-tool` (see [`crate::cookie::keyring_password`]). Identical
+    /// for native and Flatpak installs: the Flathub manifests grant
+    /// `--talk-name=org.freedesktop.secrets`, and the attribute is a
+    /// compile-time constant of the browser.
     keyring_app: &'static str,
 }
 
@@ -47,20 +61,49 @@ struct BrowserSpec {
 const SPECS: &[BrowserSpec] = &[
     BrowserSpec {
         browser: Browser::Chrome,
-        config_rel: &[".config", "google-chrome"],
+        subdir: &["google-chrome"],
+        flatpak_id: "com.google.Chrome",
         keyring_app: "chrome",
     },
     BrowserSpec {
         browser: Browser::Brave,
-        config_rel: &[".config", "BraveSoftware", "Brave-Browser"],
+        subdir: &["BraveSoftware", "Brave-Browser"],
+        flatpak_id: "com.brave.Browser",
         keyring_app: "brave",
     },
     BrowserSpec {
         browser: Browser::Edge,
-        config_rel: &[".config", "microsoft-edge"],
+        subdir: &["microsoft-edge"],
+        flatpak_id: "com.microsoft.Edge",
         keyring_app: "microsoft-edge",
     },
 ];
+
+/// The Flathub application id of a browser, or `None` for one with no Linux
+/// build (Arc). The single source for that id: profile discovery derives the
+/// Flatpak config root from it, and `sync` tries it as a portal `app_id`
+/// for `v12` cookies.
+pub fn flathub_id(browser: &Browser) -> Option<&'static str> {
+    SPECS
+        .iter()
+        .find(|s| s.browser == *browser)
+        .map(|s| s.flatpak_id)
+}
+
+/// The config roots to scan for one browser: the native install's
+/// `~/.config/<subdir>` first, then the Flatpak install's
+/// `~/.var/app/<flatpak_id>/config/<subdir>` (Flatpak's default
+/// `XDG_CONFIG_HOME`; none of the three Flathub manifests overrides it or
+/// passes `--user-data-dir`).
+fn config_roots(home: &Path, spec: &BrowserSpec) -> [PathBuf; 2] {
+    let native = home.join(".config");
+    let flatpak = home
+        .join(".var")
+        .join("app")
+        .join(spec.flatpak_id)
+        .join("config");
+    [native, flatpak].map(|root| spec.subdir.iter().fold(root, |p, part| p.join(part)))
+}
 
 /// A browser profile found on disk that carries a `Cookies` database.
 ///
@@ -113,49 +156,60 @@ pub struct RawCookie {
     pub encrypted_value: Vec<u8>,
 }
 
-/// Scans every installed browser's config dir under `home` and returns one
-/// [`DiscoveredProfile`] per profile directory that contains a `Cookies`
-/// file. A browser whose config dir does not exist contributes nothing.
+/// Scans every installed browser's config roots under `home` (native and
+/// Flatpak, see `config_roots`) and returns one [`DiscoveredProfile`] per
+/// profile directory that contains a `Cookies` file. A root that does not
+/// exist contributes nothing.
 ///
 /// Profiles are returned browser-by-browser (Chrome, then Brave, then
-/// Edge), each browser's profiles sorted by directory name.
+/// Edge); within a browser the native install's profiles come before the
+/// Flatpak install's, each root's profiles sorted by directory name. A user
+/// with both installs therefore sees two profiles that may share a
+/// directory name (`Default`): harmless, since accounts are deduplicated by
+/// the Claude account uuid, never by profile.
 pub fn discover_profiles_under(home: &Path) -> Vec<DiscoveredProfile> {
     let mut out = Vec::new();
     for spec in SPECS {
-        let base = spec
-            .config_rel
-            .iter()
-            .fold(home.to_path_buf(), |p, part| p.join(part));
-        if !base.is_dir() {
-            continue;
-        }
-        let info_cache = read_info_cache(&base.join("Local State"));
-
-        let Ok(entries) = fs::read_dir(&base) else {
-            continue;
-        };
-        let mut dirs: Vec<String> = entries
-            .filter_map(Result::ok)
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .filter(|name| base.join(name).join("Cookies").is_file())
-            .collect();
-        dirs.sort();
-
-        for dir in dirs {
-            let entry = info_cache.as_ref().and_then(|m| m.get(&dir));
-            let display_name = entry.and_then(|e| e.name.clone());
-            let google_email = entry.and_then(|e| e.user_name.clone());
-            out.push(DiscoveredProfile {
-                browser: spec.browser.clone(),
-                keyring_app: spec.keyring_app.to_string(),
-                cookies_db: base.join(&dir).join("Cookies"),
-                profile_dir: dir,
-                display_name,
-                google_email,
-            });
+        for base in config_roots(home, spec) {
+            push_profiles_in(&base, spec, &mut out);
         }
     }
     out
+}
+
+/// Appends one [`DiscoveredProfile`] per `Cookies`-bearing subdirectory of
+/// `base` (one browser install's config dir), sorted by directory name,
+/// with display name and e-mail from that root's own `Local State`. A
+/// missing or unreadable `base` appends nothing.
+fn push_profiles_in(base: &Path, spec: &BrowserSpec, out: &mut Vec<DiscoveredProfile>) {
+    if !base.is_dir() {
+        return;
+    }
+    let info_cache = read_info_cache(&base.join("Local State"));
+
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
+    };
+    let mut dirs: Vec<String> = entries
+        .filter_map(Result::ok)
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| base.join(name).join("Cookies").is_file())
+        .collect();
+    dirs.sort();
+
+    for dir in dirs {
+        let entry = info_cache.as_ref().and_then(|m| m.get(&dir));
+        let display_name = entry.and_then(|e| e.name.clone());
+        let google_email = entry.and_then(|e| e.user_name.clone());
+        out.push(DiscoveredProfile {
+            browser: spec.browser.clone(),
+            keyring_app: spec.keyring_app.to_string(),
+            cookies_db: base.join(&dir).join("Cookies"),
+            profile_dir: dir,
+            display_name,
+            google_email,
+        });
+    }
 }
 
 /// Reads a profile's `Cookies` DB: copies it (and any `-wal`/`-shm`
@@ -408,5 +462,69 @@ mod tests {
     fn read_claude_cookie_db_missing_file_is_none() {
         let dir = tempfile::tempdir().unwrap();
         assert!(read_claude_cookie_db(&dir.path().join("nope/Cookies")).is_none());
+    }
+
+    #[test]
+    fn discovers_a_flatpak_brave_profile_under_var_app() {
+        let d = tempfile::tempdir().unwrap();
+        let cfg = d
+            .path()
+            .join(".var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser");
+        write(
+            &cfg.join("Local State"),
+            r#"{"profile":{"info_cache":{"Default":{"name":"Flat Brave","user_name":"flat@x.com"}}}}"#,
+        );
+        write(&cfg.join("Default/Cookies"), "");
+
+        let profiles = discover_profiles_under(d.path());
+        assert_eq!(profiles.len(), 1);
+        let p = &profiles[0];
+        assert!(matches!(p.browser, Browser::Brave));
+        // Same host keyring item as the native install: the Flathub manifest
+        // grants --talk-name=org.freedesktop.secrets and the `application`
+        // attribute is a compile-time constant of the browser.
+        assert_eq!(p.keyring_app, "brave");
+        assert_eq!(p.profile_dir, "Default");
+        // Local State is read from the Flatpak root, not ~/.config.
+        assert_eq!(p.display_name.as_deref(), Some("Flat Brave"));
+        assert_eq!(p.google_email.as_deref(), Some("flat@x.com"));
+        assert!(p.cookies_db.ends_with(
+            ".var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser/Default/Cookies"
+        ));
+    }
+
+    #[test]
+    fn native_and_flatpak_installs_of_one_browser_are_both_discovered_grouped_by_browser() {
+        let d = tempfile::tempdir().unwrap();
+        write(&d.path().join(".config/google-chrome/Default/Cookies"), "");
+        write(
+            &d.path()
+                .join(".var/app/com.google.Chrome/config/google-chrome/Default/Cookies"),
+            "",
+        );
+        write(
+            &d.path()
+                .join(".config/BraveSoftware/Brave-Browser/Default/Cookies"),
+            "",
+        );
+
+        let profiles = discover_profiles_under(d.path());
+        let browsers: Vec<&Browser> = profiles.iter().map(|p| &p.browser).collect();
+        assert_eq!(
+            browsers,
+            vec![&Browser::Chrome, &Browser::Chrome, &Browser::Brave]
+        );
+        assert!(profiles[0].cookies_db.starts_with(d.path().join(".config")));
+        assert!(profiles[1]
+            .cookies_db
+            .starts_with(d.path().join(".var/app")));
+    }
+
+    #[test]
+    fn flathub_id_is_known_for_each_linux_browser_and_absent_for_arc() {
+        assert_eq!(flathub_id(&Browser::Chrome), Some("com.google.Chrome"));
+        assert_eq!(flathub_id(&Browser::Brave), Some("com.brave.Browser"));
+        assert_eq!(flathub_id(&Browser::Edge), Some("com.microsoft.Edge"));
+        assert_eq!(flathub_id(&Browser::Arc), None);
     }
 }
