@@ -85,9 +85,10 @@ struct SettingsView: View {
 
                 Spacer()
 
-                Button("Re-sync All") {
+                Button(viewModel.resyncAllProgress.map { "Re-syncing\u{2026} (\($0.done)/\($0.total))" } ?? "Re-sync All") {
                     Task { await viewModel.resyncAll() }
                 }
+                .disabled(viewModel.resyncAllProgress != nil)
             }
             .padding()
 

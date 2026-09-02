@@ -31,6 +31,8 @@ final class DashboardViewModel: ObservableObject {
     }
 
     @Published var navigation: NavigationDestination = .dashboard
+    /// Non-nil while a "Re-sync All" pass runs: (accounts re-synced so far, total).
+    @Published private(set) var resyncAllProgress: (done: Int, total: Int)?
     @Published var isPresentingSettings = false
     @Published var lastLogsUpdatedAt: Date = .distantPast
 
@@ -385,9 +387,18 @@ final class DashboardViewModel: ObservableObject {
     /// over the whole fleet (N x N usage fetches), and each pass would wipe the
     /// message left by an account that failed to re-sync.
     func resyncAll() async {
+        // Set synchronously, before any await: a re-entrant call (double click on
+        // the settings button) must see it and bail out here rather than start a
+        // second overlapping pass.
+        guard resyncAllProgress == nil else { return }
+        let accounts = accountStore.accounts
+        resyncAllProgress = (done: 0, total: accounts.count)
+        defer { resyncAllProgress = nil }
+
         var refreshable: Set<UUID> = []
-        for account in accountStore.accounts {
+        for (index, account) in accounts.enumerated() {
             if await resyncCore(account.id) { refreshable.insert(account.id) }
+            resyncAllProgress = (done: index + 1, total: accounts.count)
         }
         guard !refreshable.isEmpty else { return }
         await refreshAll(only: refreshable)

@@ -528,6 +528,66 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertNotNil(vm.accountStates.first?.usage, "the card must show the usage it just fetched")
     }
 
+    /// Double-clicking "Re-sync All" must not spawn a second overlapping pass:
+    /// the second call has to bail out while the first is still running.
+    func testResyncAllIgnoresAReentrantCallWhileRunning() async throws {
+        let counter = RequestCounter()
+        let (vm, store) = try makeViewModelWithStore(cookieProvider: { path, _ in
+            ChromeCookieResult(sessionKey: path == "Profile 1" ? "sk-1" : "sk-2", orgId: "org-good")
+        })
+        // The view model starts a whole-fleet refresh in `init`. Let it finish here,
+        // against an empty store, so it cannot land in the middle of what this test
+        // measures.
+        try await Task.sleep(nanoseconds: 100_000_000)
+        store.addAccount(makeAccount(orgId: "org-good", email: "a@example.com",
+                                     accountUuid: "acct-1", profilePath: "Profile 1"))
+        store.addAccount(makeAccount(orgId: "org-good", email: "b@example.com",
+                                     accountUuid: "acct-2", profilePath: "Profile 2"))
+        respondPerSessionKey(counter) { $0.contains("sk-1") ? "acct-1" : "acct-2" }
+        await Task.yield()
+        XCTAssertEqual(vm.accountStates.count, 2, "sanity: both accounts must reach accountStates")
+
+        // Both start on the MainActor; the second reaches the guard while the first
+        // is suspended on its own awaits, because progress is set before any await.
+        async let first: Void = vm.resyncAll()
+        async let second: Void = vm.resyncAll()
+        _ = await (first, second)
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(counter.count(pathSuffix: "/usage"), 2,
+                       "a re-entrant Re-sync All must be ignored, not run a second pass")
+    }
+
+    /// The settings button binds to `resyncAllProgress`: non-nil (with a running
+    /// count) while the pass runs, nil again when it ends — success or not.
+    func testResyncAllPublishesProgressAndClearsItWhenDone() async throws {
+        let counter = RequestCounter()
+        let (vm, store) = try makeViewModelWithStore(cookieProvider: { path, _ in
+            ChromeCookieResult(sessionKey: path == "Profile 1" ? "sk-1" : "sk-2", orgId: "org-good")
+        })
+        try await Task.sleep(nanoseconds: 100_000_000)
+        store.addAccount(makeAccount(orgId: "org-good", email: "a@example.com",
+                                     accountUuid: "acct-1", profilePath: "Profile 1"))
+        store.addAccount(makeAccount(orgId: "org-good", email: "b@example.com",
+                                     accountUuid: "acct-2", profilePath: "Profile 2"))
+        respondPerSessionKey(counter) { $0.contains("sk-1") ? "acct-1" : "acct-2" }
+        await Task.yield()
+        XCTAssertEqual(vm.accountStates.count, 2, "sanity: both accounts must reach accountStates")
+
+        var seen: [(done: Int, total: Int)?] = []
+        let cancellable = vm.$resyncAllProgress.sink { seen.append($0) }
+        defer { cancellable.cancel() }
+
+        await vm.resyncAll()
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertNil(vm.resyncAllProgress, "progress must clear when the pass ends")
+        XCTAssertTrue(seen.contains { $0?.total == 2 },
+                      "progress must have been published with total = 2 during the run")
+        XCTAssertTrue(seen.contains { $0?.done == 2 },
+                      "done must reach the account count before clearing")
+    }
+
     /// A re-sync failure message must survive the refresh that follows another
     /// account's successful re-sync.
     func testResyncAllKeepsTheFailureMessageOfAnAccountWithNoCookies() async throws {
