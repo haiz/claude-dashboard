@@ -60,8 +60,9 @@ struct Candidate {
 
 /// Outcome of decrypting one profile's Claude cookies.
 enum ProfileScan {
-    /// At least one cookie was a `v12` blob — skip the whole profile.
-    UnsupportedV12,
+    /// At least one cookie was a `v12` blob and no portal secret is
+    /// available — skip the whole profile.
+    NoPortalSecret,
     /// No `sessionKey` cookie decrypted — not a Claude session.
     NoSession,
     /// A `sessionKey` was found (with the `lastActiveOrg`-derived org id, if
@@ -105,7 +106,7 @@ pub fn run_sync() -> i32 {
                 session_key,
                 org_id,
             }),
-            ProfileScan::UnsupportedV12 | ProfileScan::NoSession => continue,
+            ProfileScan::NoPortalSecret | ProfileScan::NoSession => continue,
         }
     }
 
@@ -218,7 +219,7 @@ fn scan_profile(profile: &DiscoveredProfile, source: &PasswordSource) -> Profile
                 "lastActiveOrg" => org_id = Some(value),
                 _ => {}
             },
-            Err(CookieError::UnsupportedV12) => return ProfileScan::UnsupportedV12,
+            Err(CookieError::NoPortalSecret) => return ProfileScan::NoPortalSecret,
             Err(_) => continue,
         }
     }

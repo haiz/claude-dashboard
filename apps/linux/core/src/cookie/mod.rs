@@ -14,9 +14,15 @@
 //!   `fd621fe5a2b402539dfa147ca9272778`.
 //! - **v11**: key derived from the desktop "Safe Storage" secret, looked up via
 //!   `secret-tool` (`freedesktop_secret_key_provider.cc:42,744-751`).
-//! - **v12**: secret-portal path, HKDF-SHA256 + AES-256-GCM — a different
-//!   scheme entirely. Out of scope here; detected and reported as
-//!   [`CookieError::UnsupportedV12`] rather than attempted.
+//! - **v12**: secret-portal path — HKDF-SHA256 over the portal secret (salt
+//!   `"fdo_portal_secret_salt"`, info `"HKDF-SHA-256 AES-256-GCM"`, 32-byte
+//!   key: `secret_portal_key_provider.cc:38-39,200-205`), then AES-256-GCM
+//!   with the nonce as the first 12 bytes of the body
+//!   (`encryptor.cc:36,170-176`). Requires [`PasswordSource::Portal`];
+//!   without it a v12 blob reports [`CookieError::NoPortalSecret`].
+//!   *Fetching* the portal secret is not this module's job — see the sync
+//!   helper; as of this commit no fetcher exists yet, so v12 profiles are
+//!   still skipped at runtime.
 //! - Cookie DB schema **>= 24**: the decrypted plaintext is prefixed with
 //!   `SHA256(host_key)` (32 bytes), which must be stripped
 //!   (`net/extras/sqlite/sqlite_persistent_cookie_store.cc:213-214,1042-1050`).
@@ -38,13 +44,15 @@ const IV: [u8; 16] = [0x20; 16];
 pub enum PasswordSource {
     HardcodedV10,
     Keyring(String),
+    /// Raw secret retrieved from the XDG secret portal, for `v12` cookies.
+    Portal(Vec<u8>),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum CookieError {
-    /// The cookie is encrypted with the v12 (secret-portal, AES-256-GCM)
-    /// scheme, which this module does not implement.
-    UnsupportedV12,
+    /// The cookie is a v12 (secret-portal, AES-256-GCM) blob but no portal
+    /// secret was supplied ([`PasswordSource::Portal`]).
+    NoPortalSecret,
     /// Fewer than 3 bytes — no room for the version tag.
     TooShort,
     /// AES-CBC/PKCS7 decryption failed (wrong key, or the body's length isn't
@@ -79,7 +87,10 @@ pub fn decrypt_cookie_value(
     }
     let tag = &encrypted[..3];
     if tag == b"v12" {
-        return Err(CookieError::UnsupportedV12);
+        let PasswordSource::Portal(portal_secret) = source else {
+            return Err(CookieError::NoPortalSecret);
+        };
+        return decrypt_v12(&encrypted[3..], portal_secret, host_key, db_schema_version);
     }
     let key = match (tag, source) {
         (b"v11", PasswordSource::Keyring(secret)) => derive_key(secret.as_bytes()),
@@ -92,15 +103,47 @@ pub fn decrypt_cookie_value(
     let mut pt = cbc::Decryptor::<Aes128>::new(&key.into(), &IV.into())
         .decrypt_padded_vec_mut::<Pkcs7>(body)
         .map_err(|_| CookieError::DecryptFailed)?;
+    strip_domain_hash(&mut pt, host_key, db_schema_version);
+    String::from_utf8(pt).map_err(|_| CookieError::BadUtf8)
+}
+
+/// Decrypts a `v12` (secret-portal) body: 12-byte GCM nonce, then
+/// AES-256-GCM ciphertext+tag, key = HKDF-SHA256(portal secret) with
+/// Chromium's fixed salt/info (module docs cite the source lines).
+fn decrypt_v12(
+    body: &[u8],
+    portal_secret: &[u8],
+    host_key: &str,
+    db_schema_version: i64,
+) -> Result<String, CookieError> {
+    use aes_gcm::aead::Aead;
+    use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+
+    // Minimum: 12-byte nonce + 16-byte GCM tag (empty plaintext).
+    if body.len() < 12 + 16 {
+        return Err(CookieError::DecryptFailed);
+    }
+    let mut key = [0u8; 32];
+    hkdf::Hkdf::<Sha256>::new(Some(b"fdo_portal_secret_salt"), portal_secret)
+        .expand(b"HKDF-SHA-256 AES-256-GCM", &mut key)
+        .expect("32 bytes is a valid HKDF-SHA256 output length");
+    let mut pt = Aes256Gcm::new(&key.into())
+        .decrypt(Nonce::from_slice(&body[..12]), &body[12..])
+        .map_err(|_| CookieError::DecryptFailed)?;
+    strip_domain_hash(&mut pt, host_key, db_schema_version);
+    String::from_utf8(pt).map_err(|_| CookieError::BadUtf8)
+}
+
+/// Strips the schema->=24 `SHA256(host_key)` plaintext prefix in place; on a
+/// mismatch the bytes are left as-is (spike behaviour — a wrong key already
+/// failed PKCS7/GCM before reaching this).
+fn strip_domain_hash(pt: &mut Vec<u8>, host_key: &str, db_schema_version: i64) {
     if db_schema_version >= 24 {
         let want = Sha256::digest(host_key.as_bytes());
         if pt.len() >= 32 && pt[..32] == want[..] {
             pt.drain(..32);
         }
-        // mismatch: leave bytes as-is (spike behaviour) — a wrong key would
-        // already have failed PKCS7 above in practice.
     }
-    String::from_utf8(pt).map_err(|_| CookieError::BadUtf8)
 }
 
 /// Fetches the desktop "Safe Storage" secret via `secret-tool` (the
@@ -204,13 +247,84 @@ mod tests {
         assert_eq!(got, "sk-ant-sid01-V11");
     }
 
+    // Encrypt exactly as Chromium's secret-portal path would (v12, schema >=24
+    // domain prefix): HKDF-SHA256(portal secret, salt "fdo_portal_secret_salt",
+    // info "HKDF-SHA-256 AES-256-GCM") -> AES-256-GCM, nonce prefixed to the body.
+    fn make_v12(host: &str, secret: &str, portal_secret: &[u8]) -> Vec<u8> {
+        use aes_gcm::aead::Aead;
+        use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+        let mut key = [0u8; 32];
+        hkdf::Hkdf::<Sha256>::new(Some(b"fdo_portal_secret_salt"), portal_secret)
+            .expand(b"HKDF-SHA-256 AES-256-GCM", &mut key)
+            .unwrap();
+        let mut pt = Sha256::digest(host.as_bytes()).to_vec();
+        pt.extend_from_slice(secret.as_bytes());
+        let nonce = [0x24u8; 12];
+        let ct = Aes256Gcm::new(&key.into())
+            .encrypt(Nonce::from_slice(&nonce), pt.as_slice())
+            .unwrap();
+        let mut out = b"v12".to_vec();
+        out.extend_from_slice(&nonce);
+        out.extend_from_slice(&ct);
+        out
+    }
+
     #[test]
-    fn v12_is_unsupported() {
-        let blob = b"v12\x00\x01\x02".to_vec();
-        assert!(matches!(
-            decrypt_cookie_value(&blob, "claude.ai", 24, &PasswordSource::HardcodedV10),
-            Err(CookieError::UnsupportedV12)
-        ));
+    fn v12_roundtrip_with_domain_prefix() {
+        let blob = make_v12("claude.ai", "sk-ant-sid01-V12", b"portal-master-secret");
+        let got = decrypt_cookie_value(
+            &blob,
+            "claude.ai",
+            24,
+            &PasswordSource::Portal(b"portal-master-secret".to_vec()),
+        )
+        .unwrap();
+        assert_eq!(got, "sk-ant-sid01-V12");
+    }
+
+    #[test]
+    fn v12_without_portal_secret_reports_no_portal_secret() {
+        let blob = make_v12("claude.ai", "sk-ant-sid01-V12", b"portal-master-secret");
+        for source in [
+            PasswordSource::HardcodedV10,
+            PasswordSource::Keyring("safe-storage".into()),
+        ] {
+            assert!(matches!(
+                decrypt_cookie_value(&blob, "claude.ai", 24, &source),
+                Err(CookieError::NoPortalSecret)
+            ));
+        }
+    }
+
+    #[test]
+    fn v12_tampered_ciphertext_fails_gcm_auth() {
+        let mut blob = make_v12("claude.ai", "sk-ant-sid01-V12", b"portal-master-secret");
+        let last = blob.len() - 1;
+        blob[last] ^= 0x01;
+        assert_eq!(
+            decrypt_cookie_value(
+                &blob,
+                "claude.ai",
+                24,
+                &PasswordSource::Portal(b"portal-master-secret".to_vec()),
+            ),
+            Err(CookieError::DecryptFailed)
+        );
+    }
+
+    #[test]
+    fn v12_body_shorter_than_nonce_plus_tag_fails() {
+        // 3-byte tag + 27 bytes: one short of the 12-byte nonce + 16-byte GCM tag minimum.
+        let blob = [b"v12".as_slice(), &[0u8; 27]].concat();
+        assert_eq!(
+            decrypt_cookie_value(
+                &blob,
+                "claude.ai",
+                24,
+                &PasswordSource::Portal(b"portal-master-secret".to_vec()),
+            ),
+            Err(CookieError::DecryptFailed)
+        );
     }
 
     #[test]
