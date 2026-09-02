@@ -72,7 +72,7 @@ if $SHOW_HELP; then
 Usage: claude-dashboard-cli [command] [options]
 
 Commands:
-  sync              Scan Chrome for Claude sessions and save accounts
+  sync              Scan Chrome, Arc, Brave, or Edge for Claude sessions and save accounts
   (default)         Show usage dashboard
 
 Options:
@@ -177,6 +177,17 @@ format_reset_time() {
     echo "${day} ${hour}${ampm}"
 }
 
+# Fable has no top-level usage field: it is derived from the limits[] entry
+# whose scope.model.display_name is "Fable", reading percent (not utilization).
+# Rule and cases: contract/cases/usage-decoding.json. Prints "percent<TAB>resets_at"
+# (resets_at may be empty), or nothing when no Fable entry exists.
+fable_from_usage_json() {
+    echo "$1" | jq -r '
+        [.limits[]? | select(.scope.model.display_name? == "Fable")][0]
+        | if . == null then empty else "\(.percent // 0)\t\(.resets_at // "")" end
+    ' 2>/dev/null || true
+}
+
 # --- Render Functions ---
 
 render_header() {
@@ -198,7 +209,7 @@ render_card() {
     local name="$1" plan="$2" status="$3"
     local pct_5h="$4" reset_5h="$5"
     local pct_7d="$6" reset_7d="$7"
-    local pct_sonnet="$8" reset_sonnet="$9"
+    local pct_fable="$8" reset_fable="$9"
 
     local pcolor
     pcolor=$(plan_color "$plan")
@@ -232,8 +243,8 @@ render_card() {
     else
         render_usage_row "5h" "$pct_5h" "$reset_5h"
         render_usage_row "7d" "$pct_7d" "$reset_7d"
-        if [[ -n "$pct_sonnet" && "$pct_sonnet" != "null" && "$pct_sonnet" != "" ]]; then
-            render_usage_row "S " "$pct_sonnet" "$reset_sonnet"
+        if [[ -n "$pct_fable" && "$pct_fable" != "null" && "$pct_fable" != "" ]]; then
+            render_usage_row "F " "$pct_fable" "$reset_fable"
         fi
     fi
 
@@ -322,7 +333,8 @@ fetch_and_render() {
         usage_json=$("$HELPER" usage "$orgId" "$sessionKey" 2>/dev/null) || usage_json="{}"
         [[ -z "$usage_json" ]] && usage_json="{}"
 
-        local pct_5h pct_7d reset_5h_raw reset_7d_raw reset_5h reset_7d pct_sonnet reset_sonnet_raw reset_sonnet
+        local pct_5h pct_7d reset_5h_raw reset_7d_raw reset_5h reset_7d
+        local fable_line pct_fable reset_fable_raw reset_fable
 
         pct_5h=$(echo "$usage_json" | jq -r '.five_hour.utilization // 0' 2>/dev/null || echo 0)
         pct_7d=$(echo "$usage_json" | jq -r '.seven_day.utilization // 0' 2>/dev/null || echo 0)
@@ -331,18 +343,27 @@ fetch_and_render() {
         reset_5h=$(format_reset_time "$reset_5h_raw")
         reset_7d=$(format_reset_time "$reset_7d_raw")
 
-        # Sonnet (optional)
-        pct_sonnet=$(echo "$usage_json" | jq -r '.seven_day_sonnet.utilization // empty' 2>/dev/null || echo "")
-        reset_sonnet_raw=$(echo "$usage_json" | jq -r '.seven_day_sonnet.resets_at // ""' 2>/dev/null || echo "")
-        reset_sonnet=$(format_reset_time "$reset_sonnet_raw")
+        # Fable (optional) — derived from limits[], see fable_from_usage_json
+        fable_line=$(fable_from_usage_json "$usage_json")
+        pct_fable="" reset_fable_raw=""
+        if [[ -n "$fable_line" ]]; then
+            pct_fable="${fable_line%%$'\t'*}"
+            reset_fable_raw="${fable_line#*$'\t'}"
+        fi
+        reset_fable=$(format_reset_time "$reset_fable_raw")
 
         render_card "$name" "$plan" "$status" \
             "$pct_5h" "$reset_5h" \
             "$pct_7d" "$reset_7d" \
-            "$pct_sonnet" "$reset_sonnet"
+            "$pct_fable" "$reset_fable"
         printf '\n'
     done
 }
+
+# When sourced by a test, stop here: definitions only, no dashboard.
+if [[ -n "${CLAUDE_DASHBOARD_CLI_TEST:-}" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
 
 # --- Entry Point ---
 

@@ -172,6 +172,10 @@ Source: `apps/macos/Shared/UsageData.swift:90-103` (the custom
 - Line 99: `.first { $0.scope?.model?.displayName == "Fable" }`
 - Line 100: `.map { UsageLimit(utilization: $0.percent ?? 0, resetsAt: $0.resetsAt) }`
 
+The bash CLI derives the same window in `cli/claude-dashboard-cli`
+(`fable_from_usage_json`) for its third usage row, checked against
+`cases/usage-decoding.json` by `scripts/test-cli-usage.sh`.
+
 If a `weekly_scoped` / `Fable` entry exists but its own `percent` is
 missing, utilization defaults to `0` (it is *not* treated as "no Fable
 window" — that only happens when no matching entry exists at all, or the

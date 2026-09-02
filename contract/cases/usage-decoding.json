@@ -123,5 +123,24 @@
       "fable_utilization": null,
       "fable_resets_at_epoch": null
     }
+  },
+  {
+    "name": "fable entry with missing percent defaults to 0, not to no-window",
+    "input": {
+      "five_hour": { "utilization": 1.0, "resets_at": null },
+      "seven_day": { "utilization": 2.0, "resets_at": null },
+      "limits": [
+        { "kind": "weekly_scoped", "group": "weekly", "resets_at": null, "scope": { "model": { "id": null, "display_name": "Fable" }, "surface": null } }
+      ]
+    },
+    "expect": {
+      "five_hour_utilization": 1.0,
+      "five_hour_resets_at_epoch": null,
+      "seven_day_utilization": 2.0,
+      "seven_day_resets_at_epoch": null,
+      "fable_present": true,
+      "fable_utilization": 0.0,
+      "fable_resets_at_epoch": null
+    }
   }
 ]
