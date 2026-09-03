@@ -247,18 +247,25 @@ pub fn run_sync() -> i32 {
 ///   frontend reads `/.flatpak-info`. For Chrome it equals the scope id
 ///   above, so it also covers a host install that does carry that desktop
 ///   file.
+/// - `snap.<name>` ([`browser::snap_name`]) — a strict snap, which the
+///   frontend identifies from the caller's cgroup (`xdp-app-info-snap.c`).
+///   Only Brave has an official snap. Its `password-manager-service` plug is
+///   not auto-connected, so out of the box the snap cannot reach the secret
+///   service at all and writes `v10`; this id matters only once a user has
+///   run `snap connect` and enabled the portal-encryption feature.
 ///
 /// The libsecret `application` name (`"chrome"`, `"brave"`, ...) is
 /// deliberately *not* a candidate: no code path in Chromium or the portal
 /// produces it as an `app_id`. Not covered, and recorded as such in the
-/// spike doc: Brave/Edge scope ids (fork-defined, unverified) and Snap
-/// installs (`snap.<name>`, not discovered either).
+/// spike doc: Brave/Edge scope ids (fork-defined, unverified), and none of
+/// the Flatpak/Snap ids has been observed against a real sandboxed install.
 ///
 /// Trying several is safe: a wrong secret fails AES-256-GCM authentication,
 /// so it can never yield a wrong plaintext.
 fn portal_app_id_candidates(profile: &DiscoveredProfile) -> Vec<String> {
     let mut out = vec![String::new()];
     out.extend(browser::flathub_id(&profile.browser).map(String::from));
+    out.extend(browser::snap_name(&profile.browser).map(|name| format!("snap.{name}")));
     out
 }
 
@@ -447,7 +454,9 @@ mod tests {
     fn portal_candidates_cover_each_linux_browser_and_skip_arc() {
         assert_eq!(
             portal_app_id_candidates(&profile(Browser::Brave, "brave")),
-            vec!["", "com.brave.Browser"]
+            // Brave is the only supported browser with an official snap, so it
+            // alone gets the `snap.<name>` id xdg-desktop-portal assigns.
+            vec!["", "com.brave.Browser", "snap.brave"]
         );
         assert_eq!(
             portal_app_id_candidates(&profile(Browser::Edge, "microsoft-edge")),

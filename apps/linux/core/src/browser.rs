@@ -5,11 +5,12 @@
 //! reproduces, adapted to Linux's Chromium layout (proven in Spike 0):
 //!
 //! - Profiles live under `$XDG_CONFIG_HOME/{google-chrome, BraveSoftware/
-//!   Brave-Browser, microsoft-edge}`, scanned at two roots: `~/.config`
-//!   (native install) and `~/.var/app/<flathub id>/config` (Flatpak
+//!   Brave-Browser, microsoft-edge}`, scanned at up to three roots:
+//!   `~/.config` (native install), `~/.var/app/<flathub id>/config` (Flatpak
 //!   install; the three Flathub manifests keep Flatpak's default config
-//!   home and pass no `--user-data-dir`). Snap installs (`~/snap/...`) are
-//!   not scanned. Arc has no Linux build, so it is omitted.
+//!   home and pass no `--user-data-dir`) and, for Brave only,
+//!   `~/snap/brave/current/.config` (the official snap; Chrome and Edge
+//!   have none). Arc has no Linux build, so it is omitted.
 //! - A profile is any immediate subdirectory of that config dir that
 //!   contains a `Cookies` file (`Default`, `Profile 1`, ...).
 //! - The display name and Google account e-mail come from the browser's
@@ -36,18 +37,23 @@ use serde_json::Value;
 use crate::model::Browser;
 
 /// One supported Chromium browser's Linux config layout and keyring
-/// application name. The same browser can be installed natively or as a
-/// Flatpak; both installs share `subdir` and `keyring_app`, only the config
-/// root differs (see [`config_roots`]).
+/// application name. The same browser can be installed natively, as a
+/// Flatpak or (Brave) as a snap; all installs share `subdir` and
+/// `keyring_app`, only the config root differs (see [`config_roots`]).
 struct BrowserSpec {
     browser: Browser,
     /// Path components of the browser's own config directory, relative to
     /// `$XDG_CONFIG_HOME` (`~/.config` natively,
-    /// `~/.var/app/<flatpak_id>/config` inside the Flatpak sandbox).
+    /// `~/.var/app/<flatpak_id>/config` inside the Flatpak sandbox,
+    /// `~/snap/<snap_name>/current/.config` inside a strict snap, whose
+    /// `HOME` is the revision directory).
     subdir: &'static [&'static str],
     /// The Flathub application id. Doubles as the portal `app_id` a
     /// sandboxed install presents (`/.flatpak-info` `[Application] name`).
     flatpak_id: &'static str,
+    /// The Snap Store name of the browser's official snap, if one exists.
+    /// xdg-desktop-portal presents a snapped caller as `snap.<snap_name>`.
+    snap_name: Option<&'static str>,
     /// The `application` attribute used to look up the Safe Storage secret
     /// via `secret-tool` (see [`crate::cookie::keyring_password`]). Identical
     /// for native and Flatpak installs: the Flathub manifests grant
@@ -63,18 +69,21 @@ const SPECS: &[BrowserSpec] = &[
         browser: Browser::Chrome,
         subdir: &["google-chrome"],
         flatpak_id: "com.google.Chrome",
+        snap_name: None,
         keyring_app: "chrome",
     },
     BrowserSpec {
         browser: Browser::Brave,
         subdir: &["BraveSoftware", "Brave-Browser"],
         flatpak_id: "com.brave.Browser",
+        snap_name: Some("brave"),
         keyring_app: "brave",
     },
     BrowserSpec {
         browser: Browser::Edge,
         subdir: &["microsoft-edge"],
         flatpak_id: "com.microsoft.Edge",
+        snap_name: None,
         keyring_app: "microsoft-edge",
     },
 ];
@@ -90,19 +99,47 @@ pub fn flathub_id(browser: &Browser) -> Option<&'static str> {
         .map(|s| s.flatpak_id)
 }
 
+/// The Snap Store name of a browser's official snap: `Some("brave")` for
+/// Brave, `None` for Chrome and Edge (no official snap) and Arc (no Linux
+/// build). The single source for that name: profile discovery derives the
+/// snap config root from it, and `sync` tries `snap.<name>` as a portal
+/// `app_id` for `v12` cookies.
+pub fn snap_name(browser: &Browser) -> Option<&'static str> {
+    SPECS
+        .iter()
+        .find(|s| s.browser == *browser)
+        .and_then(|s| s.snap_name)
+}
+
 /// The config roots to scan for one browser: the native install's
 /// `~/.config/<subdir>` first, then the Flatpak install's
 /// `~/.var/app/<flatpak_id>/config/<subdir>` (Flatpak's default
 /// `XDG_CONFIG_HOME`; none of the three Flathub manifests overrides it or
-/// passes `--user-data-dir`).
-fn config_roots(home: &Path, spec: &BrowserSpec) -> [PathBuf; 2] {
+/// passes `--user-data-dir`), then, for a browser with an official snap,
+/// `~/snap/<snap_name>/current/.config/<subdir>`. snapd sets a strict
+/// snap's `HOME` to `~/snap/<name>/<revision>` (`snapenv.go`), the gnome
+/// extension's `desktop-launch` then exports
+/// `XDG_CONFIG_HOME=$SNAP_USER_DATA/.config` (the same directory), and
+/// Brave resolves its data dir from `XDG_CONFIG_HOME` (`chrome_paths_linux.cc`).
+/// The snap path deliberately goes through the `current` symlink, which
+/// `snap run` creates and repairs on every launch
+/// (`createOrUpdateUserDataSymlink`): a stored `cookies_db` then survives
+/// the refresh that moves data to a new revision directory.
+fn config_roots(home: &Path, spec: &BrowserSpec) -> Vec<PathBuf> {
     let native = home.join(".config");
     let flatpak = home
         .join(".var")
         .join("app")
         .join(spec.flatpak_id)
         .join("config");
-    [native, flatpak].map(|root| spec.subdir.iter().fold(root, |p, part| p.join(part)))
+    let snap = spec
+        .snap_name
+        .map(|name| home.join("snap").join(name).join("current").join(".config"));
+    [Some(native), Some(flatpak), snap]
+        .into_iter()
+        .flatten()
+        .map(|root| spec.subdir.iter().fold(root, |p, part| p.join(part)))
+        .collect()
 }
 
 /// A browser profile found on disk that carries a `Cookies` database.
@@ -526,5 +563,83 @@ mod tests {
         assert_eq!(flathub_id(&Browser::Brave), Some("com.brave.Browser"));
         assert_eq!(flathub_id(&Browser::Edge), Some("com.microsoft.Edge"));
         assert_eq!(flathub_id(&Browser::Arc), None);
+    }
+
+    #[test]
+    fn discovers_a_snap_brave_profile_through_the_current_symlink() {
+        let d = tempfile::tempdir().unwrap();
+        // snapd layout: HOME=~/snap/brave/<revision>, `current` -> <revision>.
+        let rev = d.path().join("snap/brave/x676");
+        let cfg = rev.join(".config/BraveSoftware/Brave-Browser");
+        write(
+            &cfg.join("Local State"),
+            r#"{"profile":{"info_cache":{"Default":{"name":"Snap Brave","user_name":"snap@x.com"}}}}"#,
+        );
+        write(&cfg.join("Default/Cookies"), "");
+        std::os::unix::fs::symlink(&rev, d.path().join("snap/brave/current")).unwrap();
+
+        let profiles = discover_profiles_under(d.path());
+        assert_eq!(profiles.len(), 1);
+        let p = &profiles[0];
+        assert!(matches!(p.browser, Browser::Brave));
+        assert_eq!(p.keyring_app, "brave");
+        assert_eq!(p.profile_dir, "Default");
+        assert_eq!(p.display_name.as_deref(), Some("Snap Brave"));
+        assert_eq!(p.google_email.as_deref(), Some("snap@x.com"));
+        // The stored path goes through `current`, so it survives a snap
+        // refresh that moves the data to a new revision directory.
+        assert!(p
+            .cookies_db
+            .ends_with("snap/brave/current/.config/BraveSoftware/Brave-Browser/Default/Cookies"));
+    }
+
+    #[test]
+    fn native_flatpak_and_snap_installs_of_brave_are_returned_in_that_order() {
+        let d = tempfile::tempdir().unwrap();
+        write(
+            &d.path()
+                .join("snap/brave/current/.config/BraveSoftware/Brave-Browser/Default/Cookies"),
+            "",
+        );
+        write(
+            &d.path().join(
+                ".var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser/Default/Cookies",
+            ),
+            "",
+        );
+        write(
+            &d.path()
+                .join(".config/BraveSoftware/Brave-Browser/Default/Cookies"),
+            "",
+        );
+
+        let profiles = discover_profiles_under(d.path());
+        let roots: Vec<PathBuf> = profiles
+            .iter()
+            .map(|p| {
+                p.cookies_db
+                    .strip_prefix(d.path())
+                    .unwrap()
+                    .iter()
+                    .take(1)
+                    .collect()
+            })
+            .collect();
+        assert_eq!(
+            roots,
+            vec![
+                PathBuf::from(".config"),
+                PathBuf::from(".var"),
+                PathBuf::from("snap")
+            ]
+        );
+    }
+
+    #[test]
+    fn only_brave_has_an_official_snap() {
+        assert_eq!(snap_name(&Browser::Brave), Some("brave"));
+        assert_eq!(snap_name(&Browser::Chrome), None);
+        assert_eq!(snap_name(&Browser::Edge), None);
+        assert_eq!(snap_name(&Browser::Arc), None);
     }
 }

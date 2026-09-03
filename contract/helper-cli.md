@@ -172,7 +172,8 @@ location and browser-cookie discovery mechanism are platform detail (see
   the portal simply never emits it. The skip is a skip, not an error: the run
   continues and its exit code is unaffected. The Linux scan covers native and
   Flatpak installs of each browser (`~/.config/...` and
-  `~/.var/app/<flathub id>/config/...`); Snap installs are not scanned.
+  `~/.var/app/<flathub id>/config/...`) plus Brave's official snap
+  (`~/snap/brave/current/.config/...`); Chrome and Edge have no snap.
 - The command always exits 0 once it finishes scanning (line 97), even when
   zero accounts were added; failure is only for the "no profiles with Claude
   sessions found at all" case (line 13-17, exit 1).
