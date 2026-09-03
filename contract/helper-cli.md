@@ -141,28 +141,48 @@ location and browser-cookie discovery mechanism are platform detail (see
   no `uuid` (expired, revoked) is skipped with `  Skipping <profile> (session
   expired)`, not treated as an error for the whole run (line 33-36).
 - A Claude account already present in the store is skipped with `  Skipping
-  <profile> (already added)` (line 42-49). "Already added" means **the same
+  <profile> (already added)` (line 42-59) — skipped for *adding*; its stored
+  plan tier is still refreshed, see the plan-refresh bullet below. "Already
+  added" means **the same
   Claude account**, decided by `AccountIdentity.isDuplicate` — *not* the same
   browser profile, and never the same `orgId`. Two members of one
   organization are two accounts; two Claude accounts reached from one browser
   profile are also two accounts. `contract/cases/dedupe.json` is the rule.
 - The `orgId` written to the account is chosen by
   `AccountIdentity.resolveOrgId` from the account's memberships, with the
-  `lastActiveOrg` cookie as a preference only (line 51-55).
+  `lastActiveOrg` cookie as a preference only (line 61-65).
   `contract/cases/org-selection.json` is the rule. When it resolves to
   nothing the candidate is skipped with `  Skipping <profile> (no usable
   org)` — an unresolvable org is never persisted as a working account.
 - Plan tier for a newly-added account comes from `OrgInfo.planHint` for the
   organization matching the resolved `orgId`, defaulting to `.pro` if no
-  match is found (line 57-58) — this is a fallback distinct from
+  match is found (line 67-68) — this is a fallback distinct from
   `detectPlanTier`'s own `nil` case documented in `README.md`'s "Plan tier"
   section. `GET /api/organizations` is consulted for this and nothing else.
 - A failed or empty `/api/organizations` fetch does not skip the candidate:
   session validity is established by `/api/account` above, not this call, so
   a failure here only leaves the plan at the `.pro` fallback and the account
-  is still persisted (`apps/macos/Helper/SyncCommand.swift:57-58`,
-  `apps/linux/helper/src/sync.rs:188-191`).
-- Every persisted account carries `accountUuid` (line 72).
+  is still persisted (`apps/macos/Helper/SyncCommand.swift:67-68`,
+  `apps/linux/helper/src/sync.rs:193-197`). The next bullet is what keeps that
+  fallback from being permanent.
+- The plan tier of an account skipped as a duplicate is **refreshed**
+  (`apps/macos/Helper/SyncCommand.swift:48-57`,
+  `apps/linux/helper/src/sync.rs:330-346` and `:359-366`): `sync` fetches
+  `GET /api/organizations` with the candidate's freshly decrypted session key,
+  takes the `planHint` of the org matching the **stored** account's `orgId`,
+  and applies `refreshedPlan` (`README.md`'s "Refreshing a stored plan"). A
+  write prints one extra line, immediately after the skip line:
+
+      Updated plan: <profile> (<old wire value> -> <new wire value>)
+
+  This is what makes the `.pro` fallback above self-healing: a tier that fell
+  back because `/api/organizations` was down heals on the next `sync`, with no
+  delete-and-re-add. The refresh never applies that fallback itself — an
+  unresolvable hint leaves the stored tier alone. Nothing else about the
+  stored account is written: not `sessionKey`, not `lastSynced`, not `status`.
+  A stored account with no `orgId` has no org to match an entry against and is
+  skipped without a refresh.
+- Every persisted account carries `accountUuid` (line 82).
 - **Linux only, no macOS counterpart:** a browser profile whose cookies are
   `v12` (xdg secret-portal, AES-256-GCM) needs a secret fetched per `app_id`,
   and when no candidate yields one that decrypts, the profile is skipped with
@@ -174,6 +194,10 @@ location and browser-cookie discovery mechanism are platform detail (see
   Flatpak installs of each browser (`~/.config/...` and
   `~/.var/app/<flathub id>/config/...`) plus Brave's official snap
   (`~/snap/brave/current/.config/...`); Chrome and Edge have no snap.
-- The command always exits 0 once it finishes scanning (line 97), even when
+- The command always exits 0 once it finishes scanning (line 107), even when
   zero accounts were added; failure is only for the "no profiles with Claude
   sessions found at all" case (line 13-17, exit 1).
+- The closing `Synced <N> account(s) successfully.` / `No new accounts to add
+  (all already synced).` line counts **added** accounts only (line 101-105). A
+  refreshed plan is not an add: a run that only healed a tier still reports
+  "No new accounts to add".

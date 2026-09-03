@@ -1,4 +1,4 @@
-use claude_dashboard_core::identity::{is_duplicate, StoredIdentity};
+use claude_dashboard_core::identity::{duplicate_index, is_duplicate, StoredIdentity};
 use serde_json::Value;
 use std::path::PathBuf;
 
@@ -32,5 +32,10 @@ fn dedupe_cases() {
         let actual = is_duplicate(candidate_uuid, candidate_email, &stored);
 
         assert_eq!(actual, expected, "case: {name}");
+
+        // `sync`'s heal path needs *which* stored account matched, so the two
+        // functions must never disagree about whether one did.
+        let index = duplicate_index(candidate_uuid, candidate_email, &stored);
+        assert_eq!(index.is_some(), expected, "case: {name} (duplicate_index)");
     }
 }

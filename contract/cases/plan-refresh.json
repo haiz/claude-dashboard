@@ -1,0 +1,44 @@
+[
+  {
+    "name": "an unresolvable hint leaves the stored plan untouched",
+    "stored_plan": "Max",
+    "hint_plan": null,
+    "expect_write": null
+  },
+  {
+    "name": "the add-time Pro default is corrected once the org resolves",
+    "stored_plan": "Pro",
+    "hint_plan": "Max",
+    "expect_write": "Max"
+  },
+  {
+    "name": "a failed fetch never re-fabricates Pro over a stored 20x",
+    "stored_plan": "Max 20x",
+    "hint_plan": null,
+    "expect_write": null
+  },
+  {
+    "name": "a hint equal to the stored plan is not written",
+    "stored_plan": "Max 5x",
+    "hint_plan": "Max 5x",
+    "expect_write": null
+  },
+  {
+    "name": "a downgrade is written like any other change",
+    "stored_plan": "Max",
+    "hint_plan": "Pro",
+    "expect_write": "Pro"
+  },
+  {
+    "name": "an explicit 5x marker replaces the generic Max",
+    "stored_plan": "Max",
+    "hint_plan": "Max 5x",
+    "expect_write": "Max 5x"
+  },
+  {
+    "name": "20x and 5x are different tiers, so the hint wins",
+    "stored_plan": "Max 5x",
+    "hint_plan": "Max 20x",
+    "expect_write": "Max 20x"
+  }
+]

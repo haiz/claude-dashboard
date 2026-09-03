@@ -162,6 +162,38 @@ final class UsageAPIService {
         return nil
     }
 
+    /// The plan to persist for an already-stored account, given a freshly
+    /// fetched `hint` — nil means *leave the stored plan alone*.
+    ///
+    /// Mirrors `plan::refreshed_plan` (`apps/linux/core/src/plan.rs`) and
+    /// `contract/README.md`'s "Refreshing a stored plan";
+    /// `contract/cases/plan-refresh.json` is the rule:
+    ///
+    /// 1. `hint` is nil (the fetch failed, no org matched the account's
+    ///    `orgId`, or `detectPlanTier` found no displayable plan) → nil. A
+    ///    network blip must never overwrite a known-good tier, and `sync`'s
+    ///    add-time `.pro` default is never re-fabricated here.
+    /// 2. `hint` equals `stored` → nil, so a non-nil result always means "a
+    ///    real change, worth writing and worth reporting".
+    /// 3. Otherwise → `hint`, in either direction: an upgrade and a downgrade
+    ///    are the same case, the freshly fetched org is authoritative.
+    static func refreshedPlan(stored: AccountPlan, hint: AccountPlan?) -> AccountPlan? {
+        guard let hint, hint != stored else { return nil }
+        return hint
+    }
+
+    /// The plan to persist for `account` given a freshly fetched
+    /// `/api/organizations` result — nil to leave the stored plan alone.
+    ///
+    /// The org is matched on the account's **stored** `orgId`: an account with
+    /// no `orgId` is not pollable and is never touched, and `orgs == nil` (the
+    /// fetch failed) reduces to rule 1 of `refreshedPlan(stored:hint:)`.
+    static func refreshedPlan(for account: Account, orgs: [OrgInfo]?) -> AccountPlan? {
+        guard let orgId = account.orgId else { return nil }
+        let hint = orgs?.first(where: { $0.uuid == orgId })?.planHint
+        return refreshedPlan(stored: account.plan, hint: hint)
+    }
+
     private func makeRequest(url: URL, sessionKey: String) -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"

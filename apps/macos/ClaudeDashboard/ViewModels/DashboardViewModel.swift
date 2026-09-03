@@ -247,8 +247,11 @@ final class DashboardViewModel: ObservableObject {
                         var account = accountStates[index].account
                         account.status = .active
                         account.lastSynced = Date()
-                        if let planHint, account.plan != planHint {
-                            account.plan = planHint
+                        // `contract/cases/plan-refresh.json` — the same rule the
+                        // helpers' `sync` applies to an already-stored account.
+                        if let newPlan = UsageAPIService.refreshedPlan(
+                            stored: account.plan, hint: planHint) {
+                            account.plan = newPlan
                         }
                         // Identity backfill. Never touches orgId: re-resolving a
                         // stored account's org would silently rewrite a field the

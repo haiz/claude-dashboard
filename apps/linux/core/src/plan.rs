@@ -42,6 +42,27 @@ pub fn detect_plan_tier(org: &Value, capabilities: &[String]) -> Option<AccountP
     None
 }
 
+/// The plan to persist for an already-stored account, given a freshly fetched
+/// `hint` — `None` means *leave the stored plan alone*.
+///
+/// Mirrors `UsageAPIService.refreshedPlan` and `contract/README.md`'s
+/// "Refreshing a stored plan"; `contract/cases/plan-refresh.json` is the rule:
+///
+/// 1. `hint` is `None` (fetch failed, no org matched the account's `orgId`, or
+///    [`detect_plan_tier`] found no displayable plan) -> `None`. A blip must
+///    never overwrite a known-good tier, and `sync`'s add-time `Pro` default is
+///    never re-fabricated here.
+/// 2. `hint` equals `stored` -> `None`, so callers can treat a `Some` as "this
+///    is a real change worth writing and reporting".
+/// 3. Otherwise -> `Some(hint)`, in either direction: an upgrade and a
+///    downgrade are the same case, the fetched org is authoritative.
+pub fn refreshed_plan(stored: &AccountPlan, hint: Option<AccountPlan>) -> Option<AccountPlan> {
+    match hint {
+        Some(hint) if hint != *stored => Some(hint),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

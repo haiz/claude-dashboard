@@ -55,7 +55,8 @@ enum AccountIdentity {
         return memberships.first(where: \.isChatOrg)?.uuid
     }
 
-    /// Whether `candidateUuid` names an account already in the store.
+    /// Which stored record `candidateUuid` names, if any — the position of the
+    /// first match, in store order.
     ///
     /// 1. a stored `accountUuid` equal to the candidate's — duplicate
     /// 2. a stored record with **no** `accountUuid` whose email matches
@@ -65,17 +66,32 @@ enum AccountIdentity {
     ///
     /// `orgId` is never consulted. Colleagues share an org and are different
     /// accounts.
-    static func isDuplicate(
+    ///
+    /// `isDuplicate` is this predicate. The index exists because `sync`'s plan
+    /// heal needs the record it matched, and re-deriving that match at the call
+    /// site is exactly the drift `contract/cases/dedupe.json` exists to prevent.
+    static func duplicateIndex(
         candidateUuid: String,
         candidateEmail: String?,
         against stored: [StoredIdentity]
-    ) -> Bool {
-        stored.contains { entry in
+    ) -> Int? {
+        stored.firstIndex { entry in
             if let storedUuid = entry.accountUuid {
                 return storedUuid == candidateUuid
             }
             guard let storedEmail = entry.email, let candidateEmail else { return false }
             return storedEmail.caseInsensitiveCompare(candidateEmail) == .orderedSame
         }
+    }
+
+    /// Whether `candidateUuid` names an account already in the store. See
+    /// `duplicateIndex` for the rule.
+    static func isDuplicate(
+        candidateUuid: String,
+        candidateEmail: String?,
+        against stored: [StoredIdentity]
+    ) -> Bool {
+        duplicateIndex(
+            candidateUuid: candidateUuid, candidateEmail: candidateEmail, against: stored) != nil
     }
 }

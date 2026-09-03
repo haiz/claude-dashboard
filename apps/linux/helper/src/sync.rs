@@ -17,6 +17,10 @@
 //!   chat org in the account's memberships. See
 //!   `contract/cases/org-selection.json`. `/api/organizations` is still the
 //!   source of the plan tier, and nothing else.
+//! - A duplicate is skipped for *adding* only: its stored plan tier is still
+//!   refreshed, so a tier that fell back to `Pro` because
+//!   `/api/organizations` was down at add time heals on the next `sync`. See
+//!   `contract/README.md`'s "Refreshing a stored plan".
 //! - A `v12` (secret-portal) cookie needs a secret this scan does not have
 //!   up front. Such a profile is re-scanned once per candidate `app_id` with
 //!   the portal secret fetched from the keyring; only if none of them decrypt
@@ -31,9 +35,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use claude_dashboard_core::api::{fetch_account, fetch_organizations, parse_account};
 use claude_dashboard_core::browser::{self, DiscoveredProfile};
 use claude_dashboard_core::cookie::{self, CookieError, KeySources};
-use claude_dashboard_core::identity::{is_duplicate, resolve_org_id, StoredIdentity};
+use claude_dashboard_core::identity::{duplicate_index, resolve_org_id, StoredIdentity};
 use claude_dashboard_core::model::{Account, AccountPlan, AccountStatus, Browser};
-use claude_dashboard_core::plan::detect_plan_tier;
+use claude_dashboard_core::plan::{detect_plan_tier, refreshed_plan};
 use claude_dashboard_core::store;
 use serde_json::Value;
 use uuid::Uuid;
@@ -175,8 +179,9 @@ pub fn run_sync() -> i32 {
                 email: a.email.clone(),
             })
             .collect();
-        if is_duplicate(&info.uuid, info.email.as_deref(), &stored) {
+        if let Some(index) = duplicate_index(&info.uuid, info.email.as_deref(), &stored) {
             eprintln!("  Skipping {} (already added)", c.display_name);
+            refresh_stored_plan(&mut accounts[index], &c.session_key, &c.display_name);
             continue;
         }
 
@@ -313,6 +318,53 @@ where
     ProfileScan::NoPortalSecret
 }
 
+/// Corrects the stored plan tier of an account this run skipped as a
+/// duplicate — the CLI's counterpart to the GUI's per-refresh plan update
+/// (`DashboardViewModel.refreshAll`). Mirrors the same block in
+/// `apps/macos/Helper/SyncCommand.swift`; `contract/helper-cli.md` "sync"
+/// specifies the extra stderr line.
+///
+/// Only `plan` is written — not `session_key`, not `last_synced`, not
+/// `status`. An account with no `org_id` has no org to match against and is
+/// left alone.
+fn refresh_stored_plan(account: &mut Account, session_key: &str, display_name: &str) {
+    // A failed fetch is `&[]`, which `refreshed_plan_for` turns into "no
+    // write" — the same outcome as an org that carries no displayable plan.
+    let orgs = match fetch_organizations(session_key) {
+        Ok(body) => parse_orgs(&body),
+        Err(_) => Vec::new(),
+    };
+
+    if let Some(plan) = refreshed_plan_for(account, &orgs) {
+        eprintln!(
+            "  Updated plan: {display_name} ({} -> {})",
+            plan_wire_value(&account.plan),
+            plan_wire_value(&plan)
+        );
+        account.plan = plan;
+    }
+}
+
+/// The plan to persist for `account` given a freshly fetched
+/// `/api/organizations` result — `None` to leave the stored plan alone.
+///
+/// Mirrors `UsageAPIService.refreshedPlan(for:orgs:)`. The org is matched on
+/// the account's **stored** `org_id`: an account with no `org_id` is not
+/// pollable and is never touched, and an `orgs` slice with no matching entry
+/// (an empty one included, which is what a failed fetch produces) reduces to
+/// rule 1 of [`refreshed_plan`].
+///
+/// Deliberately no `unwrap_or(Pro)` here: unlike the add path
+/// ([`plan_for`]), an unresolved tier must leave the stored one as it is.
+fn refreshed_plan_for(account: &Account, orgs: &[ParsedOrg]) -> Option<AccountPlan> {
+    let org_id = account.org_id.as_deref()?;
+    let hint = orgs
+        .iter()
+        .find(|o| o.uuid == org_id)
+        .and_then(|o| detect_plan_tier(&o.raw, &o.capabilities));
+    refreshed_plan(&account.plan, hint)
+}
+
 /// Decrypts a profile's Claude cookies into a [`ProfileScan`]. A `v12`
 /// cookie short-circuits the whole profile; any other per-cookie decrypt
 /// error skips just that cookie (matching the Swift `guard let decrypted`
@@ -430,6 +482,65 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
     use std::path::PathBuf;
+
+    // -- refreshed_plan_for ------------------------------------------------
+
+    fn stored_account(org_id: Option<&str>, plan: AccountPlan) -> Account {
+        Account {
+            id: "ID".into(),
+            name: "Test".into(),
+            email: None,
+            chrome_profile_path: "Default".into(),
+            chrome_profile_name: None,
+            org_id: org_id.map(String::from),
+            account_uuid: Some("acct-1".into()),
+            session_key: None,
+            browser: Browser::Chrome,
+            plan,
+            last_synced: None,
+            status: AccountStatus::Active,
+            is_pinned: false,
+        }
+    }
+
+    #[test]
+    fn refreshed_plan_for_takes_the_hint_of_the_stored_org() {
+        let orgs = parse_orgs(
+            r#"[{"uuid":"org-2","name":"Other","capabilities":["chat","claude_pro"]},
+                {"uuid":"org-1","name":"Personal","capabilities":["chat","claude_max"]}]"#,
+        );
+        let account = stored_account(Some("org-1"), AccountPlan::Pro);
+        assert_eq!(refreshed_plan_for(&account, &orgs), Some(AccountPlan::Max200));
+    }
+
+    #[test]
+    fn refreshed_plan_for_is_none_when_the_fetch_produced_nothing() {
+        let account = stored_account(Some("org-1"), AccountPlan::Pro);
+        assert_eq!(refreshed_plan_for(&account, &[]), None);
+    }
+
+    #[test]
+    fn refreshed_plan_for_ignores_an_org_the_account_is_not_polled_against() {
+        let orgs = parse_orgs(r#"[{"uuid":"org-2","name":"Other","capabilities":["chat"]}]"#);
+        let account = stored_account(Some("org-1"), AccountPlan::Pro);
+        assert_eq!(refreshed_plan_for(&account, &orgs), None);
+    }
+
+    #[test]
+    fn refreshed_plan_for_is_none_without_an_org_id() {
+        let orgs = parse_orgs(r#"[{"uuid":"org-1","name":"Personal","capabilities":["chat"]}]"#);
+        let account = stored_account(None, AccountPlan::Pro);
+        assert_eq!(refreshed_plan_for(&account, &orgs), None);
+    }
+
+    #[test]
+    fn refreshed_plan_for_is_none_when_the_hint_matches_what_is_stored() {
+        let orgs = parse_orgs(
+            r#"[{"uuid":"org-1","name":"Personal","capabilities":["chat","claude_pro"]}]"#,
+        );
+        let account = stored_account(Some("org-1"), AccountPlan::Pro);
+        assert_eq!(refreshed_plan_for(&account, &orgs), None);
+    }
 
     // -- portal_app_id_candidates ------------------------------------------
 

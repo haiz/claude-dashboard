@@ -158,6 +158,34 @@ from the implementation's own comment, not as an independently verified
 fact. Practically, this means today every consumer Max account — 5x or 20x
 — resolves to the generic `"Max"` tier via step 5, not step 1/2.
 
+### Refreshing a stored plan
+
+The tier above is derived only when something writes it. Two things make a
+*stored* tier wrong: `GET /api/organizations` failing at the moment the
+account was added (`helper-cli.md`'s "sync" section defaults that case to
+`.pro`), and a real plan change on the account afterwards. One rule corrects
+both — `refreshedPlan` (`apps/macos/Shared/UsageAPIService.swift`, mirrored by
+`plan::refreshed_plan` in `apps/linux/core/src/plan.rs`) — evaluated against
+the stored plan and a freshly fetched hint:
+
+1. The hint is `nil` — the fetch failed, the response has no org matching the
+   account's `orgId`, or `detectPlanTier` returned `nil` → **no write**. A
+   network blip must never overwrite a known-good tier, and the add-time
+   `.pro` default is never re-fabricated on a refresh.
+2. The hint equals the stored plan → **no write**.
+3. Otherwise → **write the hint**. An upgrade and a downgrade are the same
+   case: the freshly fetched org is authoritative.
+
+`contract/cases/plan-refresh.json` is the rule.
+
+Every writer applies it: the macOS app's `DashboardViewModel.refreshAll` on
+each refresh cycle, and both helpers' `sync` for a candidate that dedupe
+resolved to an account already in the store (see `helper-cli.md`'s "sync"
+section). The consequence worth stating plainly: **a wrong tier heals on the
+next refresh or the next `sync`**, with no delete-and-re-add. Before this rule
+was shared, only the macOS GUI healed — a CLI-only user on either platform
+kept a wrong badge until they deleted the account and synced again.
+
 ## The Fable window
 
 `fable` is not a top-level field of the usage response. It does not exist

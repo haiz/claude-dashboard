@@ -320,6 +320,72 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(updated?.email, "person@example.com")
     }
 
+    // MARK: - Plan-tier refresh (contract/cases/plan-refresh.json)
+
+    /// Responds to `/api/organizations` with `orgsBody`, or a 500 when it is nil.
+    /// `/api/account` and `/usage` always succeed, so the refresh reaches the
+    /// plan-update step either way.
+    private func respondOrganizations(_ orgsBody: String?) {
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            if path == "/api/organizations" {
+                guard let orgsBody else {
+                    let failure = HTTPURLResponse(url: request.url!, statusCode: 500,
+                                                  httpVersion: nil, headerFields: nil)!
+                    return (failure, Data())
+                }
+                let ok = HTTPURLResponse(url: request.url!, statusCode: 200,
+                                         httpVersion: nil, headerFields: nil)!
+                return (ok, Data(orgsBody.utf8))
+            }
+            let body = path == "/api/account"
+                ? #"{"uuid":"acct-1","email_address":"person@example.com","memberships":[]}"#
+                : Self.emptyUsageJSON
+            let ok = HTTPURLResponse(url: request.url!, statusCode: 200,
+                                     httpVersion: nil, headerFields: nil)!
+            return (ok, Data(body.utf8))
+        }
+    }
+
+    /// The heal path: a tier that is wrong in the store is corrected by the
+    /// next refresh, without deleting and re-adding the account.
+    func testRefreshCorrectsAWrongStoredPlanTier() async throws {
+        let (vm, store) = try makeViewModelWithStore()
+        let account = makeAccount(orgId: "org-1", accountUuid: "acct-1")  // stored .max5x
+        store.addAccount(account)
+        store.saveSessionKey("sk-test", for: account.id)
+
+        respondOrganizations(#"[{"uuid":"org-1","name":"Personal","capabilities":["chat","claude_pro"]}]"#)
+
+        // See testRefreshBackfillsAccountUuidAndEmailWhenMissing: the store's
+        // publish reaches accountStates asynchronously.
+        await Task.yield()
+        XCTAssertEqual(vm.accountStates.count, 1, "sanity: account must reach accountStates before refreshAll runs")
+
+        await vm.refreshAll()
+
+        XCTAssertEqual(store.accounts.first { $0.id == account.id }?.plan, .pro)
+    }
+
+    /// Rule 1: an unresolvable hint leaves the stored tier alone. A network
+    /// blip must not overwrite a known-good plan.
+    func testRefreshLeavesThePlanAloneWhenOrganizationsFails() async throws {
+        let (vm, store) = try makeViewModelWithStore()
+        let account = makeAccount(orgId: "org-1", accountUuid: "acct-1")  // stored .max5x
+        store.addAccount(account)
+        store.saveSessionKey("sk-test", for: account.id)
+
+        respondOrganizations(nil)
+
+        await Task.yield()
+        XCTAssertEqual(vm.accountStates.count, 1, "sanity: account must reach accountStates before refreshAll runs")
+
+        await vm.refreshAll()
+
+        XCTAssertEqual(store.accounts.first { $0.id == account.id }?.plan, .max5x,
+                       "a failed /api/organizations must not rewrite the tier")
+    }
+
     func testRefreshDoesNotOverwriteAnExistingEmailOrOrgId() async throws {
         let (vm, store) = try makeViewModelWithStore()
         let account = makeAccount(orgId: "org-1", email: "kept@example.com")
