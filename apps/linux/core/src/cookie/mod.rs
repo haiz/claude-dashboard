@@ -118,7 +118,7 @@ pub fn decrypt_cookie_value(
         _ => derive_key(b"peanuts"), // v10, or v11 falling back when no keyring secret
     };
     let body = &encrypted[3..];
-    if body.is_empty() || body.len() % 16 != 0 {
+    if body.is_empty() || !body.len().is_multiple_of(16) {
         return Err(CookieError::DecryptFailed);
     }
     let mut pt = cbc::Decryptor::<Aes128>::new(&key.into(), &IV.into())

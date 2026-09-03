@@ -2,6 +2,7 @@
 name = "claude-dashboard-helper"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 [[bin]]
 name = "claude-dashboard-helper"

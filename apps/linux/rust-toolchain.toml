@@ -1,0 +1,12 @@
+# Pinned so that "cargo clippy is clean" is ONE claim, not one per machine.
+#
+# Before this pin, macOS ran stable 1.89 and the Ubuntu VM ran 1.98. Clippy 1.89
+# does not know `manual_is_multiple_of` at all (E0602 "unknown lint"), so the same
+# source was clean on one machine and warned on the other, and several review notes
+# said "clippy clean on the VM" when clippy had only ever run on macOS.
+#
+# Bump deliberately: a bump changes the lint set, so re-run `cargo clippy
+# --workspace --all-targets` on every machine that makes the claim.
+[toolchain]
+channel = "1.98.0"
+components = ["clippy"]

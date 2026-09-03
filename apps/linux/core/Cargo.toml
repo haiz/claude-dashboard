@@ -2,6 +2,7 @@
 name = "claude-dashboard-core"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 [lib]
 name = "claude_dashboard_core"
