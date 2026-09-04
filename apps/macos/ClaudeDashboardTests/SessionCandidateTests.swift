@@ -23,11 +23,12 @@ final class SessionCandidateTests: XCTestCase {
         super.tearDown()
     }
 
-    private func respond(accountStatus: Int = 200) {
+    private func respond(accountStatus: Int = 200, orgStatus: Int = 200) {
         MockURLProtocol.requestHandler = { request in
             let path = request.url?.path ?? ""
             let isAccount = path == "/api/account"
-            let status = isAccount ? accountStatus : 200
+            let isOrgs = path == "/api/organizations"
+            let status = isAccount ? accountStatus : (isOrgs ? orgStatus : 200)
             let body = isAccount ? Self.accountBody : "[]"
             let response = HTTPURLResponse(url: request.url!, statusCode: status,
                                            httpVersion: nil, headerFields: nil)!
@@ -52,6 +53,18 @@ final class SessionCandidateTests: XCTestCase {
 
         XCTAssertEqual(result?.identity.uuid, "acct-1")
         XCTAssertNil(result?.duplicateIndex)
+        XCTAssertNotNil(result?.orgs, "the orgs call succeeded, so this should not be nil")
+    }
+
+    func testOrgsFailureDoesNotInvalidateAnOtherwiseGoodSession() async {
+        respond(orgStatus: 500)
+
+        let result = await SessionCandidate.validate(
+            sessionKey: "sk-live", against: [], apiService: makeService())
+
+        XCTAssertEqual(result?.identity.uuid, "acct-1",
+                       "session validity is established by /api/account, not this call")
+        XCTAssertNil(result?.orgs, "a failed orgs fetch reports as absent, not fatal")
     }
 
     func testReportsTheIndexOfTheMatchingStoredRecord() async {
