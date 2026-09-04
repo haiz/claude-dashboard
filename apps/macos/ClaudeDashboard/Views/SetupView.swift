@@ -29,6 +29,7 @@ struct SetupView: View {
     /// Khi true: máy có 2+ browser và chưa có preference đã lưu, buộc người dùng
     /// chọn browser trước. Chưa scan (nên prompt Keychain chưa xuất hiện).
     @State private var awaitingBrowserChoice = false
+    @State private var showingPasteKey = false
 
     private static let preferredBrowserKey = "preferredScanBrowser"
 
@@ -65,6 +66,11 @@ struct SetupView: View {
                     noProfilesView
                 } else {
                     accountList
+                }
+
+                if !isScanning {
+                    Button("Paste a session key instead") { showingPasteKey = true }
+                        .buttonStyle(.link)
                 }
             }
 
@@ -109,6 +115,9 @@ struct SetupView: View {
                 // Không có browser được hỗ trợ: scan() để hiển thị thông báo phù hợp.
                 scan()
             }
+        }
+        .sheet(isPresented: $showingPasteKey) {
+            PasteKeyView(viewModel: viewModel) { showingPasteKey = false }
         }
     }
 

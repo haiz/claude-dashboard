@@ -132,7 +132,7 @@ struct SettingsView: View {
                         .background(.secondary.opacity(0.15))
                         .clipShape(Capsule())
 
-                    Text(account.chromeProfilePath)
+                    Text(account.source == .manual ? "Pasted key" : account.chromeProfilePath)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

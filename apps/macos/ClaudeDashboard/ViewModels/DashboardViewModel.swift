@@ -24,6 +24,32 @@ enum ManualKeyOutcome: Equatable {
     case emptyKey
 }
 
+extension ManualKeyOutcome {
+    var message: String {
+        switch self {
+        case .added(let name):
+            return "Added \(name)."
+        case .updated(let name):
+            return "Updated the session key for \(name)."
+        case .updatedWithNoChatOrg(let name):
+            return "Updated the session key for \(name), but that account has no organization with chat access, so usage will not update."
+        case .rejectedNoChatOrg:
+            return "That account has no organization with chat access."
+        case .keyNotAccepted:
+            return "That session key was not accepted. It may have expired, or been copied incompletely."
+        case .emptyKey:
+            return "Paste a session key first."
+        }
+    }
+
+    var isFailure: Bool {
+        switch self {
+        case .added, .updated, .updatedWithNoChatOrg: return false
+        case .rejectedNoChatOrg, .keyNotAccepted, .emptyKey: return true
+        }
+    }
+}
+
 @MainActor
 final class DashboardViewModel: ObservableObject {
     @Published var accountStates: [AccountUsageState] = []
