@@ -39,16 +39,17 @@ of it.
   section). This is shared because the resulting account status is
   user-visible, not because the transport is; *how* the HTTP request is
   issued remains platform detail.
-- The helper CLI's three subcommands — `decrypt`, `usage`, `sync` — as
-  externally observable behaviour (input/output shape, exit codes, stderr
+- The helper CLI's four subcommands — `decrypt`, `usage`, `sync`, `add-key` —
+  as externally observable behaviour (input/output shape, exit codes, stderr
   text): `helper-cli.md`.
-- The `Account` JSON schema and its two backward-compatibility defaults:
+- The `Account` JSON schema and its three backward-compatibility defaults:
   `account-schema.md`.
 - The `usage_logs` SQLite schema and its compression semantics:
   `usage-log.md`.
 - **Account identity and org selection** — which account a session belongs to,
   and which org its usage is polled from (this file's "Account identity" and
-  "Org selection" sections, `cases/dedupe.json`, `cases/org-selection.json`).
+  "Org selection" sections, `cases/dedupe.json`, `cases/org-selection.json`,
+  `cases/manual-key.json`).
 
 **Platform detail (deliberately free to differ):**
 - **Cookie decryption.** How a session key is extracted from the browser's
@@ -378,21 +379,21 @@ it plays no part in the projection.
 
 This is caller behaviour rather than tracker behaviour, but it decides what
 a user actually sees, so a port copying the caller must copy it knowingly.
-`DashboardViewModel` (lines 231-249) substitutes a freshly computed
+`DashboardViewModel` (lines 313-333) substitutes a freshly computed
 `Date().addingTimeInterval(...)` whenever a window's `resets_at` is `nil` —
-`18000` for the 5-hour window (line 236), `604800` for 7-day (line 241) and
-for Fable (line 247). That substitute is a *new instant on every refresh*,
+`18000` for the 5-hour window (line 318), `604800` for 7-day (line 323) and
+for Fable (line 329). That substitute is a *new instant on every refresh*,
 so rule 2's exact-equality check fails on every poll: **a window whose
 `resets_at` is `null` resets its history every poll and therefore never
 produces a burn rate.** Only windows with a real `resets_at` ever show an
 animal. The Fable window is polled at all only when `fable != nil`
-(line 243).
+(line 325).
 
 ## Sort order
 
 Source: `DashboardViewModel.sortStates()`
-(`apps/macos/ClaudeDashboard/ViewModels/DashboardViewModel.swift:426-442`)
-and `DashboardViewModel.burnRate(for:)` (lines 366-382).
+(`apps/macos/ClaudeDashboard/ViewModels/DashboardViewModel.swift:669-685`)
+and `DashboardViewModel.burnRate(for:)` (lines 609-625).
 
 This is a **three-tier** ordering, not a flat sort by burn rate:
 
@@ -454,15 +455,15 @@ that case, since HTTP clients differ in how they surface repeated headers.
 The user-visible consequences, which are the reason this is contract:
 
 - A non-`nil` parse result is persisted as the account's new session key
-  (`DashboardViewModel.swift:175-177`), replacing the one just sent.
+  (`DashboardViewModel.swift:240-242`), replacing the one just sent.
   Requests carry it as the raw header `Cookie: sessionKey=<value>`
   (`UsageAPIService.swift:131`).
 - `authExpired` becomes the account status `expired`, written back to the
-  store (`DashboardViewModel.swift:184-185` and `216-219`), and an
+  store (`DashboardViewModel.swift:256-257` and `288-291`), and an
   `expired` account is skipped by subsequent refreshes
-  (`DashboardViewModel.swift:163`). Every other error leaves `status`
+  (`DashboardViewModel.swift:226`). Every other error leaves `status`
   untouched and surfaces only as a transient per-card message
-  (lines 186-189). A Linux implementation that also mapped, say, `429` or a
+  (lines 258-261). A Linux implementation that also mapped, say, `429` or a
   network failure onto `expired` would silently retire accounts that the
   macOS app keeps refreshing.
 
@@ -470,8 +471,8 @@ The user-visible consequences, which are the reason this is contract:
 
 An account is identified by its own uuid, from `GET /api/account`'s `uuid`
 field (`fetchAccount`, `apps/macos/Shared/UsageAPIService.swift:86-113`),
-stored as `accountUuid` (`apps/macos/Shared/Account.swift:27`,
-`apps/linux/core/src/model.rs:53`). Dedupe compares that and nothing else, except
+stored as `accountUuid` (`apps/macos/Shared/Account.swift:38`,
+`apps/linux/core/src/model.rs:66`). Dedupe compares that and nothing else, except
 for one legacy fallback: a stored record written before `accountUuid` existed
 has none, and matches on `email` compared after Unicode lowercasing: both
 strings are lowercased (`lowercased()` in Swift, `to_lowercase()` in Rust) and
@@ -534,7 +535,7 @@ Implemented at `apps/macos/Shared/AccountIdentity.swift:49-56` (`resolveOrgId`) 
 `resyncCore` obeys the same rule. It re-reads one stored account's browser
 cookies and resolves `orgId` through `resolveOrgId` against the memberships
 `/api/account` returns for that session, never from the cookie alone —
-`apps/macos/ClaudeDashboard/ViewModels/DashboardViewModel.swift:346-362`. It is
+`apps/macos/ClaudeDashboard/ViewModels/DashboardViewModel.swift:407-423`. It is
 the single writer behind both re-sync entry points: `resyncAccount`, used by each
 account card's individual resync action
 (`apps/macos/ClaudeDashboard/Views/DashboardWindow.swift:111`,
@@ -548,7 +549,7 @@ tell the user to sign in to a profile that never existed, about the one account
 type a cookie re-read cannot fix.
 
 The refresh that follows a re-sync is scoped to the accounts that re-synced
-successfully (`refreshAll(only:)`, lines 380 and 393). An unscoped pass would
+successfully (`refreshAll(only:)`, lines 441 and 542). An unscoped pass would
 overwrite the message left on a card whose re-sync failed, and re-syncing N
 accounts would cost N whole-fleet refresh passes instead of one.
 
@@ -557,14 +558,14 @@ differ from the add-an-account path:
 
 - `/api/account` unreachable. The new session key is saved and the account is
   marked `active`, while `orgId`, `accountUuid` and `email` keep their stored
-  values (lines 343-344, 353). `refreshAll` skips `expired` accounts, so marking it
+  values (lines 404-405, 414). `refreshAll` skips `expired` accounts, so marking it
   active is what makes any later retry possible; leaving `orgId` alone is what
   keeps an unreadable session from erasing a correct one.
 - No chat org among the memberships. The stored `orgId` is kept and the card
-  reports it (lines 365-371). Rule 3's "never persisted" governs adding an
+  reports it (lines 420-432). Rule 3's "never persisted" governs adding an
   account; an existing one is reported rather than repointed or blanked.
 - The session identifies a different account than the stored `accountUuid`.
-  Nothing is written and the card reports it (lines 336-340) — a profile signed
+  Nothing is written and the card reports it (lines 393-401) — a profile signed
   in to another Claude login must not have its session key copied onto this
   record, which is the same collision `isDuplicate` exists to prevent. A legacy
   record without `accountUuid` has nothing to compare and is backfilled instead.

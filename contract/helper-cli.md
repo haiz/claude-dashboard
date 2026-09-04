@@ -204,8 +204,9 @@ location and browser-cookie discovery mechanism are platform detail (see
 
 ## `add-key`
 
-Source: `apps/macos/Helper/AddKeyCommand.swift`. Adds or repairs one account
-from a session key read on **stdin**. Never scans a browser.
+Source: `apps/macos/Helper/AddKeyCommand.swift` and
+`apps/linux/helper/src/add_key.rs`. Adds or repairs one account from a session
+key read on **stdin**. Never scans a browser.
 
 The key is read from stdin and trimmed of surrounding whitespace and newlines.
 It is never taken from `argv`, which is visible in `ps` and in shell history,
