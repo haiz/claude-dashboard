@@ -23,6 +23,29 @@ final class ManualKeyOutcomeTests: XCTestCase {
         XCTAssertTrue(ManualKeyOutcome.emptyKey.isFailure)
     }
 
+    func testOnlyUpdatedWithNoChatOrgHoldsTheSheetOpen() {
+        // Exhaustive switch, deliberately duplicating the enum's cases: adding a new
+        // case to ManualKeyOutcome without updating this switch fails to compile, so
+        // nobody can add a case to (or drop one from) the "holds open" set silently.
+        func expectedToHoldOpen(_ outcome: ManualKeyOutcome) -> Bool {
+            switch outcome {
+            case .updatedWithNoChatOrg:
+                return true
+            case .added, .updated, .rejectedNoChatOrg, .keyNotAccepted, .emptyKey:
+                return false
+            }
+        }
+
+        let outcomes: [ManualKeyOutcome] = [
+            .added(name: "x"), .updated(name: "x"), .updatedWithNoChatOrg(name: "x"),
+            .rejectedNoChatOrg, .keyNotAccepted, .emptyKey
+        ]
+        for outcome in outcomes {
+            XCTAssertEqual(outcome.holdsSheetOpen, expectedToHoldOpen(outcome),
+                           "\(outcome) disagrees with the exhaustive expectation")
+        }
+    }
+
     func testNoMessageCanCarryTheKey() {
         // The mapping takes no key argument at all, which is the guarantee.
         let outcomes: [ManualKeyOutcome] = [

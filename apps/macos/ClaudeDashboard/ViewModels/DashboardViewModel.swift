@@ -48,6 +48,13 @@ extension ManualKeyOutcome {
         case .rejectedNoChatOrg, .keyNotAccepted, .emptyKey: return true
         }
     }
+
+    /// True when the sheet must stay open after a success so the message gets read.
+    /// A saved key whose account has no chat org is a warning, not just a receipt.
+    var holdsSheetOpen: Bool {
+        if case .updatedWithNoChatOrg = self { return true }
+        return false
+    }
 }
 
 @MainActor

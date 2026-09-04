@@ -35,7 +35,7 @@ struct PasteKeyView: View {
             }
 
             HStack {
-                Button("Cancel", action: onClose)
+                Button(outcome?.holdsSheetOpen == true ? "Done" : "Cancel", action: onClose)
                     .disabled(isWorking)
                 Spacer()
                 Button(isWorking ? "Checking\u{2026}" : "Add") {
@@ -56,6 +56,7 @@ struct PasteKeyView: View {
         outcome = result
         guard !result.isFailure else { return }
         key = ""
+        guard !result.holdsSheetOpen else { return }
         onClose()
     }
 }
