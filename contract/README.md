@@ -541,6 +541,11 @@ account card's individual resync action
 `apps/macos/ClaudeDashboard/Views/MenuBarPopover.swift:108`), and `resyncAll`,
 used by the "Re-sync All" button
 (`apps/macos/ClaudeDashboard/Views/SettingsView.swift:89`).
+A record whose `source` is `manual` never reaches that rule: `resyncCore` stops
+before the cookie lookup and reports that the key has to be pasted again.
+Falling through would ask the cookie provider for the profile named `""` and
+tell the user to sign in to a profile that never existed, about the one account
+type a cookie re-read cannot fix.
 
 The refresh that follows a re-sync is scoped to the accounts that re-synced
 successfully (`refreshAll(only:)`, lines 380 and 393). An unscoped pass would

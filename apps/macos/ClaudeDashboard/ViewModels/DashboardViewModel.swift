@@ -366,6 +366,16 @@ final class DashboardViewModel: ObservableObject {
     private func resyncCore(_ accountId: UUID) async -> Bool {
         guard let account = accountStore.accounts.first(where: { $0.id == accountId }) else { return false }
 
+        // A pasted-key account has no browser profile to re-read. Falling through
+        // would ask the cookie provider for the profile named "" and report
+        // "Open ... profile \"\" and login", about the one account type a cookie
+        // re-read cannot fix. `applyManualKey` is its recovery path.
+        guard account.source == .browser else {
+            setError("This account's session key was pasted by hand. Paste a new one to re-sync it.",
+                     for: accountId)
+            return false
+        }
+
         let cookies = cookieProvider(account.chromeProfilePath, account.browser)
 
         guard let sessionKey = cookies.sessionKey else {

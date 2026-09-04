@@ -516,6 +516,33 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(updated?.email, "person@example.com")
     }
 
+    /// A pasted-key account has no browser profile. Without a gate, re-sync falls
+    /// through to the cookie provider with an empty profile path and tells the user
+    /// to sign in to a profile that never existed — about the one account type a
+    /// cookie re-read cannot help.
+    func testResyncReportsAPastedKeyAccountInsteadOfReadingAProfileThatDoesNotExist() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: "sk-from-a-browser", orgId: "org-good"))
+        var account = makeAccount(orgId: "org-good", email: "person@example.com",
+                                  accountUuid: "acct-1")
+        account.source = .manual
+        account.chromeProfilePath = ""
+        store.addAccount(account)
+        respond(accountBody: Self.accountBody(uuid: "acct-1"))
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        XCTAssertNil(store.loadSessionKey(for: account.id),
+                     "a browser profile's session key must never land on a pasted-key account")
+        let error = try XCTUnwrap(vm.accountStates.first?.error,
+                                  "the card must say why re-sync cannot help this account")
+        XCTAssertTrue(error.lowercased().contains("paste"),
+                      "the message must name what actually fixes it; got: \(error)")
+        XCTAssertFalse(error.contains("\"\""),
+                       "the old message named an empty profile; got: \(error)")
+    }
+
     // MARK: - Re-sync All
 
     /// One mock for a two-account fleet: `/api/account` answers per session key, so
