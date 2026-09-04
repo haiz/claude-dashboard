@@ -87,7 +87,9 @@ pub fn run_add_key() -> i32 {
 
         ManualKeyDecision::Add { org_id } => {
             let name = identity.email.clone().unwrap_or_else(|| {
-                format!("Account {}", &identity.uuid[..8.min(identity.uuid.len())])
+                // Chars, not bytes: a multi-byte character crossing byte 8 would
+                // panic a byte slice, and Swift's `.prefix(8)` does not.
+                format!("Account {}", identity.uuid.chars().take(8).collect::<String>())
             });
             let plan = plan_for(&orgs, &org_id);
             accounts.push(Account {

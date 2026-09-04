@@ -67,11 +67,14 @@ struct SetupView: View {
                 } else {
                     accountList
                 }
+            }
 
-                if !isScanning {
-                    Button("Paste a session key instead") { showingPasteKey = true }
-                        .buttonStyle(.link)
-                }
+            // Outside the chooser branch on purpose: a user with two browsers and
+            // no saved preference lands on the chooser, and this feature exists to
+            // route around the cookie scan its buttons trigger.
+            if !isScanning {
+                Button("Paste a session key instead") { showingPasteKey = true }
+                    .buttonStyle(.link)
             }
 
             HStack {

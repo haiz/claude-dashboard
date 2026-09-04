@@ -811,6 +811,47 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(updated.status, .active, "the key is still worth saving")
     }
 
+    /// The repair branch matches the plan hint against the `orgId` **as it stands
+    /// after** the write set, so a stored nil just filled in is what matches.
+    /// `/api/organizations` answers with the hint only on the validate call and
+    /// `[]` afterwards: otherwise the `refreshAll` that follows would heal the
+    /// tier anyway and the ordering would be pinned by nothing.
+    func testManualKeyRepairMatchesThePlanAgainstTheJustFilledOrgId() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        var account = makeAccount(orgId: nil, email: "person@example.com",
+                                  accountUuid: "acct-1")  // stored .max5x
+        account.status = .expired
+        store.addAccount(account)
+
+        let counter = RequestCounter()
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            counter.record(path)
+            let body: String
+            if path == "/api/account" {
+                body = Self.accountBody(uuid: "acct-1")
+            } else if path == "/api/organizations" {
+                body = counter.count(path: "/api/organizations") == 1
+                    ? #"[{"uuid":"org-good","name":"Example Co","capabilities":["chat","claude_pro"]}]"#
+                    : "[]"
+            } else {
+                body = Self.emptyUsageJSON
+            }
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, Data(body.utf8))
+        }
+        await Task.yield()
+
+        _ = await vm.applyManualKey("sk-pasted")
+
+        let updated = try XCTUnwrap(store.accounts.first)
+        XCTAssertEqual(updated.orgId, "org-good", "sanity: the nil orgId is the one being backfilled")
+        XCTAssertEqual(updated.plan, .pro,
+                       "the plan hint is matched against the orgId the write set just filled in")
+    }
+
     func testManualKeyReportsAnUnacceptedKey() async throws {
         let (vm, store) = try makeViewModelWithStore(
             cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
