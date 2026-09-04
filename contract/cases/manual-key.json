@@ -1,0 +1,60 @@
+[
+  {
+    "name": "repair keeps a stored orgId — a pasted key carries no org preference",
+    "stored": { "org_id": "org-cookie-resolved", "account_uuid": "acct-1", "email": "person@example.com" },
+    "fetched": { "uuid": "acct-1", "email": "person@example.com" },
+    "memberships": [
+      { "uuid": "org-other", "name": "Other Co", "capabilities": ["chat"] },
+      { "uuid": "org-cookie-resolved", "name": "Example Co", "capabilities": ["chat"] }
+    ],
+    "expect": { "action": "repair", "writes": { "org_id": null, "account_uuid": null, "email": null } }
+  },
+  {
+    "name": "repair writes orgId when the stored one is null — nothing to demote",
+    "stored": { "org_id": null, "account_uuid": "acct-1", "email": "person@example.com" },
+    "fetched": { "uuid": "acct-1", "email": "person@example.com" },
+    "memberships": [
+      { "uuid": "org-api", "name": "API", "capabilities": ["api", "api_individual"] },
+      { "uuid": "org-good", "name": "Example Co", "capabilities": ["chat"] }
+    ],
+    "expect": { "action": "repair", "writes": { "org_id": "org-good", "account_uuid": null, "email": null } }
+  },
+  {
+    "name": "repair backfills accountUuid and email on a legacy record",
+    "stored": { "org_id": "org-good", "account_uuid": null, "email": null },
+    "fetched": { "uuid": "acct-1", "email": "person@example.com" },
+    "memberships": [
+      { "uuid": "org-good", "name": "Example Co", "capabilities": ["chat"] }
+    ],
+    "expect": { "action": "repair", "writes": { "org_id": null, "account_uuid": "acct-1", "email": "person@example.com" } }
+  },
+  {
+    "name": "repair is not rejected when no chat org is left — the key is still worth saving",
+    "stored": { "org_id": "org-good", "account_uuid": "acct-1", "email": "person@example.com" },
+    "fetched": { "uuid": "acct-1", "email": "person@example.com" },
+    "memberships": [
+      { "uuid": "org-api", "name": "API", "capabilities": ["api", "api_individual"] }
+    ],
+    "expect": { "action": "repair", "writes": { "org_id": null, "account_uuid": null, "email": null } }
+  },
+  {
+    "name": "add resolves the first chat org — a pasted key has no lastActiveOrg",
+    "stored": null,
+    "fetched": { "uuid": "acct-2", "email": "new@example.com" },
+    "memberships": [
+      { "uuid": "org-api", "name": "API", "capabilities": ["api", "api_individual"] },
+      { "uuid": "org-first", "name": "First Co", "capabilities": ["chat"] },
+      { "uuid": "org-second", "name": "Second Co", "capabilities": ["chat"] }
+    ],
+    "expect": { "action": "add", "org_id": "org-first" }
+  },
+  {
+    "name": "add is rejected when no chat org exists — never persisted as working",
+    "stored": null,
+    "fetched": { "uuid": "acct-2", "email": "new@example.com" },
+    "memberships": [
+      { "uuid": "org-api", "name": "API", "capabilities": ["api", "api_individual"] }
+    ],
+    "expect": { "action": "reject_no_chat_org" }
+  }
+]

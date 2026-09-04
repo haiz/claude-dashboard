@@ -7,3 +7,4 @@ pub mod api;
 pub mod store;
 pub mod browser;
 pub mod identity;
+pub mod manual_key;

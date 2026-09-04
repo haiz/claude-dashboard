@@ -12,6 +12,7 @@
 		0924D8F9139A4EE436ABEA8C /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7E115BD84248989BAA883F /* CryptoService.swift */; };
 		0D2BDE04D4B6D1D0C60DC187 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
 		0F2EFF700D988D4E447E07A9 /* CommandLogViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13957FCE8EBB39E84590E42F /* CommandLogViewModel.swift */; };
+		1213175776995521648C0196 /* ManualKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF55256F6D81B14585D71C9 /* ManualKey.swift */; };
 		1373305DBB8E1C9805CFC8C8 /* AccountIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4178DC5D69C19ECD002EF8A9 /* AccountIdentity.swift */; };
 		18B4F69185821E78B8E6139C /* ClaudeDashboardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8007AA99F483598797EBFAE0 /* ClaudeDashboardApp.swift */; };
 		1DB54021BBBA6A80D35336A8 /* DecryptCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF7DEAC28930337FB1D5772 /* DecryptCommand.swift */; };
@@ -21,6 +22,7 @@
 		203ACE14CE6715FA4B712065 /* HelperAccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB2623CB6EC20CACFF82236 /* HelperAccountStore.swift */; };
 		211F98E0C0F99203EF129492 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066B8B1E829B2024AB298464 /* SetupView.swift */; };
 		2AD7F348C0B9F5BC6AB4D450 /* ProcessTreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6C06F755D5222731477EC6 /* ProcessTreeTests.swift */; };
+		310A4AEEB4EF068D8522A921 /* ManualKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF55256F6D81B14585D71C9 /* ManualKey.swift */; };
 		411CACBC4F1791E139BDF4BA /* AccountDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CC442D5CD274FE704D4AC0F /* AccountDetailViewModel.swift */; };
 		46ACA4D872B48395C5A010F6 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		4BA658DB89EAC4997E431C13 /* ClaudeCodeAccountDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CECA8F5BDB86E3741F82280 /* ClaudeCodeAccountDetector.swift */; };
@@ -53,6 +55,7 @@
 		8A05B43134B187D33EE15895 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		8C6A56AA09D21B951F1E7863 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D572159B978911BF3D1EDAC0 /* Assets.xcassets */; };
 		8E1EEC3CBBD3A1C11213166D /* UpdateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101FB3B509DBD5E1813FDABE /* UpdateViewModel.swift */; };
+		924D219F90D34BE86951B7DB /* ManualKeyContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D627736A32F2282084F78A58 /* ManualKeyContractTests.swift */; };
 		94BDC42C46406C1E227F11FA /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */; };
 		952383DC16D74D6BF7106040 /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7E115BD84248989BAA883F /* CryptoService.swift */; };
 		9759697B6C02F84B6EF06C09 /* DashboardViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690E18B51A43CF7A0BFFA627 /* DashboardViewModelTests.swift */; };
@@ -126,6 +129,7 @@
 		2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
 		36CFE6B80C6A187D9A176752 /* UsageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageBar.swift; sourceTree = "<group>"; };
 		373E95B92E85447700BA3DEF /* UpdateServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateServiceTests.swift; sourceTree = "<group>"; };
+		3DF55256F6D81B14585D71C9 /* ManualKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualKey.swift; sourceTree = "<group>"; };
 		3F6C06F755D5222731477EC6 /* ProcessTreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessTreeTests.swift; sourceTree = "<group>"; };
 		4178DC5D69C19ECD002EF8A9 /* AccountIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountIdentity.swift; sourceTree = "<group>"; };
 		4AF7DEAC28930337FB1D5772 /* DecryptCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecryptCommand.swift; sourceTree = "<group>"; };
@@ -175,6 +179,7 @@
 		D2535C231EBCF76F786F7B7E /* Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Account.swift; sourceTree = "<group>"; };
 		D3A50016FDADA1A7E10EDAE0 /* ProcessTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessTree.swift; sourceTree = "<group>"; };
 		D572159B978911BF3D1EDAC0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D627736A32F2282084F78A58 /* ManualKeyContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualKeyContractTests.swift; sourceTree = "<group>"; };
 		D99517C3BBF094ACC2BA1B74 /* AppVersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersionTests.swift; sourceTree = "<group>"; };
 		DC394CD29F6E869A54D1CE5A /* HelpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpView.swift; sourceTree = "<group>"; };
 		E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDetectionContractTests.swift; sourceTree = "<group>"; };
@@ -238,6 +243,7 @@
 				25E51410A9645A70619053EF /* ContractFixtures.swift */,
 				690E18B51A43CF7A0BFFA627 /* DashboardViewModelTests.swift */,
 				AFD4C1EC6F97C4F34F204E5E /* DedupeContractTests.swift */,
+				D627736A32F2282084F78A58 /* ManualKeyContractTests.swift */,
 				65B6FF0D0BD63D5125DBE9E9 /* OrgSelectionContractTests.swift */,
 				E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */,
 				7D2EB0AED06D26591B8C814F /* PlanRefreshContractTests.swift */,
@@ -367,6 +373,7 @@
 				5DCBF1EA7D7222950388A01C /* Browser.swift */,
 				B4ED0121EB136414664B103B /* BrowserCookieService.swift */,
 				6C7E115BD84248989BAA883F /* CryptoService.swift */,
+				3DF55256F6D81B14585D71C9 /* ManualKey.swift */,
 				1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */,
 				2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */,
 			);
@@ -513,6 +520,7 @@
 				F27FC866A1F7BAFB51308009 /* ContractFixtures.swift in Sources */,
 				9759697B6C02F84B6EF06C09 /* DashboardViewModelTests.swift in Sources */,
 				4F550FFDA427DD1820FBEF6C /* DedupeContractTests.swift in Sources */,
+				924D219F90D34BE86951B7DB /* ManualKeyContractTests.swift in Sources */,
 				69E5C98294531C72DBF1D4CC /* OrgSelectionContractTests.swift in Sources */,
 				C42D702D9ABD1294DCD9AD91 /* PlanDetectionContractTests.swift in Sources */,
 				FD8D11773B4AB3B5B1F02A3B /* PlanRefreshContractTests.swift in Sources */,
@@ -540,6 +548,7 @@
 				952383DC16D74D6BF7106040 /* CryptoService.swift in Sources */,
 				1DB54021BBBA6A80D35336A8 /* DecryptCommand.swift in Sources */,
 				203ACE14CE6715FA4B712065 /* HelperAccountStore.swift in Sources */,
+				1213175776995521648C0196 /* ManualKey.swift in Sources */,
 				A45521DA5ED20F5EEDA1F30E /* SyncCommand.swift in Sources */,
 				46ACA4D872B48395C5A010F6 /* UsageAPIService.swift in Sources */,
 				FCCE3539EE2070BD2C37E455 /* UsageCommand.swift in Sources */,
@@ -577,6 +586,7 @@
 				6B5178E7AE39D91E564BD7AD /* HelpView.swift in Sources */,
 				4CA534BEA7CEF61184000A1A /* HoverableButtonStyle.swift in Sources */,
 				04AD291FD33FFB834B40D945 /* InteractiveChartContainer.swift in Sources */,
+				310A4AEEB4EF068D8522A921 /* ManualKey.swift in Sources */,
 				B38B8E482E1BC067FFD7AE74 /* MenuBarPopover.swift in Sources */,
 				5994EEF08661FBAD5564707D /* OverviewChartView.swift in Sources */,
 				B110EB4BECFCCD30DE2E8674 /* ProcessTree.swift in Sources */,

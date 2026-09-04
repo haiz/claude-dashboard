@@ -564,4 +564,14 @@ differ from the add-an-account path:
   record, which is the same collision `isDuplicate` exists to prevent. A legacy
   record without `accountUuid` has nothing to compare and is backfilled instead.
 
+A **pasted session key** obeys a narrower rule than either. It carries no
+`lastActiveOrg`, so on the add path rule 2 applies: the first chat org. On the
+repair path the stored `orgId` is **not** rewritten at all — re-resolving would
+run rule 2 and demote an `orgId` that rule 1 had resolved correctly from the
+cookie, on an account belonging to more than one chat org. The single exception
+is a stored `orgId` of `nil`: there is nothing to demote, and it is the same
+backfill semantics `accountUuid` has. Implemented at
+`apps/macos/Shared/ManualKey.swift` and `apps/linux/core/src/manual_key.rs`,
+driven by `cases/manual-key.json`.
+
 The Linux side has no resync; `sync` is its only writer.
