@@ -60,8 +60,9 @@ enum AccountIdentity {
     ///
     /// 1. a stored `accountUuid` equal to the candidate's — duplicate
     /// 2. a stored record with **no** `accountUuid` whose email matches
-    ///    case-insensitively — duplicate. Legacy records only; once a record
-    ///    has been backfilled its uuid is authoritative.
+    ///    after Unicode lowercasing (`lowercased()` both sides, then compare)
+    ///    — duplicate. Legacy records only; once a record has been backfilled
+    ///    its uuid is authoritative.
     /// 3. otherwise not a duplicate
     ///
     /// `orgId` is never consulted. Colleagues share an org and are different
@@ -80,7 +81,7 @@ enum AccountIdentity {
                 return storedUuid == candidateUuid
             }
             guard let storedEmail = entry.email, let candidateEmail else { return false }
-            return storedEmail.caseInsensitiveCompare(candidateEmail) == .orderedSame
+            return storedEmail.lowercased() == candidateEmail.lowercased()
         }
     }
 

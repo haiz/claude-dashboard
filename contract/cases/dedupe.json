@@ -24,6 +24,12 @@
     "expect_duplicate": true
   },
   {
+    "name": "legacy email match folds non-ASCII case, not just ASCII",
+    "candidate": { "account_uuid": "acct-1", "email": "JOSÉ@example.com" },
+    "stored": [ { "account_uuid": null, "email": "josé@example.com" } ],
+    "expect_duplicate": true
+  },
+  {
     "name": "legacy record with no uuid and no email cannot match",
     "candidate": { "account_uuid": "acct-1", "email": "person@example.com" },
     "stored": [ { "account_uuid": null, "email": null } ],

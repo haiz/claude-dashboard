@@ -15,7 +15,7 @@ pub struct OrgMembership {
 
 impl OrgMembership {
     pub fn is_chat_org(&self) -> bool {
-        self.capabilities.iter().any(|c| c.eq_ignore_ascii_case("chat"))
+        self.capabilities.iter().any(|c| c.to_lowercase() == "chat")
     }
 }
 
@@ -52,7 +52,8 @@ pub struct StoredIdentity {
 ///
 /// 1. a stored `account_uuid` equal to the candidate's — duplicate
 /// 2. a stored record with **no** `account_uuid` whose email matches
-///    case-insensitively — duplicate. Legacy records only.
+///    after Unicode lowercasing (`to_lowercase` both sides, then compare)
+///    — duplicate. Legacy records only.
 /// 3. otherwise not a duplicate
 ///
 /// `org_id` is never consulted.
@@ -67,7 +68,7 @@ pub fn duplicate_index(
 ) -> Option<usize> {
     stored.iter().position(|entry| match (&entry.account_uuid, &entry.email, candidate_email) {
         (Some(uuid), _, _) => uuid == candidate_uuid,
-        (None, Some(stored_email), Some(cand)) => stored_email.eq_ignore_ascii_case(cand),
+        (None, Some(stored_email), Some(cand)) => stored_email.to_lowercase() == cand.to_lowercase(),
         _ => false,
     })
 }
