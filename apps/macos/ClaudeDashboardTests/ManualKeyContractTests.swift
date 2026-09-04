@@ -53,10 +53,12 @@ final class ManualKeyContractTests: XCTestCase {
                 XCTAssertEqual(actual, .rejectNoChatOrg, "case: \(name)")
             case "repair":
                 let w = expect["writes"] as? [String: Any] ?? [:]
+                let warn = try XCTUnwrap(expect["warn_no_chat_org"] as? Bool,
+                                         "case '\(name)' — a repair needs expect.warn_no_chat_org")
                 XCTAssertEqual(actual, .repair(writes: ManualKeyWrites(
                     orgId: w["org_id"] as? String,
                     accountUuid: w["account_uuid"] as? String,
-                    email: w["email"] as? String)),
+                    email: w["email"] as? String), warnNoChatOrg: warn),
                     "case: \(name)")
             default:
                 XCTFail("case '\(name)' — unknown action \(action)")

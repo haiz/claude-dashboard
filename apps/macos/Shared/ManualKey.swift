@@ -27,7 +27,11 @@ struct ManualKeyWrites: Equatable {
 enum ManualKeyDecision: Equatable {
     case add(orgId: String)
     case rejectNoChatOrg
-    case repair(writes: ManualKeyWrites)
+    /// `warnNoChatOrg` is the resolve result, not a property of the record: a
+    /// repair is never rejected for having no chat org, but the caller must
+    /// report it. Testing the resulting `orgId` instead would stay silent on an
+    /// account that kept a stored `orgId` and lost chat access.
+    case repair(writes: ManualKeyWrites, warnNoChatOrg: Bool)
 }
 
 /// What a pasted session key does to the store.
@@ -46,7 +50,8 @@ enum ManualKey {
     ///    the cookie had resolved correctly. The exception is a stored `nil`:
     ///    nothing to demote, same backfill semantics as `accountUuid`.
     /// 3. A repair is never rejected for having no chat org. The key is still
-    ///    saved, mirroring `resyncCore`, and the caller reports the org.
+    ///    saved, mirroring `resyncCore`, and `warnNoChatOrg` tells the caller to
+    ///    report it — decided by the resolve result, never by the stored `orgId`.
     static func decision(
         stored: StoredManualTarget?,
         fetchedUuid: String,
@@ -64,6 +69,6 @@ enum ManualKey {
             orgId: stored.orgId == nil ? resolved : nil,
             accountUuid: stored.accountUuid == nil ? fetchedUuid : nil,
             email: stored.email == nil ? fetchedEmail : nil
-        ))
+        ), warnNoChatOrg: resolved == nil)
     }
 }

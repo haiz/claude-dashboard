@@ -50,9 +50,13 @@ fn manual_key_cases() {
                 assert_eq!(actual, ManualKeyDecision::RejectNoChatOrg, "case: {name}");
             }
             "repair" => {
-                let ManualKeyDecision::Repair { writes } = actual else {
+                let ManualKeyDecision::Repair { writes, warn_no_chat_org } = actual else {
                     panic!("case: {name} — expected a repair, got {actual:?}");
                 };
+                let want_warn = expect["warn_no_chat_org"]
+                    .as_bool()
+                    .unwrap_or_else(|| panic!("case: {name} — repair needs expect.warn_no_chat_org"));
+                assert_eq!(warn_no_chat_org, want_warn, "case: {name} (warn_no_chat_org)");
                 let w = &expect["writes"];
                 assert_eq!(writes.org_id.as_deref(), w["org_id"].as_str(), "case: {name} (org_id)");
                 assert_eq!(writes.account_uuid.as_deref(), w["account_uuid"].as_str(),

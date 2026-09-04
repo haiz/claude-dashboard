@@ -490,7 +490,7 @@ final class DashboardViewModel: ObservableObject {
             await refreshAll(only: [account.id])
             return .added(name: name)
 
-        case .repair(let writes):
+        case .repair(let writes, let warnNoChatOrg):
             guard let index = candidate.duplicateIndex else { return .keyNotAccepted }
             var updated = stored[index]
             updated.sessionKey = CryptoService.encrypt(sessionKey) ?? sessionKey
@@ -511,8 +511,10 @@ final class DashboardViewModel: ObservableObject {
             // usage nobody asked for and wipes the message another card is showing.
             await refreshAll(only: [updated.id])
 
+            // The resolve result, not the stored value: an account that kept a
+            // stored orgId but lost chat access still polls a dead org.
             let name = updated.email ?? updated.name
-            return updated.orgId == nil
+            return warnNoChatOrg
                 ? .updatedWithNoChatOrg(name: name)
                 : .updated(name: name)
         }

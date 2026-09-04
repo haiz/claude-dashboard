@@ -7,7 +7,7 @@
       { "uuid": "org-other", "name": "Other Co", "capabilities": ["chat"] },
       { "uuid": "org-cookie-resolved", "name": "Example Co", "capabilities": ["chat"] }
     ],
-    "expect": { "action": "repair", "writes": { "org_id": null, "account_uuid": null, "email": null } }
+    "expect": { "action": "repair", "warn_no_chat_org": false, "writes": { "org_id": null, "account_uuid": null, "email": null } }
   },
   {
     "name": "repair writes orgId when the stored one is null — nothing to demote",
@@ -17,7 +17,7 @@
       { "uuid": "org-api", "name": "API", "capabilities": ["api", "api_individual"] },
       { "uuid": "org-good", "name": "Example Co", "capabilities": ["chat"] }
     ],
-    "expect": { "action": "repair", "writes": { "org_id": "org-good", "account_uuid": null, "email": null } }
+    "expect": { "action": "repair", "warn_no_chat_org": false, "writes": { "org_id": "org-good", "account_uuid": null, "email": null } }
   },
   {
     "name": "repair backfills accountUuid and email on a legacy record",
@@ -26,16 +26,16 @@
     "memberships": [
       { "uuid": "org-good", "name": "Example Co", "capabilities": ["chat"] }
     ],
-    "expect": { "action": "repair", "writes": { "org_id": null, "account_uuid": "acct-1", "email": "person@example.com" } }
+    "expect": { "action": "repair", "warn_no_chat_org": false, "writes": { "org_id": null, "account_uuid": "acct-1", "email": "person@example.com" } }
   },
   {
-    "name": "repair is not rejected when no chat org is left — the key is still worth saving",
+    "name": "repair is not rejected when no chat org is left — the key is saved and the caller warns",
     "stored": { "org_id": "org-good", "account_uuid": "acct-1", "email": "person@example.com" },
     "fetched": { "uuid": "acct-1", "email": "person@example.com" },
     "memberships": [
       { "uuid": "org-api", "name": "API", "capabilities": ["api", "api_individual"] }
     ],
-    "expect": { "action": "repair", "writes": { "org_id": null, "account_uuid": null, "email": null } }
+    "expect": { "action": "repair", "warn_no_chat_org": true, "writes": { "org_id": null, "account_uuid": null, "email": null } }
   },
   {
     "name": "add resolves the first chat org — a pasted key has no lastActiveOrg",

@@ -28,7 +28,14 @@ pub struct ManualKeyWrites {
 pub enum ManualKeyDecision {
     Add { org_id: String },
     RejectNoChatOrg,
-    Repair { writes: ManualKeyWrites },
+    /// `warn_no_chat_org` is the resolve result, not a property of the record:
+    /// a repair is never rejected for having no chat org, but the caller must
+    /// report it. Testing the resulting `org_id` instead would stay silent on
+    /// an account that kept a stored `org_id` and lost chat access.
+    Repair {
+        writes: ManualKeyWrites,
+        warn_no_chat_org: bool,
+    },
 }
 
 /// 1. No stored match: add the account, at the org `resolve_org_id` picks with
@@ -39,7 +46,8 @@ pub enum ManualKeyDecision {
 ///    the cookie had resolved correctly. The exception is a stored `None`:
 ///    nothing to demote, same backfill semantics as `account_uuid`.
 /// 3. A repair is never rejected for having no chat org. The key is still
-///    saved, mirroring `resyncCore`, and the caller reports the org.
+///    saved, mirroring `resyncCore`, and `warn_no_chat_org` tells the caller to
+///    report it — decided by the resolve result, never by the stored `org_id`.
 pub fn manual_key_decision(
     stored: Option<&StoredManualTarget>,
     fetched_uuid: &str,
@@ -55,6 +63,7 @@ pub fn manual_key_decision(
         };
     };
 
+    let warn_no_chat_org = resolved.is_none();
     ManualKeyDecision::Repair {
         writes: ManualKeyWrites {
             org_id: if stored.org_id.is_none() { resolved } else { None },
@@ -69,6 +78,7 @@ pub fn manual_key_decision(
                 None
             },
         },
+        warn_no_chat_org,
     }
 }
 

@@ -114,7 +114,10 @@ pub fn run_add_key() -> i32 {
             0
         }
 
-        ManualKeyDecision::Repair { writes } => {
+        ManualKeyDecision::Repair {
+            writes,
+            warn_no_chat_org,
+        } => {
             let Some(i) = index else { return 1 };
             let old_plan = accounts[i].plan.clone();
             accounts[i].session_key = Some(store::encrypt_session_key(session_key));
@@ -151,7 +154,9 @@ pub fn run_add_key() -> i32 {
                     plan_wire_value(&accounts[i].plan)
                 );
             }
-            if accounts[i].org_id.is_none() {
+            // The resolve result, not the stored value: an account that kept a
+            // stored org_id but lost chat access still polls a dead org.
+            if warn_no_chat_org {
                 eprintln!("Warning: no organization with chat access; usage will not update.");
             }
             0

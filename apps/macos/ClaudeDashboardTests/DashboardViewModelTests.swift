@@ -789,6 +789,28 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertTrue(store.accounts.isEmpty, "an unresolvable org is never persisted as working")
     }
 
+    /// The warning follows the resolve result, not the stored `orgId`. An
+    /// account that kept a working-looking `orgId` but lost chat access polls a
+    /// dead org forever, and a test of the resulting record stays silent on it.
+    func testManualKeyWarnsWhenAStoredOrgIdSurvivesButNoChatOrgIsLeft() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        var account = makeAccount(orgId: "org-good", email: "person@example.com",
+                                  accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        respond(accountBody: #"{"uuid":"acct-1","email_address":"person@example.com","memberships":[{"organization":{"uuid":"org-api","name":"API","capabilities":["api","api_individual"]}}]}"#)
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey("sk-pasted")
+
+        XCTAssertEqual(outcome, .updatedWithNoChatOrg(name: "person@example.com"),
+                       "a repair with no chat org is reported, not silently accepted")
+        let updated = try XCTUnwrap(store.accounts.first)
+        XCTAssertEqual(updated.orgId, "org-good", "the stored orgId is kept and reported, not blanked")
+        XCTAssertEqual(updated.status, .active, "the key is still worth saving")
+    }
+
     func testManualKeyReportsAnUnacceptedKey() async throws {
         let (vm, store) = try makeViewModelWithStore(
             cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))

@@ -66,7 +66,7 @@ enum AddKeyCommand {
                 HelperAccountStore.saveAccounts(accounts)
                 fputs("Added: \(name) (\(plan.rawValue))\n", stderr)
 
-            case .repair(let writes):
+            case .repair(let writes, let warnNoChatOrg):
                 guard let index = candidate.duplicateIndex else { return }
                 var updated = accounts[index]
                 let oldPlan = updated.plan
@@ -88,7 +88,9 @@ enum AddKeyCommand {
                 if updated.plan != oldPlan {
                     fputs("Updated plan: \(name) (\(oldPlan.rawValue) -> \(updated.plan.rawValue))\n", stderr)
                 }
-                if updated.orgId == nil {
+                // The resolve result, not the stored value: an account that kept
+                // a stored orgId but lost chat access still polls a dead org.
+                if warnNoChatOrg {
                     fputs("Warning: no organization with chat access; usage will not update.\n", stderr)
                 }
             }
