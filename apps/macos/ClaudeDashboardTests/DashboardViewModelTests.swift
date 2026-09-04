@@ -689,6 +689,103 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertTrue(state?.error?.contains("Re-sync failed") ?? false,
                       "expected the re-sync failure message, got: \(state?.error ?? "nil")")
     }
+
+    // MARK: - Manual session key
+
+    func testManualKeyAddsAnAccountWithNoProfileAndTheFirstChatOrg() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        respond(accountBody: Self.accountBody(uuid: "acct-1"))
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey("  sk-pasted\n")
+
+        XCTAssertEqual(outcome, .added(name: "person@example.com"))
+        let added = try XCTUnwrap(store.accounts.first)
+        XCTAssertEqual(added.source, .manual)
+        XCTAssertEqual(added.chromeProfilePath, "")
+        XCTAssertNil(added.chromeProfileName)
+        XCTAssertEqual(added.orgId, "org-good", "no lastActiveOrg, so rule 2: the first chat org")
+        XCTAssertEqual(added.accountUuid, "acct-1")
+        XCTAssertEqual(store.loadSessionKey(for: added.id), "sk-pasted",
+                       "the key is trimmed and stored encrypted")
+    }
+
+    func testManualKeyRepairsAStoredAccountWithoutTouchingItsOrgId() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        var account = makeAccount(orgId: "org-cookie", email: "person@example.com",
+                                  accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        // `org-cookie` is not in the memberships this body returns; a re-resolve
+        // would rewrite orgId to `org-good`, which is exactly what must not happen.
+        respond(accountBody: Self.accountBody(uuid: "acct-1"))
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey("sk-pasted")
+
+        XCTAssertEqual(outcome, .updated(name: "person@example.com"))
+        let updated = try XCTUnwrap(store.accounts.first)
+        XCTAssertEqual(updated.orgId, "org-cookie",
+                       "a pasted key carries no org preference and must not demote a resolved orgId")
+        XCTAssertEqual(updated.status, .active)
+        XCTAssertEqual(updated.source, .browser, "a key never changes which source a record has")
+        XCTAssertEqual(store.loadSessionKey(for: account.id), "sk-pasted")
+        XCTAssertEqual(store.accounts.count, 1, "a repair must not add a second record")
+    }
+
+    func testManualKeyFillsAStoredOrgIdThatWasNil() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        var account = makeAccount(orgId: nil, email: "person@example.com", accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        respond(accountBody: Self.accountBody(uuid: "acct-1"))
+        await Task.yield()
+
+        _ = await vm.applyManualKey("sk-pasted")
+
+        XCTAssertEqual(store.accounts.first?.orgId, "org-good",
+                       "there is nothing to demote, so a nil orgId is backfilled")
+    }
+
+    func testManualKeyRejectsAnAccountWithNoChatOrg() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        respond(accountBody: #"{"uuid":"acct-1","email_address":"person@example.com","memberships":[{"organization":{"uuid":"org-api","name":"API","capabilities":["api","api_individual"]}}]}"#)
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey("sk-pasted")
+
+        XCTAssertEqual(outcome, .rejectedNoChatOrg)
+        XCTAssertTrue(store.accounts.isEmpty, "an unresolvable org is never persisted as working")
+    }
+
+    func testManualKeyReportsAnUnacceptedKey() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, Data("{}".utf8))
+        }
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey("sk-dead")
+
+        XCTAssertEqual(outcome, .keyNotAccepted)
+        XCTAssertTrue(store.accounts.isEmpty)
+    }
+
+    func testManualKeyRejectsWhitespaceOnly() async throws {
+        let (vm, _) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+
+        let outcome = await vm.applyManualKey("   \n  ")
+
+        XCTAssertEqual(outcome, .emptyKey, "no network call is worth making for this")
+    }
 }
 
 /// Thread-safe tally of the paths `MockURLProtocol` served: the handler runs on

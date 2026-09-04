@@ -64,6 +64,7 @@
 		98FD479769E1857F43E86CCB /* UsageLogModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8ADAEF8BBFC797B0D4950E3 /* UsageLogModelsTests.swift */; };
 		9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF469D724BE1FCA1D071131F /* AccountStore.swift */; };
 		9C1660C69D3A0A2D926B179E /* UpdateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 373E95B92E85447700BA3DEF /* UpdateServiceTests.swift */; };
+		9FAB31B717BAEDE9C724CB3E /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
 		A2A5D0F022E7A798045D105C /* DashboardWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA0F9129D3367D395937E5E /* DashboardWindow.swift */; };
 		A39C01692A8EA4FA3A76ED88 /* AccountStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */; };
 		A45521DA5ED20F5EEDA1F30E /* SyncCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFA427293BFC51355250BB1 /* SyncCommand.swift */; };
@@ -82,6 +83,7 @@
 		C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */; };
 		C42D702D9ABD1294DCD9AD91 /* PlanDetectionContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */; };
 		C436B7F85AB4285388BE8869 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
+		C5EF5EF93570CBB91B78006E /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
 		C76FCE10EDB30B02770BB9D0 /* BurnRateContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AEE29987B849E18AFE5E428 /* BurnRateContractTests.swift */; };
 		CBA5F28B81C6FA6C0E24C610 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2535C231EBCF76F786F7B7E /* Account.swift */; };
 		E2544EAE3689C2FE07794B07 /* CommandRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94E3FA6DB98A5F3F847B13C2 /* CommandRunnerTests.swift */; };
@@ -154,6 +156,7 @@
 		75A3660023E6BA291B7932FE /* ClaudeCodeAccountDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeAccountDetectorTests.swift; sourceTree = "<group>"; };
 		786E54BCD656D51F01E86B77 /* AccountCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountCard.swift; sourceTree = "<group>"; };
 		7D2EB0AED06D26591B8C814F /* PlanRefreshContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanRefreshContractTests.swift; sourceTree = "<group>"; };
+		7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualKeyInput.swift; sourceTree = "<group>"; };
 		7E4539F6C5F1A842E8B036C3 /* CommandClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandClassifier.swift; sourceTree = "<group>"; };
 		8007AA99F483598797EBFAE0 /* ClaudeDashboardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDashboardApp.swift; sourceTree = "<group>"; };
 		82BDA8522FB7218F3456ECCF /* CommandLogViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandLogViewModelTests.swift; sourceTree = "<group>"; };
@@ -380,6 +383,7 @@
 				B4ED0121EB136414664B103B /* BrowserCookieService.swift */,
 				6C7E115BD84248989BAA883F /* CryptoService.swift */,
 				3DF55256F6D81B14585D71C9 /* ManualKey.swift */,
+				7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */,
 				53FC5C2A26C631D62371B57C /* SessionCandidate.swift */,
 				1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */,
 				2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */,
@@ -557,6 +561,7 @@
 				1DB54021BBBA6A80D35336A8 /* DecryptCommand.swift in Sources */,
 				203ACE14CE6715FA4B712065 /* HelperAccountStore.swift in Sources */,
 				1213175776995521648C0196 /* ManualKey.swift in Sources */,
+				9FAB31B717BAEDE9C724CB3E /* ManualKeyInput.swift in Sources */,
 				697FD5163EBEAA9871C91C38 /* SessionCandidate.swift in Sources */,
 				A45521DA5ED20F5EEDA1F30E /* SyncCommand.swift in Sources */,
 				46ACA4D872B48395C5A010F6 /* UsageAPIService.swift in Sources */,
@@ -596,6 +601,7 @@
 				4CA534BEA7CEF61184000A1A /* HoverableButtonStyle.swift in Sources */,
 				04AD291FD33FFB834B40D945 /* InteractiveChartContainer.swift in Sources */,
 				310A4AEEB4EF068D8522A921 /* ManualKey.swift in Sources */,
+				C5EF5EF93570CBB91B78006E /* ManualKeyInput.swift in Sources */,
 				B38B8E482E1BC067FFD7AE74 /* MenuBarPopover.swift in Sources */,
 				5994EEF08661FBAD5564707D /* OverviewChartView.swift in Sources */,
 				B110EB4BECFCCD30DE2E8674 /* ProcessTree.swift in Sources */,
