@@ -23,7 +23,8 @@ final class AccountStoreTests: XCTestCase {
             orgId: "org-123",
             plan: .max200,
             lastSynced: nil,
-            status: .active
+            status: .active,
+            source: .browser
         )
 
         store.addAccount(account)
@@ -42,7 +43,8 @@ final class AccountStoreTests: XCTestCase {
             orgId: "org-123",
             plan: .pro,
             lastSynced: nil,
-            status: .active
+            status: .active,
+            source: .browser
         )
 
         store.addAccount(account)
@@ -62,7 +64,8 @@ final class AccountStoreTests: XCTestCase {
             orgId: "org-123",
             plan: .max200,
             lastSynced: nil,
-            status: .active
+            status: .active,
+            source: .browser
         )
 
         store.addAccount(account)
@@ -82,7 +85,8 @@ final class AccountStoreTests: XCTestCase {
             orgId: "org-123",
             plan: .max200,
             lastSynced: nil,
-            status: .active
+            status: .active,
+            source: .browser
         )
 
         store.addAccount(account)

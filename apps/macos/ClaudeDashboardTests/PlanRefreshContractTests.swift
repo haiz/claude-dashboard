@@ -43,7 +43,8 @@ final class PlanRefreshContractTests: XCTestCase {
             accountUuid: "acct-1",
             plan: plan,
             lastSynced: nil,
-            status: .active
+            status: .active,
+            source: .browser
         )
     }
 

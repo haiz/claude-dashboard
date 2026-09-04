@@ -358,7 +358,8 @@ struct SetupView: View {
                 browser: detected.browser,
                 plan: detected.plan ?? .pro,
                 lastSynced: Date(),
-                status: .active
+                status: .active,
+                source: .browser
             )
 
             viewModel.accountStore.addAccount(account)

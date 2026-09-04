@@ -65,6 +65,7 @@
 		A5773DFB86E3CE93696F9B7F /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54CFBC6B0C4EF6B9A3099D2 /* UpdateService.swift */; };
 		A695D976DBF8E5BBF704DC8D /* AppVersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D99517C3BBF094ACC2BA1B74 /* AppVersionTests.swift */; };
 		A6DAAE7B2732C3395271F7BB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA09806794F5E11A193DC9E0 /* main.swift */; };
+		A6F05ADA316EC6FF3F96B159 /* AccountSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05E2848D8529F3B12BFF386 /* AccountSourceTests.swift */; };
 		AAEAB48A072B469189CCA747 /* UsageAPIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64695012FC6F1C08762E7E77 /* UsageAPIServiceTests.swift */; };
 		AE3B5F95AC15F193C1B2C9CE /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A87EC4F90E188AAAFB660C3 /* AppVersion.swift */; };
 		B110EB4BECFCCD30DE2E8674 /* ProcessTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A50016FDADA1A7E10EDAE0 /* ProcessTree.swift */; };
@@ -169,6 +170,7 @@
 		CBC96C2BB8D763106FBEA74A /* AccountCodableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountCodableTests.swift; sourceTree = "<group>"; };
 		CBFA427293BFC51355250BB1 /* SyncCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncCommand.swift; sourceTree = "<group>"; };
 		CEA505924741CE7A0DFBB32F /* ClaudeDashboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeDashboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D05E2848D8529F3B12BFF386 /* AccountSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSourceTests.swift; sourceTree = "<group>"; };
 		D13B511083DF4FE0C75FA0DD /* BurnRateTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnRateTracker.swift; sourceTree = "<group>"; };
 		D2535C231EBCF76F786F7B7E /* Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Account.swift; sourceTree = "<group>"; };
 		D3A50016FDADA1A7E10EDAE0 /* ProcessTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessTree.swift; sourceTree = "<group>"; };
@@ -220,6 +222,7 @@
 			isa = PBXGroup;
 			children = (
 				CBC96C2BB8D763106FBEA74A /* AccountCodableTests.swift */,
+				D05E2848D8529F3B12BFF386 /* AccountSourceTests.swift */,
 				23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */,
 				D99517C3BBF094ACC2BA1B74 /* AppVersionTests.swift */,
 				8A21ACC6D2E73D5CCD5BEE2D /* BrowserCookieServiceTests.swift */,
@@ -494,6 +497,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BCF9465CD27C5B80FF29FE9A /* AccountCodableTests.swift in Sources */,
+				A6F05ADA316EC6FF3F96B159 /* AccountSourceTests.swift in Sources */,
 				A39C01692A8EA4FA3A76ED88 /* AccountStoreTests.swift in Sources */,
 				A695D976DBF8E5BBF704DC8D /* AppVersionTests.swift in Sources */,
 				652766CECD3E48E91FF33533 /* BrowserCookieServiceTests.swift in Sources */,

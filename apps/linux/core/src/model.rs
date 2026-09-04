@@ -35,6 +35,19 @@ pub enum Browser {
     Edge,
 }
 
+/// Where the record's session key comes from. Mirrors Swift's `AccountSource`;
+/// `manual` means the user pasted it and there is no browser profile behind the
+/// record. Consumers key on this field alone, never on an empty
+/// `chrome_profile_path`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum AccountSource {
+    #[serde(rename = "browser")]
+    #[default]
+    Browser,
+    #[serde(rename = "manual")]
+    Manual,
+}
+
 const REFERENCE_EPOCH_OFFSET: f64 = 978_307_200.0; // 2001-01-01 -> 1970-01-01
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +74,8 @@ pub struct Account {
     pub status: AccountStatus,
     #[serde(rename = "isPinned", default)]
     pub is_pinned: bool, // missing -> false
+    #[serde(default)]
+    pub source: AccountSource, // missing -> Browser (Default)
 }
 
 impl Account {
@@ -91,6 +106,25 @@ mod tests {
         assert_eq!(serde_json::to_string(&AccountPlan::Max5x).unwrap(), "\"Max 5x\"");
         let p: AccountPlan = serde_json::from_str("\"Max 20x\"").unwrap();
         assert!(matches!(p, AccountPlan::Max20x));
+    }
+
+    #[test]
+    fn source_round_trips_as_manual() {
+        let json = r#"{"id":"a","name":"n","chromeProfilePath":"","plan":"Pro",
+                       "status":"active","source":"manual"}"#;
+        let account = Account::from_json_object(json).unwrap();
+        assert_eq!(account.source, AccountSource::Manual);
+
+        let out = serde_json::to_string(&account).unwrap();
+        assert!(out.contains(r#""source":"manual""#), "got {out}");
+    }
+
+    #[test]
+    fn a_record_with_no_source_is_browser_backed() {
+        let json = r#"{"id":"a","name":"n","chromeProfilePath":"Default",
+                       "plan":"Pro","status":"active"}"#;
+        let account = Account::from_json_object(json).unwrap();
+        assert_eq!(account.source, AccountSource::Browser);
     }
 
     #[test]

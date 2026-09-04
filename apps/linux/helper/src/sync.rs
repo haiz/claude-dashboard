@@ -36,7 +36,7 @@ use claude_dashboard_core::api::{fetch_account, fetch_organizations, parse_accou
 use claude_dashboard_core::browser::{self, DiscoveredProfile};
 use claude_dashboard_core::cookie::{self, CookieError, KeySources};
 use claude_dashboard_core::identity::{duplicate_index, resolve_org_id, StoredIdentity};
-use claude_dashboard_core::model::{Account, AccountPlan, AccountStatus, Browser};
+use claude_dashboard_core::model::{Account, AccountPlan, AccountSource, AccountStatus, Browser};
 use claude_dashboard_core::plan::{detect_plan_tier, refreshed_plan};
 use claude_dashboard_core::store;
 use serde_json::Value;
@@ -213,6 +213,7 @@ pub fn run_sync() -> i32 {
             last_synced: Some(now_reference_seconds()),
             status: AccountStatus::Active,
             is_pinned: false,
+            source: AccountSource::Browser,
         });
         added += 1;
         eprintln!("  Added: {display_name} ({plan_wire})");
@@ -500,6 +501,7 @@ mod tests {
             last_synced: None,
             status: AccountStatus::Active,
             is_pinned: false,
+            source: AccountSource::Browser,
         }
     }
 

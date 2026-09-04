@@ -27,6 +27,7 @@ is platform detail; the shape below is contract.
 | `lastSynced` | Date | yes | |
 | `status` | `AccountStatus` | no | |
 | `isPinned` | Bool | no (defaults to `false` on decode) | See "Backward compatibility". |
+| `source` | `AccountSource` | no (defaults to `browser` on decode) | `browser` or `manual`. A manual record's key was pasted by the user: `chromeProfilePath` is `""`, `chromeProfileName` is absent, and `browser` is meaningless. Consumers key on this field alone; an empty `chromeProfilePath` is not a secondary signal. |
 
 ## Wire encoding of the non-string scalars
 
@@ -86,6 +87,18 @@ from this raw value.
 `"brave"`, `"edge"` (same default-synthesis rule — the enum has no explicit
 `= "..."` per case, so each case's raw value is its lowercase name, which is
 already lowercase here).
+
+`AccountSource` wire values are `"browser"` and `"manual"`.
+
+**Downgrade is one-way.** An older build reads a record carrying `source`
+without failing, because `chromeProfilePath` is still present. But both writers
+re-serialize the whole array (`HelperAccountStore.saveAccounts`,
+`Account::to_json_array`) and both drop unknown keys on encode: Swift's
+synthesized `encode(to:)` follows the explicit `CodingKeys`, and the Rust derive
+has no catch-all. The first write from an older build therefore strips `source`,
+and the record reads afterwards as browser-backed with an empty profile path.
+Usage polling still works; re-sync reports opening a profile named `''` until the
+key is pasted again.
 
 ## Backward compatibility
 

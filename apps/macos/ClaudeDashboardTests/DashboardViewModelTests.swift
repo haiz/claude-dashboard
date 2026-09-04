@@ -38,7 +38,8 @@ final class DashboardViewModelTests: XCTestCase {
             plan: .max5x,
             lastSynced: nil,
             status: .active,
-            isPinned: pinned
+            isPinned: pinned,
+            source: .browser
         )
     }
 

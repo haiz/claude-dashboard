@@ -33,7 +33,8 @@ final class AccountCodableTests: XCTestCase {
             browser: .brave,
             plan: .max5x,
             lastSynced: nil,
-            status: .active
+            status: .active,
+            source: .browser
         )
         let data = try JSONEncoder().encode(account)
         let decoded = try JSONDecoder().decode(Account.self, from: data)
@@ -58,7 +59,7 @@ final class AccountCodableTests: XCTestCase {
             id: UUID(), name: "person@example.com", email: "person@example.com",
             chromeProfilePath: "Profile 1", chromeProfileName: "Profile 1",
             orgId: "org-1", sessionKey: nil, browser: .chrome, plan: .max200,
-            lastSynced: nil, status: .active
+            lastSynced: nil, status: .active, source: .browser
         )
         account.accountUuid = "acct-1"
 
