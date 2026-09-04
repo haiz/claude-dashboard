@@ -786,6 +786,41 @@ final class DashboardViewModelTests: XCTestCase {
 
         XCTAssertEqual(outcome, .emptyKey, "no network call is worth making for this")
     }
+
+    /// A sentinel that could not occur by accident, driven through the real
+    /// `applyManualKey` path so the assertion can actually fail: a mapping that
+    /// interpolated a key into its message would show this string verbatim.
+    private static let leakSentinel = "sk-ant-sid01-LEAK-SENTINEL-9f3c"
+
+    func testManualKeyMessageNeverLeaksTheKeyOnRejection() async throws {
+        let (vm, _) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, Data("{}".utf8))
+        }
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey(Self.leakSentinel)
+
+        XCTAssertEqual(outcome, .keyNotAccepted)
+        XCTAssertFalse(outcome.message.contains(Self.leakSentinel),
+                       "a session key must never reach a user-visible string")
+    }
+
+    func testManualKeyMessageNeverLeaksTheKeyOnSuccess() async throws {
+        let (vm, _) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        respond(accountBody: Self.accountBody(uuid: "acct-1"))
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey(Self.leakSentinel)
+
+        XCTAssertEqual(outcome, .added(name: "person@example.com"))
+        XCTAssertFalse(outcome.message.contains(Self.leakSentinel),
+                       "a session key must never reach a user-visible string")
+    }
 }
 
 /// Thread-safe tally of the paths `MockURLProtocol` served: the handler runs on

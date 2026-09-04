@@ -2,6 +2,17 @@ import XCTest
 @testable import ClaudeDashboard
 
 /// The message mapping is the testable half of the paste sheet.
+///
+/// `ManualKeyOutcome`'s cases carry only an account `name: String`, or no payload
+/// at all — never the session key itself. That is what makes a leak through
+/// `.message` structurally impossible; there is no key value here for a switch
+/// body to interpolate. A runtime check pattern-matching a key prefix (e.g.
+/// `"sk-"`) cannot prove this and was removed: `ManualKeyInput` deliberately
+/// avoids assuming a key format ("guessing at a prefix would break the day the
+/// format changes"), so a check like that would pass even if a real key leaked
+/// through in a different shape. The regression guard that can actually fail
+/// lives in `DashboardViewModelTests` (`testManualKeyMessageNeverLeaksTheKeyOn...`),
+/// which drives `applyManualKey` with a sentinel key and asserts on the sentinel.
 final class ManualKeyOutcomeTests: XCTestCase {
 
     func testEachOutcomeHasAMessageThatNamesTheAccountWhenItHasOne() {
@@ -43,19 +54,6 @@ final class ManualKeyOutcomeTests: XCTestCase {
         for outcome in outcomes {
             XCTAssertEqual(outcome.holdsSheetOpen, expectedToHoldOpen(outcome),
                            "\(outcome) disagrees with the exhaustive expectation")
-        }
-    }
-
-    func testNoMessageCanCarryTheKey() {
-        // The mapping takes no key argument at all, which is the guarantee.
-        let outcomes: [ManualKeyOutcome] = [
-            .added(name: "a@b.com"), .updated(name: "a@b.com"),
-            .updatedWithNoChatOrg(name: "a@b.com"), .rejectedNoChatOrg,
-            .keyNotAccepted, .emptyKey
-        ]
-        for outcome in outcomes {
-            XCTAssertFalse(outcome.message.lowercased().contains("sk-"),
-                           "a session key must never reach a user-visible string")
         }
     }
 }
