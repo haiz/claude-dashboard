@@ -71,3 +71,31 @@ pub fn manual_key_decision(
         },
     }
 }
+
+/// The key with surrounding whitespace and newlines removed, or `None` when
+/// nothing is left. Mirrors `ManualKeyInput.trimmedKey` in Swift.
+///
+/// Deliberately no format check: guessing at a prefix would break the day the
+/// format changes, and `/api/account` is the real validator.
+pub fn trimmed_key(raw: &str) -> Option<&str> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() { None } else { Some(trimmed) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trimmed_key_strips_the_edges_only() {
+        assert_eq!(trimmed_key("sk-abc\n"), Some("sk-abc"));
+        assert_eq!(trimmed_key("  sk-abc  "), Some("sk-abc"));
+        assert_eq!(trimmed_key("sk-a.b-c_d\n"), Some("sk-a.b-c_d"));
+    }
+
+    #[test]
+    fn trimmed_key_is_none_for_whitespace() {
+        assert_eq!(trimmed_key(" \n\t "), None);
+        assert_eq!(trimmed_key(""), None);
+    }
+}

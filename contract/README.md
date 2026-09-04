@@ -574,4 +574,5 @@ backfill semantics `accountUuid` has. Implemented at
 `apps/macos/Shared/ManualKey.swift` and `apps/linux/core/src/manual_key.rs`,
 driven by `cases/manual-key.json`.
 
-The Linux side has no resync; `sync` is its only writer.
+The Linux side has no resync. `sync` and `add-key` are its two writers, and
+`add-key` obeys the pasted-key rule above rather than the resync one.

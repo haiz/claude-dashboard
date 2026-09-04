@@ -26,7 +26,28 @@ fn no_args_prints_usage_banner_and_exits_1() {
     let out = Command::new(helper()).output().unwrap();
     assert_eq!(
         String::from_utf8_lossy(&out.stderr),
-        "Usage: claude-dashboard-helper <decrypt|usage|sync>\n"
+        "Usage: claude-dashboard-helper <decrypt|usage|sync|add-key>\n"
+    );
+    assert_eq!(out.status.code(), Some(1));
+}
+
+#[test]
+fn add_key_with_empty_stdin_reports_and_exits_1() {
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let mut child = Command::new(helper())
+        .args(["add-key"])
+        .stdin(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"   \n").unwrap();
+    let out = child.wait_with_output().unwrap();
+
+    assert_eq!(
+        String::from_utf8_lossy(&out.stderr),
+        "No session key on stdin.\n"
     );
     assert_eq!(out.status.code(), Some(1));
 }
