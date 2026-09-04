@@ -13,6 +13,17 @@ enum AccountStatus: String, Codable {
     case error
 }
 
+/// Where this record's session key comes from. `manual` means the user pasted
+/// it: there is no browser profile behind the record, so `chromeProfilePath` is
+/// empty and `browser` is meaningless.
+///
+/// Consumers key on this field alone. An empty `chromeProfilePath` is **not** a
+/// secondary signal for "manual" — that sentinel is what this field replaces.
+enum AccountSource: String, Codable {
+    case browser
+    case manual
+}
+
 struct Account: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
@@ -31,6 +42,10 @@ struct Account: Identifiable, Codable, Equatable {
     var lastSynced: Date?
     var status: AccountStatus
     var isPinned: Bool = false
+    /// No default on purpose: the memberwise initializer must force every
+    /// construction site to say which source it is creating. A default of
+    /// `.browser` would let a manual add silently produce a browser record.
+    var source: AccountSource
 
     var isConfigured: Bool {
         orgId != nil
@@ -43,7 +58,7 @@ struct Account: Identifiable, Codable, Equatable {
 extension Account {
     private enum CodingKeys: String, CodingKey {
         case id, name, email, chromeProfilePath, chromeProfileName
-        case orgId, accountUuid, sessionKey, browser, plan, lastSynced, status, isPinned
+        case orgId, accountUuid, sessionKey, browser, plan, lastSynced, status, isPinned, source
     }
 
     init(from decoder: Decoder) throws {
@@ -61,5 +76,6 @@ extension Account {
         lastSynced = try c.decodeIfPresent(Date.self, forKey: .lastSynced)
         status = try c.decode(AccountStatus.self, forKey: .status)
         isPinned = try c.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        source = try c.decodeIfPresent(AccountSource.self, forKey: .source) ?? .browser
     }
 }

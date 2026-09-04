@@ -11,6 +11,52 @@ struct AccountUsageState: Identifiable {
     var burnRates: BurnRates?
 }
 
+/// What applying a pasted session key did. The view maps this to a message; the
+/// key itself never appears in any of them.
+enum ManualKeyOutcome: Equatable {
+    case added(name: String)
+    case updated(name: String)
+    /// Repaired, but the account has no organisation with chat access, so usage
+    /// will not update. The key is still saved — see `resyncCore`.
+    case updatedWithNoChatOrg(name: String)
+    case rejectedNoChatOrg
+    case keyNotAccepted
+    case emptyKey
+}
+
+extension ManualKeyOutcome {
+    var message: String {
+        switch self {
+        case .added(let name):
+            return "Added \(name)."
+        case .updated(let name):
+            return "Updated the session key for \(name)."
+        case .updatedWithNoChatOrg(let name):
+            return "Updated the session key for \(name), but that account has no organization with chat access, so usage will not update."
+        case .rejectedNoChatOrg:
+            return "That account has no organization with chat access."
+        case .keyNotAccepted:
+            return "That session key was not accepted. It may have expired, or been copied incompletely."
+        case .emptyKey:
+            return "Paste a session key first."
+        }
+    }
+
+    var isFailure: Bool {
+        switch self {
+        case .added, .updated, .updatedWithNoChatOrg: return false
+        case .rejectedNoChatOrg, .keyNotAccepted, .emptyKey: return true
+        }
+    }
+
+    /// True when the sheet must stay open after a success so the message gets read.
+    /// A saved key whose account has no chat org is a warning, not just a receipt.
+    var holdsSheetOpen: Bool {
+        if case .updatedWithNoChatOrg = self { return true }
+        return false
+    }
+}
+
 @MainActor
 final class DashboardViewModel: ObservableObject {
     @Published var accountStates: [AccountUsageState] = []
@@ -320,6 +366,16 @@ final class DashboardViewModel: ObservableObject {
     private func resyncCore(_ accountId: UUID) async -> Bool {
         guard let account = accountStore.accounts.first(where: { $0.id == accountId }) else { return false }
 
+        // A pasted-key account has no browser profile to re-read. Falling through
+        // would ask the cookie provider for the profile named "" and report
+        // "Open ... profile \"\" and login", about the one account type a cookie
+        // re-read cannot fix. `applyManualKey` is its recovery path.
+        guard account.source == .browser else {
+            setError("This account's session key was pasted by hand. Paste a new one to re-sync it.",
+                     for: accountId)
+            return false
+        }
+
         let cookies = cookieProvider(account.chromeProfilePath, account.browser)
 
         guard let sessionKey = cookies.sessionKey else {
@@ -383,6 +439,85 @@ final class DashboardViewModel: ObservableObject {
         // Refresh just this card. A whole-fleet pass would re-fetch usage nobody
         // asked for and clear the error message any other card is showing.
         await refreshAll(only: [accountId])
+    }
+
+    /// Adds or repairs an account from a session key the user pasted.
+    ///
+    /// Which of the two happens is decided by the dedupe rule, not by the user:
+    /// `contract/cases/dedupe.json` says whether this key names a stored account.
+    /// What the repair branch may write is `contract/cases/manual-key.json`.
+    func applyManualKey(_ raw: String) async -> ManualKeyOutcome {
+        guard let sessionKey = ManualKeyInput.trimmedKey(from: raw) else { return .emptyKey }
+
+        let stored = accountStore.accounts
+        guard let candidate = await SessionCandidate.validate(
+            sessionKey: sessionKey,
+            against: stored.map(StoredIdentity.init),
+            apiService: apiService
+        ) else { return .keyNotAccepted }
+
+        let target = candidate.duplicateIndex.map { StoredManualTarget(stored[$0]) }
+        let decision = ManualKey.decision(
+            stored: target,
+            fetchedUuid: candidate.identity.uuid,
+            fetchedEmail: candidate.identity.email,
+            memberships: candidate.identity.memberships)
+
+        switch decision {
+        case .rejectNoChatOrg:
+            return .rejectedNoChatOrg
+
+        case .add(let orgId):
+            let email = candidate.identity.email
+            let name = email ?? "Account \(candidate.identity.uuid.prefix(8))"
+            let plan = candidate.orgs?.first(where: { $0.uuid == orgId })?.planHint ?? .pro
+            let account = Account(
+                id: UUID(),
+                name: name,
+                email: email,
+                chromeProfilePath: "",
+                chromeProfileName: nil,
+                orgId: orgId,
+                accountUuid: candidate.identity.uuid,
+                sessionKey: CryptoService.encrypt(sessionKey) ?? sessionKey,
+                browser: .chrome,
+                plan: plan,
+                lastSynced: Date(),
+                status: .active,
+                source: .manual
+            )
+            accountStore.addAccount(account)
+            await refreshAll(only: [account.id])
+            return .added(name: name)
+
+        case .repair(let writes, let warnNoChatOrg):
+            guard let index = candidate.duplicateIndex else { return .keyNotAccepted }
+            var updated = stored[index]
+            updated.sessionKey = CryptoService.encrypt(sessionKey) ?? sessionKey
+            updated.status = .active
+            updated.lastSynced = Date()
+            if let orgId = writes.orgId { updated.orgId = orgId }
+            if let uuid = writes.accountUuid { updated.accountUuid = uuid }
+            if let email = writes.email { updated.email = email }
+            // The plan is matched against the orgId as it stands *after* the
+            // writes above: a stored nil that was just filled in would otherwise
+            // match no org and leave the plan at its fallback forever.
+            if let plan = UsageAPIService.refreshedPlan(for: updated, orgs: candidate.orgs) {
+                updated.plan = plan
+            }
+            accountStore.updateAccount(updated)
+
+            // Scoped for the same reason re-sync's is: an unscoped pass re-fetches
+            // usage nobody asked for and wipes the message another card is showing.
+            await refreshAll(only: [updated.id])
+
+            // The resolve result, not the stored value: an account that kept a
+            // stored orgId but lost chat access still polls a dead org.
+            let name = updated.email ?? updated.name
+            return warnNoChatOrg
+                ? .updatedWithNoChatOrg(name: name)
+                : .updated(name: name)
+        }
     }
 
     /// Re-syncs every stored account, then refreshes the ones that succeeded in a

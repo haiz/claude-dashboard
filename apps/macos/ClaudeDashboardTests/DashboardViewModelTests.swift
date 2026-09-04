@@ -38,7 +38,8 @@ final class DashboardViewModelTests: XCTestCase {
             plan: .max5x,
             lastSynced: nil,
             status: .active,
-            isPinned: pinned
+            isPinned: pinned,
+            source: .browser
         )
     }
 
@@ -515,6 +516,33 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(updated?.email, "person@example.com")
     }
 
+    /// A pasted-key account has no browser profile. Without a gate, re-sync falls
+    /// through to the cookie provider with an empty profile path and tells the user
+    /// to sign in to a profile that never existed — about the one account type a
+    /// cookie re-read cannot help.
+    func testResyncReportsAPastedKeyAccountInsteadOfReadingAProfileThatDoesNotExist() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: "sk-from-a-browser", orgId: "org-good"))
+        var account = makeAccount(orgId: "org-good", email: "person@example.com",
+                                  accountUuid: "acct-1")
+        account.source = .manual
+        account.chromeProfilePath = ""
+        store.addAccount(account)
+        respond(accountBody: Self.accountBody(uuid: "acct-1"))
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        XCTAssertNil(store.loadSessionKey(for: account.id),
+                     "a browser profile's session key must never land on a pasted-key account")
+        let error = try XCTUnwrap(vm.accountStates.first?.error,
+                                  "the card must say why re-sync cannot help this account")
+        XCTAssertTrue(error.lowercased().contains("paste"),
+                      "the message must name what actually fixes it; got: \(error)")
+        XCTAssertFalse(error.contains("\"\""),
+                       "the old message named an empty profile; got: \(error)")
+    }
+
     // MARK: - Re-sync All
 
     /// One mock for a two-account fleet: `/api/account` answers per session key, so
@@ -687,6 +715,201 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertNotNil(state?.error, "a re-sync failure must outlive the other account's refresh")
         XCTAssertTrue(state?.error?.contains("Re-sync failed") ?? false,
                       "expected the re-sync failure message, got: \(state?.error ?? "nil")")
+    }
+
+    // MARK: - Manual session key
+
+    func testManualKeyAddsAnAccountWithNoProfileAndTheFirstChatOrg() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        respond(accountBody: Self.accountBody(uuid: "acct-1"))
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey("  sk-pasted\n")
+
+        XCTAssertEqual(outcome, .added(name: "person@example.com"))
+        let added = try XCTUnwrap(store.accounts.first)
+        XCTAssertEqual(added.source, .manual)
+        XCTAssertEqual(added.chromeProfilePath, "")
+        XCTAssertNil(added.chromeProfileName)
+        XCTAssertEqual(added.orgId, "org-good", "no lastActiveOrg, so rule 2: the first chat org")
+        XCTAssertEqual(added.accountUuid, "acct-1")
+        XCTAssertEqual(store.loadSessionKey(for: added.id), "sk-pasted",
+                       "the key is trimmed and stored encrypted")
+    }
+
+    func testManualKeyRepairsAStoredAccountWithoutTouchingItsOrgId() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        var account = makeAccount(orgId: "org-cookie", email: "person@example.com",
+                                  accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        // `org-cookie` is not in the memberships this body returns; a re-resolve
+        // would rewrite orgId to `org-good`, which is exactly what must not happen.
+        respond(accountBody: Self.accountBody(uuid: "acct-1"))
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey("sk-pasted")
+
+        XCTAssertEqual(outcome, .updated(name: "person@example.com"))
+        let updated = try XCTUnwrap(store.accounts.first)
+        XCTAssertEqual(updated.orgId, "org-cookie",
+                       "a pasted key carries no org preference and must not demote a resolved orgId")
+        XCTAssertEqual(updated.status, .active)
+        XCTAssertEqual(updated.source, .browser, "a key never changes which source a record has")
+        XCTAssertEqual(store.loadSessionKey(for: account.id), "sk-pasted")
+        XCTAssertEqual(store.accounts.count, 1, "a repair must not add a second record")
+    }
+
+    func testManualKeyFillsAStoredOrgIdThatWasNil() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        var account = makeAccount(orgId: nil, email: "person@example.com", accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        respond(accountBody: Self.accountBody(uuid: "acct-1"))
+        await Task.yield()
+
+        _ = await vm.applyManualKey("sk-pasted")
+
+        XCTAssertEqual(store.accounts.first?.orgId, "org-good",
+                       "there is nothing to demote, so a nil orgId is backfilled")
+    }
+
+    func testManualKeyRejectsAnAccountWithNoChatOrg() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        respond(accountBody: #"{"uuid":"acct-1","email_address":"person@example.com","memberships":[{"organization":{"uuid":"org-api","name":"API","capabilities":["api","api_individual"]}}]}"#)
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey("sk-pasted")
+
+        XCTAssertEqual(outcome, .rejectedNoChatOrg)
+        XCTAssertTrue(store.accounts.isEmpty, "an unresolvable org is never persisted as working")
+    }
+
+    /// The warning follows the resolve result, not the stored `orgId`. An
+    /// account that kept a working-looking `orgId` but lost chat access polls a
+    /// dead org forever, and a test of the resulting record stays silent on it.
+    func testManualKeyWarnsWhenAStoredOrgIdSurvivesButNoChatOrgIsLeft() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        var account = makeAccount(orgId: "org-good", email: "person@example.com",
+                                  accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        respond(accountBody: #"{"uuid":"acct-1","email_address":"person@example.com","memberships":[{"organization":{"uuid":"org-api","name":"API","capabilities":["api","api_individual"]}}]}"#)
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey("sk-pasted")
+
+        XCTAssertEqual(outcome, .updatedWithNoChatOrg(name: "person@example.com"),
+                       "a repair with no chat org is reported, not silently accepted")
+        let updated = try XCTUnwrap(store.accounts.first)
+        XCTAssertEqual(updated.orgId, "org-good", "the stored orgId is kept and reported, not blanked")
+        XCTAssertEqual(updated.status, .active, "the key is still worth saving")
+    }
+
+    /// The repair branch matches the plan hint against the `orgId` **as it stands
+    /// after** the write set, so a stored nil just filled in is what matches.
+    /// `/api/organizations` answers with the hint only on the validate call and
+    /// `[]` afterwards: otherwise the `refreshAll` that follows would heal the
+    /// tier anyway and the ordering would be pinned by nothing.
+    func testManualKeyRepairMatchesThePlanAgainstTheJustFilledOrgId() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        var account = makeAccount(orgId: nil, email: "person@example.com",
+                                  accountUuid: "acct-1")  // stored .max5x
+        account.status = .expired
+        store.addAccount(account)
+
+        let counter = RequestCounter()
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            counter.record(path)
+            let body: String
+            if path == "/api/account" {
+                body = Self.accountBody(uuid: "acct-1")
+            } else if path == "/api/organizations" {
+                body = counter.count(path: "/api/organizations") == 1
+                    ? #"[{"uuid":"org-good","name":"Example Co","capabilities":["chat","claude_pro"]}]"#
+                    : "[]"
+            } else {
+                body = Self.emptyUsageJSON
+            }
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, Data(body.utf8))
+        }
+        await Task.yield()
+
+        _ = await vm.applyManualKey("sk-pasted")
+
+        let updated = try XCTUnwrap(store.accounts.first)
+        XCTAssertEqual(updated.orgId, "org-good", "sanity: the nil orgId is the one being backfilled")
+        XCTAssertEqual(updated.plan, .pro,
+                       "the plan hint is matched against the orgId the write set just filled in")
+    }
+
+    func testManualKeyReportsAnUnacceptedKey() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, Data("{}".utf8))
+        }
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey("sk-dead")
+
+        XCTAssertEqual(outcome, .keyNotAccepted)
+        XCTAssertTrue(store.accounts.isEmpty)
+    }
+
+    func testManualKeyRejectsWhitespaceOnly() async throws {
+        let (vm, _) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+
+        let outcome = await vm.applyManualKey("   \n  ")
+
+        XCTAssertEqual(outcome, .emptyKey, "no network call is worth making for this")
+    }
+
+    /// A sentinel that could not occur by accident, driven through the real
+    /// `applyManualKey` path so the assertion can actually fail: a mapping that
+    /// interpolated a key into its message would show this string verbatim.
+    private static let leakSentinel = "sk-ant-sid01-LEAK-SENTINEL-9f3c"
+
+    func testManualKeyMessageNeverLeaksTheKeyOnRejection() async throws {
+        let (vm, _) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, Data("{}".utf8))
+        }
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey(Self.leakSentinel)
+
+        XCTAssertEqual(outcome, .keyNotAccepted)
+        XCTAssertFalse(outcome.message.contains(Self.leakSentinel),
+                       "a session key must never reach a user-visible string")
+    }
+
+    func testManualKeyMessageNeverLeaksTheKeyOnSuccess() async throws {
+        let (vm, _) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil))
+        respond(accountBody: Self.accountBody(uuid: "acct-1"))
+        await Task.yield()
+
+        let outcome = await vm.applyManualKey(Self.leakSentinel)
+
+        XCTAssertEqual(outcome, .added(name: "person@example.com"))
+        XCTAssertFalse(outcome.message.contains(Self.leakSentinel),
+                       "a session key must never reach a user-visible string")
     }
 }
 

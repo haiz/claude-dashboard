@@ -29,6 +29,7 @@ struct SetupView: View {
     /// Khi true: máy có 2+ browser và chưa có preference đã lưu, buộc người dùng
     /// chọn browser trước. Chưa scan (nên prompt Keychain chưa xuất hiện).
     @State private var awaitingBrowserChoice = false
+    @State private var showingPasteKey = false
 
     private static let preferredBrowserKey = "preferredScanBrowser"
 
@@ -66,6 +67,14 @@ struct SetupView: View {
                 } else {
                     accountList
                 }
+            }
+
+            // Outside the chooser branch on purpose: a user with two browsers and
+            // no saved preference lands on the chooser, and this feature exists to
+            // route around the cookie scan its buttons trigger.
+            if !isScanning {
+                Button("Paste a session key instead") { showingPasteKey = true }
+                    .buttonStyle(.link)
             }
 
             HStack {
@@ -109,6 +118,9 @@ struct SetupView: View {
                 // Không có browser được hỗ trợ: scan() để hiển thị thông báo phù hợp.
                 scan()
             }
+        }
+        .sheet(isPresented: $showingPasteKey) {
+            PasteKeyView(viewModel: viewModel) { showingPasteKey = false }
         }
     }
 
@@ -358,7 +370,8 @@ struct SetupView: View {
                 browser: detected.browser,
                 plan: detected.plan ?? .pro,
                 lastSynced: Date(),
-                status: .active
+                status: .active,
+                source: .browser
             )
 
             viewModel.accountStore.addAccount(account)

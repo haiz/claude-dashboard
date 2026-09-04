@@ -84,7 +84,8 @@ enum SyncCommand {
                     browser: item.profile.browser,
                     plan: plan,
                     lastSynced: Date(),
-                    status: .active
+                    status: .active,
+                    source: .browser
                 )
 
                 existingAccounts.append(account)

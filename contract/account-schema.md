@@ -10,7 +10,7 @@ is platform detail; the shape below is contract.
 
 ## Fields
 
-`Account` (`apps/macos/Shared/Account.swift:16-38`):
+`Account` (`apps/macos/Shared/Account.swift:27-53`):
 
 | Field | Type | Optional | Notes |
 |---|---|---|---|
@@ -19,7 +19,7 @@ is platform detail; the shape below is contract.
 | `email` | String | yes | |
 | `chromeProfilePath` | String | no | Despite the name, holds the profile path for whichever `browser` the account came from — not Chrome-specific. |
 | `chromeProfileName` | String | yes | Same naming note as above. |
-| `orgId` | String | yes | `isConfigured` (line 35-37) is `orgId != nil`. |
+| `orgId` | String | yes | `isConfigured` (line 50-52) is `orgId != nil`. |
 | `accountUuid` | String | yes | The Claude account's own uuid, from `GET /api/account`. The identity key for dedupe. Absent on records written before this field existed; backfilled on the next successful refresh. `orgId` is **not** an identity and must never be compared as one. |
 | `sessionKey` | String | yes | Ciphertext — see "sessionKey is not portable" below. |
 | `browser` | `Browser` | no (defaults to `.chrome` on decode) | See "Backward compatibility". |
@@ -27,6 +27,7 @@ is platform detail; the shape below is contract.
 | `lastSynced` | Date | yes | |
 | `status` | `AccountStatus` | no | |
 | `isPinned` | Bool | no (defaults to `false` on decode) | See "Backward compatibility". |
+| `source` | `AccountSource` | no (defaults to `browser` on decode) | `browser` or `manual`. A manual record's key was pasted by the user: `chromeProfilePath` is `""`, `chromeProfileName` is absent, and `browser` is meaningless. Consumers key on this field alone; an empty `chromeProfilePath` is not a secondary signal. |
 
 ## Wire encoding of the non-string scalars
 
@@ -87,29 +88,49 @@ from this raw value.
 `= "..."` per case, so each case's raw value is its lowercase name, which is
 already lowercase here).
 
+`AccountSource` wire values are `"browser"` and `"manual"`.
+
+**Downgrade is one-way.** An older build reads a record carrying `source`
+without failing, because `chromeProfilePath` is still present. But both writers
+re-serialize the whole array (`HelperAccountStore.saveAccounts`,
+`Account::to_json_array`) and both drop unknown keys on encode: Swift's
+synthesized `encode(to:)` follows the explicit `CodingKeys`, and the Rust derive
+has no catch-all. The first write from an older build therefore strips `source`,
+and the record reads afterwards as browser-backed with an empty profile path.
+Usage polling still works; re-sync reports opening a profile named `''` until the
+key is pasted again.
+
 ## Backward compatibility
 
-The custom decoder (`Account.swift:43-65`, `init(from:)` at lines 49-64)
-enforces two defaults for keys that did not exist in older persisted JSON:
+The custom decoder (`Account.swift:58-81`, `init(from:)` at lines 64-80)
+enforces three defaults for keys that did not exist in older persisted JSON:
 
-1. **Missing `browser` defaults to `.chrome`** (line 59:
+1. **Missing `browser` defaults to `.chrome`** (line 74:
    `try c.decodeIfPresent(Browser.self, forKey: .browser) ?? .chrome`). This
    is exercised by
    `apps/macos/ClaudeDashboardTests/AccountCodableTests.swift:7-22`
    (`testDecodeLegacyJSONDefaultsToChrome`), which decodes a JSON object with
    no `"browser"` key and asserts `account.browser == .chrome`. This dates
    from before multi-browser support existed.
-2. **Missing `isPinned` defaults to `false`** (line 63:
+2. **Missing `isPinned` defaults to `false`** (line 78:
    `try c.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false`). Verified
    directly from source; there is no dedicated unit test for this specific
-   default in the current test suite (only the `browser` default has one).
+   default in the current test suite — the `browser` and `source` defaults
+   each have one, this one does not.
+3. **Missing `source` defaults to `.browser`** (line 79:
+   `try c.decodeIfPresent(AccountSource.self, forKey: .source) ?? .browser`).
+   Every record written before the pasted-key feature existed is
+   browser-backed. Exercised by
+   `apps/macos/ClaudeDashboardTests/AccountSourceTests.swift`
+   (`testALegacyRecordWithNoSourceDecodesAsBrowser`), which decodes a JSON
+   object with no `"source"` key and asserts `account.source == .browser`.
 
-Both defaults exist for the same reason: a field was added to `Account`
+All three defaults exist for the same reason: a field was added to `Account`
 after accounts were already persisted on users' machines, and decoding must
 not throw on the old shape.
 
 The file carries its own warning about this decoder, at
-`Account.swift:40-42` (translated from the original Vietnamese comment):
+`Account.swift:55-57` (translated from the original Vietnamese comment):
 
 > Custom decode for compatibility with old JSON (missing key "browser" →
 > `.chrome`). NOTE: keep `CodingKeys` and `init(from:)` in sync with every
@@ -117,7 +138,7 @@ The file carries its own warning about this decoder, at
 > update here will silently lose data on round-trip.
 
 This is not a stylistic preference — `CodingKeys`
-(`Account.swift:44-47`) is a private, hand-maintained enum that does not
+(`Account.swift:59-62`) is a private, hand-maintained enum that does not
 auto-include new stored properties, and `init(from:)` is a fully custom
 initializer that does not fall back to memberwise decoding. A property added
 to the struct without a matching `CodingKeys` case and a matching

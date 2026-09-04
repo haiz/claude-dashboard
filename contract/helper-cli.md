@@ -1,16 +1,16 @@
 # Helper CLI
 
 The privileged helper binary (`apps/macos/Helper/main.swift`) exposes exactly
-three subcommands: `decrypt`, `usage`, `sync`. Their externally observable
-behaviour — input/output shape, exit codes, stderr text — is contract. How
-each subcommand is invoked from a wrapper script, and how `sync` persists
-accounts, is platform detail.
+four subcommands: `decrypt`, `usage`, `sync`, `add-key`. Their externally
+observable behaviour — input/output shape, exit codes, stderr text — is
+contract. How each subcommand is invoked from a wrapper script, and how
+`sync` persists accounts, is platform detail.
 
-Dispatch: no subcommand at all (`apps/macos/Helper/main.swift:5-16`) prints a
+Dispatch: no subcommand at all (`apps/macos/Helper/main.swift:5-17`) prints a
 usage banner to stderr and exits 1; an unrecognized subcommand
-(`apps/macos/Helper/main.swift:27-29`, the `default:` case of the switch at
-lines 20-30) prints `Unknown command: <command>\n` to stderr and exits 1.
-This is not itself a contract requirement — only the three named
+(`apps/macos/Helper/main.swift:30-32`, the `default:` case of the switch at
+lines 21-33) prints `Unknown command: <command>\n` to stderr and exits 1.
+This is not itself a contract requirement — only the four named
 subcommands' behaviour below is.
 
 ## `decrypt`
@@ -201,3 +201,47 @@ location and browser-cookie discovery mechanism are platform detail (see
   (all already synced).` line counts **added** accounts only (line 101-105). A
   refreshed plan is not an add: a run that only healed a tier still reports
   "No new accounts to add".
+
+## `add-key`
+
+Source: `apps/macos/Helper/AddKeyCommand.swift` and
+`apps/linux/helper/src/add_key.rs`. Adds or repairs one account from a session
+key read on **stdin**. Never scans a browser.
+
+The key is read from stdin and trimmed of surrounding whitespace and newlines.
+It is never taken from `argv`, which is visible in `ps` and in shell history,
+and never from the environment, which is readable at `/proc/<pid>/environ`.
+
+Which of "add" and "repair" happens is decided by `AccountIdentity.isDuplicate`,
+the same rule `sync` uses (`contract/cases/dedupe.json`) — not by a flag. What
+the repair branch may write is `contract/cases/manual-key.json`: a stored
+`orgId` is never rewritten, except from nothing.
+
+| Situation | stderr | Exit |
+|---|---|---|
+| stdin holds no key | `No session key on stdin.` | 1 |
+| `/api/account` rejects the key | `Session key not accepted (expired or invalid).` | 1 |
+| Add, no chat org among the memberships | `No organization with chat access.` | 1 |
+| Add, org resolved | `Added: <name> (<plan wire value>)` | 0 |
+| Repair | `Updated key: <name>` | 0 |
+| Repair, plan changed | plus `Updated plan: <name> (<old> -> <new>)` | 0 |
+| Repair, no chat org among the memberships | plus `Warning: no organization with chat access; usage will not update.` | 0 |
+| A failed write to the account store — **Linux only, no macOS counterpart** | `Could not write the account store.` | 1 |
+
+The last row has no macOS branch: `HelperAccountStore.saveAccounts` returns
+`Void` and reports no failure, while the Linux port's `store::save_accounts`
+returns a `Result` its caller must not swallow. Do not add a matching branch
+to the Swift command to make the two symmetrical.
+
+`<name>` is the account's `email` when it has one, else the stored record's
+`name` on the repair branch. On the add branch, an account whose `/api/account`
+returns no `email_address` is named `Account <first 8 characters of its uuid>`.
+
+The repair branch writes `sessionKey`, `status`, `lastSynced`, the `accountUuid`
+and `email` backfills, and the plan through the same `refreshedPlan` rule
+`sync` uses. It does not write `orgId` (except from nothing), `source`, the
+profile fields, or `browser`: a key never changes which source a record has.
+
+**The session key never appears in any of these lines.**
+
+`sync`'s rules above are unchanged by this command.

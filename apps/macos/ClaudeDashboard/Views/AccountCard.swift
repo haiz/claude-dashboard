@@ -139,7 +139,14 @@ struct AccountCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            if let profileName = state.account.chromeProfileName {
+            // A manual record has no profile to open, so the browser line above
+            // never renders for it and Re-sync cannot fix it either. Say where
+            // the key comes from instead of leaving a dead button.
+            if state.account.source == .manual {
+                Text("This key was pasted by hand. Add it again from Settings, Add Account, \"Paste a session key instead\".")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if let profileName = state.account.chromeProfileName {
                 Text("Open Chrome profile \"\(profileName)\" and login to claude.ai, then re-sync.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
