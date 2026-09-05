@@ -93,4 +93,97 @@ final class SyncCommandTests: XCTestCase {
         ])
         XCTAssertNil(recorder.saved, "a failed scan must not write the store")
     }
+
+    // MARK: - Heal path (contract/cases/plan-refresh.json)
+
+    /// `/api/account` always succeeds; `/api/organizations` answers with
+    /// `orgsBody`, or with `status` and an empty body when it is nil.
+    private func orgsHandler(
+        status: Int = 200,
+        orgsBody: String?
+    ) -> (URLRequest) throws -> (HTTPURLResponse, Data) {
+        { request in
+            let path = request.url?.path ?? ""
+            if path == "/api/organizations" {
+                guard let orgsBody else {
+                    return (HTTPURLResponse(url: request.url!, statusCode: status,
+                                            httpVersion: nil, headerFields: nil)!, Data())
+                }
+                return (HTTPURLResponse(url: request.url!, statusCode: 200,
+                                        httpVersion: nil, headerFields: nil)!,
+                        Data(orgsBody.utf8))
+            }
+            let account = #"{"uuid":"acct-1","email_address":"person@example.com","memberships":[]}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 200,
+                                    httpVersion: nil, headerFields: nil)!,
+                    Data(account.utf8))
+        }
+    }
+
+    private static let proOrg =
+        #"[{"uuid":"org-1","name":"Personal","capabilities":["chat","claude_pro"]}]"#
+
+    /// `contract/helper-cli.md` "sync": the heal line is printed immediately
+    /// after that profile's skip line.
+    func testHealWritesThePlanAndReportsItRightAfterTheSkipLine() async throws {
+        let recorder = Recorder()
+        let stored = makeAccount(email: "person@example.com", orgId: "org-1", plan: .max200)
+        let env = makeEnvironment(
+            candidates: [makeCandidate(displayName: "Person 2", sessionKey: "sk", orgId: "org-1")],
+            accounts: [stored],
+            recorder: recorder,
+            handler: orgsHandler(orgsBody: Self.proOrg))
+
+        let code = await SyncCommand.runAsync(env: env)
+
+        XCTAssertEqual(code, 0)
+        XCTAssertEqual(recorder.saved?.first?.plan, .pro)
+        let skipIndex = try XCTUnwrap(
+            recorder.lines.firstIndex(of: "  Skipping Person 2 (already added)"))
+        // dropFirst, not [skipIndex + 1]: a mutation that removes the heal line
+        // would trap on an index, and a crash cannot be told apart from a test
+        // that is simply broken.
+        XCTAssertEqual(recorder.lines.dropFirst(skipIndex + 1).first,
+                       "  Updated plan: Person 2 (Max -> Pro)")
+    }
+
+    /// Rule 1 of `contract/cases/plan-refresh.json`: a blip must not overwrite
+    /// a known-good tier.
+    func testHealLeavesThePlanAloneWhenOrganizationsFails() async {
+        let recorder = Recorder()
+        let stored = makeAccount(email: "person@example.com", orgId: "org-1", plan: .max20x)
+        let env = makeEnvironment(
+            candidates: [makeCandidate(displayName: "Person 2", sessionKey: "sk", orgId: "org-1")],
+            accounts: [stored],
+            recorder: recorder,
+            handler: orgsHandler(status: 500, orgsBody: nil))
+
+        _ = await SyncCommand.runAsync(env: env)
+
+        XCTAssertEqual(recorder.saved?.first?.plan, .max20x)
+        XCTAssertFalse(recorder.lines.contains { $0.hasPrefix("  Updated plan:") })
+    }
+
+    /// The e2e run of 2026-09-04 proved this by diffing the real account store;
+    /// this is that check as a regression guard.
+    func testHealWritesNothingButThePlan() async throws {
+        let recorder = Recorder()
+        let stored = makeAccount(email: "person@example.com", orgId: "org-1", plan: .max200)
+        let env = makeEnvironment(
+            candidates: [makeCandidate(displayName: "Person 2", sessionKey: "sk", orgId: "org-1")],
+            accounts: [stored],
+            recorder: recorder,
+            handler: orgsHandler(orgsBody: Self.proOrg))
+
+        _ = await SyncCommand.runAsync(env: env)
+
+        let after = try XCTUnwrap(recorder.saved?.first)
+        XCTAssertEqual(after.plan, .pro, "sanity: this run must have healed")
+        XCTAssertEqual(after.lastSynced, stored.lastSynced)
+        XCTAssertEqual(after.status, stored.status)
+        XCTAssertEqual(after.sessionKey, stored.sessionKey)
+        XCTAssertEqual(after.email, stored.email)
+        XCTAssertEqual(after.name, stored.name)
+        XCTAssertEqual(after.accountUuid, stored.accountUuid)
+    }
 }
