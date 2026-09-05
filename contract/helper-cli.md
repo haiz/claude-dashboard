@@ -268,7 +268,7 @@ deliberate rather than an oversight to be fixed piecemeal:
   is no local test server and no base-URL override, so `fetch_account`,
   `fetch_organizations` and `usage_raw` are all unverified by `cargo test`.
 - macOS: `URLSession` itself is never exercised against a real server either.
-  What *is* covered is everything above it: `sync` has eight tests in
+  What *is* covered is everything above it: `sync` has nine tests in
   `apps/macos/HelperTests/SyncCommandTests.swift`, run by the
   `ClaudeDashboardHelperTests` bundle, which compiles `Helper/` and `Shared/`
   directly. They drive `SyncCommand.runAsync(env:)` with an injected

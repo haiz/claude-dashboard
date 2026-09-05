@@ -218,6 +218,7 @@ final class SyncCommandTests: XCTestCase {
         XCTAssertEqual(recorder.saved?.count, 1)
         XCTAssertEqual(recorder.saved?.first?.name, "person@example.com")
         XCTAssertEqual(recorder.saved?.first?.plan, .max200)
+        XCTAssertTrue(recorder.lines.contains("Found 1 profile(s) with Claude sessions. Validating..."))
         XCTAssertTrue(recorder.lines.contains("  Added: person@example.com (Max)"))
         XCTAssertTrue(recorder.lines.contains("Synced 1 account(s) successfully."))
     }
@@ -285,5 +286,28 @@ final class SyncCommandTests: XCTestCase {
         XCTAssertEqual(code, 0)
         XCTAssertEqual(recorder.saved?.first?.plan, .pro, "sanity: this run healed")
         XCTAssertEqual(recorder.lines.last, "No new accounts to add (all already synced).")
+    }
+
+    /// `contract/helper-cli.md` "sync": an org that cannot be resolved is never
+    /// persisted as a working account. `resolveOrgId` returns nil when no
+    /// membership is a chat org, whatever the cookie says.
+    func testCandidateWithNoChatOrgIsSkipped() async {
+        let recorder = Recorder()
+        let env = makeEnvironment(
+            candidates: [makeCandidate(displayName: "Person 2", sessionKey: "sk", orgId: "org-1")],
+            accounts: [],
+            recorder: recorder,
+            handler: { request in
+                let body = #"{"uuid":"acct-1","email_address":"person@example.com","memberships":[{"organization":{"uuid":"org-1","name":"Personal","capabilities":[]}}]}"#
+                return (HTTPURLResponse(url: request.url!, statusCode: 200,
+                                        httpVersion: nil, headerFields: nil)!,
+                        Data(body.utf8))
+            })
+
+        let code = await SyncCommand.runAsync(env: env)
+
+        XCTAssertEqual(code, 0)
+        XCTAssertTrue(recorder.lines.contains("  Skipping Person 2 (no usable org)"))
+        XCTAssertEqual(recorder.saved, [], "an unresolvable org is never persisted")
     }
 }
