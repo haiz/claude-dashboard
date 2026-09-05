@@ -163,11 +163,11 @@ location and browser-cookie discovery mechanism are platform detail (see
   session validity is established by `/api/account` above, not this call, so
   a failure here only leaves the plan at the `.pro` fallback and the account
   is still persisted (`apps/macos/Helper/SyncCommand.swift:67-68`,
-  `apps/linux/helper/src/sync.rs:193-197`). The next bullet is what keeps that
+  `apps/linux/helper/src/sync.rs:194-198`). The next bullet is what keeps that
   fallback from being permanent.
 - The plan tier of an account skipped as a duplicate is **refreshed**
   (`apps/macos/Helper/SyncCommand.swift:48-57`,
-  `apps/linux/helper/src/sync.rs:330-346` and `:359-366`): `sync` fetches
+  `apps/linux/helper/src/sync.rs:332-374` and `:387-394`): `sync` fetches
   `GET /api/organizations` with the candidate's freshly decrypted session key,
   takes the `planHint` of the org matching the **stored** account's `orgId`,
   and applies `refreshedPlan` (`README.md`'s "Refreshing a stored plan"). A
@@ -245,3 +245,45 @@ profile fields, or `browser`: a key never changes which source a record has.
 **The session key never appears in any of these lines.**
 
 `sync`'s rules above are unchanged by this command.
+
+## Test coverage of the network layer
+
+Every rule above is a rule about a *decision*, and every decision is covered by
+an automated test on both platforms: `contract/cases/*.json` drives
+`apps/linux/core/tests/contract_*.rs` and
+`apps/macos/ClaudeDashboardTests/*ContractTests.swift`, and the per-platform
+glue around those decisions has unit tests of its own (for example
+`apply_refreshed_plan` in `apps/linux/helper/src/sync.rs`, whose tests also pin
+the exact shape of the `Updated plan:` line by writing it through an
+`impl Write` the test can read back). The macOS counterpart prints that line
+from `SyncCommand.run` itself and no test reads it; the two are kept in step by
+this document, not by a shared test.
+
+The HTTP calls themselves have none, on either platform, and this is
+deliberate rather than an oversight to be fixed piecemeal:
+
+- Linux: nothing exercises `perform_get` (`apps/linux/core/src/api.rs`). There
+  is no local test server and no base-URL override, so `fetch_account`,
+  `fetch_organizations` and `usage_raw` are all unverified by `cargo test`.
+- macOS: the whole `ClaudeDashboardHelper` target is outside the test scheme —
+  `apps/macos/project.yml` builds `ClaudeDashboardTests` against the
+  `ClaudeDashboard` app host only, so no command in `apps/macos/Helper/` is
+  reachable from `xcodebuild test`.
+
+The macOS **app** is the exception: `DashboardViewModel` is driven through
+`MockURLProtocol`, so the GUI's own plan refresh is tested end to end,
+including a failing `GET /api/organizations`
+(`ClaudeDashboardTests/DashboardViewModelTests.swift`). That covers the same
+`refreshedPlan` rule the helper applies, but not the helper's code path.
+
+The helpers' network path is therefore verified by hand. Last verified
+2026-09-04 on macOS, with `claude-dashboard-helper` built from the working
+tree: a first `sync` printed `Skipping <profile> (already added)` for each
+stored account with no `Updated plan:` line (every tier already correct); one
+stored tier was then set to a deliberately wrong value, and the next `sync`
+printed exactly one `Updated plan: <profile> (Pro -> Max)` line immediately
+after that profile's skip line, still closing with `No new accounts to add
+(all already synced)`. A field-by-field diff of the account store across the
+healing run showed the plan as the only value written — `sessionKey`
+(AES-GCM, so a rewrite would change the ciphertext), `lastSynced` and `status`
+were byte-identical.
