@@ -255,9 +255,11 @@ an automated test on both platforms: `contract/cases/*.json` drives
 glue around those decisions has unit tests of its own (for example
 `apply_refreshed_plan` in `apps/linux/helper/src/sync.rs`, whose tests also pin
 the exact shape of the `Updated plan:` line by writing it through an
-`impl Write` the test can read back). The macOS counterpart prints that line
-from `SyncCommand.run` itself and no test reads it; the two are kept in step by
-this document, not by a shared test.
+`impl Write` the test can read back, and
+`SyncCommandTests.testHealWritesThePlanAndReportsItRightAfterTheSkipLine` in
+`apps/macos/HelperTests/`, which asserts the same line *and its position*
+directly after the skip line). The two implementations are still kept in step
+by this document rather than by a shared test.
 
 The HTTP calls themselves have none, on either platform, and this is
 deliberate rather than an oversight to be fixed piecemeal:
@@ -265,18 +267,25 @@ deliberate rather than an oversight to be fixed piecemeal:
 - Linux: nothing exercises `perform_get` (`apps/linux/core/src/api.rs`). There
   is no local test server and no base-URL override, so `fetch_account`,
   `fetch_organizations` and `usage_raw` are all unverified by `cargo test`.
-- macOS: the whole `ClaudeDashboardHelper` target is outside the test scheme —
-  `apps/macos/project.yml` builds `ClaudeDashboardTests` against the
-  `ClaudeDashboard` app host only, so no command in `apps/macos/Helper/` is
-  reachable from `xcodebuild test`.
+- macOS: `URLSession` itself is never exercised against a real server either.
+  What *is* covered is everything above it: `sync` has eight tests in
+  `apps/macos/HelperTests/SyncCommandTests.swift`, run by the
+  `ClaudeDashboardHelperTests` bundle, which compiles `Helper/` and `Shared/`
+  directly. They drive `SyncCommand.runAsync(env:)` with an injected
+  environment and `MockURLProtocol`, so every stderr line and exit code this
+  document specifies for `sync` is asserted without touching a browser, the
+  Keychain or the real account store. `decrypt`, `usage` and `add-key` compile
+  into that bundle but have no tests yet.
 
-The macOS **app** is the exception: `DashboardViewModel` is driven through
-`MockURLProtocol`, so the GUI's own plan refresh is tested end to end,
+The macOS **app** is covered the same way: `DashboardViewModel` is driven
+through `MockURLProtocol`, so the GUI's own plan refresh is tested end to end,
 including a failing `GET /api/organizations`
-(`ClaudeDashboardTests/DashboardViewModelTests.swift`). That covers the same
-`refreshedPlan` rule the helper applies, but not the helper's code path.
+(`ClaudeDashboardTests/DashboardViewModelTests.swift`). Between the app bundle
+and the helper bundle, every macOS caller of `refreshedPlan` has a test; what
+neither reaches is the transport underneath `URLSession`.
 
-The helpers' network path is therefore verified by hand. Last verified
+The transport itself is therefore verified by hand, and that record stands as
+the only evidence a real request works. Last verified
 2026-09-04 on macOS, with `claude-dashboard-helper` built from the working
 tree: a first `sync` printed `Skipping <profile> (already added)` for each
 stored account with no `Updated plan:` line (every tier already correct); one

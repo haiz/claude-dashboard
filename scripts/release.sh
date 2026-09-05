@@ -99,6 +99,12 @@ xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj \
     -derivedDataPath "$DERIVED_DATA" \
     test 2>&1 | tail -3
 
+# Second bundle: the app scheme above never compiles apps/macos/Helper/.
+xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj \
+    -scheme ClaudeDashboardHelperTests \
+    -derivedDataPath "$DERIVED_DATA" \
+    test 2>&1 | tail -3
+
 # ── 5. Create artifacts ──────────────────────────────────────────────────────
 echo ""
 echo "==> Step 5: Create release artifacts"

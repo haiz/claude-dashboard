@@ -266,4 +266,24 @@ final class SyncCommandTests: XCTestCase {
         XCTAssertTrue(recorder.lines.contains("  Skipping Person 2 (session expired)"))
         XCTAssertEqual(recorder.saved, [], "nothing added")
     }
+
+    // MARK: - Closing line
+
+    /// `contract/helper-cli.md` "sync": a refreshed plan is not an add, so a
+    /// run that only healed still reports "No new accounts to add".
+    func testARunThatOnlyHealedReportsNoNewAccounts() async {
+        let recorder = Recorder()
+        let stored = makeAccount(email: "person@example.com", orgId: "org-1", plan: .max200)
+        let env = makeEnvironment(
+            candidates: [makeCandidate(displayName: "Person 2", sessionKey: "sk", orgId: "org-1")],
+            accounts: [stored],
+            recorder: recorder,
+            handler: orgsHandler(orgsBody: Self.proOrg))
+
+        let code = await SyncCommand.runAsync(env: env)
+
+        XCTAssertEqual(code, 0)
+        XCTAssertEqual(recorder.saved?.first?.plan, .pro, "sanity: this run healed")
+        XCTAssertEqual(recorder.lines.last, "No new accounts to add (all already synced).")
+    }
 }
