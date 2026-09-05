@@ -56,3 +56,21 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
+
+  # Second bundle, no TEST_HOST: it compiles Helper/ and Shared/ directly so the
+  # helper CLI is reachable from `xcodebuild test`. See
+  # docs/superpowers/specs/2026-09-05-helper-test-target-design.md.
+  ClaudeDashboardHelperTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - HelperTests
+      - path: Helper
+        excludes: [main.swift]
+      - Shared
+      - ClaudeDashboardTests/TestSupport
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual

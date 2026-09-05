@@ -15,6 +15,7 @@
 		1213175776995521648C0196 /* ManualKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF55256F6D81B14585D71C9 /* ManualKey.swift */; };
 		1373305DBB8E1C9805CFC8C8 /* AccountIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4178DC5D69C19ECD002EF8A9 /* AccountIdentity.swift */; };
 		18B4F69185821E78B8E6139C /* ClaudeDashboardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8007AA99F483598797EBFAE0 /* ClaudeDashboardApp.swift */; };
+		1CBA83E327ED724A9852B8FD /* MockURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D9410DC3E0803A469DCDE90 /* MockURLProtocol.swift */; };
 		1DB54021BBBA6A80D35336A8 /* DecryptCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF7DEAC28930337FB1D5772 /* DecryptCommand.swift */; };
 		1F6E690999CAFDD5752BF11E /* UsageDataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61CE79EE895C0FE88D1ED98A /* UsageDataTests.swift */; };
 		1F8F5AFD9D37D88E92A20692 /* BrowserCookieService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4ED0121EB136414664B103B /* BrowserCookieService.swift */; };
@@ -23,6 +24,7 @@
 		211F98E0C0F99203EF129492 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066B8B1E829B2024AB298464 /* SetupView.swift */; };
 		2AD7F348C0B9F5BC6AB4D450 /* ProcessTreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6C06F755D5222731477EC6 /* ProcessTreeTests.swift */; };
 		310A4AEEB4EF068D8522A921 /* ManualKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF55256F6D81B14585D71C9 /* ManualKey.swift */; };
+		3BF60AFACFB6A826612DEFD2 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		411CACBC4F1791E139BDF4BA /* AccountDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CC442D5CD274FE704D4AC0F /* AccountDetailViewModel.swift */; };
 		46ACA4D872B48395C5A010F6 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		4BA658DB89EAC4997E431C13 /* ClaudeCodeAccountDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CECA8F5BDB86E3741F82280 /* ClaudeCodeAccountDetector.swift */; };
@@ -47,11 +49,16 @@
 		69E5C98294531C72DBF1D4CC /* OrgSelectionContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65B6FF0D0BD63D5125DBE9E9 /* OrgSelectionContractTests.swift */; };
 		6A3B29454AC4491BC3AB2C7B /* AccountCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786E54BCD656D51F01E86B77 /* AccountCard.swift */; };
 		6B5178E7AE39D91E564BD7AD /* HelpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC394CD29F6E869A54D1CE5A /* HelpView.swift */; };
+		72F79D9B1FC6DBCE50D32532 /* DecryptCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF7DEAC28930337FB1D5772 /* DecryptCommand.swift */; };
 		74AAC2BB9743F4E1DDA24F4B /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */; };
 		799960A4D530BF35FAB68326 /* UsageLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A9C824A446A4513554E6BC5 /* UsageLogStore.swift */; };
 		7A5C31588D87CBAB9CCC7CD1 /* CommandLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 653DEC7215637CF705CDA949 /* CommandLogView.swift */; };
 		7CF21E5F1DE379253A2A1CE7 /* BrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78303A2B3B9A1F15A814671 /* BrowserTests.swift */; };
+		7D3FCD0210FF7A90A46BB7F9 /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A87EC4F90E188AAAFB660C3 /* AppVersion.swift */; };
+		7F3308287A9B277D0B03061A /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */; };
+		8014093F24077E76B690AFE0 /* AccountIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4178DC5D69C19ECD002EF8A9 /* AccountIdentity.swift */; };
 		809F8F94BD5A8185ED4FFDFE /* AddKeyCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F466F80474346C7DBE22396 /* AddKeyCommand.swift */; };
+		81F2429B21545DD0CB6C2FE9 /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
 		82BEE4E50C037B6E3C0670CE /* SessionCandidateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9047126E678CDE2BB4637921 /* SessionCandidateTests.swift */; };
 		8395F8352ABD044D301DF42F /* CommandClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E4539F6C5F1A842E8B036C3 /* CommandClassifier.swift */; };
 		859DE9A5769EBF1487EE17AB /* CommandLogViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82BDA8522FB7218F3456ECCF /* CommandLogViewModelTests.swift */; };
@@ -61,13 +68,17 @@
 		8C6A56AA09D21B951F1E7863 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D572159B978911BF3D1EDAC0 /* Assets.xcassets */; };
 		8E1EEC3CBBD3A1C11213166D /* UpdateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101FB3B509DBD5E1813FDABE /* UpdateViewModel.swift */; };
 		924D219F90D34BE86951B7DB /* ManualKeyContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D627736A32F2282084F78A58 /* ManualKeyContractTests.swift */; };
+		93B22E6DE99B98430E405CC6 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2535C231EBCF76F786F7B7E /* Account.swift */; };
 		94BDC42C46406C1E227F11FA /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */; };
 		952383DC16D74D6BF7106040 /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7E115BD84248989BAA883F /* CryptoService.swift */; };
+		95BC030E88D57B371E6566F1 /* SyncCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFA427293BFC51355250BB1 /* SyncCommand.swift */; };
 		9759697B6C02F84B6EF06C09 /* DashboardViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690E18B51A43CF7A0BFFA627 /* DashboardViewModelTests.swift */; };
 		98FD479769E1857F43E86CCB /* UsageLogModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8ADAEF8BBFC797B0D4950E3 /* UsageLogModelsTests.swift */; };
 		9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF469D724BE1FCA1D071131F /* AccountStore.swift */; };
 		9C1660C69D3A0A2D926B179E /* UpdateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 373E95B92E85447700BA3DEF /* UpdateServiceTests.swift */; };
+		9C632D2CDB84CD434C8D1B33 /* SyncCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B48B3EE5B29CFDE5EA2B450 /* SyncCommandTests.swift */; };
 		9FAB31B717BAEDE9C724CB3E /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
+		A11EFC038D280EA4034743AF /* Browser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCBF1EA7D7222950388A01C /* Browser.swift */; };
 		A2A5D0F022E7A798045D105C /* DashboardWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA0F9129D3367D395937E5E /* DashboardWindow.swift */; };
 		A39C01692A8EA4FA3A76ED88 /* AccountStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */; };
 		A45521DA5ED20F5EEDA1F30E /* SyncCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFA427293BFC51355250BB1 /* SyncCommand.swift */; };
@@ -77,22 +88,29 @@
 		A6F05ADA316EC6FF3F96B159 /* AccountSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05E2848D8529F3B12BFF386 /* AccountSourceTests.swift */; };
 		AAEAB48A072B469189CCA747 /* UsageAPIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64695012FC6F1C08762E7E77 /* UsageAPIServiceTests.swift */; };
 		AE3B5F95AC15F193C1B2C9CE /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A87EC4F90E188AAAFB660C3 /* AppVersion.swift */; };
+		AE6B0086743C161F44A7D360 /* UsageCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9E7C0511055F46A89CEB231 /* UsageCommand.swift */; };
 		B110EB4BECFCCD30DE2E8674 /* ProcessTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A50016FDADA1A7E10EDAE0 /* ProcessTree.swift */; };
 		B135B3215079D52146A04323 /* RunningProcessRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A23FF51936BD885B6281CE0F /* RunningProcessRegistry.swift */; };
 		B38B8E482E1BC067FFD7AE74 /* MenuBarPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F459D10501056C193989A6 /* MenuBarPopover.swift */; };
+		B9591794E9DA0689E406A431 /* MockURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D9410DC3E0803A469DCDE90 /* MockURLProtocol.swift */; };
 		BAAE906146838597BF21E53E /* BurnRateTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D13B511083DF4FE0C75FA0DD /* BurnRateTracker.swift */; };
+		BB846D46C30AC543BA5BC1BD /* SessionCandidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53FC5C2A26C631D62371B57C /* SessionCandidate.swift */; };
 		BCF9465CD27C5B80FF29FE9A /* AccountCodableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBC96C2BB8D763106FBEA74A /* AccountCodableTests.swift */; };
 		BE0B91642615126F59A02F3F /* AccountIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4178DC5D69C19ECD002EF8A9 /* AccountIdentity.swift */; };
 		C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */; };
+		C23B74F40DBB7E413F3954EA /* AddKeyCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F466F80474346C7DBE22396 /* AddKeyCommand.swift */; };
+		C2A2A8E4EB4A85A4C2B4FC6F /* HelperAccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB2623CB6EC20CACFF82236 /* HelperAccountStore.swift */; };
 		C42D702D9ABD1294DCD9AD91 /* PlanDetectionContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */; };
 		C436B7F85AB4285388BE8869 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
 		C5EF5EF93570CBB91B78006E /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
 		C76FCE10EDB30B02770BB9D0 /* BurnRateContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AEE29987B849E18AFE5E428 /* BurnRateContractTests.swift */; };
+		CA06A14E4AF6469C7EE91BBD /* BrowserCookieService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4ED0121EB136414664B103B /* BrowserCookieService.swift */; };
 		CBA5F28B81C6FA6C0E24C610 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2535C231EBCF76F786F7B7E /* Account.swift */; };
 		E2544EAE3689C2FE07794B07 /* CommandRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94E3FA6DB98A5F3F847B13C2 /* CommandRunnerTests.swift */; };
 		E53BC1DBE702E2298D98F974 /* UsageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36CFE6B80C6A187D9A176752 /* UsageBar.swift */; };
 		E54289326B8471DAABA189CF /* ManualKeyInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE57E5139A296611CB7F49C2 /* ManualKeyInputTests.swift */; };
 		E6585C166C57BFBA1B32371D /* RunCommandSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6EE45ADCEABD94EDD78D978 /* RunCommandSheet.swift */; };
+		E99F26B2AF2EACF7A4B12282 /* ManualKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF55256F6D81B14585D71C9 /* ManualKey.swift */; };
 		EB9BD3D5123C7ED0209085E9 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */; };
 		EF7B63DE0D75895646ECE918 /* CommandLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00229BEACBD8E4DA299944B9 /* CommandLogStoreTests.swift */; };
 		F108A126F5779799A8FF1DB6 /* SessionCandidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53FC5C2A26C631D62371B57C /* SessionCandidate.swift */; };
@@ -100,6 +118,7 @@
 		F27FC866A1F7BAFB51308009 /* ContractFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E51410A9645A70619053EF /* ContractFixtures.swift */; };
 		F6F423B9B14E2440A491018C /* ClaudeCodeAccountDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A3660023E6BA291B7932FE /* ClaudeCodeAccountDetectorTests.swift */; };
 		FA93F03C175273C42BCEC82A /* CommandClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB103EAE410BFF80B23E7E73 /* CommandClassifierTests.swift */; };
+		FCA5CB258DACDDBEABC32B62 /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7E115BD84248989BAA883F /* CryptoService.swift */; };
 		FCCE3539EE2070BD2C37E455 /* UsageCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9E7C0511055F46A89CEB231 /* UsageCommand.swift */; };
 		FD8D11773B4AB3B5B1F02A3B /* PlanRefreshContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2EB0AED06D26591B8C814F /* PlanRefreshContractTests.swift */; };
 		FE7535E293D572117CCB3B29 /* CommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C503B77848F554AE0AD61630 /* CommandRunner.swift */; };
@@ -140,6 +159,7 @@
 		36CFE6B80C6A187D9A176752 /* UsageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageBar.swift; sourceTree = "<group>"; };
 		373E95B92E85447700BA3DEF /* UpdateServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateServiceTests.swift; sourceTree = "<group>"; };
 		39C1533FA0CC46BC64424B9F /* PasteKeyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteKeyView.swift; sourceTree = "<group>"; };
+		3B48B3EE5B29CFDE5EA2B450 /* SyncCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncCommandTests.swift; sourceTree = "<group>"; };
 		3DF55256F6D81B14585D71C9 /* ManualKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualKey.swift; sourceTree = "<group>"; };
 		3F6C06F755D5222731477EC6 /* ProcessTreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessTreeTests.swift; sourceTree = "<group>"; };
 		4178DC5D69C19ECD002EF8A9 /* AccountIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountIdentity.swift; sourceTree = "<group>"; };
@@ -148,6 +168,7 @@
 		52F459D10501056C193989A6 /* MenuBarPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPopover.swift; sourceTree = "<group>"; };
 		53D1A85918EB846584354C07 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		53FC5C2A26C631D62371B57C /* SessionCandidate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCandidate.swift; sourceTree = "<group>"; };
+		582E30175E7CB586B2B61FD9 /* ClaudeDashboardHelperTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeDashboardHelperTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5DCBF1EA7D7222950388A01C /* Browser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Browser.swift; sourceTree = "<group>"; };
 		61909AF36968A9389D9F3A8F /* AccountBadgeColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountBadgeColor.swift; sourceTree = "<group>"; };
 		61CE79EE895C0FE88D1ED98A /* UsageDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageDataTests.swift; sourceTree = "<group>"; };
@@ -174,6 +195,7 @@
 		94E3FA6DB98A5F3F847B13C2 /* CommandRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandRunnerTests.swift; sourceTree = "<group>"; };
 		95A99A9BA83C1C687A1C2E17 /* BurnRateTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnRateTrackerTests.swift; sourceTree = "<group>"; };
 		9AEE29987B849E18AFE5E428 /* BurnRateContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnRateContractTests.swift; sourceTree = "<group>"; };
+		9D9410DC3E0803A469DCDE90 /* MockURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockURLProtocol.swift; sourceTree = "<group>"; };
 		A23FF51936BD885B6281CE0F /* RunningProcessRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunningProcessRegistry.swift; sourceTree = "<group>"; };
 		A81A393416A5618902A5764C /* ClaudeDashboardHelper */ = {isa = PBXFileReference; includeInIndex = 0; path = ClaudeDashboardHelper; sourceTree = BUILT_PRODUCTS_DIR; };
 		AE57E5139A296611CB7F49C2 /* ManualKeyInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualKeyInputTests.swift; sourceTree = "<group>"; };
@@ -228,6 +250,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		09B6A04220B10A8B2279E533 /* TestSupport */ = {
+			isa = PBXGroup;
+			children = (
+				9D9410DC3E0803A469DCDE90 /* MockURLProtocol.swift */,
+			);
+			name = TestSupport;
+			path = ClaudeDashboardTests/TestSupport;
+			sourceTree = "<group>";
+		};
 		0A3C2B00E6B723407F86A78B /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
@@ -275,6 +306,7 @@
 				1AFC5BA1E046AD26CBECA092 /* UsageDecodingContractTests.swift */,
 				C8ADAEF8BBFC797B0D4950E3 /* UsageLogModelsTests.swift */,
 				185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */,
+				09B6A04220B10A8B2279E533 /* TestSupport */,
 			);
 			path = ClaudeDashboardTests;
 			sourceTree = "<group>";
@@ -284,6 +316,7 @@
 			children = (
 				CEA505924741CE7A0DFBB32F /* ClaudeDashboard.app */,
 				A81A393416A5618902A5764C /* ClaudeDashboardHelper */,
+				582E30175E7CB586B2B61FD9 /* ClaudeDashboardHelperTests.xctest */,
 				E4BAD55D59287038F16012AE /* ClaudeDashboardTests.xctest */,
 			);
 			name = Products;
@@ -295,7 +328,9 @@
 				A8C7505E85FF47BD0DA39F4F /* ClaudeDashboard */,
 				109421F311E289DC97EE7C52 /* ClaudeDashboardTests */,
 				B117A7CF77C920D1DAFAD334 /* Helper */,
+				C474D57D6C9D5D9E07CBB65E /* HelperTests */,
 				B641D65413ACAD21C9A8FF6B /* Shared */,
+				09B6A04220B10A8B2279E533 /* TestSupport */,
 				B67FD40F83C3CF2730CD9C6D /* Frameworks */,
 				1BA1E0603DC4CC66ABF8C4C4 /* Products */,
 			);
@@ -411,6 +446,14 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		C474D57D6C9D5D9E07CBB65E /* HelperTests */ = {
+			isa = PBXGroup;
+			children = (
+				3B48B3EE5B29CFDE5EA2B450 /* SyncCommandTests.swift */,
+			);
+			path = HelperTests;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -432,6 +475,23 @@
 			productName = ClaudeDashboard;
 			productReference = CEA505924741CE7A0DFBB32F /* ClaudeDashboard.app */;
 			productType = "com.apple.product-type.application";
+		};
+		24F6DE6E15F76B305B614712 /* ClaudeDashboardHelperTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1E2F61B65FAF23AFCDD62A50 /* Build configuration list for PBXNativeTarget "ClaudeDashboardHelperTests" */;
+			buildPhases = (
+				2A620BF13EDFB2DE1D1B5507 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ClaudeDashboardHelperTests;
+			packageProductDependencies = (
+			);
+			productName = ClaudeDashboardHelperTests;
+			productReference = 582E30175E7CB586B2B61FD9 /* ClaudeDashboardHelperTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		83DF443592CBF6C2C3AD03E0 /* ClaudeDashboardTests */ = {
 			isa = PBXNativeTarget;
@@ -481,6 +541,9 @@
 					19E4C25522380DDF62F7B840 = {
 						ProvisioningStyle = Manual;
 					};
+					24F6DE6E15F76B305B614712 = {
+						ProvisioningStyle = Manual;
+					};
 					83DF443592CBF6C2C3AD03E0 = {
 						ProvisioningStyle = Manual;
 					};
@@ -505,6 +568,7 @@
 			targets = (
 				19E4C25522380DDF62F7B840 /* ClaudeDashboard */,
 				FC2A9B644D7F7E5772864833 /* ClaudeDashboardHelper */,
+				24F6DE6E15F76B305B614712 /* ClaudeDashboardHelperTests */,
 				83DF443592CBF6C2C3AD03E0 /* ClaudeDashboardTests */,
 			);
 		};
@@ -546,6 +610,7 @@
 				924D219F90D34BE86951B7DB /* ManualKeyContractTests.swift in Sources */,
 				E54289326B8471DAABA189CF /* ManualKeyInputTests.swift in Sources */,
 				667F013D8C979684131DD6D2 /* ManualKeyOutcomeTests.swift in Sources */,
+				B9591794E9DA0689E406A431 /* MockURLProtocol.swift in Sources */,
 				69E5C98294531C72DBF1D4CC /* OrgSelectionContractTests.swift in Sources */,
 				C42D702D9ABD1294DCD9AD91 /* PlanDetectionContractTests.swift in Sources */,
 				FD8D11773B4AB3B5B1F02A3B /* PlanRefreshContractTests.swift in Sources */,
@@ -559,6 +624,31 @@
 				1FC7DDFCDA4DE7B462FFF965 /* UsageDecodingContractTests.swift in Sources */,
 				98FD479769E1857F43E86CCB /* UsageLogModelsTests.swift in Sources */,
 				F25AC7AD4FA98DC521351742 /* UsageLogStoreTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2A620BF13EDFB2DE1D1B5507 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				93B22E6DE99B98430E405CC6 /* Account.swift in Sources */,
+				8014093F24077E76B690AFE0 /* AccountIdentity.swift in Sources */,
+				C23B74F40DBB7E413F3954EA /* AddKeyCommand.swift in Sources */,
+				7D3FCD0210FF7A90A46BB7F9 /* AppVersion.swift in Sources */,
+				A11EFC038D280EA4034743AF /* Browser.swift in Sources */,
+				CA06A14E4AF6469C7EE91BBD /* BrowserCookieService.swift in Sources */,
+				FCA5CB258DACDDBEABC32B62 /* CryptoService.swift in Sources */,
+				72F79D9B1FC6DBCE50D32532 /* DecryptCommand.swift in Sources */,
+				C2A2A8E4EB4A85A4C2B4FC6F /* HelperAccountStore.swift in Sources */,
+				E99F26B2AF2EACF7A4B12282 /* ManualKey.swift in Sources */,
+				81F2429B21545DD0CB6C2FE9 /* ManualKeyInput.swift in Sources */,
+				1CBA83E327ED724A9852B8FD /* MockURLProtocol.swift in Sources */,
+				BB846D46C30AC543BA5BC1BD /* SessionCandidate.swift in Sources */,
+				95BC030E88D57B371E6566F1 /* SyncCommand.swift in Sources */,
+				9C632D2CDB84CD434C8D1B33 /* SyncCommandTests.swift in Sources */,
+				3BF60AFACFB6A826612DEFD2 /* UsageAPIService.swift in Sources */,
+				AE6B0086743C161F44A7D360 /* UsageCommand.swift in Sources */,
+				7F3308287A9B277D0B03061A /* UsageData.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -662,6 +752,24 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.claude-dashboard.ClaudeDashboardHelper";
 				PRODUCT_NAME = "claude-dashboard-helper";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		2DC46BCE2EC7B7048B31C114 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.claude-dashboard.ClaudeDashboardHelperTests";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -824,6 +932,24 @@
 			};
 			name = Release;
 		};
+		86F6652647E9AD77D3B10CCD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.claude-dashboard.ClaudeDashboardHelperTests";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
 		BE1F8B6E909767054299A3E1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -889,6 +1015,15 @@
 			buildConfigurations = (
 				7AEAD1275D84F6E9DAC49D52 /* Debug */,
 				BE1F8B6E909767054299A3E1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		1E2F61B65FAF23AFCDD62A50 /* Build configuration list for PBXNativeTarget "ClaudeDashboardHelperTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2DC46BCE2EC7B7048B31C114 /* Debug */,
+				86F6652647E9AD77D3B10CCD /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

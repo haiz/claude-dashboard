@@ -22,7 +22,7 @@ switch command {
 case "decrypt":
     exit(DecryptCommand.run())
 case "sync":
-    exit(SyncCommand.run())
+    exit(SyncCommand.run(env: .live))
 case "usage":
     exit(UsageCommand.run(args: rest))
 case "add-key":
