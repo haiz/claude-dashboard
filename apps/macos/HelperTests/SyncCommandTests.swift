@@ -186,4 +186,84 @@ final class SyncCommandTests: XCTestCase {
         XCTAssertEqual(after.name, stored.name)
         XCTAssertEqual(after.accountUuid, stored.accountUuid)
     }
+
+    // MARK: - Add path
+
+    private static let maxOrg =
+        #"[{"uuid":"org-1","name":"Personal","capabilities":["chat","claude_max"]}]"#
+
+    private static let accountWithOrg1 =
+        #"{"uuid":"acct-1","email_address":"person@example.com","memberships":[{"organization":{"uuid":"org-1","name":"Personal","capabilities":["chat","claude_max"]}}]}"#
+
+    /// A session no stored account matches is added, named by e-mail, with the
+    /// tier of the org `resolveOrgId` picked.
+    func testNewAccountIsAddedWithThePlanOfItsOrg() async {
+        let recorder = Recorder()
+        let env = makeEnvironment(
+            candidates: [makeCandidate(displayName: "Person 2", sessionKey: "sk", orgId: "org-1")],
+            accounts: [],
+            recorder: recorder,
+            handler: { request in
+                let body = (request.url?.path ?? "") == "/api/organizations"
+                    ? Self.maxOrg
+                    : Self.accountWithOrg1
+                return (HTTPURLResponse(url: request.url!, statusCode: 200,
+                                        httpVersion: nil, headerFields: nil)!,
+                        Data(body.utf8))
+            })
+
+        let code = await SyncCommand.runAsync(env: env)
+
+        XCTAssertEqual(code, 0)
+        XCTAssertEqual(recorder.saved?.count, 1)
+        XCTAssertEqual(recorder.saved?.first?.name, "person@example.com")
+        XCTAssertEqual(recorder.saved?.first?.plan, .max200)
+        XCTAssertTrue(recorder.lines.contains("  Added: person@example.com (Max)"))
+        XCTAssertTrue(recorder.lines.contains("Synced 1 account(s) successfully."))
+    }
+
+    /// `contract/helper-cli.md` "sync": a failed `/api/organizations` does not
+    /// skip the candidate — session validity came from `/api/account`. It only
+    /// leaves the plan at the add-time fallback.
+    func testNewAccountIsStillAddedWhenOrganizationsFails() async {
+        let recorder = Recorder()
+        let env = makeEnvironment(
+            candidates: [makeCandidate(displayName: "Person 2", sessionKey: "sk", orgId: "org-1")],
+            accounts: [],
+            recorder: recorder,
+            handler: { request in
+                if (request.url?.path ?? "") == "/api/organizations" {
+                    return (HTTPURLResponse(url: request.url!, statusCode: 500,
+                                            httpVersion: nil, headerFields: nil)!, Data())
+                }
+                return (HTTPURLResponse(url: request.url!, statusCode: 200,
+                                        httpVersion: nil, headerFields: nil)!,
+                        Data(Self.accountWithOrg1.utf8))
+            })
+
+        _ = await SyncCommand.runAsync(env: env)
+
+        XCTAssertEqual(recorder.saved?.count, 1)
+        XCTAssertEqual(recorder.saved?.first?.plan, .pro, "the add-time fallback")
+    }
+
+    /// An identity that cannot be established is an unusable session: a skip
+    /// for that candidate, not a failure for the run.
+    func testCandidateWhoseAccountCallFailsIsSkipped() async {
+        let recorder = Recorder()
+        let env = makeEnvironment(
+            candidates: [makeCandidate(displayName: "Person 2", sessionKey: "sk", orgId: "org-1")],
+            accounts: [],
+            recorder: recorder,
+            handler: { request in
+                (HTTPURLResponse(url: request.url!, statusCode: 401,
+                                 httpVersion: nil, headerFields: nil)!, Data())
+            })
+
+        let code = await SyncCommand.runAsync(env: env)
+
+        XCTAssertEqual(code, 0)
+        XCTAssertTrue(recorder.lines.contains("  Skipping Person 2 (session expired)"))
+        XCTAssertEqual(recorder.saved, [], "nothing added")
+    }
 }
