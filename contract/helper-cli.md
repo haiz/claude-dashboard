@@ -14,9 +14,10 @@ This is not itself a contract requirement — only the four named
 subcommands' behaviour below is.
 
 The subcommand sections below cite **symbols, not line numbers**. The Swift
-helper has been restructured twice and every pinpoint citation in this document
-went stale; a stale line number is worse than none. The two `main.swift` ranges
-above are the exception, re-verified against the current file.
+helper has been restructured twice and nearly every pinpoint citation in this
+document went stale; a stale line number is worse than none. The three
+`main.swift` references above are the exception, re-verified against the
+current file.
 
 ## `decrypt`
 
@@ -90,13 +91,16 @@ exits 1.
 
 **`orgId` must be a single, unambiguous URL path segment.** It is rejected —
 before any request leaves the process — when it is empty, or when it contains
-any of `/`, `?`, `#`, a control character, or a whitespace character. This is
-a rule about the *value*, not about what a URL parser happens to do with it:
-both platforms spell it out character by character
-(`apps/linux/core/src/api.rs`'s `validate_org_id`, and the matching guard in
-`UsageCommand.run`) because Foundation's `URL(string:)` percent-encodes
-whitespace and control characters into the path instead of refusing them, so
-a parser-shaped check would let a malformed `orgId` through to a 404.
+any of `/`, `?`, `#`, a control character (Unicode general category `Cc`), or
+a whitespace character (the Unicode `White_Space` property — so U+00A0 counts;
+an ASCII-only `isspace()` would diverge here). This is a rule about the
+*value*, not about what a URL parser happens to do with it: both platforms
+spell it out character by character (`apps/linux/core/src/api.rs`'s
+`validate_org_id`, and the matching guard in `UsageCommand.run`) rather than
+delegating to a parser, whose leniency varies by platform and version — on
+current Foundation, `URL(string:)` percent-encodes whitespace and control
+characters into the path instead of refusing them, so a parser-shaped check
+would let a malformed `orgId` through to a 404.
 
 Request: `GET https://claude.ai/api/organizations/<orgId>/usage` with headers:
 - `accept: */*`
@@ -312,8 +316,10 @@ where they actually appear.
   Every case pins stderr exactly. The successful add and the key-rewriting
   repair go further, on both platforms alike: each asserts explicitly that the
   plaintext never appears on stderr, and checks the written record field by
-  field — including that the stored key is neither the plaintext nor the value
-  it replaced, and that it decrypts back to what went in on stdin. The
+  field — the stored key is not the plaintext, and it decrypts back to what
+  went in on stdin. That round trip is the strongest claim either platform
+  makes about the at-rest encryption; the repair also pins the stored key
+  against the value it replaced, which an add has nothing to compare to. The
   plan-changing repair asserts the written tier.
   (`apps/macos/HelperTests/AddKeyCommandTests.swift`,
   `apps/linux/helper/tests/add_key_transport.rs`)
@@ -333,8 +339,10 @@ where they actually appear.
   for `sync` is asserted without touching a browser, the Keychain or the real
   account store. On Linux the same decisions are covered by
   `apps/linux/helper/src/sync.rs`'s own unit tests plus
-  `apps/linux/helper/tests/sync_dedupe.rs`, which pins the dedupe key against
-  `contract/cases/dedupe.json`.
+  `apps/linux/helper/tests/sync_dedupe.rs`, which pins the helper's dedupe key
+  to core's `is_duplicate` with two literal cases. The
+  `contract/cases/dedupe.json` cases are driven separately, by
+  `apps/linux/core/tests/contract_dedupe.rs`.
 
 Two environment variables make the process-level tests possible. Both are
 **platform detail, not contract**, and neither changes observable behaviour

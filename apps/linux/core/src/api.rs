@@ -152,9 +152,9 @@ pub fn parse_session_key(set_cookie_values: &[String]) -> Option<String> {
 /// the `1xx`/`3xx` range `.call()` returns as `Ok`. Ruling B
 /// still holds end to end — the arm that actually preserves a real `401` is
 /// that `Err(Error::Status(..))` one, covered by
-/// `apps/linux/helper/tests/usage_transport.rs`'s 401 case. Mutating the
-/// `401` arm here will not turn that test red; mutating the arm in
-/// `perform_get_bytes` will.
+/// `apps/linux/helper/tests/usage_transport.rs`'s 401 case. Widening this
+/// function's `else` branch to admit `401` will not turn that test red;
+/// touching the `Err(Error::Status(..))` arm in `perform_get_bytes` will.
 fn map_status(status: u16) -> Result<(), ApiError> {
     if (200..=299).contains(&status) {
         Ok(())

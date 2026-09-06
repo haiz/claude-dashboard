@@ -1,5 +1,7 @@
 //! The `sync` subcommand's dedupe key. Pins the helper to the shared rule in
-//! `claude-dashboard-core`, driven by `contract/cases/dedupe.json`.
+//! `claude-dashboard-core` — two literal cases against `is_duplicate`. The
+//! `contract/cases/dedupe.json` cases are driven by
+//! `apps/linux/core/tests/contract_dedupe.rs`, not here.
 
 use claude_dashboard_core::identity::{is_duplicate, StoredIdentity};
 
