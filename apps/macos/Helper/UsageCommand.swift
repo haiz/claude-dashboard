@@ -11,7 +11,7 @@ enum UsageCommand {
         let orgId = args[0]
         let sessionKey = args[1]
 
-        guard let url = URL(string: "https://claude.ai/api/organizations/\(orgId)/usage") else {
+        guard let url = URL(string: "\(APIBaseURL.apiRoot)/organizations/\(orgId)/usage") else {
             fputs("Invalid orgId.\n", stderr)
             return 1
         }
