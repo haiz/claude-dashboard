@@ -32,6 +32,15 @@ enum HelperProcess {
         // URLSession writes diagnostics to stderr when this is set, which would
         // break every byte-exact stderr assertion. A developer shell may have it.
         environment.removeValue(forKey: "CFNETWORK_DIAGNOSTICS")
+        // xcodebuild/Xcode's test runner sets OS_ACTIVITY_DT_MODE=YES on itself so
+        // os_log activity shows in the Xcode console; HelperProcess inherits it via
+        // ProcessInfo.processInfo.environment, and the child mirrors os_log traffic
+        // (e.g. Network.framework's nw_path_necp_check_for_updates diagnostics on a
+        // dropped connection) onto its OWN stderr as a result — polluting the
+        // byte-exact stderr contract on transport-failure paths. A real user running
+        // the binary from a shell has no such variable and sees clean stderr, so the
+        // test harness must not inherit it either.
+        environment.removeValue(forKey: "OS_ACTIVITY_DT_MODE")
         for (key, value) in extra { environment[key] = value }
         process.environment = environment
 

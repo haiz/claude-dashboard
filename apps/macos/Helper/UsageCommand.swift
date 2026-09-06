@@ -56,7 +56,7 @@ enum UsageCommand {
 
         // The decoded String is the contract's non-UTF8 gate and nothing else:
         // what gets written is `data`, the upstream bytes themselves.
-        guard let data = resultData,
+        guard let data = resultData, !data.isEmpty,
               String(data: data, encoding: .utf8) != nil else {
             fputs("Empty response.\n", stderr)
             return 1
