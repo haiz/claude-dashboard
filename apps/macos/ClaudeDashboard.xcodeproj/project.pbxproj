@@ -65,6 +65,7 @@
 		809F8F94BD5A8185ED4FFDFE /* AddKeyCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F466F80474346C7DBE22396 /* AddKeyCommand.swift */; };
 		81F2429B21545DD0CB6C2FE9 /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
 		82BEE4E50C037B6E3C0670CE /* SessionCandidateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9047126E678CDE2BB4637921 /* SessionCandidateTests.swift */; };
+		82C00A064BAECA4DFDC748C2 /* HelperProcessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF6809358DD6A8B16731981A /* HelperProcessTests.swift */; };
 		8395F8352ABD044D301DF42F /* CommandClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E4539F6C5F1A842E8B036C3 /* CommandClassifier.swift */; };
 		859DE9A5769EBF1487EE17AB /* CommandLogViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82BDA8522FB7218F3456ECCF /* CommandLogViewModelTests.swift */; };
 		85A890C260027761BE3F5188 /* PasteKeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39C1533FA0CC46BC64424B9F /* PasteKeyView.swift */; };
@@ -101,6 +102,7 @@
 		BAAE906146838597BF21E53E /* BurnRateTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D13B511083DF4FE0C75FA0DD /* BurnRateTracker.swift */; };
 		BB846D46C30AC543BA5BC1BD /* SessionCandidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53FC5C2A26C631D62371B57C /* SessionCandidate.swift */; };
 		BCF9465CD27C5B80FF29FE9A /* AccountCodableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBC96C2BB8D763106FBEA74A /* AccountCodableTests.swift */; };
+		BD44D9A3F83F77BA7B53B5FD /* LoopbackServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7DEB7565340FB4A64E200F4 /* LoopbackServerTests.swift */; };
 		BE0B91642615126F59A02F3F /* AccountIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4178DC5D69C19ECD002EF8A9 /* AccountIdentity.swift */; };
 		C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */; };
 		C23B74F40DBB7E413F3954EA /* AddKeyCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F466F80474346C7DBE22396 /* AddKeyCommand.swift */; };
@@ -227,9 +229,11 @@
 		BA09806794F5E11A193DC9E0 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		BB103EAE410BFF80B23E7E73 /* CommandClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandClassifierTests.swift; sourceTree = "<group>"; };
 		BF469D724BE1FCA1D071131F /* AccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStore.swift; sourceTree = "<group>"; };
+		BF6809358DD6A8B16731981A /* HelperProcessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperProcessTests.swift; sourceTree = "<group>"; };
 		BFA0F9129D3367D395937E5E /* DashboardWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindow.swift; sourceTree = "<group>"; };
 		C503B77848F554AE0AD61630 /* CommandRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandRunner.swift; sourceTree = "<group>"; };
 		C66B0B30FC2BF11A754E02CC /* RunningProcessRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunningProcessRegistryTests.swift; sourceTree = "<group>"; };
+		C7DEB7565340FB4A64E200F4 /* LoopbackServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopbackServerTests.swift; sourceTree = "<group>"; };
 		C8ADAEF8BBFC797B0D4950E3 /* UsageLogModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogModelsTests.swift; sourceTree = "<group>"; };
 		CBC96C2BB8D763106FBEA74A /* AccountCodableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountCodableTests.swift; sourceTree = "<group>"; };
 		CBFA427293BFC51355250BB1 /* SyncCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncCommand.swift; sourceTree = "<group>"; };
@@ -476,7 +480,9 @@
 				FC6B7044313E37D1A46EFB3C /* APIBaseURLTests.swift */,
 				8004A1F7B3F59AC4C7ECE6D6 /* HelperAccountStoreTests.swift */,
 				6E80DA8175A0D4CB1C886FE4 /* HelperProcess.swift */,
+				BF6809358DD6A8B16731981A /* HelperProcessTests.swift */,
 				93D74BE08A4E3E9EB082405A /* LoopbackServer.swift */,
+				C7DEB7565340FB4A64E200F4 /* LoopbackServerTests.swift */,
 				AB85B37EEB2C6AF0C7691EF4 /* StoreFixture.swift */,
 				3B48B3EE5B29CFDE5EA2B450 /* SyncCommandTests.swift */,
 				53030D91918FBE91B264165C /* UsageCommandTests.swift */,
@@ -675,7 +681,9 @@
 				C2A2A8E4EB4A85A4C2B4FC6F /* HelperAccountStore.swift in Sources */,
 				6D2C7F0EC9D99E1A21AA3C6C /* HelperAccountStoreTests.swift in Sources */,
 				DB632700951205ACE0A3C952 /* HelperProcess.swift in Sources */,
+				82C00A064BAECA4DFDC748C2 /* HelperProcessTests.swift in Sources */,
 				46022E5A9168DBFFE3140E9E /* LoopbackServer.swift in Sources */,
+				BD44D9A3F83F77BA7B53B5FD /* LoopbackServerTests.swift in Sources */,
 				E99F26B2AF2EACF7A4B12282 /* ManualKey.swift in Sources */,
 				81F2429B21545DD0CB6C2FE9 /* ManualKeyInput.swift in Sources */,
 				1CBA83E327ED724A9852B8FD /* MockURLProtocol.swift in Sources */,

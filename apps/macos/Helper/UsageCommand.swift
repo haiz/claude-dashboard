@@ -54,8 +54,10 @@ enum UsageCommand {
             return 1
         }
 
+        // The decoded String is the contract's non-UTF8 gate and nothing else:
+        // what gets written is `data`, the upstream bytes themselves.
         guard let data = resultData,
-              let body = String(data: data, encoding: .utf8) else {
+              String(data: data, encoding: .utf8) != nil else {
             fputs("Empty response.\n", stderr)
             return 1
         }
@@ -63,7 +65,14 @@ enum UsageCommand {
         // `print` would append a newline; contract/helper-cli.md "usage"
         // specifies the upstream body byte-for-byte, and apps/linux's
         // `usage.rs` uses `print!` for the same reason.
-        FileHandle.standardOutput.write(Data(body.utf8))
+        //
+        // `try? write(contentsOf:)` rather than `write(_:)`: the ObjC
+        // `write(_:)` raises an uncatchable NSException on a failed write
+        // (EBADF, ENOSPC on a redirected stdout, EIO) where `print` swallowed
+        // it. This is not about broken pipes -- measured, `print` and
+        // `write(contentsOf:)` behave identically there, both dying with
+        // SIGPIPE above the 64KB pipe buffer and both fine below it.
+        try? FileHandle.standardOutput.write(contentsOf: data)
         return 0
     }
 }
