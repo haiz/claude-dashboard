@@ -30,8 +30,7 @@ enum APIBaseURL {
     /// it separately from `host`, so a naive host-only check would accept
     /// `http://user:pass@127.0.0.1` -- a string Rust's hand-rolled parser
     /// rejects (its unqualified split on the first `:` sees host `"user"`).
-    /// Keeping this the stricter of the two platforms is deliberate: see
-    /// task-2-report.md fix round 1.
+    /// Keeping this the stricter of the two platforms is deliberate.
     static func resolve(_ raw: String?) -> String {
         guard let raw,
               let url = URL(string: raw),

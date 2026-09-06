@@ -126,8 +126,7 @@ fn api_root() -> String {
 /// prefix stripped and is returned **verbatim** — not URL-decoded, not
 /// unquoted, no length or format check. Searches across all header values
 /// given (a server may send several separate `Set-Cookie` headers; ureq
-/// does not collapse them into one — see task-7-report.md). `None` if no
-/// component matches.
+/// does not collapse them into one). `None` if no component matches.
 pub fn parse_session_key(set_cookie_values: &[String]) -> Option<String> {
     for header in set_cookie_values {
         for component in header.split(';') {
@@ -179,10 +178,10 @@ fn validate_org_id(org_id: &str) -> Result<(), ApiError> {
 }
 
 /// Classifies an `io::ErrorKind` as a timeout. `TimedOut` is ureq's normal
-/// path (its `DeadlineStream` raises exactly this kind — see
-/// task-7-report.md); `WouldBlock` is included because a blocking client's
-/// expired `SO_RCVTIMEO` can surface as `EWOULDBLOCK` on some platforms, and
-/// in a blocking client `WouldBlock` has no other meaning.
+/// path (its `DeadlineStream` raises exactly this kind); `WouldBlock` is
+/// included because a blocking client's expired `SO_RCVTIMEO` can surface as
+/// `EWOULDBLOCK` on some platforms, and in a blocking client `WouldBlock` has
+/// no other meaning.
 fn is_timeout_kind(kind: std::io::ErrorKind) -> bool {
     matches!(
         kind,
@@ -547,9 +546,9 @@ mod tests {
     fn userinfo_authority_is_rejected() {
         // split_once(':') takes the authority's first colon, so this parses
         // as host "user" (not "127.0.0.1") and is rejected -- unlike Swift's
-        // URL(string:), which parses userinfo separately from host. See
-        // task-2-report.md fix round 1: Rust's rejection here is the
-        // conservative side and is kept; Swift was tightened to match.
+        // URL(string:), which parses userinfo separately from host. Rust's
+        // rejection here is the conservative side and is kept; Swift was
+        // tightened to match.
         assert_eq!(
             resolve_origin(Some("http://user:pass@127.0.0.1:8080")),
             "https://claude.ai"

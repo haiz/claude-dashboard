@@ -50,8 +50,7 @@ final class APIBaseURLTests: XCTestCase {
         // URL(string:) parses userinfo separately from host, so unlike a
         // naive split on ':', url.host here is "127.0.0.1" -- resolve must
         // reject on url.user/url.password being non-nil to match Rust's
-        // (conservative) rejection of the same string. See task-2-report.md
-        // fix round 1.
+        // (conservative) rejection of the same string.
         XCTAssertEqual(APIBaseURL.resolve("http://user:pass@127.0.0.1:8080"), "https://claude.ai")
     }
 
