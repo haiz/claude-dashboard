@@ -5,12 +5,22 @@ final class AccountStoreTests: XCTestCase {
 
     private var store: AccountStore!
     private var defaults: UserDefaults!
+    private var suiteName: String!
 
     override func setUp() {
         super.setUp()
-        defaults = UserDefaults(suiteName: "com.claude-dashboard.tests")!
-        defaults.removePersistentDomain(forName: "com.claude-dashboard.tests")
+        // A UUID suite per test, not one fixed name: that is what makes the
+        // old `removePersistentDomain` in setUp unnecessary, and what lets
+        // `StoreFixture.destroy` unlink the plist instead of leaving it in
+        // ~/Library/Preferences after the run.
+        suiteName = StoreFixture.makeSuiteName()
+        defaults = UserDefaults(suiteName: suiteName)!
         store = AccountStore(defaults: defaults)
+    }
+
+    override func tearDown() {
+        StoreFixture.destroy(suite: suiteName)
+        super.tearDown()
     }
 
     func testAddAccount() {

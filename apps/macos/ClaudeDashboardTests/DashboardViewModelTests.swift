@@ -13,13 +13,16 @@ final class DashboardViewModelTests: XCTestCase {
         tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("DashboardViewModelTests-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defaultsSuiteName = "com.claude-dashboard.vm-tests-\(UUID().uuidString)"
+        defaultsSuiteName = StoreFixture.makeSuiteName()
         defaults = UserDefaults(suiteName: defaultsSuiteName)!
     }
 
     override func tearDown() {
         try? FileManager.default.removeItem(at: tempDir)
-        defaults.removePersistentDomain(forName: defaultsSuiteName)
+        // `removePersistentDomain` is what left a 42-byte plist per test in
+        // ~/Library/Preferences; `StoreFixture.destroy` is the cleanup that
+        // actually holds. See its doc comment.
+        StoreFixture.destroy(suite: defaultsSuiteName)
         MockURLProtocol.requestHandler = nil
         super.tearDown()
     }
