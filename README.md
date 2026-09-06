@@ -83,7 +83,7 @@ are skipped.
 
 ## Terminal CLI
 
-A terminal dashboard is available via the `claude-dashboard-cli` Homebrew formula. It reuses the same account storage as the menu bar app — so after `sync`, every account shows up in both the GUI and the terminal.
+A terminal dashboard is available on both platforms. On macOS, install it via the `claude-dashboard-cli` Homebrew formula — it reuses the same account storage as the menu bar app, so after `sync`, every account shows up in both the GUI and the terminal. On Linux, install it with the one-liner above instead; there is no menu bar app to share storage with, since the GUI is macOS only.
 
 ![CLI Dashboard](docs/screenshot/cli.png)
 
@@ -91,7 +91,8 @@ A terminal dashboard is available via the `claude-dashboard-cli` Homebrew formul
 
 ```bash
 # 1. Install
-brew install haiz/claude-dashboard/claude-dashboard-cli
+brew install haiz/claude-dashboard/claude-dashboard-cli                                   # macOS
+curl -fsSL https://raw.githubusercontent.com/haiz/claude-dashboard/main/install.sh | bash  # Linux
 
 # 2. Scan installed browsers for Claude sessions and save accounts
 claude-dashboard-cli sync
@@ -100,7 +101,7 @@ claude-dashboard-cli sync
 claude-dashboard-cli
 ```
 
-`sync` opens the cookie database of every installed supported browser (Chrome, Arc, Brave, Edge), validates each session against the Claude.ai API, detects the plan (Pro or Max), and saves the accounts to `~/Library/Preferences/com.claude-dashboard.app.plist` (shared with the menu bar app).
+`sync` opens the cookie database of every installed supported browser (Chrome, Arc, Brave, Edge), validates each session against the Claude.ai API, detects the plan (Pro or Max), and saves the accounts — on macOS to `~/Library/Preferences/com.claude-dashboard.app.plist` (shared with the menu bar app), on Linux to `~/.config/claude-dashboard/accounts.json` (or `$XDG_CONFIG_HOME/claude-dashboard/accounts.json` if that variable is set).
 
 ### Commands
 
@@ -127,7 +128,8 @@ The `resets` column shows when each window resets (local time). Progress bars tr
 ### Tips
 
 - Re-run `claude-dashboard-cli sync` whenever you log into a new Claude account in a supported browser, or after a session expires.
-- To manage accounts (add, delete, re-sync), open the menu bar app — both share the same storage.
+- **macOS:** To manage accounts (add, delete, re-sync), open the menu bar app — both share the same storage.
+- **Linux:** There is no menu bar app. Re-run `claude-dashboard-cli sync` to rescan browsers, or — when no browser is available — add or repair one account by piping a session key to `claude-dashboard-helper add-key` on stdin, e.g. `echo "$SESSION_KEY" | claude-dashboard-helper add-key`.
 - Press `Ctrl+C` to quit the live dashboard.
 
 ## Requirements
