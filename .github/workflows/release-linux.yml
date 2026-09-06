@@ -53,6 +53,14 @@ jobs:
       - name: Install musl toolchain
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
+      # rustup only auto-installs a missing pinned toolchain on >= 1.28.1 and
+      # only when RUSTUP_AUTO_INSTALL is unset, so install it explicitly rather
+      # than depending on the runner image. With no argument this installs the
+      # active toolchain — the 1.98.0 pin in apps/linux/rust-toolchain.toml,
+      # with its components = ["clippy"].
+      - name: Install pinned toolchain
+        run: cd apps/linux && rustup toolchain install
+
       # rust-toolchain.toml lives in apps/linux and pins 1.98.0; rustup run from
       # the repo root would target the default toolchain instead.
       - name: Add musl target
