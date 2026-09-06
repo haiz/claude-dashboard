@@ -4,7 +4,7 @@ members = ["core", "helper"]
 
 [workspace.package]
 edition = "2021"
-version = "1.16.0"   # kept in sync with /VERSION by scripts/sync-version.sh
+version = "1.17.0"   # kept in sync with /VERSION by scripts/sync-version.sh
 # Floor taken from the dependency graph: `time` and the `icu_*` crates declare 1.88.0.
 rust-version = "1.88"
 
