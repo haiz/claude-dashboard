@@ -63,4 +63,27 @@ CASK="Casks/claude-dashboard.rb"
 sed -i '' "s|^  version \"[^\"]*\"|  version \"${VERSION}\"|" "$CASK"
 report "$CASK" "^  version \"${VERSION}\""
 
+# 5. Rust workspace — the [workspace.package] version, plus the copy the lock
+# file keeps for each member. Leaving the lock behind makes `cargo --locked`
+# fail on the next build, so both files move together or neither does.
+CARGO_TOML="apps/linux/Cargo.toml"
+sed -i '' "s|^version = \"[^\"]*\"|version = \"${VERSION}\"|" "$CARGO_TOML"
+report "$CARGO_TOML" "^version = \"${VERSION}\""
+
+CARGO_LOCK="apps/linux/Cargo.lock"
+for member in claude-dashboard-core claude-dashboard-helper; do
+    sed -i '' "/^name = \"${member}\"$/{n;s|^version = \"[^\"]*\"|version = \"${VERSION}\"|;}" "$CARGO_LOCK"
+done
+# Checked per member rather than by counting matches: a third-party dep may
+# legitimately sit at the same version, which would make a count lie.
+for member in claude-dashboard-core claude-dashboard-helper; do
+    got="$(awk -v m="$member" '$0 == "name = \"" m "\"" { getline; print; exit }' "$CARGO_LOCK")"
+    if [[ "$got" == "version = \"${VERSION}\"" ]]; then
+        echo "  $CARGO_LOCK ($member) — OK"
+    else
+        echo "  $CARGO_LOCK ($member) — FAILED to apply" >&2
+        exit 1
+    fi
+done
+
 echo "Done."
