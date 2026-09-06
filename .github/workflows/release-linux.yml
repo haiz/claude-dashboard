@@ -8,6 +8,20 @@ name: release-linux
 #   3. never touches ClaudeDashboard.app.zip or claude-dashboard-cli.tar.gz
 #   4. never writes release notes
 #   5. never commits anything back into the repository
+#
+# --clobber below is only safe while no Linux asset checksum is pinned in any
+# manifest (Formula/, Casks/, or a future Linux package manifest). The moment
+# one is, --clobber recreates the exact cab82a9 hazard — an upload racing a
+# pinned checksum. If that ever changes, this workflow must stop clobbering,
+# or the checksum computation has to move into release.sh instead.
+#
+# workflow_dispatch (the retry path, for when a build fails after the release
+# already published and the `published` event can't fire again) resolves the
+# ref asymmetrically on purpose: the workflow *definition* that runs is
+# whatever ref the dispatch itself was triggered from (normally the default
+# branch), but checkout below is pinned to inputs.tag — so a fixed workflow
+# re-runs against the tree that was actually released, not against whatever
+# HEAD has moved to since.
 on:
   release:
     types: [published]
@@ -22,6 +36,11 @@ permissions:
 
 jobs:
   build:
+    # Keyed on tag + arch: a republish, or an overlapping manual dispatch for
+    # the same tag, must not race another run's --clobber upload.
+    concurrency:
+      group: release-linux-${{ github.event.release.tag_name || inputs.tag }}-${{ matrix.arch }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -32,21 +51,36 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
+      # Tag names are attacker-influenceable (anyone who can push a tag or
+      # trigger workflow_dispatch chooses this string) and permit shell
+      # metacharacters ($, `, ;, &, |, (, )). ${{ }} is substituted into the
+      # run: body as raw text before bash parses it, so both values are
+      # routed through env: and read back as shell variables instead of being
+      # interpolated directly into the script.
       - name: Resolve tag
         id: resolve
+        env:
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_TAG: ${{ inputs.tag }}
         run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_EVENT_NAME" == "release" ]]; then
+            echo "tag=$EVENT_TAG" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "tag=$DISPATCH_TAG" >> "$GITHUB_OUTPUT"
           fi
 
       # ref is explicit on purpose: the release event defaults to the tag, but
       # workflow_dispatch defaults to the default branch, which would build a
       # different tree than the one being released.
+      #
+      # persist-credentials: false — nothing in this job pushes, and cargo
+      # runs build.rs / proc-macro code from dependencies during the build and
+      # test steps below; the contents:write token has no business surviving
+      # in .git/config while third-party code executes.
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.resolve.outputs.tag }}
+          persist-credentials: false
 
       # build-linux.sh (Task 2) does not install the musl target or musl-tools
       # itself; it assumes the toolchain is already in place.
@@ -59,7 +93,7 @@ jobs:
       # active toolchain — the 1.98.0 pin in apps/linux/rust-toolchain.toml,
       # with its components = ["clippy"].
       - name: Install pinned toolchain
-        run: cd apps/linux && rustup toolchain install
+        run: cd apps/linux && rustup toolchain install --no-self-update
 
       # rust-toolchain.toml lives in apps/linux and pins 1.98.0; rustup run from
       # the repo root would target the default toolchain instead.
@@ -81,4 +115,5 @@ jobs:
       - name: Upload to release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ steps.resolve.outputs.tag }}" ".build/claude-dashboard-cli-linux-${{ matrix.arch }}.tar.gz" --clobber
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: gh release upload "$TAG" ".build/claude-dashboard-cli-linux-${{ matrix.arch }}.tar.gz" --clobber

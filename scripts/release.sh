@@ -94,6 +94,12 @@ xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj \
 # ── 4. Run tests ─────────────────────────────────────────────────────────────
 echo ""
 echo "==> Step 4: Run tests"
+
+# Validates .github/workflows/release-linux.yml's guardrails now: that
+# workflow fires seconds after this script publishes the release below, and
+# nothing else in the repo invokes this check.
+./scripts/test-release-workflow.sh
+
 xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj \
     -scheme ClaudeDashboardTests \
     -derivedDataPath "$DERIVED_DATA" \
