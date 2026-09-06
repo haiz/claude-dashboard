@@ -69,6 +69,10 @@ targets:
         excludes: [main.swift]
       - Shared
       - ClaudeDashboardTests/TestSupport
+    dependencies:
+      - target: ClaudeDashboardHelper
+        link: false
+        embed: false
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

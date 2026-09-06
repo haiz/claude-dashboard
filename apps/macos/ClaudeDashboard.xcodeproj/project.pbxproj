@@ -50,8 +50,10 @@
 		69E5C98294531C72DBF1D4CC /* OrgSelectionContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65B6FF0D0BD63D5125DBE9E9 /* OrgSelectionContractTests.swift */; };
 		6A3B29454AC4491BC3AB2C7B /* AccountCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786E54BCD656D51F01E86B77 /* AccountCard.swift */; };
 		6B5178E7AE39D91E564BD7AD /* HelpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC394CD29F6E869A54D1CE5A /* HelpView.swift */; };
+		6D2C7F0EC9D99E1A21AA3C6C /* HelperAccountStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8004A1F7B3F59AC4C7ECE6D6 /* HelperAccountStoreTests.swift */; };
 		72F79D9B1FC6DBCE50D32532 /* DecryptCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF7DEAC28930337FB1D5772 /* DecryptCommand.swift */; };
 		74AAC2BB9743F4E1DDA24F4B /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */; };
+		780221054DD09C19EFDF7D83 /* StoreFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB85B37EEB2C6AF0C7691EF4 /* StoreFixture.swift */; };
 		799960A4D530BF35FAB68326 /* UsageLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A9C824A446A4513554E6BC5 /* UsageLogStore.swift */; };
 		7A5C31588D87CBAB9CCC7CD1 /* CommandLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 653DEC7215637CF705CDA949 /* CommandLogView.swift */; };
 		7C270378E7A24C8959633F69 /* APIBaseURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BF0A4FB04BB2713656EADBF /* APIBaseURL.swift */; };
@@ -137,6 +139,13 @@
 			remoteGlobalIDString = 19E4C25522380DDF62F7B840;
 			remoteInfo = ClaudeDashboard;
 		};
+		970C55E6E7BD4D170D104345 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 78F20A32A9FF1B769D876A97 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FC2A9B644D7F7E5772864833;
+			remoteInfo = ClaudeDashboardHelper;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
@@ -190,6 +199,7 @@
 		7D2EB0AED06D26591B8C814F /* PlanRefreshContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanRefreshContractTests.swift; sourceTree = "<group>"; };
 		7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualKeyInput.swift; sourceTree = "<group>"; };
 		7E4539F6C5F1A842E8B036C3 /* CommandClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandClassifier.swift; sourceTree = "<group>"; };
+		8004A1F7B3F59AC4C7ECE6D6 /* HelperAccountStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperAccountStoreTests.swift; sourceTree = "<group>"; };
 		8007AA99F483598797EBFAE0 /* ClaudeDashboardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDashboardApp.swift; sourceTree = "<group>"; };
 		82BDA8522FB7218F3456ECCF /* CommandLogViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandLogViewModelTests.swift; sourceTree = "<group>"; };
 		8454A54E81908E1F697644E4 /* UsageLogModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogModels.swift; sourceTree = "<group>"; };
@@ -203,6 +213,7 @@
 		9D9410DC3E0803A469DCDE90 /* MockURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockURLProtocol.swift; sourceTree = "<group>"; };
 		A23FF51936BD885B6281CE0F /* RunningProcessRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunningProcessRegistry.swift; sourceTree = "<group>"; };
 		A81A393416A5618902A5764C /* ClaudeDashboardHelper */ = {isa = PBXFileReference; includeInIndex = 0; path = ClaudeDashboardHelper; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB85B37EEB2C6AF0C7691EF4 /* StoreFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreFixture.swift; sourceTree = "<group>"; };
 		AE57E5139A296611CB7F49C2 /* ManualKeyInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualKeyInputTests.swift; sourceTree = "<group>"; };
 		AFD4C1EC6F97C4F34F204E5E /* DedupeContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DedupeContractTests.swift; sourceTree = "<group>"; };
 		B4ED0121EB136414664B103B /* BrowserCookieService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserCookieService.swift; sourceTree = "<group>"; };
@@ -457,6 +468,8 @@
 			isa = PBXGroup;
 			children = (
 				FC6B7044313E37D1A46EFB3C /* APIBaseURLTests.swift */,
+				8004A1F7B3F59AC4C7ECE6D6 /* HelperAccountStoreTests.swift */,
+				AB85B37EEB2C6AF0C7691EF4 /* StoreFixture.swift */,
 				3B48B3EE5B29CFDE5EA2B450 /* SyncCommandTests.swift */,
 			);
 			path = HelperTests;
@@ -493,6 +506,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				1B755C304A8D85ED77BC78DE /* PBXTargetDependency */,
 			);
 			name = ClaudeDashboardHelperTests;
 			packageProductDependencies = (
@@ -650,10 +664,12 @@
 				FCA5CB258DACDDBEABC32B62 /* CryptoService.swift in Sources */,
 				72F79D9B1FC6DBCE50D32532 /* DecryptCommand.swift in Sources */,
 				C2A2A8E4EB4A85A4C2B4FC6F /* HelperAccountStore.swift in Sources */,
+				6D2C7F0EC9D99E1A21AA3C6C /* HelperAccountStoreTests.swift in Sources */,
 				E99F26B2AF2EACF7A4B12282 /* ManualKey.swift in Sources */,
 				81F2429B21545DD0CB6C2FE9 /* ManualKeyInput.swift in Sources */,
 				1CBA83E327ED724A9852B8FD /* MockURLProtocol.swift in Sources */,
 				BB846D46C30AC543BA5BC1BD /* SessionCandidate.swift in Sources */,
+				780221054DD09C19EFDF7D83 /* StoreFixture.swift in Sources */,
 				95BC030E88D57B371E6566F1 /* SyncCommand.swift in Sources */,
 				9C632D2CDB84CD434C8D1B33 /* SyncCommandTests.swift in Sources */,
 				3BF60AFACFB6A826612DEFD2 /* UsageAPIService.swift in Sources */,
@@ -742,6 +758,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		1B755C304A8D85ED77BC78DE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FC2A9B644D7F7E5772864833 /* ClaudeDashboardHelper */;
+			targetProxy = 970C55E6E7BD4D170D104345 /* PBXContainerItemProxy */;
+		};
 		FCFAB9197A60F7990BBF5532 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 19E4C25522380DDF62F7B840 /* ClaudeDashboard */;
