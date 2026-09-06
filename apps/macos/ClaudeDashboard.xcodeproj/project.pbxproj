@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		04AD291FD33FFB834B40D945 /* InteractiveChartContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86AC4B09025CCFBC088F61A5 /* InteractiveChartContainer.swift */; };
+		0581B7FBD47A7FCB6F79F7CC /* AddKeyCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192B6A7B21DD123434442F5B /* AddKeyCommandTests.swift */; };
 		065A41660DAE9558AEFB0356 /* TerminalLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = F32C9470D69868D82CEF8ECD /* TerminalLauncher.swift */; };
 		0924D8F9139A4EE436ABEA8C /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7E115BD84248989BAA883F /* CryptoService.swift */; };
 		0D2BDE04D4B6D1D0C60DC187 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
@@ -164,6 +165,7 @@
 		101FB3B509DBD5E1813FDABE /* UpdateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateViewModel.swift; sourceTree = "<group>"; };
 		13957FCE8EBB39E84590E42F /* CommandLogViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandLogViewModel.swift; sourceTree = "<group>"; };
 		185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogStoreTests.swift; sourceTree = "<group>"; };
+		192B6A7B21DD123434442F5B /* AddKeyCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddKeyCommandTests.swift; sourceTree = "<group>"; };
 		1AFC5BA1E046AD26CBECA092 /* UsageDecodingContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageDecodingContractTests.swift; sourceTree = "<group>"; };
 		1B626BA4B6B77C9127190E09 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAPIService.swift; sourceTree = "<group>"; };
@@ -479,6 +481,7 @@
 		C474D57D6C9D5D9E07CBB65E /* HelperTests */ = {
 			isa = PBXGroup;
 			children = (
+				192B6A7B21DD123434442F5B /* AddKeyCommandTests.swift */,
 				FC6B7044313E37D1A46EFB3C /* APIBaseURLTests.swift */,
 				73EA27C3A6B23F369D86DDB7 /* DecryptCommandTests.swift */,
 				8004A1F7B3F59AC4C7ECE6D6 /* HelperAccountStoreTests.swift */,
@@ -676,6 +679,7 @@
 				93B22E6DE99B98430E405CC6 /* Account.swift in Sources */,
 				8014093F24077E76B690AFE0 /* AccountIdentity.swift in Sources */,
 				C23B74F40DBB7E413F3954EA /* AddKeyCommand.swift in Sources */,
+				0581B7FBD47A7FCB6F79F7CC /* AddKeyCommandTests.swift in Sources */,
 				7D3FCD0210FF7A90A46BB7F9 /* AppVersion.swift in Sources */,
 				A11EFC038D280EA4034743AF /* Browser.swift in Sources */,
 				CA06A14E4AF6469C7EE91BBD /* BrowserCookieService.swift in Sources */,
