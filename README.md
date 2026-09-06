@@ -30,10 +30,11 @@ A macOS menu bar app that monitors your Claude.ai token usage across multiple ac
 ```
 apps/macos/       SwiftUI menu bar app, tests, and the Swift helper binary
 apps/linux/       Rust workspace: the shared core plus the Linux helper binary.
-                  Drives the same bash CLI; no GUI and no release yet.
+                  Drives the same bash CLI; no GUI yet.
 contract/         Behaviour shared across platforms: docs plus executable cases
 cli/              claude-dashboard-cli — the bash terminal dashboard
 scripts/          release, version sync
+.github/workflows/ release-linux.yml — builds and uploads the Linux tarballs
 Formula/ Casks/   Homebrew tap (must stay at the repo root)
 install.sh        one-liner installer (published URL, must stay at the repo root)
 ```
@@ -55,6 +56,23 @@ brew install haiz/claude-dashboard/claude-dashboard-cli
 ```bash
 curl -fsSL https://raw.githubusercontent.com/haiz/claude-dashboard/main/install.sh | bash
 ```
+
+### Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/haiz/claude-dashboard/main/install.sh | bash
+```
+
+The same one-liner installs the terminal CLI into `~/.local/bin` on Linux
+(x86_64 and aarch64). There is no Linux GUI yet — the menu bar app is macOS
+only. `jq` is required; install it with `apt install jq` or `dnf install jq`.
+Browser scanning (`sync`) additionally needs `secret-tool` from
+`libsecret-tools`.
+
+Known limitations on Linux: the x86_64 build is exercised by CI but has not been
+run against a real browser cookie or a real network session; `sync`'s browser
+scan has not been accepted on Linux yet; Chromium v12 (secret-portal) cookies
+are skipped.
 
 ### Manual Download
 
@@ -114,8 +132,11 @@ The `resets` column shows when each window resets (local time). Progress bars tr
 
 ## Requirements
 
-- macOS 13.0 (Ventura) or later
-- One of Google Chrome, Arc, Brave, or Microsoft Edge (for automatic session key extraction)
+- **macOS** 13.0 (Ventura) or later, for the menu bar app and the CLI
+- **Linux** x86_64 or aarch64, for the CLI only — the binaries are statically
+  linked, so there is no distribution or glibc floor
+- One of Google Chrome, Arc, Brave, or Microsoft Edge (for automatic session key
+  extraction)
 
 ## How It Works
 
