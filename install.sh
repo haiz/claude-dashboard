@@ -22,6 +22,13 @@ error() { echo -e "${RED}==>${NC} $1"; exit 1; }
 
 # --- Linux ---
 LINUX_BIN_DIR="${HOME}/.local/bin"
+# Top-level global (not `local` to install_linux): the EXIT trap set inside
+# that function still fires after the function returns, once the top-level
+# `exit 0` in the OS-dispatch below runs. A `local tmp` there would be out of
+# scope by the time the trap body evaluates it, and under `set -u` that is an
+# unbound-variable error right after the success banner. Declaring it here,
+# empty, is just `set -u` hygiene for that same reference.
+LINUX_TMP_PATH=""
 
 normalize_arch() {
     case "$1" in
@@ -66,17 +73,16 @@ install_linux() {
 
     info "Found ${APP_NAME} CLI ${version}"
 
-    local tmp
-    tmp=$(mktemp -d)
-    trap 'rm -rf "$tmp"' EXIT
+    LINUX_TMP_PATH=$(mktemp -d)
+    trap 'rm -rf "$LINUX_TMP_PATH"' EXIT
 
     info "Downloading..."
-    curl -fSL --progress-bar -o "${tmp}/${asset}" "$url" || error "Download failed."
-    tar xzf "${tmp}/${asset}" -C "$tmp" || error "Failed to extract ${asset}."
+    curl -fSL --progress-bar -o "${LINUX_TMP_PATH}/${asset}" "$url" || error "Download failed."
+    tar xzf "${LINUX_TMP_PATH}/${asset}" -C "$LINUX_TMP_PATH" || error "Failed to extract ${asset}."
 
     mkdir -p "$LINUX_BIN_DIR"
-    install -m755 "${tmp}/claude-dashboard-helper" "${LINUX_BIN_DIR}/claude-dashboard-helper"
-    install -m755 "${tmp}/claude-dashboard-cli"    "${LINUX_BIN_DIR}/claude-dashboard-cli"
+    install -m755 "${LINUX_TMP_PATH}/claude-dashboard-helper" "${LINUX_BIN_DIR}/claude-dashboard-helper"
+    install -m755 "${LINUX_TMP_PATH}/claude-dashboard-cli"    "${LINUX_BIN_DIR}/claude-dashboard-cli"
 
     echo ""
     ok "${APP_NAME} CLI ${version} installed to ${LINUX_BIN_DIR}"
