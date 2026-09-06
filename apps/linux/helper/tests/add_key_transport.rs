@@ -5,6 +5,7 @@
 mod support;
 
 use claude_dashboard_core::api::BASE_URL_OVERRIDE_VAR;
+use claude_dashboard_core::store::decrypt_session_key;
 use support::{run_helper, LoopbackServer, Response};
 
 /// The store lives at $XDG_CONFIG_HOME/claude-dashboard/accounts.json.
@@ -123,6 +124,11 @@ fn add_stores_the_account_with_an_encrypted_key() {
     assert_eq!(stored[0]["source"], "manual");
     assert_eq!(stored[0]["status"], "active");
     assert_ne!(stored[0]["sessionKey"], key, "the key must be stored encrypted");
+    assert_eq!(
+        decrypt_session_key(stored[0]["sessionKey"].as_str().unwrap()),
+        Some(key.to_string()),
+        "the stored value must decrypt back to the plaintext key"
+    );
 
     let recorded = server.recorded();
     assert_eq!(recorded.len(), 2);
@@ -163,6 +169,11 @@ fn repair_rewrites_only_the_permitted_fields() {
     // Differs from both the old stored value and the plaintext.
     assert_ne!(stored[0]["sessionKey"], "OLD-STORED-VALUE");
     assert_ne!(stored[0]["sessionKey"], key);
+    assert_eq!(
+        decrypt_session_key(stored[0]["sessionKey"].as_str().unwrap()),
+        Some(key.to_string()),
+        "the stored value must decrypt back to the plaintext key"
+    );
     assert_eq!(stored[0]["id"], "A");
     assert_eq!(stored[0]["orgId"], "org-1");
     assert_eq!(stored[0]["source"], "browser", "a key never changes a record's source");
