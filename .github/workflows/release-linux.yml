@@ -1,0 +1,76 @@
+name: release-linux
+
+# Guardrails, from docs/superpowers/specs/2026-08-30-linux-tauri-port-design.md:231-247.
+# A previous workflow (deleted in cab82a9) recreated the release and replaced its
+# assets after release.sh had uploaded its own, which broke every brew install.
+#   1. published-release trigger, never a tag push
+#   2. uploads only — never creates or replaces a release
+#   3. never touches ClaudeDashboard.app.zip or claude-dashboard-cli.tar.gz
+#   4. never writes release notes
+#   5. never commits anything back into the repository
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build from and upload to (e.g. v1.17.0). Retry path only."
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Resolve tag
+        id: resolve
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ref is explicit on purpose: the release event defaults to the tag, but
+      # workflow_dispatch defaults to the default branch, which would build a
+      # different tree than the one being released.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.tag }}
+
+      # build-linux.sh (Task 2) does not install the musl target or musl-tools
+      # itself; it assumes the toolchain is already in place.
+      - name: Install musl toolchain
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      # rust-toolchain.toml lives in apps/linux and pins 1.98.0; rustup run from
+      # the repo root would target the default toolchain instead.
+      - name: Add musl target
+        run: cd apps/linux && rustup target add ${{ matrix.arch }}-unknown-linux-musl
+
+      - name: Clippy
+        run: cd apps/linux && cargo clippy --workspace --all-targets --locked --target ${{ matrix.arch }}-unknown-linux-musl -- -D warnings
+
+      # --target makes the test binaries the configuration that actually ships:
+      # SQLite compiled through musl-gcc, ring's asm for this arch, static
+      # linking. musl-static binaries run fine on the glibc runner.
+      - name: Test
+        run: cd apps/linux && cargo test --workspace --locked --target ${{ matrix.arch }}-unknown-linux-musl
+
+      - name: Build artifact
+        run: ./scripts/build-linux.sh ${{ matrix.arch }}
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ steps.resolve.outputs.tag }}" ".build/claude-dashboard-cli-linux-${{ matrix.arch }}.tar.gz" --clobber
