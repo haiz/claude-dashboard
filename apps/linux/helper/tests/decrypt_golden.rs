@@ -74,3 +74,55 @@ fn stored_but_none_active_message() {
     assert_eq!(err, "No active accounts with session keys found.\n");
     assert_eq!(code, 1);
 }
+
+/// A stored value that is not a valid ciphertext comes back verbatim — the
+/// command falls back to the stored string with no error path, matching
+/// `apps/macos/Helper/DecryptCommand.swift`'s `?? encrypted`.
+#[test]
+fn undecryptable_session_key_is_passed_through_verbatim() {
+    let d = tempfile::tempdir().unwrap();
+    let cfg = d.path().join("claude-dashboard");
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::fs::write(
+        cfg.join("accounts.json"),
+        r#"[{"id":"A","name":"me","email":"me@x.com","chromeProfilePath":"/p",
+             "orgId":"org-1","sessionKey":"NOT-A-CIPHERTEXT","browser":"chrome",
+             "plan":"Pro","status":"active"}]"#,
+    )
+    .unwrap();
+
+    let (out, _e, code) = run_in(d.path(), &["decrypt"]);
+
+    assert_eq!(code, 0);
+    assert!(
+        out.contains("\"sessionKey\": \"NOT-A-CIPHERTEXT\""),
+        "ciphertext must survive a failed decrypt: {out}"
+    );
+}
+
+/// The projection's `BTreeMap` inserts every key unconditionally, so an
+/// included account with no stored session key projects `sessionKey: null`
+/// rather than omitting the key — the same six-key/null shape that
+/// `apps/macos/Helper/DecryptCommand.swift`'s explicit `encode(to:)` was
+/// fixed to match (see that file's commit history for the omission bug).
+#[test]
+fn included_account_with_no_session_key_projects_null() {
+    let d = tempfile::tempdir().unwrap();
+    let cfg = d.path().join("claude-dashboard");
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::fs::write(
+        cfg.join("accounts.json"),
+        r#"[{"id":"A","name":"me","chromeProfilePath":"/p",
+             "orgId":"org-1","browser":"chrome",
+             "plan":"Pro","status":"active"}]"#,
+    )
+    .unwrap();
+
+    let (out, _e, code) = run_in(d.path(), &["decrypt"]);
+
+    assert_eq!(code, 0);
+    assert!(
+        out.contains("\"sessionKey\": null"),
+        "an absent session key must project as null, not be omitted: {out}"
+    );
+}
