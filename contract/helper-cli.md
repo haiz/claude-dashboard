@@ -6,12 +6,34 @@ observable behaviour — input/output shape, exit codes, stderr text — is
 contract. How each subcommand is invoked from a wrapper script, and how
 `sync` persists accounts, is platform detail.
 
-Dispatch: no subcommand at all (`apps/macos/Helper/main.swift:5-17`) prints a
-usage banner to stderr and exits 1; an unrecognized subcommand
+Dispatch: no subcommand at all (`apps/macos/Helper/main.swift:5-17`) prints the
+usage banner below to stderr and exits 1; an unrecognized subcommand
 (`apps/macos/Helper/main.swift:30-32`, the `default:` case of the switch at
 lines 21-33) prints `Unknown command: <command>\n` to stderr and exits 1.
-This is not itself a contract requirement — only the four named
-subcommands' behaviour below is.
+
+The banner is contract, byte for byte — seven lines, 327 bytes, ending in a
+single newline after the `add-key` line with no trailing blank line:
+
+```
+Usage: claude-dashboard-helper <command>
+
+Commands:
+  decrypt    Decrypt accounts and output JSON to stdout
+  sync       Scan installed browsers for Claude sessions and save to accounts
+  usage      Fetch usage JSON for an account (args: <orgId> <sessionKey>)
+  add-key    Add or repair one account from a session key on stdin
+```
+
+It was not pinned until 2026-09-06, and the two platforms had drifted apart
+underneath the omission: macOS printed the block above while Linux printed a
+single `Usage: claude-dashboard-helper <decrypt|usage|sync|add-key>` line. Each
+side's own test asserted its own text, so no test could see the difference —
+which is the argument for pinning it here rather than calling it platform
+detail. Linux was the side changed, because it had not shipped yet.
+
+The `sync` line reads "installed browsers" rather than "Chrome": the banner
+predates multi-browser support and named Chrome alone until the same date.
+Both platforms scan Chrome, Arc, Brave and Edge.
 
 The subcommand sections below cite **symbols, not line numbers**. The Swift
 helper has been restructured twice and nearly every pinpoint citation in this

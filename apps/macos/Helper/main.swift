@@ -8,7 +8,7 @@ guard let command = args.first else {
 
     Commands:
       decrypt    Decrypt accounts and output JSON to stdout
-      sync       Scan Chrome for Claude sessions and save to accounts
+      sync       Scan installed browsers for Claude sessions and save to accounts
       usage      Fetch usage JSON for an account (args: <orgId> <sessionKey>)
       add-key    Add or repair one account from a session key on stdin
 
