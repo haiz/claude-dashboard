@@ -133,16 +133,29 @@ final class UsageCommandTests: XCTestCase {
         XCTAssertTrue(server.recorded.isEmpty, "nothing should reach the network")
     }
 
-    // NOTE: a ninth case, `testOrgIdWithWhitespaceIsRejectedBeforeAnyRequest`
-    // ("Invalid orgId." for a whitespace-containing orgId), was withdrawn.
-    // On this toolchain (macOS 26.5.2), `URL(string:)` no longer returns nil
-    // for a whitespace- or control-character-laden path component — it
-    // percent-encodes it instead (verified: "bad id" -> .../bad%20id/usage,
-    // and every other tried character behaves the same). The guard in
-    // `UsageCommand.swift` that maps a nil URL to "Invalid orgId." is
-    // therefore unreachable via orgId content on this platform, so the case
-    // as specified cannot pass without either enshrining a real request as
-    // correct behavior or adding orgId validation and amending
-    // `contract/helper-cli.md` — both out of scope for this task. See the
-    // task-5 report for the full evidence; this needs a controller ruling.
+    // MARK: - orgId validation
+
+    /// `URL(string:)` alone cannot catch this on the current toolchain — it
+    /// percent-encodes whitespace into the path instead of returning nil.
+    /// `UsageCommand.swift` validates orgId explicitly, mirroring
+    /// apps/linux/core/src/api.rs's `validate_org_id`.
+    func testOrgIdWithWhitespaceIsRejectedBeforeAnyRequest() {
+        let result = runUsage(orgId: "bad id")
+
+        XCTAssertEqual(result.exitCode, 1)
+        XCTAssertEqual(result.stderr, "Invalid orgId.\n")
+        XCTAssertTrue(server.recorded.isEmpty, "nothing should reach the network")
+    }
+
+    /// Closes a known divergence: `URL(string:)` alone accepts `abc/def`,
+    /// silently turning it into an extra path segment, while Rust's
+    /// `validate_org_id` rejects any `/` in orgId. Explicit validation
+    /// closes this the same way it closes the whitespace case above.
+    func testOrgIdWithSlashIsRejectedBeforeAnyRequest() {
+        let result = runUsage(orgId: "abc/def")
+
+        XCTAssertEqual(result.exitCode, 1)
+        XCTAssertEqual(result.stderr, "Invalid orgId.\n")
+        XCTAssertTrue(server.recorded.isEmpty, "nothing should reach the network")
+    }
 }

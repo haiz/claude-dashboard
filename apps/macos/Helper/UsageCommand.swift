@@ -11,6 +11,28 @@ enum UsageCommand {
         let orgId = args[0]
         let sessionKey = args[1]
 
+        // On this Foundation, `URL(string:)` percent-encodes whitespace and
+        // control characters into the path instead of returning nil for
+        // them, so it cannot be relied on alone to catch a malformed orgId
+        // (verified: a request for an orgId containing a space or a slash
+        // actually reaches the server and gets a 404, rather than being
+        // rejected up front). Validated explicitly here, mirroring
+        // apps/linux/core/src/api.rs's `validate_org_id`: reject empty, or
+        // any Unicode scalar that is `/`, `?`, `#`, a control character
+        // (Unicode general category Cc, matching Rust's `char::is_control`),
+        // or whitespace (Unicode White_Space property, matching Rust's
+        // `char::is_whitespace`) — checked scalar-by-scalar, as Rust checks
+        // `char`-by-`char`, rather than by Swift's grapheme-cluster
+        // `Character`.
+        guard !orgId.isEmpty, !orgId.unicodeScalars.contains(where: { scalar in
+            scalar == "/" || scalar == "?" || scalar == "#"
+                || scalar.properties.generalCategory == .control
+                || scalar.properties.isWhitespace
+        }) else {
+            fputs("Invalid orgId.\n", stderr)
+            return 1
+        }
+
         guard let url = URL(string: "\(APIBaseURL.apiRoot)/organizations/\(orgId)/usage") else {
             fputs("Invalid orgId.\n", stderr)
             return 1
