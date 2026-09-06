@@ -13,6 +13,10 @@ build/
 *.dSYM.zip
 *.dSYM
 xcuserdata/
+# The Debug helper build is coverage-instrumented and drops one of these in
+# the repo root every time it is run from the shell (measured; the Release
+# build does not).
+*.profraw
 
 # macOS
 .DS_Store

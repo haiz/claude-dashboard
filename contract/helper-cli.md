@@ -409,13 +409,34 @@ in-process tests cover the GUI's use of it.
 
 The manual record below is refreshed **per release**, alongside the two suites
 `scripts/release.sh` already runs. Last verified
-2026-09-04 on macOS, with `claude-dashboard-helper` built from the working
-tree: a first `sync` printed `Skipping <profile> (already added)` for each
-stored account with no `Updated plan:` line (every tier already correct); one
+2026-09-06 on macOS, with `claude-dashboard-helper` built from the working
+tree: a first `sync` found 8 profiles, printed `Skipping <profile> (already
+added)` for the six stored accounts and `(session expired)` for the other two,
+with no `Updated plan:` line (every tier already correct) and exit 0; one
 stored tier was then set to a deliberately wrong value, and the next `sync`
-printed exactly one `Updated plan: <profile> (Pro -> Max)` line immediately
-after that profile's skip line, still closing with `No new accounts to add
-(all already synced)`. A field-by-field diff of the account store across the
-healing run showed the plan as the only value written — `sessionKey`
-(AES-GCM, so a rewrite would change the ciphertext), `lastSynced` and `status`
-were byte-identical.
+printed exactly one `Updated plan: <profile> (Pro -> Max)` line
+immediately after that profile's skip line, still closing with `No new
+accounts to add (all already synced)`. A field-by-field diff of the account
+store across the healing run showed the plan as the only value written, on the
+one record: `sessionKey` (AES-GCM, so a rewrite would change the ciphertext),
+`lastSynced`, `status`, `orgId`, `accountUuid`, `source`, `chromeProfilePath`,
+`chromeProfileName`, `browser`, `name` and `isPinned` were all byte-identical,
+and the store afterwards matched its pre-experiment state exactly.
+
+The Linux side was verified the same day, on an Ubuntu 26.04 arm64 VM with a
+release build (rustc 1.98.0) installed to `/usr/local/bin` — no Homebrew and no
+helper beside the script, so `cli/claude-dashboard-cli` could only resolve it
+through the `PATH` branch. With an empty store, `decrypt` exited 1 with
+`No accounts found. Run: claude-dashboard-cli sync`; a deliberately invalid key
+on `add-key`'s stdin exited 1 with `Session key not accepted (expired or
+invalid).` over real TLS, writing no store — the positive control that makes
+the rest meaningful. A real key then printed `Added: <email> (Max)` with the
+plaintext absent from stderr, `decrypt` emitted the six-key projection whose
+`sessionKey` compared byte-identical to what went in, and `usage` returned a
+200 with the same 19 top-level keys and the same byte count as the macOS helper
+had returned for that account minutes earlier. The bash CLI then rendered the
+5h/7d/Fable gauges, exit 0 with empty stderr.
+
+That run does **not** cover `sync`'s browser scan on Linux (the VM had no
+browser logged into claude.ai; the account was seeded through `add-key`
+instead) and does not cover x86_64.
