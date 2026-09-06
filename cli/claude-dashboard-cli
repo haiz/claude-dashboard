@@ -89,6 +89,19 @@ if ! $USE_COLOR; then
     BOLD='' DIM='' RESET='' RED='' GREEN='' YELLOW='' BLUE='' PURPLE='' ORANGE='' GRAY=''
 fi
 
+# Install hints differ per platform: a Linux user has no Homebrew.
+install_hint() {
+    local mac linux
+    case "$1" in
+        jq)  mac="brew install jq"
+             linux="apt install jq   (or: dnf install jq)" ;;
+        cli) mac="brew install haiz/claude-dashboard/claude-dashboard-cli"
+             linux="curl -fsSL https://raw.githubusercontent.com/haiz/claude-dashboard/main/install.sh | bash" ;;
+        *)   return 1 ;;
+    esac
+    if [[ "$(uname -s)" == "Darwin" ]]; then echo "$mac"; else echo "$linux"; fi
+}
+
 # --- Locate helper binary ---
 HELPER="$(dirname "$0")/claude-dashboard-helper"
 if [[ ! -x "$HELPER" ]]; then
@@ -103,7 +116,7 @@ if [[ ! -x "$HELPER" ]]; then
 fi
 if [[ ! -x "$HELPER" ]]; then
     echo "Error: claude-dashboard-helper not found." >&2
-    echo "Install via: brew install haiz/claude-dashboard/claude-dashboard-cli" >&2
+    echo "Install via: $(install_hint cli)" >&2
     exit 1
 fi
 
@@ -156,6 +169,35 @@ progress_bar() {
     printf '%b' "$RESET"
 }
 
+# BSD date (macOS) parses with -j -f and formats an epoch with -r; GNU date
+# (Linux) uses -d for both, and no relevant flag is shared. Detected once at
+# load: the flavour cannot change mid-run.
+if date -j -f "%Y" "2000" "+%s" >/dev/null 2>&1; then
+    DATE_FLAVOUR=bsd
+else
+    DATE_FLAVOUR=gnu
+fi
+
+# One place per flavour, so format_reset_time itself reads the same on both.
+iso_to_epoch() {
+    if [[ "$DATE_FLAVOUR" == "gnu" ]]; then
+        # GNU -d accepts all three shapes the API returns in one call.
+        date -d "$1" "+%s" 2>/dev/null
+    else
+        date -jf "%Y-%m-%dT%H:%M:%S" "${1%%.*}" "+%s" 2>/dev/null || \
+        date -jf "%Y-%m-%dT%H:%M:%SZ" "${1%%.*}Z" "+%s" 2>/dev/null || \
+        date -jf "%Y-%m-%dT%H:%M:%S%z" "$1" "+%s" 2>/dev/null
+    fi
+}
+
+epoch_fmt() {
+    if [[ "$DATE_FLAVOUR" == "gnu" ]]; then
+        date -d "@$1" "+$2"
+    else
+        date -r "$1" "+$2"
+    fi
+}
+
 format_reset_time() {
     local iso="$1"
     if [[ -z "$iso" || "$iso" == "null" ]]; then
@@ -164,16 +206,12 @@ format_reset_time() {
     fi
     # Parse ISO8601 and format as "Sat 3p"
     local epoch
-    epoch=$(date -jf "%Y-%m-%dT%H:%M:%S" "${iso%%.*}" "+%s" 2>/dev/null) || \
-    epoch=$(date -jf "%Y-%m-%dT%H:%M:%SZ" "${iso%%.*}Z" "+%s" 2>/dev/null) || \
-    epoch=$(date -jf "%Y-%m-%dT%H:%M:%S%z" "$iso" "+%s" 2>/dev/null) || {
-        echo ""
-        return
-    }
+    epoch=$(iso_to_epoch "$iso") || { echo ""; return; }
+    [[ -n "$epoch" ]] || { echo ""; return; }
     local day hour ampm
-    day=$(date -r "$epoch" "+%a")
-    hour=$(date -r "$epoch" "+%-I")
-    ampm=$(date -r "$epoch" "+%p" | tr '[:upper:]' '[:lower:]' | head -c1)
+    day=$(epoch_fmt "$epoch" "%a")
+    hour=$(epoch_fmt "$epoch" "%-I")
+    ampm=$(epoch_fmt "$epoch" "%p" | tr '[:upper:]' '[:lower:]' | head -c1)
     echo "${day} ${hour}${ampm}"
 }
 
@@ -369,7 +407,7 @@ fi
 
 # Check jq
 if ! command -v jq &>/dev/null; then
-    echo "Error: jq is required. Install via: brew install jq" >&2
+    echo "Error: jq is required. Install via: $(install_hint jq)" >&2
     exit 1
 fi
 
