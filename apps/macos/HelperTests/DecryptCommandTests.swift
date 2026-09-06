@@ -83,6 +83,40 @@ final class DecryptCommandTests: XCTestCase {
                       result.stdoutText)
     }
 
+    /// A six-field projection means all six keys, always — a nil `email` or
+    /// `sessionKey` must still appear as JSON `null`, not vanish. Built via
+    /// `Account`'s own initializer rather than `StoreFixture.account`: that
+    /// builder's `email` parameter always falls back to `name` when omitted,
+    /// so it cannot express a genuinely nil email.
+    func testNilEmailAndSessionKeyStillProjectAllSixKeysAsNull() {
+        let account = Account(
+            id: UUID(),
+            name: "me@example.com",
+            email: nil,
+            chromeProfilePath: "Default",
+            chromeProfileName: nil,
+            orgId: "org-1",
+            accountUuid: "acct-fixture",
+            sessionKey: nil,
+            browser: .chrome,
+            plan: .pro,
+            lastSynced: Date(timeIntervalSince1970: 1_000_000),
+            status: .active,
+            source: .browser
+        )
+        StoreFixture.seed([account], intoSuite: suite)
+
+        let result = runDecrypt()
+        let out = result.stdoutText
+
+        XCTAssertEqual(result.exitCode, 0)
+        for key in ["email", "name", "orgId", "plan", "sessionKey", "status"] {
+            XCTAssertTrue(out.contains("\"\(key)\""), "missing key \(key) in: \(out)")
+        }
+        XCTAssertTrue(out.contains("\"email\" : null"), out)
+        XCTAssertTrue(out.contains("\"sessionKey\" : null"), out)
+    }
+
     /// Cross-process agreement on the HKDF-over-IOPlatformUUID key: this
     /// process encrypts, the child decrypts. The precondition matters — if
     /// IOPlatformUUID were unreadable here, encrypt would return nil, the
