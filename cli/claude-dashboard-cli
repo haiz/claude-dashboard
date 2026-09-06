@@ -184,9 +184,15 @@ iso_to_epoch() {
         # GNU -d accepts all three shapes the API returns in one call.
         date -d "$1" "+%s" 2>/dev/null
     else
-        date -jf "%Y-%m-%dT%H:%M:%S" "${1%%.*}" "+%s" 2>/dev/null || \
-        date -jf "%Y-%m-%dT%H:%M:%SZ" "${1%%.*}Z" "+%s" 2>/dev/null || \
-        date -jf "%Y-%m-%dT%H:%M:%S%z" "$1" "+%s" 2>/dev/null
+        # BSD date has no ISO8601 mode, so the offset has to be spelled +HHMM
+        # and the fractional seconds removed before %z can read it. Parsing
+        # "${1%%.*}" instead cuts at the *first* dot, which throws the offset
+        # away with the fraction — and BSD date reads an offset-less string as
+        # local time, so a UTC instant lands wrong by the local offset.
+        local norm
+        norm=$(printf '%s' "$1" | sed -E 's/\.[0-9]+//; s/Z$/+0000/; s/([+-][0-9]{2}):([0-9]{2})$/\1\2/')
+        date -jf "%Y-%m-%dT%H:%M:%S%z" "$norm" "+%s" 2>/dev/null || \
+        date -jf "%Y-%m-%dT%H:%M:%S"   "${1%%.*}" "+%s" 2>/dev/null
     fi
 }
 

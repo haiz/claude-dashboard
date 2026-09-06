@@ -13,15 +13,28 @@ CLI=cli/claude-dashboard-cli
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-# 2026-09-06T15:00:00Z is a Sunday; in UTC it renders "Sun 3p". The three input
-# shapes are the ISO8601 variants the API actually returns — with and without
-# fractional seconds, Z and +00:00 (CLAUDE.md, "ISO8601 date parsing").
-run_cases() {
-    local label="$1" iso got
+# 2026-09-06T15:00:00Z is a Sunday; in UTC it renders "Sun 3p", and in +07 the
+# same instant is "Sun 10p". The four input shapes are the ISO8601 variants the
+# API actually returns — with and without fractional seconds, Z and +00:00
+# (CLAUDE.md, "ISO8601 date parsing"); the fourth is the shape observed live on
+# 2026-09-07, fractional seconds *and* a numeric offset together.
+#
+# Both zones are asserted on purpose. Under TZ=UTC a parser that drops the
+# offset and reads the instant as local time gets the right answer by accident,
+# so a UTC-only suite cannot see that bug at all.
+ZONE=Asia/Ho_Chi_Minh   # fixed +07, no DST, so the expectation never drifts
 
-    for iso in "2026-09-06T15:00:00Z" "2026-09-06T15:00:00.123Z" "2026-09-06T15:00:00+00:00"; do
-        got="$(TZ=UTC format_reset_time "$iso")"
-        [[ "$got" == "Sun 3p" ]] || fail "$label: format_reset_time '$iso' = '$got', want 'Sun 3p'"
+run_cases() {
+    local label="$1" iso got tz want pair
+
+    for pair in "UTC|Sun 3p" "$ZONE|Sun 10p"; do
+        tz="${pair%%|*}"; want="${pair#*|}"
+        for iso in "2026-09-06T15:00:00Z" "2026-09-06T15:00:00.123Z" \
+                   "2026-09-06T15:00:00+00:00" "2026-09-06T15:00:00.123456+00:00"; do
+            got="$(TZ="$tz" format_reset_time "$iso")"
+            [[ "$got" == "$want" ]] \
+                || fail "$label: TZ=$tz format_reset_time '$iso' = '$got', want '$want'"
+        done
     done
 
     for iso in "" "null" "not-a-date"; do
@@ -38,6 +51,14 @@ CLAUDE_DASHBOARD_CLI_TEST=1 source "$CLI"
 declare -f format_reset_time >/dev/null || fail "format_reset_time is not defined"
 declare -f install_hint      >/dev/null || fail "install_hint is not defined"
 [[ -n "${DATE_FLAVOUR:-}" ]] || fail "DATE_FLAVOUR is not set"
+# A machine without tzdata resolves an unknown zone to UTC in silence, which
+# would turn the +07 assertions into a FAIL that blames format_reset_time for
+# the environment. Name the real cause instead.
+# Probe at the fixture instant, not at epoch 0: Vietnam ran on +08 until 1975,
+# so tzdata answers +0800 for 1970 and the guard would fire on a healthy machine.
+ZONE_PROBE=1788706800   # = 2026-09-06T15:00:00Z, the fixture below
+[[ "$(TZ=$ZONE epoch_fmt "$ZONE_PROBE" '%z')" == "+0700" ]] \
+    || fail "TZ=$ZONE does not resolve to +0700 here (tzdata missing?)"
 run_cases native
 
 # --- The other flavour, via a PATH shim ---
