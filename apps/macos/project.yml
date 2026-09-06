@@ -56,3 +56,26 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
+
+  # Second bundle, no TEST_HOST: it compiles Helper/ and Shared/ directly so the
+  # helper CLI is reachable from `xcodebuild test`. It also depends on the helper
+  # target (without linking it) so the real binary is built for the transport
+  # tests, which spawn it.
+  ClaudeDashboardHelperTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - HelperTests
+      - path: Helper
+        excludes: [main.swift]
+      - Shared
+      - ClaudeDashboardTests/TestSupport
+    dependencies:
+      - target: ClaudeDashboardHelper
+        link: false
+        embed: false
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual

@@ -29,6 +29,7 @@
 //!   cannot be prompted to unlock a keyring they did not need.
 
 use std::collections::HashMap;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -331,13 +332,39 @@ where
 fn refresh_stored_plan(account: &mut Account, session_key: &str, display_name: &str) {
     // A failed fetch is `&[]`, which `refreshed_plan_for` turns into "no
     // write" — the same outcome as an org that carries no displayable plan.
+    //
+    // This `fetch_organizations` call is the one step of the heal no test
+    // drives (`contract/helper-cli.md`, "Test coverage of the network
+    // layer"); everything the outcome depends on lives in
+    // [`apply_refreshed_plan`], which is tested.
     let orgs = match fetch_organizations(session_key) {
         Ok(body) => parse_orgs(&body),
         Err(_) => Vec::new(),
     };
 
-    if let Some(plan) = refreshed_plan_for(account, &orgs) {
-        eprintln!(
+    apply_refreshed_plan(account, &orgs, display_name, &mut io::stderr());
+}
+
+/// Writes the refreshed tier onto `account` and reports it on `out`, or
+/// leaves the account untouched and writes nothing when [`refreshed_plan_for`]
+/// says there is nothing to write. Split out of [`refresh_stored_plan`] so
+/// both are reachable from tests without a network call: an empty `orgs` is
+/// exactly what a failed fetch produces, and `out` is `stderr` in production.
+///
+/// The reported line is contract (`contract/helper-cli.md`, "sync"), which is
+/// why it is written through `out` rather than `eprintln!`.
+fn apply_refreshed_plan(
+    account: &mut Account,
+    orgs: &[ParsedOrg],
+    display_name: &str,
+    out: &mut impl Write,
+) {
+    if let Some(plan) = refreshed_plan_for(account, orgs) {
+        // A helper that cannot report is still a helper that must heal: the
+        // write below matters more than the line, so a failed write is
+        // dropped rather than propagated (`eprintln!` would panic here).
+        let _ = writeln!(
+            out,
             "  Updated plan: {display_name} ({} -> {})",
             plan_wire_value(&account.plan),
             plan_wire_value(&plan)
@@ -542,6 +569,53 @@ mod tests {
         );
         let account = stored_account(Some("org-1"), AccountPlan::Pro);
         assert_eq!(refreshed_plan_for(&account, &orgs), None);
+    }
+
+    // -- apply_refreshed_plan ----------------------------------------------
+
+    #[test]
+    fn apply_refreshed_plan_writes_the_refreshed_tier_onto_the_account() {
+        let orgs = parse_orgs(
+            r#"[{"uuid":"org-1","name":"Personal","capabilities":["chat","claude_max"]}]"#,
+        );
+        let mut account = stored_account(Some("org-1"), AccountPlan::Pro);
+
+        let mut out = Vec::new();
+        apply_refreshed_plan(&mut account, &orgs, "Default", &mut out);
+
+        assert_eq!(account.plan, AccountPlan::Max200);
+    }
+
+    /// The `Err(_) => Vec::new()` arm of `refresh_stored_plan` reaches this
+    /// function as an empty slice: a failed `/api/organizations` must leave
+    /// the stored tier exactly as it was.
+    #[test]
+    fn apply_refreshed_plan_leaves_the_stored_tier_alone_when_the_fetch_failed() {
+        let mut account = stored_account(Some("org-1"), AccountPlan::Max20x);
+
+        let mut out = Vec::new();
+        apply_refreshed_plan(&mut account, &[], "Default", &mut out);
+
+        assert_eq!(account.plan, AccountPlan::Max20x);
+        assert!(out.is_empty(), "a run that writes nothing reports nothing");
+    }
+
+    /// `contract/helper-cli.md` "sync": a write prints exactly this one extra
+    /// line. Nothing else in the repo pins its shape.
+    #[test]
+    fn apply_refreshed_plan_reports_the_write_in_the_contract_line_shape() {
+        let orgs = parse_orgs(
+            r#"[{"uuid":"org-1","name":"Personal","capabilities":["chat","claude_max"]}]"#,
+        );
+        let mut account = stored_account(Some("org-1"), AccountPlan::Pro);
+
+        let mut out = Vec::new();
+        apply_refreshed_plan(&mut account, &orgs, "Person 2", &mut out);
+
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "  Updated plan: Person 2 (Pro -> Max)\n"
+        );
     }
 
     // -- portal_app_id_candidates ------------------------------------------

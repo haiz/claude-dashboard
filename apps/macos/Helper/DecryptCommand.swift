@@ -9,6 +9,26 @@ enum DecryptCommand {
         let sessionKey: String?
         let plan: String
         let status: String
+
+        private enum CodingKeys: String, CodingKey {
+            case name, email, orgId, sessionKey, plan, status
+        }
+
+        // Explicit encode(to:): synthesized Encodable calls encodeIfPresent for
+        // Optional stored properties, which OMITS the key entirely when nil.
+        // The contract is a six-field projection on every included account —
+        // encode(_:forKey:) on the optionals writes JSON `null` instead, so
+        // `email`/`sessionKey` stay present (matching apps/linux/helper's
+        // BTreeMap, which inserts every key unconditionally).
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(name, forKey: .name)
+            try container.encode(email, forKey: .email)
+            try container.encode(orgId, forKey: .orgId)
+            try container.encode(sessionKey, forKey: .sessionKey)
+            try container.encode(plan, forKey: .plan)
+            try container.encode(status, forKey: .status)
+        }
     }
 
     static func run() -> Int32 {

@@ -27,7 +27,7 @@ struct AccountInfo {
 
 final class UsageAPIService {
     private let session: URLSession
-    private let baseURL = "https://claude.ai/api"
+    private let baseURL = APIBaseURL.apiRoot
 
     init(session: URLSession = .shared) {
         self.session = session

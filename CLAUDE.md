@@ -15,8 +15,11 @@ cd apps/macos && xcodegen generate
 # Build
 xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboard build
 
-# Run all tests
+# Run all tests (app + Shared)
 xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests test
+
+# Run the helper CLI tests — a separate bundle; the scheme above never compiles Helper/
+xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardHelperTests test
 
 # Run a single test class
 xcodebuild test -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests -only-testing:ClaudeDashboardTests/UsageDataTests
@@ -55,6 +58,15 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 - **AccountCard / UsageBar** — Per-account display with color-interpolated progress bars (green→red).
 - **SetupView** — Wizard scanning browser profiles for active Claude sessions. Offers the installed browsers (Chrome, Arc, Brave, Edge) and scans the one the user picks, remembering the choice in `preferredScanBrowser`.
 - **SettingsView** — Account management (add via the `SetupView` sheet, delete, Re-sync All) plus the update check. There is no rename UI; an account's name is derived at sync time (email when available, else the browser profile name).
+
+### Tests
+- **ClaudeDashboardTests** — the app bundle, hosted by `ClaudeDashboard.app`.
+- **ClaudeDashboardHelperTests** — a second bundle with no test host, compiling
+  `Helper/` (minus `main.swift`) and `Shared/` directly; this is the only way
+  anything under `Helper/` is reachable from `xcodebuild test`. `SyncCommand` is
+  driven through `runAsync(env:)` with an injected `Environment`, so tests never
+  touch a browser, the Keychain, UserDefaults or the network. Code shared by both
+  bundles lives in `ClaudeDashboardTests/TestSupport/` and nowhere else.
 
 ### Models
 - **Account** — Core model with `AccountPlan` enum (pro/max5x/max20x/max200) and `AccountStatus` (active/expired/error).
