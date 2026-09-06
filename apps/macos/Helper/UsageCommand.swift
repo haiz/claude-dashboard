@@ -60,7 +60,10 @@ enum UsageCommand {
             return 1
         }
 
-        print(body)
+        // `print` would append a newline; contract/helper-cli.md "usage"
+        // specifies the upstream body byte-for-byte, and apps/linux's
+        // `usage.rs` uses `print!` for the same reason.
+        FileHandle.standardOutput.write(Data(body.utf8))
         return 0
     }
 }
