@@ -71,8 +71,10 @@ Browser scanning (`sync`) additionally needs `secret-tool` from
 
 Known limitations on Linux: the x86_64 build is exercised by CI but has not been
 run against a real browser cookie or a real network session; `sync`'s browser
-scan has not been accepted on Linux yet; Chromium v12 (secret-portal) cookies
-are skipped.
+scan has not been accepted on Linux yet; Chromium's v12 (secret-portal) cookies
+need a secret-service backend reachable through `secret-tool` — a profile is
+skipped only when none of the tried app-id candidates yield a usable portal
+secret.
 
 ### Manual Download
 
@@ -143,11 +145,11 @@ The `resets` column shows when each window resets (local time). Progress bars tr
 ## How It Works
 
 1. Reads Claude.ai session cookies from a supported browser's encrypted cookie database (Chrome, Arc, Brave, or Edge)
-2. Encrypts session keys with AES-GCM (key derived from the machine's hardware UUID) and stores them in the app's preferences
+2. Encrypts session keys with AES-GCM (key derived from the machine's identity — the hardware UUID on macOS, `/etc/machine-id` on Linux) and stores them — on macOS in the app's preferences, on Linux in `~/.config/claude-dashboard/accounts.json`
 3. Fetches usage data from Claude.ai's API
 4. Displays real-time utilization with burn-rate-based sorting
 
-> **Note:** The app requires access to the browser's cookie database and Keychain (that browser's Safe Storage password). App Sandbox is disabled for this reason.
+> **Note:** The app requires access to the browser's cookie database and Keychain (that browser's Safe Storage password). App Sandbox is disabled for this reason. On Linux, the equivalent dependency is a secret-service backend reachable through `secret-tool` (e.g. GNOME Keyring) — there is no Keychain or App Sandbox on that platform.
 
 ## Build from Source
 
