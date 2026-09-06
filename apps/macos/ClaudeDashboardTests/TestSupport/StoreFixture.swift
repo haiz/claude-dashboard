@@ -4,6 +4,12 @@ import Foundation
 /// store. Every suite name carries a UUID so two tests never share one, and
 /// `destroy` unlinks the suite's backing plist file, so a run leaves nothing
 /// behind on disk in ~/Library/Preferences.
+///
+/// Shared by both test bundles, so this file is Foundation-only: the helper
+/// bundle compiles `Shared/` directly and cannot `@testable import
+/// ClaudeDashboard`, which is the only way the app bundle sees `Account`. The
+/// `Account`-typed conveniences therefore live in the helper bundle's own
+/// `StoreFixture+Account.swift`; everything here speaks raw `Data`.
 enum StoreFixture {
 
     static let storageKey = "claude-dashboard.accounts"
@@ -17,9 +23,8 @@ enum StoreFixture {
         "\(testSuitePrefix)\(UUID().uuidString)"
     }
 
-    static func seed(_ accounts: [Account], intoSuite suite: String) {
-        guard let defaults = UserDefaults(suiteName: suite),
-              let data = try? JSONEncoder().encode(accounts) else {
+    static func seedData(_ data: Data, intoSuite suite: String) {
+        guard let defaults = UserDefaults(suiteName: suite) else {
             fatalError("could not seed the fixture suite")
         }
         defaults.set(data, forKey: storageKey)
@@ -29,14 +34,9 @@ enum StoreFixture {
     /// first: preferences are served by cfprefsd and cached per process, so a
     /// parent that has already read this suite can otherwise serve a stale
     /// snapshot after the child writes to it.
-    static func read(fromSuite suite: String) -> [Account] {
+    static func readData(fromSuite suite: String) -> Data? {
         CFPreferencesAppSynchronize(suite as CFString)
-        guard let defaults = UserDefaults(suiteName: suite),
-              let data = defaults.data(forKey: storageKey),
-              let accounts = try? JSONDecoder().decode([Account].self, from: data) else {
-            return []
-        }
-        return accounts
+        return UserDefaults(suiteName: suite)?.data(forKey: storageKey)
     }
 
     /// Removes the suite's backing plist at
@@ -46,22 +46,21 @@ enum StoreFixture {
     /// they are the common case for a suite this fixture only ever read.
     ///
     /// Deliberately does **not** call `UserDefaults.removePersistentDomain`:
-    /// isolated probing (see task-3-report.md, fix round 1) showed it is
-    /// itself what leaves a 42-byte empty plist behind when the suite had
-    /// dirty data -- calling it schedules cfprefsd's own async rewrite of the
-    /// (now empty) domain to disk, which can land *after* this function's own
-    /// delete and silently recreate the file. `CFPreferencesAppSynchronize`
-    /// alone, followed by a plain file delete with no `removePersistentDomain`
-    /// in between, reproduced zero leaks over 9 isolated runs there.
+    /// isolated probing showed it is itself what leaves a 42-byte empty plist
+    /// behind when the suite had dirty data -- calling it schedules cfprefsd's
+    /// own async rewrite of the (now empty) domain to disk, which can land
+    /// *after* this function's own delete and silently recreate the file.
+    /// `CFPreferencesAppSynchronize` alone, followed by a plain file delete
+    /// with no `removePersistentDomain` in between, reproduced zero leaks over
+    /// 9 isolated runs.
     ///
     /// That fix was correct but incomplete -- it was only ever measured
-    /// against an **in-process** writer. Task 9 found the missing half: when
-    /// a **child process** wrote the domain (`add-key`'s add and repair
-    /// paths), cfprefsd still held it after this function returned, and
-    /// flushed it back to disk up to ~6s later even though the file had
-    /// already been deleted here -- confirmed by a red baseline of 10/10
-    /// full-class runs, each checked a full 10s after the run (see
-    /// task-9-report.md fix round 1). The old theory that skipping
+    /// against an **in-process** writer. The missing half: when a **child
+    /// process** wrote the domain (`add-key`'s add and repair paths),
+    /// cfprefsd still held it after this function returned, and flushed it
+    /// back to disk up to ~6s later even though the file had already been
+    /// deleted here -- confirmed by a red baseline of 10/10 full-class runs,
+    /// each checked a full 10s after the run. The old theory that skipping
     /// `removePersistentDomain` leaves only "a harmless, unread cache entry,
     /// not a leaked file" was wrong for this direction: the daemon does not
     /// just cache the domain, it can still re-persist it.
@@ -76,7 +75,7 @@ enum StoreFixture {
     /// required. The short retry loop after it is a bounded (<=100ms) guard
     /// against that stub's own write landing a beat late, not a wait for the
     /// multi-second daemon flush -- `defaults delete` is what eliminates
-    /// that, verified over 24/24 clean runs (task-9-report.md fix round 1).
+    /// that, verified over 24/24 clean runs.
     ///
     /// The domain removal and file delete only run when `suite` carries
     /// `testSuitePrefix` -- never for a suite this fixture could not itself
@@ -99,9 +98,9 @@ enum StoreFixture {
         forgetDomain.standardError = FileHandle.nullDevice
         // `waitUntilExit()` is only valid after a successful `run()`; guarding
         // it is what keeps a missing/unlaunchable binary a no-op here rather
-        // than a crash in cleanup code (the class of failure task-7-report.md
-        // hit with a force-unwrap: a crash skips tearDown for everything after
-        // it, which is strictly worse than the leak this function exists to
+        // than a crash in cleanup code (the class of failure a force-unwrap
+        // here once caused: a crash skips tearDown for everything after it,
+        // which is strictly worse than the leak this function exists to
         // prevent).
         if (try? forgetDomain.run()) != nil {
             forgetDomain.waitUntilExit()
@@ -120,35 +119,5 @@ enum StoreFixture {
             usleep(20_000)
             try? FileManager.default.removeItem(atPath: plistPath)
         }
-    }
-
-    /// A stored account with every field set explicitly. Defaults here are test
-    /// convenience only; production code has none (see `Account.source`).
-    static func account(
-        id: UUID = UUID(),
-        name: String,
-        email: String? = nil,
-        orgId: String?,
-        accountUuid: String? = "acct-fixture",
-        sessionKey: String? = "sk-fake-stored-key",
-        plan: AccountPlan = .pro,
-        status: AccountStatus = .active,
-        source: AccountSource = .browser
-    ) -> Account {
-        Account(
-            id: id,
-            name: name,
-            email: email ?? name,
-            chromeProfilePath: "Default",
-            chromeProfileName: nil,
-            orgId: orgId,
-            accountUuid: accountUuid,
-            sessionKey: sessionKey,
-            browser: .chrome,
-            plan: plan,
-            lastSynced: Date(timeIntervalSince1970: 1_000_000),
-            status: status,
-            source: source
-        )
     }
 }
