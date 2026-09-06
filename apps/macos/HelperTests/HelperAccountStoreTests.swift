@@ -40,4 +40,23 @@ final class HelperAccountStoreTests: XCTestCase {
     func testEmptyStoreLoadsAsEmptyArray() {
         XCTAssertEqual(HelperAccountStore.loadAccounts(), [])
     }
+
+    func testDestroyUnlinksTheBackingPlistFile() {
+        let plistPath = NSHomeDirectory() + "/Library/Preferences/\(suite!).plist"
+
+        let account = StoreFixture.account(name: "person@example.com", orgId: "org-1")
+        StoreFixture.seed([account], intoSuite: suite)
+        UserDefaults(suiteName: suite)?.synchronize()
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: plistPath),
+            "seeding should have written a plist to disk"
+        )
+
+        StoreFixture.destroy(suite: suite)
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: plistPath),
+            "destroy should remove the backing plist file, not just clear its data"
+        )
+    }
 }
