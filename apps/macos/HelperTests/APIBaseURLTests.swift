@@ -46,6 +46,23 @@ final class APIBaseURLTests: XCTestCase {
         XCTAssertEqual(APIBaseURL.resolve("not a url at all"), "https://claude.ai")
     }
 
+    func testUserinfoAuthorityIsRejected() {
+        // URL(string:) parses userinfo separately from host, so unlike a
+        // naive split on ':', url.host here is "127.0.0.1" -- resolve must
+        // reject on url.user/url.password being non-nil to match Rust's
+        // (conservative) rejection of the same string. See task-2-report.md
+        // fix round 1.
+        XCTAssertEqual(APIBaseURL.resolve("http://user:pass@127.0.0.1:8080"), "https://claude.ai")
+    }
+
+    func testUppercaseSchemeIsRejected() {
+        // URL(string:) does not normalize scheme casing, so url.scheme is
+        // "HTTP" here; the existing `url.scheme == "http"` comparison is
+        // already case-exact and rejects this -- same outcome as Rust's
+        // case-sensitive strip_prefix("http://").
+        XCTAssertEqual(APIBaseURL.resolve("HTTP://127.0.0.1"), "https://claude.ai")
+    }
+
     func testApiRootAppendsApiSegment() {
         // apiRoot is what every call site composes onto; with no override set
         // in this test process it must be the production root.

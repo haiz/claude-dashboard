@@ -25,10 +25,19 @@ enum APIBaseURL {
     static var apiRoot: String { origin + "/api" }
 
     /// Honours only a plain-http loopback origin; everything else is production.
+    ///
+    /// Rejects userinfo (`user:pass@`) in the authority: `URL(string:)` parses
+    /// it separately from `host`, so a naive host-only check would accept
+    /// `http://user:pass@127.0.0.1` -- a string Rust's hand-rolled parser
+    /// rejects (its unqualified split on the first `:` sees host `"user"`).
+    /// Keeping this the stricter of the two platforms is deliberate: see
+    /// task-2-report.md fix round 1.
     static func resolve(_ raw: String?) -> String {
         guard let raw,
               let url = URL(string: raw),
               url.scheme == "http",
+              url.user == nil,
+              url.password == nil,
               let host = url.host,
               host == "127.0.0.1" || host == "localhost" else {
             return productionOrigin

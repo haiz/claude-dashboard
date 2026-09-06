@@ -530,6 +530,27 @@ mod tests {
     fn garbage_is_rejected() {
         assert_eq!(resolve_origin(Some("not a url at all")), "https://claude.ai");
     }
+
+    #[test]
+    fn userinfo_authority_is_rejected() {
+        // split_once(':') takes the authority's first colon, so this parses
+        // as host "user" (not "127.0.0.1") and is rejected -- unlike Swift's
+        // URL(string:), which parses userinfo separately from host. See
+        // task-2-report.md fix round 1: Rust's rejection here is the
+        // conservative side and is kept; Swift was tightened to match.
+        assert_eq!(
+            resolve_origin(Some("http://user:pass@127.0.0.1:8080")),
+            "https://claude.ai"
+        );
+    }
+
+    #[test]
+    fn uppercase_scheme_is_rejected() {
+        // strip_prefix("http://") is case-sensitive, so "HTTP://" does not
+        // match and this falls through to production -- same outcome as
+        // Swift's `url.scheme == "http"`, which is also case-sensitive.
+        assert_eq!(resolve_origin(Some("HTTP://127.0.0.1")), "https://claude.ai");
+    }
 }
 
 #[cfg(test)]
