@@ -29,6 +29,8 @@ A macOS menu bar app that monitors your Claude.ai token usage across multiple ac
 
 ```
 apps/macos/       SwiftUI menu bar app, tests, and the Swift helper binary
+apps/linux/       Rust workspace: the shared core plus the Linux helper binary.
+                  Drives the same bash CLI; no GUI and no release yet.
 contract/         Behaviour shared across platforms: docs plus executable cases
 cli/              claude-dashboard-cli — the bash terminal dashboard
 scripts/          release, version sync
