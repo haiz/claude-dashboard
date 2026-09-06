@@ -143,6 +143,18 @@ pub fn parse_session_key(set_cookie_values: &[String]) -> Option<String> {
 /// Maps an HTTP status code to a result. Per Ruling B (see module doc):
 /// only `200..=299` is `Ok`; every other status — `401`/`403` included —
 /// becomes `Err(ApiError::HttpError(status))` with no special case.
+///
+/// The `401`/`403` unit tests below assert this function in isolation, and
+/// that is all they can assert: through ureq, those statuses never reach
+/// here. `.call()` turns any response with `status() >= 400` into
+/// `Err(Error::Status(..))`, which [`perform_get_bytes`] handles in its own
+/// match arm, so this function never sees a status `>= 400` — only `2xx` and
+/// the `1xx`/`3xx` range `.call()` returns as `Ok`. Ruling B
+/// still holds end to end — the arm that actually preserves a real `401` is
+/// that `Err(Error::Status(..))` one, covered by
+/// `apps/linux/helper/tests/usage_transport.rs`'s 401 case. Mutating the
+/// `401` arm here will not turn that test red; mutating the arm in
+/// `perform_get_bytes` will.
 fn map_status(status: u16) -> Result<(), ApiError> {
     if (200..=299).contains(&status) {
         Ok(())
