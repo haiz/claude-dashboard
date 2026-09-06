@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "claude-dashboard-core"
-version = "1.15.1"
+version = "1.16.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -149,7 +149,7 @@ dependencies = [
 
 [[package]]
 name = "claude-dashboard-helper"
-version = "1.15.1"
+version = "1.16.0"
 dependencies = [
  "claude-dashboard-core",
  "serde",
