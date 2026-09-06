@@ -74,6 +74,50 @@ const REQUEST_HEADERS: [(&str, &str); 3] = [
     ("anthropic-client-platform", "web_claude_ai"),
 ];
 
+/// Environment variable that redirects every request at a loopback server.
+/// Test seam, platform detail, not contract — mirrors
+/// `apps/macos/Shared/APIBaseURL.swift`.
+pub const BASE_URL_OVERRIDE_VAR: &str = "CLAUDE_DASHBOARD_API_BASE";
+
+const PRODUCTION_ORIGIN: &str = "https://claude.ai";
+
+/// Honours only a plain-http loopback origin; anything else is production.
+/// Rejection is silent: `contract/helper-cli.md` specifies stderr byte for
+/// byte, so a warning here would break it. Parsed by hand rather than with a
+/// URL crate — the accepted shape is narrow enough not to justify a dependency.
+fn resolve_origin(raw: Option<&str>) -> String {
+    let Some(raw) = raw else {
+        return PRODUCTION_ORIGIN.to_string();
+    };
+    let Some(rest) = raw.strip_prefix("http://") else {
+        return PRODUCTION_ORIGIN.to_string();
+    };
+    // Authority is everything before the first '/', '?' or '#'.
+    let authority = rest
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("");
+    let (host, port) = match authority.split_once(':') {
+        Some((h, p)) => (h, Some(p)),
+        None => (authority, None),
+    };
+    if host != "127.0.0.1" && host != "localhost" {
+        return PRODUCTION_ORIGIN.to_string();
+    }
+    match port {
+        None => format!("http://{host}"),
+        Some(p) if !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()) => {
+            format!("http://{host}:{p}")
+        }
+        Some(_) => PRODUCTION_ORIGIN.to_string(),
+    }
+}
+
+/// The prefix every call site composes paths onto, e.g. `https://claude.ai/api`.
+fn api_root() -> String {
+    format!("{}/api", resolve_origin(std::env::var(BASE_URL_OVERRIDE_VAR).ok().as_deref()))
+}
+
 /// Parses the `sessionKey=` cookie out of one or more raw `Set-Cookie`
 /// response header values.
 ///
@@ -214,7 +258,7 @@ fn decode_body_strict(bytes: Vec<u8>) -> String {
 /// usage payload that [`crate::usage`] decodes.
 pub fn usage_raw(org_id: &str, session_key: &str) -> Result<UsageResponse, ApiError> {
     validate_org_id(org_id)?;
-    let url = format!("https://claude.ai/api/organizations/{org_id}/usage");
+    let url = format!("{}/organizations/{org_id}/usage", api_root());
     let (bytes, cookies) = perform_get_bytes(&url, session_key)?;
     Ok(UsageResponse {
         body: decode_body_strict(bytes),
@@ -226,7 +270,7 @@ pub fn usage_raw(org_id: &str, session_key: &str) -> Result<UsageResponse, ApiEr
 /// (plan-tier detection) reads. Does **not** parse a session key from this
 /// response — the Swift client discards it here too (see module doc).
 pub fn fetch_organizations(session_key: &str) -> Result<String, ApiError> {
-    let (body, _cookies) = perform_get("https://claude.ai/api/organizations", session_key)?;
+    let (body, _cookies) = perform_get(&format!("{}/organizations", api_root()), session_key)?;
     Ok(body)
 }
 
@@ -243,7 +287,7 @@ pub struct ParsedAccount {
 /// Fetches `/api/account`. Returns the raw body, matching `fetch_organizations`;
 /// parse it with [`parse_account`].
 pub fn fetch_account(session_key: &str) -> Result<String, ApiError> {
-    let (body, _cookies) = perform_get("https://claude.ai/api/account", session_key)?;
+    let (body, _cookies) = perform_get(&format!("{}/account", api_root()), session_key)?;
     Ok(body)
 }
 
@@ -428,6 +472,63 @@ mod tests {
     #[test]
     fn decode_body_strict_empty_bytes_is_empty() {
         assert_eq!(decode_body_strict(Vec::new()), "");
+    }
+
+    // -- resolve_origin ----------------------------------------------------
+
+    #[test]
+    fn no_override_is_production() {
+        assert_eq!(resolve_origin(None), "https://claude.ai");
+    }
+
+    #[test]
+    fn empty_override_is_production() {
+        assert_eq!(resolve_origin(Some("")), "https://claude.ai");
+    }
+
+    #[test]
+    fn loopback_ip_with_port_is_honoured() {
+        assert_eq!(resolve_origin(Some("http://127.0.0.1:52341")), "http://127.0.0.1:52341");
+    }
+
+    #[test]
+    fn localhost_with_port_is_honoured() {
+        assert_eq!(resolve_origin(Some("http://localhost:8080")), "http://localhost:8080");
+    }
+
+    #[test]
+    fn loopback_without_port_is_honoured() {
+        assert_eq!(resolve_origin(Some("http://127.0.0.1")), "http://127.0.0.1");
+    }
+
+    #[test]
+    fn path_in_override_is_dropped() {
+        assert_eq!(resolve_origin(Some("http://127.0.0.1:9/api/x")), "http://127.0.0.1:9");
+    }
+
+    #[test]
+    fn https_loopback_is_rejected() {
+        assert_eq!(resolve_origin(Some("https://127.0.0.1:52341")), "https://claude.ai");
+    }
+
+    #[test]
+    fn non_loopback_host_is_rejected() {
+        assert_eq!(resolve_origin(Some("http://evil.example.com")), "https://claude.ai");
+    }
+
+    #[test]
+    fn host_that_merely_starts_with_loopback_is_rejected() {
+        assert_eq!(resolve_origin(Some("http://127.0.0.1.evil.com")), "https://claude.ai");
+    }
+
+    #[test]
+    fn non_numeric_port_is_rejected() {
+        assert_eq!(resolve_origin(Some("http://127.0.0.1:abc")), "https://claude.ai");
+    }
+
+    #[test]
+    fn garbage_is_rejected() {
+        assert_eq!(resolve_origin(Some("not a url at all")), "https://claude.ai");
     }
 }
 
