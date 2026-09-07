@@ -408,21 +408,22 @@ shell at all. `parse_session_key` has its own unit tests, and the app's
 in-process tests cover the GUI's use of it.
 
 The manual record below is refreshed **per release**, alongside the two suites
-`scripts/release.sh` already runs. Last verified
-2026-09-07 for v1.17.0, on macOS, with `claude-dashboard-helper` built from the
-working tree: a first `sync` found 8 profiles, printed `Skipping <profile>
-(already added)` for the six stored accounts and `(session expired)` for the
-other two, with no `Updated plan:` line (every tier already correct) and exit 0;
-one stored tier was then set to a deliberately wrong value, and the next `sync`
-printed exactly one `Updated plan: <profile> (Pro -> Max)` line
-immediately after that profile's skip line, still closing with `No new
-accounts to add (all already synced)`. A field-by-field diff of the account
-store across the healing run compared all 14 fields on each of the 6 records
-and found **zero** differences against the pre-experiment backup: the healing
-run wrote the plan back and nothing else, leaving `sessionKey` (AES-GCM, so a
-rewrite would change the ciphertext), `lastSynced`, `status`, `orgId`,
-`accountUuid`, `source`, `chromeProfilePath`, `chromeProfileName`, `browser`,
-`name` and `isPinned` byte-identical.
+`scripts/release.sh` already runs. Last verified 2026-09-07 for v1.17.0, and
+stands for v1.17.1, which changes no macOS code path this record covers.
+Measured on macOS, with `claude-dashboard-helper` built from the working tree:
+a first `sync` found 8 profiles, printed `Skipping <profile> (already added)`
+for the six stored accounts and `(session expired)` for the other two, with no
+`Updated plan:` line (every tier already correct) and exit 0; one stored tier
+was then set to a deliberately wrong value, and the next `sync` printed
+exactly one `Updated plan: <profile> (Pro -> Max)` line immediately after that
+profile's skip line, still closing with `No new accounts to add (all already
+synced)`. A field-by-field diff of the account store across the healing run
+compared all 14 fields on each of the 6 records and found **zero** differences
+against the pre-experiment backup: the healing run wrote the plan back and
+nothing else, leaving `sessionKey` (AES-GCM, so a rewrite would change the
+ciphertext), `lastSynced`, `status`, `orgId`, `accountUuid`, `source`,
+`chromeProfilePath`, `chromeProfileName`, `browser`, `name` and `isPinned`
+byte-identical.
 
 The Linux side was verified the same day, on an Ubuntu 26.04 arm64 VM, and this
 time against **the shipped artifact rather than a build tree**: the statically
