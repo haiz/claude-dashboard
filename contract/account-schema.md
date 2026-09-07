@@ -6,7 +6,8 @@ by both `AccountStore` (main app,
 `HelperAccountStore` (privileged helper,
 `apps/macos/Helper/HelperAccountStore.swift:8-23`) — same struct, same
 encoder, two callers. *Where* that JSON is stored (`UserDefaults` on macOS)
-is platform detail; the shape below is contract.
+is platform detail; the shape below is contract, and so is who may read the
+stored bytes — see "Store file permissions" at the end.
 
 ## Fields
 
@@ -197,3 +198,46 @@ as part of the session-key storage contract; whatever at-rest scheme it
 picks is platform detail (see `README.md`'s "Scope" section) — but it must
 not read the old Keychain wording, in a fork or an older checkout, as
 meaning `SecItem`-style secure-storage APIs are the mechanism to reproduce.
+
+## Store file permissions
+
+The account store is readable and writable by its owning user only. This is
+contract, not platform detail: every field above travels in that one blob,
+`sessionKey` included, and the at-rest encryption around `sessionKey` does
+not make the blob safe to leave world-readable.
+
+Why it does not: both platforms' at-rest schemes bind ciphertext to a
+*host*, not to a *user*. macOS derives its key from `IOPlatformUUID`; Linux
+derives its from the contents of `/etc/machine-id`
+(`apps/linux/core/src/store.rs`), which is mode `444` on a stock systemd
+install. A second local user who can read the store can also read the key
+material it was derived from, so the ciphertext buys nothing against them.
+File permissions are what separate two users; the encryption is what
+separates two machines. Neither substitutes for the other.
+
+How each implementation satisfies it:
+
+- **macOS** — no explicit call. `UserDefaults` persists through `cfprefsd`,
+  which writes `~/Library/Preferences/<suite>.plist` mode `600` inside a
+  directory that is itself mode `700`. Confirmed by inspection on
+  2026-09-07: `com.claude-dashboard.app.plist` is `600`,
+  `~/Library/Preferences` is `700`.
+- **A port that persists to a flat file** — Linux's
+  `$XDG_CONFIG_HOME/claude-dashboard/accounts.json` — must do it explicitly,
+  because the process umask decides otherwise and the usual `022` yields
+  `644`. Three requirements:
+  1. Create the file mode `0600`. Setting the mode *at creation* rather than
+     after the write is what keeps a newly written store from existing
+     world-readable even briefly.
+  2. Create the containing `claude-dashboard` directory mode `0700`. That
+     leaf directory only: `$XDG_CONFIG_HOME` itself holds the user's wider
+     configuration and is not this contract's to narrow.
+  3. Re-apply mode `0600` on every save, not only on create. A store written
+     by a version predating this rule is already `644` and keeps that mode
+     through an in-place rewrite, so create-time mode alone never repairs
+     it.
+
+Out of scope: the usage-log database (`contract/usage-log.md`). It holds
+utilization percentages, reset timestamps and account ids, no credential, so
+it stays at the platform default rather than acquiring a rule this document
+would have to keep in sync.

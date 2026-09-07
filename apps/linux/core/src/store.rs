@@ -17,6 +17,8 @@
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::io::Write;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -112,14 +114,35 @@ pub fn load_accounts() -> Result<Vec<Account>, StoreError> {
 
 /// Saves the accounts array, creating the parent directory if needed. The
 /// wire encoding is `Account`'s own serde derive (Task 2) — this function
-/// only owns the file path and directory creation.
+/// only owns the file path, directory creation, and the store's file mode
+/// (`contract/account-schema.md`'s "Store file permissions": the store
+/// carries `sessionKey`, whose at-rest key is derived from world-readable
+/// `/etc/machine-id`, so the mode is the only thing separating two local
+/// users).
 pub fn save_accounts(accounts: &[Account]) -> Result<(), StoreError> {
     let path = accounts_path();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
+        // The leaf `claude-dashboard` directory only. `create_dir_all` goes
+        // by the umask (0755 under the usual 022), while `$XDG_CONFIG_HOME`
+        // itself holds the user's wider configuration and is not ours to
+        // narrow.
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
     }
     let json = Account::to_json_array(accounts)?;
-    fs::write(&path, json)?;
+    // Mode at creation, so a brand-new store never exists world-readable,
+    // not even between the write and a chmod.
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&path)?;
+    file.write_all(json.as_bytes())?;
+    // And again afterwards, because `mode` above applies only when the file
+    // is created: a 0644 store left by a version predating this rule keeps
+    // that mode through an in-place rewrite.
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
     Ok(())
 }
 
@@ -583,5 +606,69 @@ mod tests {
     fn session_key_decrypt_rejects_garbage() {
         assert_eq!(decrypt_session_key("not-valid-base64!!"), None);
         assert_eq!(decrypt_session_key(&BASE64.encode(b"too short")), None);
+    }
+
+    // -----------------------------------------------------------------
+    // Store file permissions — `contract/account-schema.md`'s "Store file
+    // permissions" section. The store carries `sessionKey`, whose at-rest
+    // key is derived from world-readable `/etc/machine-id`, so the file
+    // mode is the only thing separating two local users.
+    // -----------------------------------------------------------------
+
+    fn mode_of(p: &std::path::Path) -> u32 {
+        fs::metadata(p).unwrap().permissions().mode() & 0o777
+    }
+
+    fn one_account() -> Vec<Account> {
+        serde_json::from_str(
+            r#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"x",
+                 "chromeProfilePath":"/p","plan":"Pro","status":"active",
+                 "sessionKey":"ciphertext"}]"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn save_accounts_writes_the_store_mode_600() {
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        save_accounts(&one_account()).unwrap();
+        assert_eq!(mode_of(&accounts_path()), 0o600);
+    }
+
+    #[test]
+    fn save_accounts_creates_the_leaf_dir_mode_700() {
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        save_accounts(&one_account()).unwrap();
+        let leaf = accounts_path().parent().unwrap().to_path_buf();
+        assert_eq!(mode_of(&leaf), 0o700);
+        // Only the leaf: `$XDG_CONFIG_HOME` is the user's wider config dir.
+        assert_ne!(leaf, dir.path());
+    }
+
+    /// The one assertion here that does not depend on the runner's umask: a
+    /// store written before this rule is `644`, and an in-place rewrite
+    /// keeps that mode, so create-time mode alone never repairs it.
+    #[test]
+    fn save_accounts_repairs_a_pre_existing_644_store() {
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        let path = accounts_path();
+        let leaf = path.parent().unwrap().to_path_buf();
+        fs::create_dir_all(&leaf).unwrap();
+        fs::write(&path, "[]").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        fs::set_permissions(&leaf, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(mode_of(&path), 0o644, "precondition");
+        assert_eq!(mode_of(&leaf), 0o755, "precondition");
+
+        save_accounts(&one_account()).unwrap();
+
+        assert_eq!(mode_of(&path), 0o600);
+        assert_eq!(mode_of(&leaf), 0o700);
     }
 }
