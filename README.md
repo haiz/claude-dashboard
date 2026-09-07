@@ -69,12 +69,16 @@ only. `jq` is required; install it with `apt install jq` or `dnf install jq`.
 Browser scanning (`sync`) additionally needs `secret-tool` from
 `libsecret-tools`.
 
-Known limitations on Linux: the x86_64 build is exercised by CI but has not been
-run against a real browser cookie or a real network session; `sync`'s browser
-scan has not been accepted on Linux yet; Chromium's v12 (secret-portal) cookies
-need a secret-service backend reachable through `secret-tool` — a profile is
-skipped only when none of the tried app-id candidates yield a usable portal
-secret.
+Known limitations on Linux:
+
+- `sync`'s browser scan is accepted for Chrome only, and only for a native
+  install with a single profile on x86_64. Brave and Edge run the same code
+  through different profile paths and keyring names and have never been run
+  against a real cookie database; the same holds for multiple profiles in one
+  browser and for Flatpak/snap installs.
+- Chromium's v12 (secret-portal) cookies need a secret-service backend
+  reachable through `secret-tool` — a profile is skipped only when none of the
+  tried app-id candidates yield a usable portal secret.
 
 ### Manual Download
 
