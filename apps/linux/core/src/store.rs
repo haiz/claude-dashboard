@@ -19,7 +19,7 @@ use std::env;
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
@@ -112,13 +112,38 @@ pub fn load_accounts() -> Result<Vec<Account>, StoreError> {
     }
 }
 
+/// Test-only torn-write seam: with `CLAUDE_DASHBOARD_STORE_FAULT` set to one
+/// of the point names below, a save fails there. Both points exist in any
+/// implementation shape, which is what lets the tests measure the *property*
+/// in `contract/account-schema.md`'s "Store writes replace, never rewrite in
+/// place" rather than the mechanism:
+///
+/// - `after_open` — a file to hold the new bytes exists, nothing written yet.
+///   An in-place rewrite has truncated the store itself by now, so this is
+///   where "died mid-save" costs every account rather than the last change.
+/// - `after_write` — the new bytes are all on disk, the save is not published.
+///   An in-place rewrite has already served them to any reader.
+///
+/// Compiled out of the shipped binary. Callers in tests hold `env_lock()`,
+/// because this is process-global state exactly like `XDG_CONFIG_HOME`.
+#[cfg(test)]
+fn fail_if_fault_injected(point: &str) -> Result<(), StoreError> {
+    match env::var("CLAUDE_DASHBOARD_STORE_FAULT") {
+        Ok(want) if want == point => {
+            Err(std::io::Error::other(format!("injected store fault: {point}")).into())
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Saves the accounts array, creating the parent directory if needed. The
 /// wire encoding is `Account`'s own serde derive (Task 2) — this function
-/// only owns the file path, directory creation, and the store's file mode
+/// only owns the file path, directory creation, the store's file mode
 /// (`contract/account-schema.md`'s "Store file permissions": the store
 /// carries `sessionKey`, whose at-rest key is derived from world-readable
 /// `/etc/machine-id`, so the mode is the only thing separating two local
-/// users).
+/// users), and how the new bytes reach that path ("Store writes replace,
+/// never rewrite in place").
 pub fn save_accounts(accounts: &[Account]) -> Result<(), StoreError> {
     let path = accounts_path();
     if let Some(parent) = path.parent() {
@@ -130,19 +155,55 @@ pub fn save_accounts(accounts: &[Account]) -> Result<(), StoreError> {
         fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
     }
     let json = Account::to_json_array(accounts)?;
-    // Mode at creation, so a brand-new store never exists world-readable,
-    // not even between the write and a chmod.
+
+    // Publish by replacement rather than by rewriting the destination: the
+    // bytes go to a sibling temp file that `rename` then swaps in as one
+    // step. A sibling and not `$TMPDIR`, because `rename` is atomic only
+    // within one filesystem. Pid and nanoseconds in the name so that two
+    // concurrent writers never share a temp file and a temp left behind by a
+    // hard-killed process can never block a later save; `create_new` below
+    // then makes the file provably ours, which is what lets the destination
+    // inherit its `0600`. Which of two concurrent writers wins the final
+    // `rename` is unchanged by any of this — last writer, as before.
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let tmp = path.with_extension(format!("json.{}.{unique}.tmp", std::process::id()));
+    write_and_publish(&tmp, &path, json.as_bytes()).inspect_err(|_| {
+        // Best effort: the save has already failed, and a surviving temp file
+        // would be exactly the litter this scheme exists to avoid.
+        let _ = fs::remove_file(&tmp);
+    })
+}
+
+/// The write half of `save_accounts`, split out so that a failure anywhere in
+/// it leaves the caller a single temp path to clean up.
+fn write_and_publish(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), StoreError> {
+    // Mode at creation, so the new store never exists world-readable, not
+    // even for the moment between the write and a chmod. `rename` carries
+    // this mode onto the destination, which is also what repairs a `0644`
+    // store left by a version predating the rule — no separate chmod step.
     let mut file = fs::OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .mode(0o600)
-        .open(&path)?;
-    file.write_all(json.as_bytes())?;
-    // And again afterwards, because `mode` above applies only when the file
-    // is created: a 0644 store left by a version predating this rule keeps
-    // that mode through an in-place rewrite.
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+        .open(tmp)?;
+    #[cfg(test)]
+    {
+        fail_if_fault_injected("after_open")?;
+    }
+    file.write_all(bytes)?;
+    // Durability, not atomicity: without this, a power loss just after the
+    // rename can publish a file whose bytes never reached the disk — the same
+    // "lost every account" outcome by another route. The directory is
+    // deliberately left unsynced; see the contract section for why.
+    file.sync_all()?;
+    #[cfg(test)]
+    {
+        fail_if_fault_injected("after_write")?;
+    }
+    fs::rename(tmp, path)?;
     Ok(())
 }
 
@@ -650,8 +711,9 @@ mod tests {
     }
 
     /// The one assertion here that does not depend on the runner's umask: a
-    /// store written before this rule is `644`, and an in-place rewrite
-    /// keeps that mode, so create-time mode alone never repairs it.
+    /// store written before this rule is `644`. Nothing chmods it back —
+    /// `rename` carries the temp file's own `0600` onto the destination, and
+    /// this is the test that holds that property down.
     #[test]
     fn save_accounts_repairs_a_pre_existing_644_store() {
         let _guard = env_lock();
@@ -670,5 +732,112 @@ mod tests {
 
         assert_eq!(mode_of(&path), 0o600);
         assert_eq!(mode_of(&leaf), 0o700);
+    }
+
+    // -----------------------------------------------------------------
+    // `contract/account-schema.md` — "Store writes replace, never rewrite
+    // in place"
+    // -----------------------------------------------------------------
+
+    fn inode_of(p: &std::path::Path) -> u64 {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(p).unwrap().ino()
+    }
+
+    fn store_dir_entries() -> Vec<String> {
+        let leaf = accounts_path().parent().unwrap().to_path_buf();
+        let mut names: Vec<String> = fs::read_dir(&leaf)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn two_accounts() -> Vec<Account> {
+        serde_json::from_str(
+            r#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"x",
+                 "chromeProfilePath":"/p","plan":"Pro","status":"active",
+                 "sessionKey":"ciphertext"},
+                {"id":"4C9D4789-4B11-536D-9E33-33CDB48BF76C","name":"y",
+                 "chromeProfilePath":"/q","plan":"Max 20x","status":"active",
+                 "sessionKey":"ciphertext2"}]"#,
+        )
+        .unwrap()
+    }
+
+    /// Removes the fault variable however the test ends. `env_lock()`
+    /// deliberately tolerates a poisoned mutex, so a panic mid-test would
+    /// otherwise leak the variable into every later test in this process.
+    struct FaultGuard;
+
+    impl Drop for FaultGuard {
+        fn drop(&mut self) {
+            std::env::remove_var("CLAUDE_DASHBOARD_STORE_FAULT");
+        }
+    }
+
+    /// A proxy, and only a proxy: it shows the destination is *replaced*
+    /// rather than rewritten in place. Atomicity itself is `rename(2)`'s
+    /// guarantee, not something a test inside one process can watch. So this
+    /// pairs with `a_failed_save_leaves_the_previous_store_intact`, which is
+    /// what stops unlink-then-create from passing here as well.
+    #[test]
+    fn the_store_is_replaced_not_rewritten_in_place() {
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        save_accounts(&one_account()).unwrap();
+        let first = inode_of(&accounts_path());
+
+        save_accounts(&two_accounts()).unwrap();
+
+        assert_ne!(inode_of(&accounts_path()), first);
+    }
+
+    /// The torn-write claim itself: the store is the only record of every
+    /// account's `accountUuid`, `orgId` and `sessionKey`, so a save that dies
+    /// halfway must cost the last change, never the whole set.
+    fn the_store_survives_a_fault_at(point: &str) {
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        save_accounts(&one_account()).unwrap();
+        let before = fs::read_to_string(accounts_path()).unwrap();
+
+        let _fault = FaultGuard;
+        std::env::set_var("CLAUDE_DASHBOARD_STORE_FAULT", point);
+        let result = save_accounts(&two_accounts());
+
+        assert!(result.is_err(), "the injected fault must surface as an error");
+        assert_eq!(fs::read_to_string(accounts_path()).unwrap(), before);
+        // And the file it was filling does not survive as litter.
+        assert_eq!(store_dir_entries(), vec!["accounts.json".to_string()]);
+    }
+
+    /// Dying here is what used to empty the store outright: an in-place
+    /// rewrite truncates the destination before it has a single new byte to
+    /// put there.
+    #[test]
+    fn a_fault_before_the_new_bytes_are_written_keeps_the_store() {
+        the_store_survives_a_fault_at("after_open");
+    }
+
+    /// Dying here must not publish either: a complete set of new bytes on
+    /// disk is still not a completed save.
+    #[test]
+    fn a_fault_after_the_new_bytes_are_written_keeps_the_store() {
+        the_store_survives_a_fault_at("after_write");
+    }
+
+    #[test]
+    fn a_successful_save_leaves_no_temp_file_behind() {
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+
+        save_accounts(&one_account()).unwrap();
+
+        assert_eq!(store_dir_entries(), vec!["accounts.json".to_string()]);
     }
 }

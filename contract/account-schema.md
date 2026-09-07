@@ -232,12 +232,55 @@ How each implementation satisfies it:
   2. Create the containing `claude-dashboard` directory mode `0700`. That
      leaf directory only: `$XDG_CONFIG_HOME` itself holds the user's wider
      configuration and is not this contract's to narrow.
-  3. Re-apply mode `0600` on every save, not only on create. A store written
-     by a version predating this rule is already `644` and keeps that mode
-     through an in-place rewrite, so create-time mode alone never repairs
-     it.
+  3. Repair a store that is already `644`, written by a version predating
+     this rule. Create-time mode alone never repairs one, because the mode
+     applies to the file being created and not to a destination being
+     rewritten in place. Satisfying the next section is what settles this:
+     the replacement carries its own `0600` onto the destination, so no
+     separate `chmod` step is needed and none should be added back.
 
 Out of scope: the usage-log database (`contract/usage-log.md`). It holds
 utilization percentages, reset timestamps and account ids, no credential, so
 it stays at the platform default rather than acquiring a rule this document
 would have to keep in sync.
+
+## Store writes replace, never rewrite in place
+
+A save publishes the new store as one indivisible step. A reader never
+observes a half-written store, and a process that dies mid-save leaves the
+previous store exactly as it was. The failure mode this rules out is losing
+*every* account, not losing the last change.
+
+Why it is contract and not platform detail: the store is the only record of
+each account's `accountUuid`, `orgId` and `sessionKey`. Nothing on the server
+identifies which Claude accounts a given machine had added, so a truncated
+store cannot be re-synced from anywhere — it is recovered by the user
+finding and re-adding every account by hand. A stale store loses one
+change; a torn one loses the whole set. The two are not the same kind of
+failure, and only the second is worth a rule.
+
+How each implementation satisfies it:
+
+- **macOS** — no explicit call. `UserDefaults` persists through cfprefsd,
+  which publishes a *new* file on every write rather than rewriting the
+  existing one: measured on 2026-09-07 against an isolated suite, the
+  plist's inode changed on each of three consecutive writes
+  (`491370913`, `491370923`, `491370924`, `491370925`), at mode `600` every
+  time. That measurement shows replacement, which is what this section
+  requires; it does not go further and identify cfprefsd's mechanism as
+  `rename` specifically.
+- **A port that persists to a flat file** — write the bytes to a temporary
+  file in the **same directory** as the store, then `rename(2)` it over the
+  destination. Same directory because `rename` is only atomic within one
+  filesystem, so a temp under `/tmp` or `$TMPDIR` fails the moment the two
+  are separate mounts. Truncating the destination and rewriting it is ruled
+  out, and so is unlinking it first: both open a window in which the store
+  on disk is partial or absent.
+
+Durability is a separate question from atomicity, and the line between them
+is deliberate: `fsync` the temporary file before the rename, because
+otherwise a power loss just after the rename can publish a file whose bytes
+never reached the disk — the same "lost every account" outcome by a
+different route. Do **not** `fsync` the directory to make the rename itself
+durable: a power loss that forgets the rename leaves the previous store,
+which is the safe side of this rule to land on.
