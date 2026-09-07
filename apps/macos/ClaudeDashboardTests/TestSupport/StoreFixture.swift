@@ -39,6 +39,24 @@ enum StoreFixture {
         return UserDefaults(suiteName: suite)?.data(forKey: storageKey)
     }
 
+    /// Every key in the suite holding a kept copy of an unreadable store, with
+    /// its bytes. The counterpart of the Linux side's `accounts.json.unreadable.*`
+    /// sibling scan (`contract/account-schema.md`'s "An unreadable store is not
+    /// an empty store"). Synchronises first for the same reason `readData` does:
+    /// a child process may have written it.
+    static func unreadableCopies(inSuite suite: String) -> [String: Data] {
+        CFPreferencesAppSynchronize(suite as CFString)
+        guard let defaults = UserDefaults(suiteName: suite) else { return [:] }
+        var found: [String: Data] = [:]
+        for (key, value) in defaults.dictionaryRepresentation() {
+            guard key.hasPrefix("\(storageKey).unreadable."), let data = value as? Data else {
+                continue
+            }
+            found[key] = data
+        }
+        return found
+    }
+
     /// Removes the suite's backing plist at
     /// ~/Library/Preferences/<suite>.plist AND tells cfprefsd to forget the
     /// domain. Safe to call twice, and safe for a suite that was never

@@ -85,6 +85,35 @@ final class AccountStoreTests: XCTestCase {
         XCTAssertEqual(store.accounts.first?.name, "New Name")
     }
 
+    /// `contract/account-schema.md` "An unreadable store is not an empty
+    /// store". Every mutation here calls `persist()`, so bytes read as an
+    /// empty list are gone on the user's very next add.
+    func testUnparseableStoreIsKeptAsideRatherThanOverwritten() {
+        let garbage = Data(#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"tru"#.utf8)
+        defaults.set(garbage, forKey: StoreFixture.storageKey)
+
+        let recovered = AccountStore(defaults: defaults)
+        recovered.addAccount(
+            Account(
+                id: UUID(),
+                name: "Fresh",
+                email: nil,
+                chromeProfilePath: "Profile 1",
+                chromeProfileName: nil,
+                orgId: "org-123",
+                plan: .pro,
+                lastSynced: nil,
+                status: .active,
+                source: .browser
+            )
+        )
+
+        let kept = StoreFixture.unreadableCopies(inSuite: suiteName)
+        XCTAssertEqual(kept.count, 1, "expected one kept copy, found \(kept.keys)")
+        XCTAssertEqual(kept.values.first, garbage, "byte for byte")
+        XCTAssertEqual(recovered.accounts.count, 1, "and the store still works")
+    }
+
     func testPersistsAcrossInstances() {
         let account = Account(
             id: UUID(),

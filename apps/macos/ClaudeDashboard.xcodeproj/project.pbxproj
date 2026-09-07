@@ -11,6 +11,7 @@
 		0581B7FBD47A7FCB6F79F7CC /* AddKeyCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192B6A7B21DD123434442F5B /* AddKeyCommandTests.swift */; };
 		065A41660DAE9558AEFB0356 /* TerminalLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = F32C9470D69868D82CEF8ECD /* TerminalLauncher.swift */; };
 		0924D8F9139A4EE436ABEA8C /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7E115BD84248989BAA883F /* CryptoService.swift */; };
+		09CE6D71B0AEC1F0567D7743 /* AccountStoreQuarantine.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2A774B02398706067FC3A3 /* AccountStoreQuarantine.swift */; };
 		0D2BDE04D4B6D1D0C60DC187 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
 		0F2EFF700D988D4E447E07A9 /* CommandLogViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13957FCE8EBB39E84590E42F /* CommandLogViewModel.swift */; };
 		1213175776995521648C0196 /* ManualKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF55256F6D81B14585D71C9 /* ManualKey.swift */; };
@@ -90,8 +91,10 @@
 		9FAB31B717BAEDE9C724CB3E /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
 		A11EFC038D280EA4034743AF /* Browser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCBF1EA7D7222950388A01C /* Browser.swift */; };
 		A2A5D0F022E7A798045D105C /* DashboardWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA0F9129D3367D395937E5E /* DashboardWindow.swift */; };
+		A2FF70F4B5C293C3974806C5 /* AccountStoreQuarantine.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2A774B02398706067FC3A3 /* AccountStoreQuarantine.swift */; };
 		A39C01692A8EA4FA3A76ED88 /* AccountStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */; };
 		A45521DA5ED20F5EEDA1F30E /* SyncCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFA427293BFC51355250BB1 /* SyncCommand.swift */; };
+		A47D180C3D074FB79A7ECBCB /* AccountStoreQuarantine.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2A774B02398706067FC3A3 /* AccountStoreQuarantine.swift */; };
 		A5773DFB86E3CE93696F9B7F /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54CFBC6B0C4EF6B9A3099D2 /* UpdateService.swift */; };
 		A695D976DBF8E5BBF704DC8D /* AppVersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D99517C3BBF094ACC2BA1B74 /* AppVersionTests.swift */; };
 		A6DAAE7B2732C3395271F7BB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA09806794F5E11A193DC9E0 /* main.swift */; };
@@ -254,6 +257,7 @@
 		D572159B978911BF3D1EDAC0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D627736A32F2282084F78A58 /* ManualKeyContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualKeyContractTests.swift; sourceTree = "<group>"; };
 		D99517C3BBF094ACC2BA1B74 /* AppVersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersionTests.swift; sourceTree = "<group>"; };
+		DC2A774B02398706067FC3A3 /* AccountStoreQuarantine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreQuarantine.swift; sourceTree = "<group>"; };
 		DC394CD29F6E869A54D1CE5A /* HelpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpView.swift; sourceTree = "<group>"; };
 		E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDetectionContractTests.swift; sourceTree = "<group>"; };
 		E4BAD55D59287038F16012AE /* ClaudeDashboardTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeDashboardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -462,6 +466,7 @@
 			children = (
 				D2535C231EBCF76F786F7B7E /* Account.swift */,
 				4178DC5D69C19ECD002EF8A9 /* AccountIdentity.swift */,
+				DC2A774B02398706067FC3A3 /* AccountStoreQuarantine.swift */,
 				6BF0A4FB04BB2713656EADBF /* APIBaseURL.swift */,
 				2A87EC4F90E188AAAFB660C3 /* AppVersion.swift */,
 				5DCBF1EA7D7222950388A01C /* Browser.swift */,
@@ -686,6 +691,7 @@
 				658C3AD44DF83CF3894DDBBF /* APIBaseURLTests.swift in Sources */,
 				93B22E6DE99B98430E405CC6 /* Account.swift in Sources */,
 				8014093F24077E76B690AFE0 /* AccountIdentity.swift in Sources */,
+				09CE6D71B0AEC1F0567D7743 /* AccountStoreQuarantine.swift in Sources */,
 				C23B74F40DBB7E413F3954EA /* AddKeyCommand.swift in Sources */,
 				0581B7FBD47A7FCB6F79F7CC /* AddKeyCommandTests.swift in Sources */,
 				7D3FCD0210FF7A90A46BB7F9 /* AppVersion.swift in Sources */,
@@ -723,6 +729,7 @@
 				7C270378E7A24C8959633F69 /* APIBaseURL.swift in Sources */,
 				CBA5F28B81C6FA6C0E24C610 /* Account.swift in Sources */,
 				1373305DBB8E1C9805CFC8C8 /* AccountIdentity.swift in Sources */,
+				A47D180C3D074FB79A7ECBCB /* AccountStoreQuarantine.swift in Sources */,
 				809F8F94BD5A8185ED4FFDFE /* AddKeyCommand.swift in Sources */,
 				861BA6B0F607213E156F515D /* AppVersion.swift in Sources */,
 				65B871908DDBBBA22338EA23 /* Browser.swift in Sources */,
@@ -753,6 +760,7 @@
 				411CACBC4F1791E139BDF4BA /* AccountDetailViewModel.swift in Sources */,
 				BE0B91642615126F59A02F3F /* AccountIdentity.swift in Sources */,
 				9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */,
+				A2FF70F4B5C293C3974806C5 /* AccountStoreQuarantine.swift in Sources */,
 				AE3B5F95AC15F193C1B2C9CE /* AppVersion.swift in Sources */,
 				54D5B307F0F74D250E1E46AF /* Browser.swift in Sources */,
 				4C53E5634BE6BEB75B5E870C /* BrowserCookieService.swift in Sources */,

@@ -112,6 +112,45 @@ pub fn load_accounts() -> Result<Vec<Account>, StoreError> {
     }
 }
 
+/// The load a writer needs (`contract/account-schema.md`'s "An unreadable
+/// store is not an empty store"). Three outcomes, not two: accounts, an
+/// absent store, or bytes that will not parse — and the third is moved aside
+/// before the caller writes, with the returned path saying where it went so
+/// the caller can tell the user.
+///
+/// An I/O failure is deliberately *not* quarantined: an unreadable directory
+/// or a permission error can leave a perfectly good store on disk, which
+/// moving it would not fix, so that stays an error and the caller writes
+/// nothing.
+///
+/// Read-only commands keep using `load_accounts`: moving the store aside is a
+/// write, and they have nothing to protect by doing it.
+pub fn load_accounts_for_write() -> Result<(Vec<Account>, Option<PathBuf>), StoreError> {
+    match load_accounts() {
+        Ok(accounts) => Ok((accounts, None)),
+        // A parse failure is the one case moving the bytes aside fixes: they
+        // are there, they are unusable, and the caller is about to write over
+        // them. Every other error stays an error.
+        Err(StoreError::Json(_)) => Ok((Vec::new(), Some(quarantine_unreadable_store()?))),
+        Err(e) => Err(e),
+    }
+}
+
+/// Moves the unreadable store aside and says where it went. The timestamp is
+/// what keeps a second failure from overwriting the copy the first one kept.
+/// After this the store is absent rather than corrupt, which is what makes
+/// the caller's write safe.
+fn quarantine_unreadable_store() -> Result<PathBuf, StoreError> {
+    let path = accounts_path();
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let kept = path.with_extension(format!("json.unreadable.{stamp}"));
+    fs::rename(&path, &kept)?;
+    Ok(kept)
+}
+
 /// Test-only torn-write seam: with `CLAUDE_DASHBOARD_STORE_FAULT` set to one
 /// of the point names below, a save fails there. Both points exist in any
 /// implementation shape, which is what lets the tests measure the *property*
@@ -839,5 +878,87 @@ mod tests {
         save_accounts(&one_account()).unwrap();
 
         assert_eq!(store_dir_entries(), vec!["accounts.json".to_string()]);
+    }
+
+    // -----------------------------------------------------------------
+    // `contract/account-schema.md` — "An unreadable store is not an empty
+    // store"
+    // -----------------------------------------------------------------
+
+    fn quarantined_copies() -> Vec<PathBuf> {
+        let leaf = accounts_path().parent().unwrap().to_path_buf();
+        let mut kept: Vec<PathBuf> = fs::read_dir(&leaf)
+            .map(|entries| {
+                entries
+                    .map(|e| e.unwrap().path())
+                    .filter(|p| p.to_string_lossy().contains(".unreadable."))
+                    .collect()
+            })
+            .unwrap_or_default();
+        kept.sort();
+        kept
+    }
+
+    #[test]
+    fn an_absent_store_is_no_accounts_and_quarantines_nothing() {
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+
+        let (accounts, kept) = load_accounts_for_write().unwrap();
+
+        assert!(accounts.is_empty());
+        assert_eq!(kept, None, "there was nothing unreadable to keep");
+    }
+
+    #[test]
+    fn a_readable_store_is_returned_untouched() {
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        save_accounts(&two_accounts()).unwrap();
+
+        let (accounts, kept) = load_accounts_for_write().unwrap();
+
+        assert_eq!(accounts.len(), 2);
+        assert_eq!(kept, None);
+        assert_eq!(store_dir_entries(), vec!["accounts.json".to_string()]);
+    }
+
+    /// The whole point: the bytes survive somewhere, and the store is left
+    /// absent rather than corrupt, so the caller's write cannot destroy them.
+    #[test]
+    fn an_unparseable_store_is_moved_aside_and_reported() {
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        let path = accounts_path();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let garbage = r#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"tru"#;
+        fs::write(&path, garbage).unwrap();
+
+        let (accounts, kept) = load_accounts_for_write().unwrap();
+
+        assert!(accounts.is_empty(), "unparseable bytes are not accounts");
+        let kept = kept.expect("the unreadable bytes must be kept somewhere");
+        assert_eq!(fs::read_to_string(&kept).unwrap(), garbage, "byte for byte");
+        assert!(!path.exists(), "the store is absent now, not corrupt");
+        assert_eq!(quarantined_copies(), vec![kept]);
+    }
+
+    /// An I/O failure is not a parse failure. `accounts.json` as a directory
+    /// is the portable way to produce one: the read fails with something
+    /// other than `NotFound`, and the store may be fine for all we know.
+    #[test]
+    fn an_unreadable_store_is_an_error_and_is_not_quarantined() {
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        fs::create_dir_all(accounts_path()).unwrap();
+
+        let result = load_accounts_for_write();
+
+        assert!(result.is_err(), "an I/O failure must not be served as no accounts");
+        assert!(quarantined_copies().is_empty(), "nothing may be moved aside");
     }
 }

@@ -124,6 +124,41 @@ final class AddKeyCommandTests: XCTestCase {
         }
     }
 
+    /// `contract/account-schema.md` "An unreadable store is not an empty
+    /// store", end to end through the real binary. Reading unparseable bytes
+    /// as no accounts is what used to destroy them: the run adds its account
+    /// and writes the result over the only copy of every stored `accountUuid`,
+    /// `orgId` and `sessionKey`.
+    func testUnparseableStoreIsKeptRatherThanOverwritten() throws {
+        let garbage = Data(#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"tru"#.utf8)
+        StoreFixture.seedData(garbage, intoSuite: suite)
+        server.respond(path: "/api/account",
+                       with: .json(accountBody(uuid: "acct-1", email: "me@example.com",
+                                               orgUuid: "org-1")))
+        server.respond(path: "/api/organizations",
+                       with: .json(orgsBody(uuid: "org-1", capabilities: ["chat", "claude_pro"])))
+
+        let result = runAddKey(stdin: "sk-fake-test-key\n")
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(
+            result.stderr.contains(
+                "Could not read the account store. The unreadable copy is kept at "),
+            "stderr was: \(result.stderr)"
+        )
+        XCTAssertTrue(result.stderr.hasSuffix("Added: me@example.com (Pro)\n"),
+                      "stderr was: \(result.stderr)")
+
+        let kept = StoreFixture.unreadableCopies(inSuite: suite)
+        XCTAssertEqual(kept.count, 1, "expected one kept copy, found \(kept.keys)")
+        XCTAssertEqual(kept.values.first, garbage, "byte for byte")
+
+        // And the store now holds this run's account rather than a clobber.
+        let stored = StoreFixture.read(fromSuite: suite)
+        XCTAssertEqual(stored.count, 1)
+        XCTAssertEqual(stored[0].accountUuid, "acct-1")
+    }
+
     // MARK: - Repair
 
     func testRepairRewritesOnlyThePermittedFields() {

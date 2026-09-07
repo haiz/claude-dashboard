@@ -14,7 +14,15 @@ enum AddKeyCommand {
             return 1
         }
 
-        var accounts = HelperAccountStore.loadAccounts()
+        let loaded = HelperAccountStore.loadAccountsForWrite()
+        var accounts = loaded.accounts
+        if let kept = loaded.quarantined {
+            fputs(
+                "Could not read the account store. The unreadable copy is kept at "
+                    + "\(kept); this run starts from no accounts.\n",
+                stderr
+            )
+        }
         var code: Int32 = 0
         let semaphore = DispatchSemaphore(value: 0)
 

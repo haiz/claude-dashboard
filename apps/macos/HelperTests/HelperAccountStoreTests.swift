@@ -41,6 +41,35 @@ final class HelperAccountStoreTests: XCTestCase {
         XCTAssertEqual(HelperAccountStore.loadAccounts(), [])
     }
 
+    /// `contract/account-schema.md` "An unreadable store is not an empty
+    /// store": for a writer, bytes that will not decode are moved aside and
+    /// named, leaving the store absent rather than corrupt.
+    func testUnparseableStoreIsMovedAsideForAWriter() throws {
+        let garbage = Data(#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"tru"#.utf8)
+        StoreFixture.seedData(garbage, intoSuite: suite)
+
+        let loaded = HelperAccountStore.loadAccountsForWrite()
+
+        XCTAssertEqual(loaded.accounts, [])
+        let kept = try XCTUnwrap(loaded.quarantined, "the bytes must be kept somewhere")
+        XCTAssertEqual(StoreFixture.unreadableCopies(inSuite: suite), [kept: garbage])
+        XCTAssertNil(
+            StoreFixture.readData(fromSuite: suite),
+            "the store is absent now, not corrupt"
+        )
+    }
+
+    /// The read-only load is deliberately left alone: moving the bytes aside
+    /// is a write, and `decrypt` has nothing to protect by doing it.
+    func testTheReadOnlyLoadStillReportsAnUnparseableStoreAsEmpty() {
+        let garbage = Data(#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"tru"#.utf8)
+        StoreFixture.seedData(garbage, intoSuite: suite)
+
+        XCTAssertEqual(HelperAccountStore.loadAccounts(), [])
+        XCTAssertTrue(StoreFixture.unreadableCopies(inSuite: suite).isEmpty)
+        XCTAssertNotNil(StoreFixture.readData(fromSuite: suite), "and nothing was moved")
+    }
+
     func testDestroyUnlinksTheBackingPlistFile() {
         let plistPath = NSHomeDirectory() + "/Library/Preferences/\(suite!).plist"
 

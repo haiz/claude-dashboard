@@ -284,3 +284,49 @@ never reached the disk — the same "lost every account" outcome by a
 different route. Do **not** `fsync` the directory to make the rename itself
 durable: a power loss that forgets the rename leaves the previous store,
 which is the safe side of this rule to land on.
+
+## An unreadable store is not an empty store
+
+Loading the store has three outcomes, not two: it holds accounts, it does not
+exist yet, or it exists and cannot be parsed. The third must never reach the
+rest of the program disguised as the second.
+
+Why it matters more than it looks: a writer that reads an unreadable store as
+an empty one destroys it. It loads nothing, adds whatever it was asked to
+add, and writes the result over the bytes it could not parse. By the section
+above those bytes are the user's only copy of every account's `accountUuid`,
+`orgId` and `sessionKey`, so the cost of the confusion is the whole set.
+"Store writes replace, never rewrite in place" removes one way a store
+becomes unparseable; it does not remove the others, disk exhaustion and
+version skew among them.
+
+The rule, for every code path that writes:
+
+1. Distinguish a parse failure from an absent store. An absent store is
+   genuinely no accounts and needs nothing.
+2. Never overwrite bytes that failed to parse. Move them aside first, to a
+   name derived from the store's own, marked unreadable and carrying a
+   timestamp so that a second failure cannot overwrite the copy the first one
+   kept. After the move the store is absent, not corrupt, and writing is
+   safe.
+3. Proceed from an empty set and tell the user where the bytes went. A CLI
+   says it on stderr, exactly:
+
+       Could not read the account store. The unreadable copy is kept at
+       <location>; this run starts from no accounts.
+
+   printed as one line, where `<location>` names wherever step 2 put the
+   bytes: a filesystem path where the store is a file, the key where it is a
+   preferences domain. An implementation with no such channel still owes
+   step 2; how it surfaces the message is its own business.
+4. Distinguish a parse failure from an I/O failure, and quarantine only the
+   parse failure. An unreadable directory or a permission error can leave a
+   perfectly good store on disk, and moving it would not help; that case is
+   an error, and a writer that hits it writes nothing at all.
+
+Read-only paths are excluded on purpose. Moving the store aside is a write,
+and a command that only reads has nothing to protect by doing it, so `decrypt`
+keeps reporting an unreadable store the same way it reports an empty one (see
+`contract/helper-cli.md`'s "`decrypt`" section). That is a diagnosability
+gap, not a data-loss one.
+

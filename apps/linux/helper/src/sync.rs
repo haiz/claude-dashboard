@@ -83,6 +83,23 @@ enum ProfileScan {
 
 /// Runs the `sync` subcommand and returns its process exit code.
 pub fn run_sync() -> i32 {
+    // Before the scan, not after it: an I/O failure here exits 1, and
+    // `contract/helper-cli.md`'s "sync" rule that the command always exits 0
+    // *once it finishes scanning* is what makes the ordering load-bearing.
+    let (mut accounts, quarantined) = match store::load_accounts_for_write() {
+        Ok(loaded) => loaded,
+        Err(e) => {
+            eprintln!("Could not read the account store: {e}");
+            return 1;
+        }
+    };
+    if let Some(kept) = &quarantined {
+        eprintln!(
+            "Could not read the account store. The unreadable copy is kept at {}; this run starts from no accounts.",
+            kept.display()
+        );
+    }
+
     eprintln!("Scanning installed browsers for Claude sessions...");
 
     let profiles = browser::discover_profiles_under(&home_dir());
@@ -152,7 +169,6 @@ pub fn run_sync() -> i32 {
         candidates.len()
     );
 
-    let mut accounts = store::load_accounts().unwrap_or_default();
     let mut added = 0usize;
 
     for c in &candidates {

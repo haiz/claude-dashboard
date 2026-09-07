@@ -55,6 +55,7 @@ final class SyncCommandTests: XCTestCase {
         candidates: [(profile: BrowserProfile, cookies: ChromeCookieResult)],
         accounts: [Account],
         recorder: Recorder,
+        quarantined: String? = nil,
         handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? = nil
     ) -> SyncCommand.Environment {
         MockURLProtocol.requestHandler = handler
@@ -64,7 +65,7 @@ final class SyncCommandTests: XCTestCase {
         return SyncCommand.Environment(
             candidates: { candidates },
             apiService: UsageAPIService(session: URLSession(configuration: config)),
-            loadAccounts: { accounts },
+            loadAccounts: { (accounts, quarantined) },
             saveAccounts: { recorder.saved = $0 },
             log: { recorder.lines.append($0) }
         )
@@ -76,6 +77,38 @@ final class SyncCommandTests: XCTestCase {
     }
 
     // MARK: - Tests
+
+    /// `contract/account-schema.md` "An unreadable store is not an empty
+    /// store": the run reports where the bytes went, and does it before the
+    /// scan line, because the Linux counterpart can exit 1 here.
+    func testAQuarantinedStoreIsReportedBeforeTheScan() async {
+        let recorder = Recorder()
+        let env = makeEnvironment(
+            candidates: [],
+            accounts: [],
+            recorder: recorder,
+            quarantined: "claude-dashboard.accounts.unreadable.1700000000"
+        )
+
+        _ = await SyncCommand.runAsync(env: env)
+
+        XCTAssertEqual(
+            recorder.lines.first,
+            "Could not read the account store. The unreadable copy is kept at "
+                + "claude-dashboard.accounts.unreadable.1700000000; "
+                + "this run starts from no accounts."
+        )
+    }
+
+    /// And says nothing when there was nothing to keep.
+    func testAReadableStoreIsNotReported() async {
+        let recorder = Recorder()
+        let env = makeEnvironment(candidates: [], accounts: [], recorder: recorder)
+
+        _ = await SyncCommand.runAsync(env: env)
+
+        XCTAssertEqual(recorder.lines.first, "Scanning installed browsers for Claude sessions...")
+    }
 
     /// `contract/helper-cli.md` "sync": the one failure case. No profile with a
     /// session at all is an error for the whole run, not a skip.

@@ -50,7 +50,19 @@ pub fn run_add_key() -> i32 {
         return 1;
     };
 
-    let mut accounts = store::load_accounts().unwrap_or_default();
+    let (mut accounts, quarantined) = match store::load_accounts_for_write() {
+        Ok(loaded) => loaded,
+        Err(e) => {
+            eprintln!("Could not read the account store: {e}");
+            return 1;
+        }
+    };
+    if let Some(kept) = &quarantined {
+        eprintln!(
+            "Could not read the account store. The unreadable copy is kept at {}; this run starts from no accounts.",
+            kept.display()
+        );
+    }
     let stored: Vec<StoredIdentity> = accounts
         .iter()
         .map(|a| StoredIdentity {

@@ -14,7 +14,7 @@ enum SyncCommand {
     struct Environment {
         var candidates: () -> [(profile: BrowserProfile, cookies: ChromeCookieResult)]
         var apiService: UsageAPIService
-        var loadAccounts: () -> [Account]
+        var loadAccounts: () -> (accounts: [Account], quarantined: String?)
         var saveAccounts: ([Account]) -> Void
         /// Receives each line without its newline; `live` appends it.
         var log: (String) -> Void
@@ -26,7 +26,7 @@ enum SyncCommand {
                 }
             },
             apiService: UsageAPIService(),
-            loadAccounts: { HelperAccountStore.loadAccounts() },
+            loadAccounts: { HelperAccountStore.loadAccountsForWrite() },
             saveAccounts: { HelperAccountStore.saveAccounts($0) },
             log: { fputs($0 + "\n", stderr) }
         )
@@ -47,6 +47,20 @@ enum SyncCommand {
     }
 
     static func runAsync(env: Environment) async -> Int32 {
+        // Ahead of the scan, matching `run_sync` in
+        // `apps/linux/helper/src/sync.rs`: that side can fail here with an I/O
+        // error and exit 1, which `contract/helper-cli.md`'s "sync" only
+        // allows before scanning starts. Same order on both platforms so the
+        // two cannot drift on where an unreadable store is handled.
+        let loaded = env.loadAccounts()
+        var existingAccounts = loaded.accounts
+        if let kept = loaded.quarantined {
+            env.log(
+                "Could not read the account store. The unreadable copy is kept at "
+                    + "\(kept); this run starts from no accounts."
+            )
+        }
+
         env.log("Scanning installed browsers for Claude sessions...")
 
         let results = env.candidates()
@@ -59,7 +73,6 @@ enum SyncCommand {
 
         env.log("Found \(results.count) profile(s) with Claude sessions. Validating...")
 
-        var existingAccounts = env.loadAccounts()
         var addedCount = 0
 
         for item in results {

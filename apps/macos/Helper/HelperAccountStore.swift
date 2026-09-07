@@ -28,6 +28,18 @@ enum HelperAccountStore {
         return accounts
     }
 
+    /// The load every writing path must use: three outcomes, not two
+    /// (`contract/account-schema.md`'s "An unreadable store is not an empty
+    /// store"). Bytes that will not decode are moved to a key of their own
+    /// before the caller writes, and the returned name says which.
+    /// `loadAccounts` above stays for read-only callers.
+    static func loadAccountsForWrite() -> (accounts: [Account], quarantined: String?) {
+        guard let defaults = UserDefaults(suiteName: resolvedSuiteName()) else {
+            return ([], nil)
+        }
+        return AccountStoreQuarantine.decodeForWrite(from: defaults, key: storageKey)
+    }
+
     static func saveAccounts(_ accounts: [Account]) {
         guard let defaults = UserDefaults(suiteName: resolvedSuiteName()),
               let data = try? JSONEncoder().encode(accounts) else {

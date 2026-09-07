@@ -210,3 +210,59 @@ fn repair_reports_a_changed_plan() {
     );
     assert_eq!(read_store(d.path())[0]["plan"], "Max");
 }
+
+/// Every sibling of the store whose name marks it as an unreadable copy.
+fn kept_copies(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let cfg = dir.join("claude-dashboard");
+    let mut kept: Vec<std::path::PathBuf> = std::fs::read_dir(&cfg)
+        .map(|entries| {
+            entries
+                .map(|e| e.unwrap().path())
+                .filter(|p| p.to_string_lossy().contains(".unreadable."))
+                .collect()
+        })
+        .unwrap_or_default();
+    kept.sort();
+    kept
+}
+
+/// `contract/account-schema.md`'s "An unreadable store is not an empty store",
+/// end to end through the real process. Reading unparseable bytes as no
+/// accounts is what used to destroy them: the run adds its account and writes
+/// the result straight over the only copy of every stored `accountUuid`,
+/// `orgId` and `sessionKey`.
+#[test]
+fn an_unparseable_store_is_kept_rather_than_overwritten() {
+    let garbage = r#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"tru"#;
+    let server = LoopbackServer::start();
+    let d = tempfile::tempdir().unwrap();
+    seed_store(d.path(), garbage);
+    server.respond(
+        "/api/account",
+        Response::json(&account_body("acct-1", Some("me@example.com"), "org-1", r#"["chat"]"#)),
+    );
+    server.respond(
+        "/api/organizations",
+        Response::json(&orgs_body("org-1", r#"["chat","claude_pro"]"#)),
+    );
+
+    let out = run_add_key(&server, d.path(), "sk-fake-test-key\n");
+
+    assert_eq!(out.code, 0);
+    assert!(
+        out.stderr.contains("Could not read the account store. The unreadable copy is kept at"),
+        "stderr was: {}",
+        out.stderr
+    );
+    assert!(out.stderr.ends_with("Added: me@example.com (Pro)\n"), "stderr was: {}", out.stderr);
+
+    let kept = kept_copies(d.path());
+    assert_eq!(kept.len(), 1, "expected one kept copy, found {kept:?}");
+    assert_eq!(std::fs::read_to_string(&kept[0]).unwrap(), garbage, "byte for byte");
+
+    // And the store now holds this run's account rather than a clobber.
+    let stored = read_store(d.path());
+    assert_eq!(stored.as_array().unwrap().len(), 1);
+    assert_eq!(stored[0]["accountUuid"], "acct-1");
+}
+

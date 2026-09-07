@@ -250,6 +250,16 @@ location and browser-cookie discovery mechanism are platform detail (see
   Flatpak installs of each browser (`~/.config/...` and
   `~/.var/app/<flathub id>/config/...`) plus Brave's official snap
   (`~/snap/brave/current/.config/...`); Chrome and Edge have no snap.
+- Before it scans anything, `sync` loads the store, and an unreadable one is
+  handled per `contract/account-schema.md`'s "An unreadable store is not an
+  empty store": unparseable bytes are moved aside, the one-line message quoted
+  there is printed, and the run continues from no accounts. **Linux only, no
+  macOS counterpart:** a store that cannot be *read* at all, an I/O failure
+  rather than a parse failure, prints `Could not read the account store:
+  <error>` and exits 1 — before the scan, which is what keeps it clear of the
+  exit-0-after-scanning rule below. `UserDefaults` has no I/O-failure tier for
+  the Swift side to detect, so it has no such branch; do not add one to make
+  the two symmetrical.
 - The command always exits 0 once it finishes scanning, even when zero
   accounts were added; failure is only for the "no profiles with Claude
   sessions found at all" case (exit 1).
@@ -283,11 +293,18 @@ the repair branch may write is `contract/cases/manual-key.json`: a stored
 | Repair, plan changed | plus `Updated plan: <name> (<old> -> <new>)` | 0 |
 | Repair, no chat org among the memberships | plus `Warning: no organization with chat access; usage will not update.` | 0 |
 | A failed write to the account store — **Linux only, no macOS counterpart** | `Could not write the account store.` | 1 |
+| The stored bytes cannot be parsed | plus the one-line message in `account-schema.md`'s "An unreadable store is not an empty store" | unchanged |
+| The store cannot be read at all (I/O) — **Linux only, no macOS counterpart** | `Could not read the account store: <error>` | 1 |
 
-The last row has no macOS branch: `HelperAccountStore.saveAccounts` returns
-`Void` and reports no failure, while the Linux port's `store::save_accounts`
-returns a `Result` its caller must not swallow. Do not add a matching branch
-to the Swift command to make the two symmetrical.
+Two rows have no macOS branch, for two different reasons.
+`HelperAccountStore.saveAccounts` returns `Void` and reports no failure, while
+the Linux port's `store::save_accounts` returns a `Result` its caller must not
+swallow. And `UserDefaults` distinguishes only "no value" from "a value that
+would not decode", with no I/O-failure tier between them, so the Swift side has
+nothing to report for the last row. Do not add matching branches to the Swift
+command to make the two symmetrical. The parse-failure row is *not* one of
+these: both platforms can tell an unparseable store from an absent one, and
+both must.
 
 `<name>` is the account's `email` when it has one, else the stored record's
 `name` on the repair branch. On the add branch, an account whose `/api/account`

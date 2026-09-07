@@ -46,11 +46,13 @@ final class AccountStore: ObservableObject {
         defaults.set(data, forKey: storageKey)
     }
 
+    /// Every mutation on this store calls `persist()`, so reading unparseable
+    /// bytes as an empty list would write over them on the user's next add.
+    /// `AccountStoreQuarantine` moves them aside first
+    /// (`contract/account-schema.md`'s "An unreadable store is not an empty
+    /// store"). Nothing surfaces this in the UI yet; what this call buys is
+    /// that the bytes still exist to surface.
     private func loadAccounts() -> [Account] {
-        guard let data = defaults.data(forKey: storageKey),
-              let accounts = try? JSONDecoder().decode([Account].self, from: data) else {
-            return []
-        }
-        return accounts
+        AccountStoreQuarantine.decodeForWrite(from: defaults, key: storageKey).accounts
     }
 }
