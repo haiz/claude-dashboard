@@ -50,6 +50,9 @@ of it.
   and which org its usage is polled from (this file's "Account identity" and
   "Org selection" sections, `cases/dedupe.json`, `cases/org-selection.json`,
   `cases/manual-key.json`).
+- **Which cookie rows count as a session** — this file's "Expired cookie
+  rows" section. *How* the rows are decrypted stays platform detail; which
+  of them may become an account does not.
 
 **Platform detail (deliberately free to differ):**
 - **Cookie decryption.** How a session key is extracted from the browser's
@@ -466,6 +469,34 @@ The user-visible consequences, which are the reason this is contract:
   (lines 258-261). A Linux implementation that also mapped, say, `429` or a
   network failure onto `expired` would silently retire accounts that the
   macOS app keeps refreshing.
+
+## Expired cookie rows
+
+A `sessionKey` row whose expiry has passed is **not** a session. Both
+implementations skip it, and a profile left with no other `sessionKey` row
+reads as "no Claude session in this profile" — the same outcome as a profile
+the user has logged out of.
+
+The rule, on Chromium's own clock (`expires_utc`, microseconds since
+1601-01-01):
+
+- `expires_utc == 0` — a session cookie with no expiry at all. **Valid.**
+- `expires_utc` in the past — **skipped.**
+- otherwise — valid.
+
+Chromium keeps expired rows in the database until its own housekeeping
+removes them, so this is not a rare state: a profile abandoned months ago
+still carries the row it had on the last day it was used.
+
+Reading such a row is not a harmless extra request. It cannot succeed —
+every call made with it is a 401/403 — and the setup scan counts that as
+"could not validate this profile", which is the message it shows the user
+instead of "you are logged out here". One long-dead row is enough to make
+the scan's summary wrong for every profile in the list.
+
+`lastActiveOrg` follows the same rule, for consistency; it is only a
+preference, so an expired one costs nothing but is still not current
+information.
 
 ## Account identity
 

@@ -97,8 +97,22 @@ enum BrowserCookieService {
             try? FileManager.default.removeItem(atPath: tempPath + "-shm")
         }
 
+        return readCookies(fromDatabaseAt: tempPath, encryptionKey: encryptionKey)
+    }
+
+    /// Reads the two claude.ai cookies out of a Chromium cookie database that
+    /// has already been copied somewhere readable.
+    ///
+    /// Split out of `extractCookies` so the row rules are reachable from a
+    /// test: everything above this line is file copying, which needs a live
+    /// browser to exercise.
+    static func readCookies(
+        fromDatabaseAt path: String,
+        encryptionKey: Data,
+        now: Date = Date()
+    ) -> ChromeCookieResult {
         var db: OpaquePointer?
-        guard sqlite3_open_v2(tempPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+        guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
             return ChromeCookieResult(sessionKey: nil, orgId: nil)
         }
         defer { sqlite3_close(db) }
@@ -106,10 +120,14 @@ enum BrowserCookieService {
         var sessionKey: String?
         var orgId: String?
 
+        // An expired row is not a session — see contract/README.md's "Expired
+        // cookie rows". `expires_utc = 0` is Chromium for "session cookie, no
+        // expiry", not "expired in 1601", so it stays.
         let query = """
             SELECT name, encrypted_value FROM cookies
             WHERE (host_key = '.claude.ai' OR host_key = 'claude.ai')
             AND name IN ('sessionKey', 'lastActiveOrg')
+            AND (expires_utc = 0 OR expires_utc > ?)
         """
 
         var stmt: OpaquePointer?
@@ -117,6 +135,7 @@ enum BrowserCookieService {
             return ChromeCookieResult(sessionKey: nil, orgId: nil)
         }
         defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, chromeTime(now))
 
         while sqlite3_step(stmt) == SQLITE_ROW {
             guard let namePtr = sqlite3_column_text(stmt, 0) else { continue }
@@ -142,6 +161,11 @@ enum BrowserCookieService {
         }
 
         return ChromeCookieResult(sessionKey: sessionKey, orgId: orgId)
+    }
+
+    /// A `Date` on Chromium's cookie clock: microseconds since 1601-01-01.
+    static func chromeTime(_ date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 + 11_644_473_600) * 1_000_000)
     }
 
     // MARK: - Profiles with Claude Sessions

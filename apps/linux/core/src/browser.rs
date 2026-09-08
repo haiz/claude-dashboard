@@ -30,6 +30,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::SystemTime;
 
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
@@ -278,14 +279,29 @@ fn read_schema_version(conn: &Connection) -> Option<i64> {
     .ok()
 }
 
-/// The `sessionKey` and `lastActiveOrg` cookies for any `%claude.ai%` host.
+/// A `SystemTime` on Chromium's cookie clock: microseconds since 1601-01-01.
+fn chrome_time(at: SystemTime) -> i64 {
+    let secs = at
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    (secs + 11_644_473_600) * 1_000_000
+}
+
+/// The unexpired `sessionKey` and `lastActiveOrg` cookies for any
+/// `%claude.ai%` host.
+///
+/// An expired row is not a session — see contract/README.md's "Expired cookie
+/// rows". `expires_utc = 0` is Chromium for "session cookie, no expiry", not
+/// "expired in 1601", so it stays.
 fn read_claude_cookies(conn: &Connection) -> rusqlite::Result<Vec<RawCookie>> {
     let mut stmt = conn.prepare(
         "SELECT name, host_key, encrypted_value FROM cookies \
-         WHERE host_key LIKE '%claude.ai%' AND name IN ('sessionKey', 'lastActiveOrg')",
+         WHERE host_key LIKE '%claude.ai%' AND name IN ('sessionKey', 'lastActiveOrg') \
+         AND (expires_utc = 0 OR expires_utc > ?1)",
     )?;
     let rows = stmt
-        .query_map([], |row| {
+        .query_map([chrome_time(SystemTime::now())], |row| {
             Ok(RawCookie {
                 name: row.get(0)?,
                 host_key: row.get(1)?,
@@ -477,11 +493,11 @@ mod tests {
             conn.execute_batch(
                 "CREATE TABLE meta(key TEXT NOT NULL UNIQUE, value TEXT);
                  INSERT INTO meta VALUES('version','24');
-                 CREATE TABLE cookies(name TEXT, host_key TEXT, encrypted_value BLOB);
-                 INSERT INTO cookies VALUES('sessionKey','.claude.ai', x'763130AABB');
-                 INSERT INTO cookies VALUES('lastActiveOrg','claude.ai', x'763130CCDD');
-                 INSERT INTO cookies VALUES('cf_bm','claude.ai', x'00');
-                 INSERT INTO cookies VALUES('sessionKey','example.com', x'01');",
+                 CREATE TABLE cookies(name TEXT, host_key TEXT, encrypted_value BLOB, expires_utc INTEGER);
+                 INSERT INTO cookies VALUES('sessionKey','.claude.ai', x'763130AABB', 0);
+                 INSERT INTO cookies VALUES('lastActiveOrg','claude.ai', x'763130CCDD', 0);
+                 INSERT INTO cookies VALUES('cf_bm','claude.ai', x'00', 0);
+                 INSERT INTO cookies VALUES('sessionKey','example.com', x'01', 0);",
             )
             .unwrap();
         }
@@ -493,6 +509,40 @@ mod tests {
         // encrypted_value blobs come through as raw bytes.
         let sk = rows.iter().find(|r| r.name == "sessionKey").unwrap();
         assert_eq!(sk.encrypted_value, vec![0x76, 0x31, 0x30, 0xAA, 0xBB]);
+    }
+
+    /// An expired `sessionKey` row is not a session: every request made with
+    /// it is a guaranteed 401/403, and reading it turns a logged-out profile
+    /// into a validation failure. See contract/README.md, "Expired cookie
+    /// rows". `expires_utc = 0` means "session cookie, no expiry" and stays.
+    #[test]
+    fn read_claude_cookie_db_skips_expired_rows() {
+        // Chromium's clock: microseconds since 1601-01-01.
+        const EXPIRED_2020: i64 = 13_222_310_400_000_000;
+        const LIVE_2099: i64 = 15_715_382_400_000_000;
+
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("Cookies");
+        {
+            let conn = Connection::open(&db).unwrap();
+            conn.execute_batch(&format!(
+                "CREATE TABLE meta(key TEXT NOT NULL UNIQUE, value TEXT);
+                 INSERT INTO meta VALUES('version','24');
+                 CREATE TABLE cookies(name TEXT, host_key TEXT, encrypted_value BLOB, expires_utc INTEGER);
+                 INSERT INTO cookies VALUES('sessionKey','.claude.ai', x'763130DEAD', {EXPIRED_2020});
+                 INSERT INTO cookies VALUES('lastActiveOrg','.claude.ai', x'763130CCDD', {LIVE_2099});"
+            ))
+            .unwrap();
+        }
+
+        let (_, rows) = read_claude_cookie_db(&db).expect("db read");
+
+        assert!(
+            !rows.iter().any(|r| r.name == "sessionKey"),
+            "expired sessionKey row must not be returned"
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].name, "lastActiveOrg");
     }
 
     #[test]
