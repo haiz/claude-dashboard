@@ -50,7 +50,7 @@ struct SetupView: View {
                     .pickerStyle(.menu)
                     .frame(maxWidth: 240)
                     .onChange(of: selectedBrowser) { newValue in
-                        UserDefaults.standard.set(newValue.rawValue, forKey: Self.preferredBrowserKey)
+                        AppDefaults.shared.set(newValue.rawValue, forKey: Self.preferredBrowserKey)
                         scan()
                     }
                 }
@@ -131,7 +131,7 @@ struct SetupView: View {
 
     /// Browser đã nhớ từ lần trước, nếu hợp lệ và vẫn còn cài. nil nếu chưa từng chọn.
     private func savedPreferredBrowser() -> Browser? {
-        guard let raw = UserDefaults.standard.string(forKey: Self.preferredBrowserKey),
+        guard let raw = AppDefaults.shared.string(forKey: Self.preferredBrowserKey),
               let saved = Browser(rawValue: raw),
               installedBrowsers.contains(saved) else { return nil }
         return saved
@@ -139,7 +139,7 @@ struct SetupView: View {
 
     /// Người dùng chọn browser từ màn chooser: nhớ lựa chọn rồi bắt đầu quét.
     private func chooseBrowser(_ browser: Browser) {
-        UserDefaults.standard.set(browser.rawValue, forKey: Self.preferredBrowserKey)
+        AppDefaults.shared.set(browser.rawValue, forKey: Self.preferredBrowserKey)
         awaitingBrowserChoice = false
         // Gán selectedBrowser có thể kích hoạt Picker.onChange gọi scan() thêm một lần;
         // scanTask?.cancel() trong scan() đã xử lý trường hợp trùng này.

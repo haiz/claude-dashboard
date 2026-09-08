@@ -7,7 +7,7 @@ final class AccountStore: ObservableObject {
     private let defaults: UserDefaults
     private let storageKey = "claude-dashboard.accounts"
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = AppDefaults.shared) {
         self.defaults = defaults
 
         // Every mutation on this store calls `persist()`, so reading

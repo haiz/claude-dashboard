@@ -25,10 +25,10 @@ struct RunCommandSheet: View {
         self._isPresented = isPresented
         self.runner = runner
         self.onRefresh = onRefresh
-        let saved = UserDefaults.standard
+        let saved = AppDefaults.shared
             .string(forKey: RunCommandSettings.commandKey(for: account.id)) ?? ""
         self._command = State(initialValue: saved)
-        self._openInTerminal = State(initialValue: UserDefaults.standard
+        self._openInTerminal = State(initialValue: AppDefaults.shared
             .bool(forKey: RunCommandSettings.terminalKey(for: account.id)))
     }
 
@@ -107,8 +107,8 @@ struct RunCommandSheet: View {
     }
 
     private func run() {
-        UserDefaults.standard.set(command, forKey: commandKey)
-        UserDefaults.standard.set(openInTerminal, forKey: terminalKey)
+        AppDefaults.shared.set(command, forKey: commandKey)
+        AppDefaults.shared.set(openInTerminal, forKey: terminalKey)
         let cmd = command
         let acct = account.id
         let runner = self.runner

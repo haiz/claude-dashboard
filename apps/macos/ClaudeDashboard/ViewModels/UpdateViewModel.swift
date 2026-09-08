@@ -36,7 +36,7 @@ final class UpdateViewModel: ObservableObject {
     @Published var latestVersion: String?
     @Published var autoUpdateEnabled: Bool {
         didSet {
-            UserDefaults.standard.set(autoUpdateEnabled, forKey: autoUpdateEnabledKey)
+            AppDefaults.shared.set(autoUpdateEnabled, forKey: autoUpdateEnabledKey)
             restartBackgroundChecks()
         }
     }
@@ -51,7 +51,7 @@ final class UpdateViewModel: ObservableObject {
 
     init(service: UpdateService = UpdateService()) {
         self.service = service
-        self.autoUpdateEnabled = UserDefaults.standard.object(forKey: "claude-dashboard.autoUpdateEnabled") as? Bool ?? true
+        self.autoUpdateEnabled = AppDefaults.shared.object(forKey: "claude-dashboard.autoUpdateEnabled") as? Bool ?? true
     }
 
     func startBackgroundChecks() {
@@ -69,13 +69,13 @@ final class UpdateViewModel: ObservableObject {
     }
 
     func checkNow(autoInstall: Bool = false, respectRateLimit: Bool = false) async {
-        if respectRateLimit, let last = UserDefaults.standard.object(forKey: rateLimitKey) as? Date,
+        if respectRateLimit, let last = AppDefaults.shared.object(forKey: rateLimitKey) as? Date,
            Date().timeIntervalSince(last) < rateLimitInterval {
             return
         }
 
         state = .checking
-        UserDefaults.standard.set(Date(), forKey: rateLimitKey)
+        AppDefaults.shared.set(Date(), forKey: rateLimitKey)
 
         do {
             let info = try await service.checkForUpdate()
@@ -95,9 +95,9 @@ final class UpdateViewModel: ObservableObject {
     }
 
     private func checkNowIfDue() async {
-        let last = UserDefaults.standard.object(forKey: autoUpdateIntervalKey) as? Date
+        let last = AppDefaults.shared.object(forKey: autoUpdateIntervalKey) as? Date
         guard last == nil || Date().timeIntervalSince(last!) >= autoUpdateInterval else { return }
-        UserDefaults.standard.set(Date(), forKey: autoUpdateIntervalKey)
+        AppDefaults.shared.set(Date(), forKey: autoUpdateIntervalKey)
         await checkNow(autoInstall: true, respectRateLimit: false)
     }
 

@@ -96,8 +96,8 @@ struct ClaudeDashboardApp: App {
                 appDelegate.runningProcesses = viewModel.commandRunner.registry
                 updateViewModel.startBackgroundChecks()
                 let key = "claude-dashboard.hasLaunchedBefore"
-                if !UserDefaults.standard.bool(forKey: key) {
-                    UserDefaults.standard.set(true, forKey: key)
+                if !AppDefaults.shared.bool(forKey: key) {
+                    AppDefaults.shared.set(true, forKey: key)
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 }
             }

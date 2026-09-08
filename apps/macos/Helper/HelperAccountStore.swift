@@ -6,7 +6,10 @@ enum HelperAccountStore {
     /// the real binary without writing into the user's own accounts. cfprefsd
     /// does not follow HOME, so this is the macOS counterpart of Linux's
     /// XDG_CONFIG_HOME. Platform detail, not contract.
-    static let suiteVariable = "CLAUDE_DASHBOARD_DEFAULTS_SUITE"
+    ///
+    /// Defined in `AppDefaults` because the app target cannot see `Helper/`,
+    /// and the two binaries have to name the same variable.
+    static let suiteVariable = AppDefaults.suiteVariable
 
     private static let defaultSuiteName = "com.claude-dashboard.app"
     private static let storageKey = "claude-dashboard.accounts"
