@@ -17,17 +17,19 @@ struct RunCommandSheet: View {
 
     private let classifier = CommandClassifier(resolver: ShellCommandResolver())
 
-    private var commandKey: String { "runCommand_\(account.id.uuidString)" }
-    private var terminalKey: String { "runCommandTerminal_\(account.id.uuidString)" }
+    private var commandKey: String { RunCommandSettings.commandKey(for: account.id) }
+    private var terminalKey: String { RunCommandSettings.terminalKey(for: account.id) }
 
     init(account: Account, isPresented: Binding<Bool>, runner: CommandRunner, onRefresh: @escaping () -> Void) {
         self.account = account
         self._isPresented = isPresented
         self.runner = runner
         self.onRefresh = onRefresh
-        let saved = UserDefaults.standard.string(forKey: "runCommand_\(account.id.uuidString)") ?? ""
+        let saved = UserDefaults.standard
+            .string(forKey: RunCommandSettings.commandKey(for: account.id)) ?? ""
         self._command = State(initialValue: saved)
-        self._openInTerminal = State(initialValue: UserDefaults.standard.bool(forKey: "runCommandTerminal_\(account.id.uuidString)"))
+        self._openInTerminal = State(initialValue: UserDefaults.standard
+            .bool(forKey: RunCommandSettings.terminalKey(for: account.id)))
     }
 
     var body: some View {

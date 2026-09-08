@@ -134,4 +134,83 @@ final class AccountStoreTests: XCTestCase {
         XCTAssertEqual(store2.accounts.count, 1)
         XCTAssertEqual(store2.accounts.first?.name, "Persistent")
     }
+    // MARK: - Saved run commands
+
+    /// A saved command is keyed by `Account.id`, so a deleted account's
+    /// command can never be reached again. Leaving it behind means the key
+    /// outlives every account that could read it.
+    func testRemovingAnAccountDropsItsSavedCommand() {
+        let account = Account(
+            id: UUID(),
+            name: "Test Account",
+            email: nil,
+            chromeProfilePath: "Profile 1",
+            chromeProfileName: nil,
+            orgId: "org-123",
+            plan: .pro,
+            lastSynced: nil,
+            status: .active,
+            source: .browser
+        )
+        store.addAccount(account)
+        defaults.set("claude -p ping", forKey: RunCommandSettings.commandKey(for: account.id))
+        defaults.set(true, forKey: RunCommandSettings.terminalKey(for: account.id))
+
+        store.removeAccount(id: account.id)
+
+        XCTAssertNil(defaults.string(forKey: RunCommandSettings.commandKey(for: account.id)))
+        XCTAssertNil(defaults.object(forKey: RunCommandSettings.terminalKey(for: account.id)))
+    }
+
+    /// Keys left behind by earlier versions, or by a delete that predates the
+    /// cleanup above. Loading the store is the one moment that knows the full
+    /// set of live ids, so it is where they go — and a live account's own
+    /// command must survive it.
+    func testLoadingTheStorePrunesCommandsOfAccountsThatAreGone() {
+        let live = Account(
+            id: UUID(),
+            name: "Live",
+            email: nil,
+            chromeProfilePath: "Profile 1",
+            chromeProfileName: nil,
+            orgId: "org-123",
+            plan: .pro,
+            lastSynced: nil,
+            status: .active,
+            source: .browser
+        )
+        store.addAccount(live)
+        defaults.set("claude -p live", forKey: RunCommandSettings.commandKey(for: live.id))
+
+        let orphan = UUID()
+        defaults.set("claude -p orphan", forKey: RunCommandSettings.commandKey(for: orphan))
+        defaults.set(true, forKey: RunCommandSettings.terminalKey(for: orphan))
+
+        // A second store over the same defaults: what the next launch does.
+        _ = AccountStore(defaults: defaults)
+
+        XCTAssertNil(defaults.string(forKey: RunCommandSettings.commandKey(for: orphan)))
+        XCTAssertNil(defaults.object(forKey: RunCommandSettings.terminalKey(for: orphan)))
+        XCTAssertEqual(
+            defaults.string(forKey: RunCommandSettings.commandKey(for: live.id)),
+            "claude -p live")
+    }
+
+    /// The store's own rule is that unreadable bytes are not an empty store
+    /// (`contract/account-schema.md`). The pruning above reads the decoded
+    /// list to decide what is dead, so on a decode failure it would see zero
+    /// live accounts and delete every saved command the user has — destroying
+    /// exactly the data the quarantine exists to protect.
+    func testUnreadableStoreDoesNotPruneAnyCommand() {
+        let survivor = UUID()
+        defaults.set("claude -p keep-me", forKey: RunCommandSettings.commandKey(for: survivor))
+        defaults.set(Data("not json".utf8), forKey: "claude-dashboard.accounts")
+
+        _ = AccountStore(defaults: defaults)
+
+        XCTAssertEqual(
+            defaults.string(forKey: RunCommandSettings.commandKey(for: survivor)),
+            "claude -p keep-me")
+    }
+
 }

@@ -75,6 +75,7 @@
 		859DE9A5769EBF1487EE17AB /* CommandLogViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82BDA8522FB7218F3456ECCF /* CommandLogViewModelTests.swift */; };
 		85A890C260027761BE3F5188 /* PasteKeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39C1533FA0CC46BC64424B9F /* PasteKeyView.swift */; };
 		861BA6B0F607213E156F515D /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A87EC4F90E188AAAFB660C3 /* AppVersion.swift */; };
+		86A12F08814BB2ED1FFC6013 /* RunCommandSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74CE7503C313DA263B2EC1BA /* RunCommandSettings.swift */; };
 		8842F857F1AFCB1B005A65E3 /* StoreFixture+Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9460FE177070480C505142E8 /* StoreFixture+Account.swift */; };
 		8A05B43134B187D33EE15895 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		8C6A56AA09D21B951F1E7863 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D572159B978911BF3D1EDAC0 /* Assets.xcassets */; };
@@ -215,6 +216,7 @@
 		6C7E115BD84248989BAA883F /* CryptoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoService.swift; sourceTree = "<group>"; };
 		6E80DA8175A0D4CB1C886FE4 /* HelperProcess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperProcess.swift; sourceTree = "<group>"; };
 		73EA27C3A6B23F369D86DDB7 /* DecryptCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecryptCommandTests.swift; sourceTree = "<group>"; };
+		74CE7503C313DA263B2EC1BA /* RunCommandSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunCommandSettings.swift; sourceTree = "<group>"; };
 		75A3660023E6BA291B7932FE /* ClaudeCodeAccountDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeAccountDetectorTests.swift; sourceTree = "<group>"; };
 		786E54BCD656D51F01E86B77 /* AccountCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountCard.swift; sourceTree = "<group>"; };
 		7D2EB0AED06D26591B8C814F /* PlanRefreshContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanRefreshContractTests.swift; sourceTree = "<group>"; };
@@ -426,6 +428,7 @@
 			children = (
 				61909AF36968A9389D9F3A8F /* AccountBadgeColor.swift */,
 				E980125C6DA9C24229B20C59 /* CommandLogModels.swift */,
+				74CE7503C313DA263B2EC1BA /* RunCommandSettings.swift */,
 				B42BC9B8252B2535837CCBF3 /* ScanOutcome.swift */,
 				8454A54E81908E1F697644E4 /* UsageLogModels.swift */,
 			);
@@ -792,6 +795,7 @@
 				5994EEF08661FBAD5564707D /* OverviewChartView.swift in Sources */,
 				85A890C260027761BE3F5188 /* PasteKeyView.swift in Sources */,
 				B110EB4BECFCCD30DE2E8674 /* ProcessTree.swift in Sources */,
+				86A12F08814BB2ED1FFC6013 /* RunCommandSettings.swift in Sources */,
 				E6585C166C57BFBA1B32371D /* RunCommandSheet.swift in Sources */,
 				B135B3215079D52146A04323 /* RunningProcessRegistry.swift in Sources */,
 				E8B57A9781ECFAC79F0D7EBB /* ScanOutcome.swift in Sources */,

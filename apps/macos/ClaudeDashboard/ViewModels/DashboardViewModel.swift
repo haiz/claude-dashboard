@@ -275,7 +275,7 @@ final class DashboardViewModel: ObservableObject {
                     // re-fire until both circles are present again (re-arm below).
                     let acctId = accountStates[index].account.id
                     if Self.shouldRunSavedCommand(for: accountStates[index].usage) {
-                        let cmdKey = "runCommand_\(acctId.uuidString)"
+                        let cmdKey = RunCommandSettings.commandKey(for: acctId)
                         if let cmd = UserDefaults.standard.string(forKey: cmdKey), !cmd.isEmpty,
                            !pingedAccounts.contains(acctId) {
                             pingedAccounts.insert(acctId)
