@@ -262,20 +262,27 @@ struct SetupView: View {
 
             let apiService = UsageAPIService()
             var accounts: [DetectedAccount] = []
-            var duplicateCount = 0
-            var validationFailureCount = 0
+            var skipped: [ScanOutcome] = []
 
             for item in results {
+                let profileLabel = item.profile.path
+
                 guard let sessionKey = item.cookies.sessionKey else {
-                    validationFailureCount += 1
+                    skipped.append(.unreachable(profile: profileLabel))
                     continue
                 }
 
                 // Identity comes from /api/account: the account's own uuid and
-                // email, not guessed from an org name. A failure here is the
-                // same outcome as an expired session.
-                guard let info = try? await apiService.fetchAccount(sessionKey: sessionKey) else {
-                    validationFailureCount += 1
+                // email, not guessed from an org name. A rejected key is a
+                // profile that is signed out; anything else did not complete.
+                let info: AccountInfo
+                do {
+                    info = try await apiService.fetchAccount(sessionKey: sessionKey)
+                } catch UsageAPIError.authExpired {
+                    skipped.append(.sessionRejected(profile: profileLabel))
+                    continue
+                } catch {
+                    skipped.append(.unreachable(profile: profileLabel))
                     continue
                 }
 
@@ -285,7 +292,7 @@ struct SetupView: View {
                 // share one. See contract/cases/org-selection.json.
                 guard let orgId = AccountIdentity.resolveOrgId(
                     lastActiveOrg: item.cookies.orgId, memberships: info.memberships) else {
-                    validationFailureCount += 1
+                    skipped.append(.noChatOrg(profile: profileLabel))
                     continue
                 }
 
@@ -301,7 +308,8 @@ struct SetupView: View {
                     against: viewModel.accountStore.accounts.map(StoredIdentity.init)
                 )
                 if alreadyStored {
-                    duplicateCount += 1
+                    skipped.append(.alreadyAdded(
+                        profile: profileLabel, account: email ?? accountName))
                     continue
                 }
 
@@ -330,15 +338,8 @@ struct SetupView: View {
             await MainActor.run {
                 self.detectedAccounts = accounts
                 self.isScanning = false
-                if accounts.isEmpty && !results.isEmpty {
-                    if validationFailureCount > 0 && duplicateCount == 0 {
-                        self.scanError = "Couldn't validate sessions for the detected \(selectedBrowser.displayName) profiles. Make sure you're signed in to claude.ai and try again."
-                    } else if validationFailureCount > 0 {
-                        self.scanError = "Some accounts are already added; couldn't validate the rest. Make sure you're signed in to claude.ai and try again."
-                    } else {
-                        self.scanError = "All detected accounts are already added."
-                    }
-                }
+                self.scanError = ScanSummary.message(
+                    offered: accounts.count, skipped: skipped)
             }
         }
     }

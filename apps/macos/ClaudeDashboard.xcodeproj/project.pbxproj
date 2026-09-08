@@ -40,6 +40,7 @@
 		4F550FFDA427DD1820FBEF6C /* DedupeContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFD4C1EC6F97C4F34F204E5E /* DedupeContractTests.swift */; };
 		50FE2A805E6B114D3083E58E /* RunningProcessRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66B0B30FC2BF11A754E02CC /* RunningProcessRegistryTests.swift */; };
 		54D5B307F0F74D250E1E46AF /* Browser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCBF1EA7D7222950388A01C /* Browser.swift */; };
+		54DE3955ADEE20964A867146 /* ScanOutcomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB083F464444A9AAEFA0DDE /* ScanOutcomeTests.swift */; };
 		56CDB1C08E0C2EB2BED3CE7D /* AccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 268FCC5C51E46A928607748C /* AccountDetailView.swift */; };
 		5994EEF08661FBAD5564707D /* OverviewChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AA56B8E5252FD397123C6C2 /* OverviewChartView.swift */; };
 		59BBA1121C8E9182A56F468B /* StoreFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18EFF689916F3050F6F7354D /* StoreFixture.swift */; };
@@ -126,6 +127,7 @@
 		E53BC1DBE702E2298D98F974 /* UsageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36CFE6B80C6A187D9A176752 /* UsageBar.swift */; };
 		E54289326B8471DAABA189CF /* ManualKeyInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE57E5139A296611CB7F49C2 /* ManualKeyInputTests.swift */; };
 		E6585C166C57BFBA1B32371D /* RunCommandSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6EE45ADCEABD94EDD78D978 /* RunCommandSheet.swift */; };
+		E8B57A9781ECFAC79F0D7EBB /* ScanOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = B42BC9B8252B2535837CCBF3 /* ScanOutcome.swift */; };
 		E99F26B2AF2EACF7A4B12282 /* ManualKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF55256F6D81B14585D71C9 /* ManualKey.swift */; };
 		EB9BD3D5123C7ED0209085E9 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */; };
 		EF7B63DE0D75895646ECE918 /* CommandLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00229BEACBD8E4DA299944B9 /* CommandLogStoreTests.swift */; };
@@ -192,6 +194,7 @@
 		3F6C06F755D5222731477EC6 /* ProcessTreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessTreeTests.swift; sourceTree = "<group>"; };
 		4178DC5D69C19ECD002EF8A9 /* AccountIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountIdentity.swift; sourceTree = "<group>"; };
 		4AF7DEAC28930337FB1D5772 /* DecryptCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecryptCommand.swift; sourceTree = "<group>"; };
+		4CB083F464444A9AAEFA0DDE /* ScanOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanOutcomeTests.swift; sourceTree = "<group>"; };
 		4EB2623CB6EC20CACFF82236 /* HelperAccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperAccountStore.swift; sourceTree = "<group>"; };
 		52F459D10501056C193989A6 /* MenuBarPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPopover.swift; sourceTree = "<group>"; };
 		53030D91918FBE91B264165C /* UsageCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageCommandTests.swift; sourceTree = "<group>"; };
@@ -235,6 +238,7 @@
 		A81A393416A5618902A5764C /* ClaudeDashboardHelper */ = {isa = PBXFileReference; includeInIndex = 0; path = ClaudeDashboardHelper; sourceTree = BUILT_PRODUCTS_DIR; };
 		AE57E5139A296611CB7F49C2 /* ManualKeyInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualKeyInputTests.swift; sourceTree = "<group>"; };
 		AFD4C1EC6F97C4F34F204E5E /* DedupeContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DedupeContractTests.swift; sourceTree = "<group>"; };
+		B42BC9B8252B2535837CCBF3 /* ScanOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanOutcome.swift; sourceTree = "<group>"; };
 		B4ED0121EB136414664B103B /* BrowserCookieService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserCookieService.swift; sourceTree = "<group>"; };
 		B6EE45ADCEABD94EDD78D978 /* RunCommandSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunCommandSheet.swift; sourceTree = "<group>"; };
 		BA09806794F5E11A193DC9E0 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -339,6 +343,7 @@
 				7D2EB0AED06D26591B8C814F /* PlanRefreshContractTests.swift */,
 				3F6C06F755D5222731477EC6 /* ProcessTreeTests.swift */,
 				C66B0B30FC2BF11A754E02CC /* RunningProcessRegistryTests.swift */,
+				4CB083F464444A9AAEFA0DDE /* ScanOutcomeTests.swift */,
 				9047126E678CDE2BB4637921 /* SessionCandidateTests.swift */,
 				61DBDB15BABBFD4D7ABC3047 /* TerminalLauncherTests.swift */,
 				373E95B92E85447700BA3DEF /* UpdateServiceTests.swift */,
@@ -421,6 +426,7 @@
 			children = (
 				61909AF36968A9389D9F3A8F /* AccountBadgeColor.swift */,
 				E980125C6DA9C24229B20C59 /* CommandLogModels.swift */,
+				B42BC9B8252B2535837CCBF3 /* ScanOutcome.swift */,
 				8454A54E81908E1F697644E4 /* UsageLogModels.swift */,
 			);
 			path = Models;
@@ -671,6 +677,7 @@
 				FD8D11773B4AB3B5B1F02A3B /* PlanRefreshContractTests.swift in Sources */,
 				2AD7F348C0B9F5BC6AB4D450 /* ProcessTreeTests.swift in Sources */,
 				50FE2A805E6B114D3083E58E /* RunningProcessRegistryTests.swift in Sources */,
+				54DE3955ADEE20964A867146 /* ScanOutcomeTests.swift in Sources */,
 				82BEE4E50C037B6E3C0670CE /* SessionCandidateTests.swift in Sources */,
 				59BBA1121C8E9182A56F468B /* StoreFixture.swift in Sources */,
 				4EF45D1F0BDF8870167BD5FE /* TerminalLauncherTests.swift in Sources */,
@@ -787,6 +794,7 @@
 				B110EB4BECFCCD30DE2E8674 /* ProcessTree.swift in Sources */,
 				E6585C166C57BFBA1B32371D /* RunCommandSheet.swift in Sources */,
 				B135B3215079D52146A04323 /* RunningProcessRegistry.swift in Sources */,
+				E8B57A9781ECFAC79F0D7EBB /* ScanOutcome.swift in Sources */,
 				F108A126F5779799A8FF1DB6 /* SessionCandidate.swift in Sources */,
 				EB9BD3D5123C7ED0209085E9 /* SettingsView.swift in Sources */,
 				211F98E0C0F99203EF129492 /* SetupView.swift in Sources */,
