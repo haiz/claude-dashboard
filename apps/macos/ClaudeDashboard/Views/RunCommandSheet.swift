@@ -17,17 +17,19 @@ struct RunCommandSheet: View {
 
     private let classifier = CommandClassifier(resolver: ShellCommandResolver())
 
-    private var commandKey: String { "runCommand_\(account.id.uuidString)" }
-    private var terminalKey: String { "runCommandTerminal_\(account.id.uuidString)" }
+    private var commandKey: String { RunCommandSettings.commandKey(for: account.id) }
+    private var terminalKey: String { RunCommandSettings.terminalKey(for: account.id) }
 
     init(account: Account, isPresented: Binding<Bool>, runner: CommandRunner, onRefresh: @escaping () -> Void) {
         self.account = account
         self._isPresented = isPresented
         self.runner = runner
         self.onRefresh = onRefresh
-        let saved = UserDefaults.standard.string(forKey: "runCommand_\(account.id.uuidString)") ?? ""
+        let saved = AppDefaults.shared
+            .string(forKey: RunCommandSettings.commandKey(for: account.id)) ?? ""
         self._command = State(initialValue: saved)
-        self._openInTerminal = State(initialValue: UserDefaults.standard.bool(forKey: "runCommandTerminal_\(account.id.uuidString)"))
+        self._openInTerminal = State(initialValue: AppDefaults.shared
+            .bool(forKey: RunCommandSettings.terminalKey(for: account.id)))
     }
 
     var body: some View {
@@ -105,8 +107,8 @@ struct RunCommandSheet: View {
     }
 
     private func run() {
-        UserDefaults.standard.set(command, forKey: commandKey)
-        UserDefaults.standard.set(openInTerminal, forKey: terminalKey)
+        AppDefaults.shared.set(command, forKey: commandKey)
+        AppDefaults.shared.set(openInTerminal, forKey: terminalKey)
         let cmd = command
         let acct = account.id
         let runner = self.runner

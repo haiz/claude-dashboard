@@ -82,6 +82,12 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 - **Deployment target:** macOS 13.0, Swift 5.0
 - **XcodeGen** manages the `.xcodeproj` from `project.yml` — edit `project.yml` for target/build setting changes, then run `xcodegen generate` from `apps/macos/`
 - Tests use `MockURLProtocol` for network mocking and isolated `UserDefaults` suites
+- **App code reads `AppDefaults.shared`, never `UserDefaults.standard`** — the
+  `ClaudeDashboardTests` scheme is hosted by `ClaudeDashboard.app`, so every
+  `xcodebuild test` launches the real app and runs its startup writes.
+  `AppDefaults` diverts those to a suite of its own under XCTest (or to
+  `CLAUDE_DASHBOARD_DEFAULTS_SUITE`, the variable the helper CLI reads). A new
+  `UserDefaults.standard` in the app target escapes that guard silently
 - **ISO8601 date parsing** — Custom decoder handles both with and without fractional seconds (`.SSS`); this is a known API inconsistency
 - **`contract/` is the source of truth for cross-platform behaviour** — plan detection, the
   Fable window, burn-rate thresholds, the helper CLI surface, and the account schema. The

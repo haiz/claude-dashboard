@@ -50,7 +50,7 @@ struct SetupView: View {
                     .pickerStyle(.menu)
                     .frame(maxWidth: 240)
                     .onChange(of: selectedBrowser) { newValue in
-                        UserDefaults.standard.set(newValue.rawValue, forKey: Self.preferredBrowserKey)
+                        AppDefaults.shared.set(newValue.rawValue, forKey: Self.preferredBrowserKey)
                         scan()
                     }
                 }
@@ -131,7 +131,7 @@ struct SetupView: View {
 
     /// Browser đã nhớ từ lần trước, nếu hợp lệ và vẫn còn cài. nil nếu chưa từng chọn.
     private func savedPreferredBrowser() -> Browser? {
-        guard let raw = UserDefaults.standard.string(forKey: Self.preferredBrowserKey),
+        guard let raw = AppDefaults.shared.string(forKey: Self.preferredBrowserKey),
               let saved = Browser(rawValue: raw),
               installedBrowsers.contains(saved) else { return nil }
         return saved
@@ -139,7 +139,7 @@ struct SetupView: View {
 
     /// Người dùng chọn browser từ màn chooser: nhớ lựa chọn rồi bắt đầu quét.
     private func chooseBrowser(_ browser: Browser) {
-        UserDefaults.standard.set(browser.rawValue, forKey: Self.preferredBrowserKey)
+        AppDefaults.shared.set(browser.rawValue, forKey: Self.preferredBrowserKey)
         awaitingBrowserChoice = false
         // Gán selectedBrowser có thể kích hoạt Picker.onChange gọi scan() thêm một lần;
         // scanTask?.cancel() trong scan() đã xử lý trường hợp trùng này.
@@ -262,20 +262,27 @@ struct SetupView: View {
 
             let apiService = UsageAPIService()
             var accounts: [DetectedAccount] = []
-            var duplicateCount = 0
-            var validationFailureCount = 0
+            var skipped: [ScanOutcome] = []
 
             for item in results {
+                let profileLabel = item.profile.path
+
                 guard let sessionKey = item.cookies.sessionKey else {
-                    validationFailureCount += 1
+                    skipped.append(.unreachable(profile: profileLabel))
                     continue
                 }
 
                 // Identity comes from /api/account: the account's own uuid and
-                // email, not guessed from an org name. A failure here is the
-                // same outcome as an expired session.
-                guard let info = try? await apiService.fetchAccount(sessionKey: sessionKey) else {
-                    validationFailureCount += 1
+                // email, not guessed from an org name. A rejected key is a
+                // profile that is signed out; anything else did not complete.
+                let info: AccountInfo
+                do {
+                    info = try await apiService.fetchAccount(sessionKey: sessionKey)
+                } catch UsageAPIError.authExpired {
+                    skipped.append(.sessionRejected(profile: profileLabel))
+                    continue
+                } catch {
+                    skipped.append(.unreachable(profile: profileLabel))
                     continue
                 }
 
@@ -285,7 +292,7 @@ struct SetupView: View {
                 // share one. See contract/cases/org-selection.json.
                 guard let orgId = AccountIdentity.resolveOrgId(
                     lastActiveOrg: item.cookies.orgId, memberships: info.memberships) else {
-                    validationFailureCount += 1
+                    skipped.append(.noChatOrg(profile: profileLabel))
                     continue
                 }
 
@@ -301,7 +308,8 @@ struct SetupView: View {
                     against: viewModel.accountStore.accounts.map(StoredIdentity.init)
                 )
                 if alreadyStored {
-                    duplicateCount += 1
+                    skipped.append(.alreadyAdded(
+                        profile: profileLabel, account: email ?? accountName))
                     continue
                 }
 
@@ -330,15 +338,8 @@ struct SetupView: View {
             await MainActor.run {
                 self.detectedAccounts = accounts
                 self.isScanning = false
-                if accounts.isEmpty && !results.isEmpty {
-                    if validationFailureCount > 0 && duplicateCount == 0 {
-                        self.scanError = "Couldn't validate sessions for the detected \(selectedBrowser.displayName) profiles. Make sure you're signed in to claude.ai and try again."
-                    } else if validationFailureCount > 0 {
-                        self.scanError = "Some accounts are already added; couldn't validate the rest. Make sure you're signed in to claude.ai and try again."
-                    } else {
-                        self.scanError = "All detected accounts are already added."
-                    }
-                }
+                self.scanError = ScanSummary.message(
+                    offered: accounts.count, skipped: skipped)
             }
         }
     }

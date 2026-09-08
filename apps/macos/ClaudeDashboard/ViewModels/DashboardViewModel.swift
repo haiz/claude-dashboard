@@ -64,10 +64,10 @@ final class DashboardViewModel: ObservableObject {
     @Published var activeClaudeCodeEmail: String?
 
     @Published var autoRefreshEnabled: Bool {
-        didSet { UserDefaults.standard.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
+        didSet { AppDefaults.shared.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
     }
     @Published var autoRefreshMinutes: Int {
-        didSet { UserDefaults.standard.set(autoRefreshMinutes, forKey: "autoRefreshMinutes"); scheduleAutoRefresh() }
+        didSet { AppDefaults.shared.set(autoRefreshMinutes, forKey: "autoRefreshMinutes"); scheduleAutoRefresh() }
     }
 
     enum NavigationDestination: Equatable {
@@ -109,9 +109,9 @@ final class DashboardViewModel: ObservableObject {
         cookieProvider: @escaping (String, Browser) -> ChromeCookieResult
             = BrowserCookieService.extractCookies(for:browser:)
     ) {
-        self.autoRefreshEnabled = UserDefaults.standard.object(forKey: "autoRefreshEnabled") as? Bool ?? true
+        self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.autoRefreshMinutes = {
-            let val = UserDefaults.standard.integer(forKey: "autoRefreshMinutes")
+            let val = AppDefaults.shared.integer(forKey: "autoRefreshMinutes")
             return val > 0 ? val : 5
         }()
         self.accountStore = accountStore
@@ -275,8 +275,8 @@ final class DashboardViewModel: ObservableObject {
                     // re-fire until both circles are present again (re-arm below).
                     let acctId = accountStates[index].account.id
                     if Self.shouldRunSavedCommand(for: accountStates[index].usage) {
-                        let cmdKey = "runCommand_\(acctId.uuidString)"
-                        if let cmd = UserDefaults.standard.string(forKey: cmdKey), !cmd.isEmpty,
+                        let cmdKey = RunCommandSettings.commandKey(for: acctId)
+                        if let cmd = AppDefaults.shared.string(forKey: cmdKey), !cmd.isEmpty,
                            !pingedAccounts.contains(acctId) {
                             pingedAccounts.insert(acctId)
                             autoCommands.append((acctId, cmd))
