@@ -16,8 +16,15 @@ export default class ClaudeDashboardExtension extends Extension {
             onPrefs: () => this.openPreferences(),
             // There is no process to quit — the indicator lives inside the
             // Shell — so the honest analogue of the macOS Quit item is to
-            // disable the extension.
-            onQuit: () => Main.extensionManager.disableExtension(this.uuid),
+            // disable the extension. PopupBaseMenuItem.activate() emits
+            // 'activate' and then calls this._getTopMenu().itemActivated(…)
+            // afterwards, so disabling synchronously here would destroy the
+            // indicator, menu and item mid-emission. Defer it to idle so the
+            // emission finishes first.
+            onQuit: () => GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                Main.extensionManager.disableExtension(this.uuid);
+                return GLib.SOURCE_REMOVE;
+            }),
         });
         Main.panel.addToStatusArea(this.uuid, this._indicator);
 

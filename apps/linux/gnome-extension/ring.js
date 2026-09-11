@@ -15,6 +15,14 @@ import {
 const TRACK_ALPHA = 0.2;
 const COUNTDOWN_TRACK_ALPHA = 0.08;
 
+// get_foreground_color()'s components are uint8 (0-255) through Mutter
+// 46/47, which is why this divides by 255 — this has only been run on
+// Mutter 46. metadata.json's shell-version is deliberately capped at "47"
+// (see the review's I8) because Mutter 48 moved Clutter.Color components to
+// floats already in 0-1; dividing those by 255 again would render every ring
+// track black. Widening shell-version to include "48" requires verifying
+// which representation this call returns there first, and branching here if
+// it changed.
 function foreground(actor) {
     const c = actor.get_theme_node().get_foreground_color();
     return {r: c.red / 255, g: c.green / 255, b: c.blue / 255};

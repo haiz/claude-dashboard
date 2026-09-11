@@ -69,7 +69,7 @@ The same one-liner installs the terminal CLI into `~/.local/bin` on Linux
 `dnf install jq`. Browser scanning (`sync`) additionally needs `secret-tool`
 from `libsecret-tools`.
 
-On GNOME 45 or later, a GNOME Shell panel indicator is also available: an
+On GNOME 45, 46, or 47, a GNOME Shell panel indicator is also available: an
 icon in the top bar showing your highest utilization across accounts, with a
 popup listing each account's email, plan, and ring gauges for the 5h, 7d, and
 (where present) Fable windows — the same countdown-ring and burn-rate-animal
@@ -90,6 +90,19 @@ log out and back in, since the session can't be restarted in place. The
 extension drives the existing `claude-dashboard-helper` binary — the same one
 the CLI uses — so account and `sync` state is shared between the extension
 and the CLI.
+
+Two GSettings keys under `org.gnome.shell.extensions.claude-dashboard`
+configure it — edit them from the extension's own Preferences dialog (the
+gear icon in the popup, or `gnome-extensions prefs claude-dashboard@haiz.github.io`),
+or with `gsettings`:
+
+- `refresh-interval` — seconds between helper calls, default 120. Takes
+  effect immediately; no need to disable and re-enable the extension.
+- `helper-path` — an escape hatch, blank by default. The extension looks for
+  `claude-dashboard-helper` on `PATH` and then at `~/.local/bin/claude-dashboard-helper`
+  (where the one-liner above installs it); set this key explicitly only if
+  the helper lives somewhere neither of those finds it, which can happen in
+  a Wayland/systemd user session that doesn't inherit a login shell's `PATH`.
 
 Known limitations on Linux:
 

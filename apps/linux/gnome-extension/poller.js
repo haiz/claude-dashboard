@@ -51,6 +51,7 @@ export const Poller = GObject.registerClass({
         super._init();
         this._settings = settings;
         this._timeoutId = 0;
+        this._settingsChangedId = 0;
         this._cancellable = null;
         // One failed fetch must not blank a row that was fine a minute ago, so
         // the last good payload per account id is kept and reused.
@@ -66,17 +67,37 @@ export const Poller = GObject.registerClass({
             if (found)
                 return found;
         }
+        // The README's Linux one-liner installs the helper to ~/.local/bin,
+        // which a Wayland/systemd user session does not reliably carry on
+        // PATH. Probe it directly before giving up — this is the same path
+        // the `helper-path` setting exists to override.
+        const fallback = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'claude-dashboard-helper']);
+        if (GLib.file_test(fallback, GLib.FileTest.EXISTS | GLib.FileTest.IS_EXECUTABLE))
+            return fallback;
         return '';
     }
 
     start() {
-        // A second start() without an intervening stop() must not orphan the
-        // previous timeout source.
+        this.refreshNow();
+        // _scheduleTimeout() guards against orphaning a previous timeout
+        // source, so a second start() without an intervening stop() is safe.
+        this._scheduleTimeout();
+
+        // Changing `refresh-interval` in prefs must take effect immediately,
+        // not only after the extension is disabled and re-enabled — on
+        // Wayland the user cannot restart the Shell to find out otherwise.
+        if (!this._settingsChangedId && this._settings) {
+            this._settingsChangedId = this._settings.connect('changed::refresh-interval', () => {
+                this._scheduleTimeout();
+            });
+        }
+    }
+
+    _scheduleTimeout() {
         if (this._timeoutId) {
             GLib.Source.remove(this._timeoutId);
             this._timeoutId = 0;
         }
-        this.refreshNow();
         const interval = this._settings?.get_int('refresh-interval') ?? 120;
         this._timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, interval, () => {
             this.refreshNow();
@@ -88,6 +109,10 @@ export const Poller = GObject.registerClass({
         if (this._timeoutId) {
             GLib.Source.remove(this._timeoutId);
             this._timeoutId = 0;
+        }
+        if (this._settingsChangedId) {
+            this._settings?.disconnect(this._settingsChangedId);
+            this._settingsChangedId = 0;
         }
         this._cancel();
     }
@@ -137,12 +162,19 @@ export const Poller = GObject.registerClass({
             return;
         }
 
+        // A single account's fetch throwing (Gio.Subprocess.new failing, or
+        // communicate_utf8_finish rejecting) must not fail Promise.all and
+        // take every other row down with it — the design's error table
+        // requires a failed `usage` call to leave other rows drawing.
         const settled = await Promise.all(accounts.map(async account => {
             if (!account.orgId || !account.sessionKey)
                 return [account.id, null];
-            const res = await runAsync(usageArgv(helper, account.orgId, account.sessionKey), cancellable);
-            const payload = res.ok ? parseUsagePayload(res.stdout) : null;
-            return [account.id, payload];
+            try {
+                const res = await runAsync(usageArgv(helper, account.orgId, account.sessionKey), cancellable);
+                return [account.id, res.ok ? parseUsagePayload(res.stdout) : null];
+            } catch {
+                return [account.id, null];
+            }
         }));
 
         if (cancellable.is_cancelled())

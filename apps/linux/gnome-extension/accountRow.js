@@ -13,6 +13,9 @@ const WindowColumn = GObject.registerClass(
 class WindowColumn extends St.BoxLayout {
     _init(label, totalSeconds) {
         super._init({vertical: true, x_align: Clutter.ActorAlign.CENTER});
+        // Ports UsageBar.swift's VStack(spacing: 5) — the label sits above
+        // the ring row with a gap, not flush against it.
+        this.set_style(`spacing: ${METRICS.ringGap}px;`);
         this._totalSeconds = totalSeconds;
 
         this.add_child(new St.Label({
@@ -21,7 +24,10 @@ class WindowColumn extends St.BoxLayout {
             x_align: Clutter.ActorAlign.CENTER,
         }));
 
+        // Ports UsageBar.swift's HStack(spacing: isCompact ? 5 : 8) — this
+        // extension is always the compact layout, so 5, i.e. METRICS.ringGap.
         const gauges = new St.BoxLayout({y_align: Clutter.ActorAlign.END});
+        gauges.set_style(`spacing: ${METRICS.ringGap}px;`);
         this._ring = new UsageRing(METRICS.largeDiameter, METRICS.largeLineWidth);
 
         // macOS sets the number at diameter x 0.33 and the percent sign at
@@ -122,7 +128,9 @@ class AccountRow extends St.BoxLayout {
 
     update(row, tracker, nowMs) {
         this._name.text = row.email ?? row.name;
-        this._plan.text = planLabel(row.plan);
+        // The wire value (contract/account-schema.md: "Pro", "Max 5x",
+        // "Max 20x", "Max") is already the display string — no mapping needed.
+        this._plan.text = row.plan;
 
         if (row.status === 'expired') {
             this._gauges.hide();
@@ -163,13 +171,3 @@ class AccountRow extends St.BoxLayout {
         }
     }
 });
-
-function planLabel(plan) {
-    switch (plan) {
-    case 'pro': return 'Pro';
-    case 'max5x': return 'Max 5x';
-    case 'max20x': return 'Max 20x';
-    case 'max200': return 'Max 200';
-    default: return 'Max';
-    }
-}

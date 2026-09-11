@@ -29,18 +29,15 @@
 .claude-window-label {
     font-size: 10px;
     font-family: monospace;
-    color: rgba(255, 255, 255, 0.65);
 }
 
 .claude-reset-label {
     font-size: 8px;
     font-family: monospace;
-    color: rgba(255, 255, 255, 0.65);
 }
 
 .claude-status-text {
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.75);
 }
 
 .claude-gauges {

@@ -26,6 +26,9 @@ xcodebuild test -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDash
 
 # Run a single test method
 xcodebuild test -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDashboardTests -only-testing:ClaudeDashboardTests/UsageDataTests/testDecodeUsageData
+
+# Run the GNOME Shell extension's test suite (apps/linux/gnome-extension/)
+cd apps/linux/gnome-extension && CLAUDE_DASHBOARD_REPO="$(git rev-parse --show-toplevel)" gjs -m tests/run.js
 ```
 
 No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Security, CommonCrypto, SQLite3).
@@ -74,6 +77,14 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   windows, plus an optional Fable window. Fable has no top-level field: it is derived from
   the `limits` array entry whose `scope.model.display_name` is `"Fable"`, reading `percent`
   rather than `utilization`. `seven_day_sonnet` is a removed field the decoder ignores.
+
+### Linux
+- **apps/linux/gnome-extension/** — a GNOME Shell panel indicator (ESM, run under `gjs`)
+  driving the same `claude-dashboard-helper` binary the CLI uses. `lib/` ports the
+  macOS ring-gauge geometry, colors, and burn-rate math and imports nothing from
+  `resource:///org/gnome/shell` or `gi://` (`lib/model.js`→`lib/burnRate.js`-style
+  intra-`lib/` imports excepted), so it runs standalone under
+  `apps/linux/gnome-extension/tests/run.js`.
 
 ## Key Technical Details
 

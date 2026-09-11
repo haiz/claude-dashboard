@@ -1,0 +1,13 @@
+[
+  {
+    "name": "the real decrypt output — six keys, no id, a Pro account",
+    "account": {
+      "email": "jordan.casey@example.com",
+      "name": "Jordan Casey",
+      "orgId": "org-9f2c1a4b",
+      "plan": "Pro",
+      "sessionKey": "sk-ant-sid01-EXAMPLE-REDACTED-0000000000000000",
+      "status": "active"
+    }
+  }
+]

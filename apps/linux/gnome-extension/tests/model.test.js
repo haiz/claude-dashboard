@@ -1,6 +1,7 @@
 import GLib from 'gi://GLib';
 import {test, assertEqual} from './harness.js';
 import {parseUsage, buildRows} from '../lib/model.js';
+import {parseAccounts} from '../lib/helper.js';
 
 const REPO = GLib.getenv('CLAUDE_DASHBOARD_REPO') ?? '../../..';
 
@@ -51,4 +52,38 @@ test('an account with no usage keeps its row and reports the failure', () => {
     const rows = buildRows([{id: 'a', name: 'a', plan: 'pro', status: 'active'}], {}, now);
     assertEqual(rows.length, 1);
     assertEqual(rows[0].windows, null);
+});
+
+// Regression for the whole-branch review's CRITICAL 1: every account object
+// up to this point in the suite is a hand-rolled literal that already
+// carries a convenient "id" the real helper never emits. Piping two real,
+// id-less decrypt-shaped accounts through parseAccounts and into buildRows
+// is what actually exercises the identity derivation end to end — with the
+// old bug (account.id read directly off the helper's output) both accounts
+// resolve to the same undefined id, this test fails loudly: the two rows
+// collapse onto one usageByAccountId entry and one account's utilisation
+// leaks onto the other's row.
+test('two distinct accounts keep separate identities end-to-end through parseAccounts and buildRows', () => {
+    const now = Date.parse('2026-09-11T12:00:00Z');
+    const decrypted = JSON.stringify([
+        {name: 'Alex Rivera', email: 'alex@example.com', orgId: 'org-a', sessionKey: 'sk-a', plan: 'Pro', status: 'active'},
+        {name: 'Bailey Chen', email: 'bailey@example.com', orgId: 'org-b', sessionKey: 'sk-b', plan: 'Max', status: 'active'},
+    ]);
+    const accounts = parseAccounts(decrypted);
+    assertEqual(accounts.length, 2);
+    assertEqual(accounts[0].id === accounts[1].id, false);
+
+    const usageByAccountId = {
+        [accounts[0].id]: {five_hour: {utilization: 10, resets_at: null}, seven_day: {utilization: 0, resets_at: null}},
+        [accounts[1].id]: {five_hour: {utilization: 90, resets_at: null}, seven_day: {utilization: 0, resets_at: null}},
+    };
+    const rows = buildRows(accounts, usageByAccountId, now);
+    assertEqual(rows.length, 2);
+
+    const alex = rows.find(r => r.email === 'alex@example.com');
+    const bailey = rows.find(r => r.email === 'bailey@example.com');
+    assertEqual(alex.windows.fiveHour.utilization, 10);
+    assertEqual(bailey.windows.fiveHour.utilization, 90);
+    assertEqual(alex.plan, 'Pro');
+    assertEqual(bailey.plan, 'Max');
 });

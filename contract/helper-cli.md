@@ -66,6 +66,19 @@ synthesized `Encodable` calls `encodeIfPresent` for `Optional` stored
 properties, which omits the key entirely — while `apps/linux/helper`'s
 `BTreeMap` inserts every key unconditionally and needs nothing.
 
+**This projection carries no identity.** There is no `id`, and none of the
+six fields is documented above as an identity — `orgId` in particular is an
+organisation identifier, not an account one (see the sibling `README.md`'s
+"Account identity" section: every member of a company org shares one
+`orgId`). A consumer that needs to key anything per-account
+(a map, a UI row, a history entry) must derive its own identity from these
+fields; it does not get one for free. `contract/cases/decrypt-projection.json`
+pins the exact shape of one literal projection object (six keys, nothing
+more, `plan: "Pro"`) for consumers to test their own derivation against,
+precisely because every other test fixture in a consumer's suite tends to be
+a hand-rolled object that already carries a convenient `id` the real helper
+never produces.
+
 **Inclusion filter** (the `compactMap` guard in `DecryptCommand.run`): an
 account is included only when `account.status == .active` **and**
 `account.orgId != nil`. Note that `sessionKey` is *not* part of this filter —
