@@ -10,8 +10,17 @@ export function usageArgv(helperPath, orgId, sessionKey) {
     return [helperPath, 'usage', orgId, sessionKey];
 }
 
-export function isNoAccountsMessage(stdout) {
-    return stdout.trim().startsWith('No accounts found');
+// contract/helper-cli.md: decrypt's failure paths all write to stderr and
+// exit 1, so these are stderr messages, not stdout. Both mean "nothing to
+// show", as distinct from a real failure.
+const EMPTY_STORE_MESSAGES = [
+    'No accounts found',
+    'No active accounts with session keys found',
+];
+
+export function isNoAccountsMessage(stderr) {
+    const trimmed = (stderr ?? '').trim();
+    return EMPTY_STORE_MESSAGES.some(m => trimmed.startsWith(m));
 }
 
 export function parseAccounts(stdout) {

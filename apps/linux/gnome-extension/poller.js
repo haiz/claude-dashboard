@@ -16,12 +16,26 @@ function runAsync(argv, cancellable) {
             reject(e);
             return;
         }
+
+        // Cancelling communicate_utf8_async cancels the call, not the child.
+        // Without this the helper keeps running orphaned after stop().
+        let cancelId = 0;
+        if (cancellable)
+            cancelId = cancellable.connect(() => proc.force_exit());
+
         proc.communicate_utf8_async(null, cancellable, (source, res) => {
             try {
-                const [, stdout] = source.communicate_utf8_finish(res);
-                resolve({ok: source.get_successful(), stdout: stdout ?? ''});
+                const [, stdout, stderr] = source.communicate_utf8_finish(res);
+                resolve({
+                    ok: source.get_successful(),
+                    stdout: stdout ?? '',
+                    stderr: stderr ?? '',
+                });
             } catch (e) {
                 reject(e);
+            } finally {
+                if (cancelId > 0)
+                    cancellable.disconnect(cancelId);
             }
         });
     });
@@ -56,6 +70,12 @@ export const Poller = GObject.registerClass({
     }
 
     start() {
+        // A second start() without an intervening stop() must not orphan the
+        // previous timeout source.
+        if (this._timeoutId) {
+            GLib.Source.remove(this._timeoutId);
+            this._timeoutId = 0;
+        }
         this.refreshNow();
         const interval = this._settings?.get_int('refresh-interval') ?? 120;
         this._timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, interval, () => {
@@ -101,8 +121,13 @@ export const Poller = GObject.registerClass({
         if (cancellable.is_cancelled())
             return;
 
-        if (isNoAccountsMessage(decrypted.stdout)) {
+        if (isNoAccountsMessage(decrypted.stderr)) {
             this.emit('updated', []);
+            return;
+        }
+        if (!decrypted.ok) {
+            // A real decrypt failure must not masquerade as an empty store.
+            this.emit('failed', 'decrypt-failed');
             return;
         }
 
