@@ -30,7 +30,8 @@ A macOS menu bar app that monitors your Claude.ai token usage across multiple ac
 ```
 apps/macos/       SwiftUI menu bar app, tests, and the Swift helper binary
 apps/linux/       Rust workspace: the shared core plus the Linux helper binary.
-                  Drives the same bash CLI; no GUI yet.
+                  Drives the same bash CLI. apps/linux/gnome-extension/ is a
+                  GNOME Shell panel indicator built on the same helper.
 contract/         Behaviour shared across platforms: docs plus executable cases
 cli/              claude-dashboard-cli — the bash terminal dashboard
 scripts/          release, version sync
@@ -64,10 +65,31 @@ curl -fsSL https://raw.githubusercontent.com/haiz/claude-dashboard/main/install.
 ```
 
 The same one-liner installs the terminal CLI into `~/.local/bin` on Linux
-(x86_64 and aarch64). There is no Linux GUI yet — the menu bar app is macOS
-only. `jq` is required; install it with `apt install jq` or `dnf install jq`.
-Browser scanning (`sync`) additionally needs `secret-tool` from
-`libsecret-tools`.
+(x86_64 and aarch64). `jq` is required; install it with `apt install jq` or
+`dnf install jq`. Browser scanning (`sync`) additionally needs `secret-tool`
+from `libsecret-tools`.
+
+On GNOME 45 or later, a GNOME Shell panel indicator is also available: an
+icon in the top bar showing your highest utilization across accounts, with a
+popup listing each account's email, plan, and ring gauges for the 5h, 7d, and
+(where present) Fable windows — the same countdown-ring and burn-rate-animal
+gauges as the macOS menu bar popover. It's a panel indicator and popup only;
+the fuller macOS surfaces (the dashboard window, historical charts, Command
+Log, Help sheet, setup wizard, and auto-update) remain macOS-only. Install
+and enable it with:
+
+```bash
+apps/linux/gnome-extension/install.sh
+gnome-extensions enable claude-dashboard@haiz.github.io
+```
+
+`install.sh` symlinks the extension source into
+`~/.local/share/gnome-shell/extensions/` and compiles its settings schema. On
+Wayland, a newly installed extension is only picked up by the Shell after you
+log out and back in, since the session can't be restarted in place. The
+extension drives the existing `claude-dashboard-helper` binary — the same one
+the CLI uses — so account and `sync` state is shared between the extension
+and the CLI.
 
 Known limitations on Linux:
 
@@ -89,7 +111,7 @@ Known limitations on Linux:
 
 ## Terminal CLI
 
-A terminal dashboard is available on both platforms. On macOS, install it via the `claude-dashboard-cli` Homebrew formula — it reuses the same account storage as the menu bar app, so after `sync`, every account shows up in both the GUI and the terminal. On Linux, install it with the one-liner above instead; there is no menu bar app to share storage with, since the GUI is macOS only.
+A terminal dashboard is available on both platforms. On macOS, install it via the `claude-dashboard-cli` Homebrew formula — it reuses the same account storage as the menu bar app, so after `sync`, every account shows up in both the GUI and the terminal. On Linux, install it with the one-liner above instead — it reuses the same account storage as the GNOME panel extension described in the Linux install section above, so every account shows up in both.
 
 ![CLI Dashboard](docs/screenshot/cli.png)
 
@@ -135,14 +157,15 @@ The `resets` column shows when each window resets (local time). Progress bars tr
 
 - Re-run `claude-dashboard-cli sync` whenever you log into a new Claude account in a supported browser, or after a session expires.
 - **macOS:** To manage accounts (add, delete, re-sync), open the menu bar app — both share the same storage.
-- **Linux:** There is no menu bar app. Re-run `claude-dashboard-cli sync` to rescan browsers, or — when no browser is available — add or repair one account by piping a session key to `claude-dashboard-helper add-key` on stdin, e.g. `echo "$SESSION_KEY" | claude-dashboard-helper add-key`.
+- **Linux:** On GNOME 45+, the panel extension (see the Linux install section above) shares the same account storage and has its own Sync button. Otherwise, re-run `claude-dashboard-cli sync` to rescan browsers, or — when no browser is available — add or repair one account by piping a session key to `claude-dashboard-helper add-key` on stdin, e.g. `echo "$SESSION_KEY" | claude-dashboard-helper add-key`.
 - Press `Ctrl+C` to quit the live dashboard.
 
 ## Requirements
 
 - **macOS** 13.0 (Ventura) or later, for the menu bar app and the CLI
-- **Linux** x86_64 or aarch64, for the CLI only — the binaries are statically
-  linked, so there is no distribution or glibc floor
+- **Linux** x86_64 or aarch64, for the CLI — the binaries are statically
+  linked, so there is no distribution or glibc floor. The GNOME panel
+  extension additionally requires GNOME Shell 45 or later.
 - One of Google Chrome, Arc, Brave, or Microsoft Edge (for automatic session key
   extraction)
 
