@@ -3,6 +3,7 @@ import {
     METRICS, START_ANGLE, TAU, fillFraction, progressArc, segmentCountFor,
     gapFraction, segmentFraction, segmentRange, countdownSegments, toAngle,
     percentFontSize, percentSignFontSize, countdownFontSize,
+    ringRadius, ringCenter,
 } from '../lib/geometry.js';
 
 test('the compact metrics match the macOS popover', () => {
@@ -78,4 +79,18 @@ test('derived font sizes follow the diameter', () => {
 test('a fraction maps to an angle measured from twelve o_clock', () => {
     assertClose(toAngle(0), START_ANGLE, 1e-12);
     assertClose(toAngle(0.5), START_ANGLE + Math.PI, 1e-12);
+});
+
+test('the ring radius insets by half the line width so the stroke stays in its box', () => {
+    // A Cairo stroke straddles the path, so the band's outer edge lands
+    // exactly on the box edge only when the radius is inset by half the width.
+    const d = METRICS.largeDiameter, lw = METRICS.largeLineWidth;
+    assertClose(ringRadius(d, lw) + lw / 2, d / 2, 1e-12, 'outer edge');
+    assertEqual(ringRadius(52, 6), 23);
+    assertEqual(ringRadius(34, 4), 15);
+});
+
+test('the ring centre is the middle of its box', () => {
+    assertEqual(ringCenter(52), 26);
+    assertEqual(ringCenter(34), 17);
 });

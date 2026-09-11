@@ -77,6 +77,16 @@ export function toAngle(fraction) {
     return START_ANGLE + fraction * TAU;
 }
 
+// A Cairo stroke straddles the path, so the ring's radius is inset by half
+// the line width to keep the drawn band inside its own box.
+export function ringRadius(diameter, lineWidth) {
+    return (diameter - lineWidth) / 2;
+}
+
+export function ringCenter(diameter) {
+    return diameter / 2;
+}
+
 export function percentFontSize(diameter) {
     return diameter * 0.33;
 }

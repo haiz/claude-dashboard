@@ -9,7 +9,7 @@ import St from 'gi://St';
 import {usageColor, countdownColor} from './lib/colors.js';
 import {
     METRICS, TAU, progressArc, countdownSegments, segmentCountFor, segmentRange,
-    toAngle,
+    toAngle, ringRadius, ringCenter,
 } from './lib/geometry.js';
 
 const TRACK_ALPHA = 0.2;
@@ -42,8 +42,8 @@ class UsageRing extends St.DrawingArea {
     _repaint() {
         const cr = this.get_context();
         const d = this._diameter;
-        const radius = (d - this._lineWidth) / 2;
-        const cx = d / 2, cy = d / 2;
+        const radius = ringRadius(d, this._lineWidth);
+        const cx = ringCenter(d), cy = ringCenter(d);
         const fg = foreground(this);
 
         cr.setLineWidth(this._lineWidth);
@@ -89,8 +89,8 @@ class CountdownRing extends St.DrawingArea {
     _repaint() {
         const cr = this.get_context();
         const d = this._diameter;
-        const radius = (d - this._lineWidth) / 2;
-        const cx = d / 2, cy = d / 2;
+        const radius = ringRadius(d, this._lineWidth);
+        const cx = ringCenter(d), cy = ringCenter(d);
         const fg = foreground(this);
         const count = segmentCountFor(this._totalSeconds);
 
