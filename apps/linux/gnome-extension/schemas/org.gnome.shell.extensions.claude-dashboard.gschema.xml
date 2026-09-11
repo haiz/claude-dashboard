@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.claude-dashboard"
+          path="/org/gnome/shell/extensions/claude-dashboard/">
+    <key name="refresh-interval" type="i">
+      <default>120</default>
+      <range min="30" max="3600"/>
+      <summary>Refresh interval in seconds</summary>
+      <description>How often the helper is asked for fresh usage. The macOS app defaults to two minutes.</description>
+    </key>
+    <key name="helper-path" type="s">
+      <default>''</default>
+      <summary>Path to claude-dashboard-helper</summary>
+      <description>Leave empty to find the helper on PATH.</description>
+    </key>
+  </schema>
+</schemalist>

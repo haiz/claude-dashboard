@@ -1,0 +1,48 @@
+.claude-panel-box {
+    spacing: 4px;
+}
+
+.claude-panel-label {
+    font-feature-settings: "tnum";
+    font-weight: bold;
+}
+
+.claude-popup-content {
+    padding: 8px 12px 4px 12px;
+}
+
+.claude-account-row {
+    padding: 6px 0;
+}
+
+.claude-account-name {
+    font-weight: bold;
+}
+
+.claude-plan-pill {
+    background-color: rgba(140, 100, 220, 0.35);
+    border-radius: 8px;
+    padding: 1px 8px;
+    font-size: 10px;
+}
+
+.claude-window-label {
+    font-size: 10px;
+    font-family: monospace;
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.claude-reset-label {
+    font-size: 8px;
+    font-family: monospace;
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.claude-status-text {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.claude-gauges {
+    spacing: 10px;
+}

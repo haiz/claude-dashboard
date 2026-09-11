@@ -1,0 +1,8 @@
+{
+  "uuid": "claude-dashboard@haiz.github.io",
+  "name": "Claude Dashboard",
+  "description": "Claude.ai token usage across multiple accounts, in the panel.",
+  "shell-version": ["45", "46", "47", "48"],
+  "settings-schema": "org.gnome.shell.extensions.claude-dashboard",
+  "url": "https://github.com/haiz/claude-dashboard"
+}
