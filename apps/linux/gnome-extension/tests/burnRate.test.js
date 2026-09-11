@@ -82,3 +82,21 @@ test('inactive accounts sort last', () => {
     assertEqual(sortKey(90, T0 + 3600000, T0, 'expired'), -1);
     assertEqual(sortKey(90, T0 + 3600000, T0, 'error'), -1);
 });
+
+test('an exhausted window stops projecting once the frozen sample ages past the rate-hold cutoff', () => {
+    const tracker = new BurnRateTracker();
+    tracker.record(sample(T0, 90));
+    // Rise to 100, rate = 10/600, projected = 0. current.recordedAt = T0+600.
+    const r2 = tracker.record(sample(T0 + 600000, 100));
+    assertEqual(r2.projectedSeconds, 0);
+    assertEqual(r2.animal, '🐆');
+    // Unchanged at 100, gap 200s < 300s, remaining 0 → returns 0 without writing.
+    // With the fix, current.recordedAt stays T0+600.
+    const r3 = tracker.record(sample(T0 + 800000, 100));
+    assertEqual(r3.projectedSeconds, 0);
+    // Unchanged at 100, gap now 350s >= 300s (from frozen T0+600).
+    // Rate is cleared, returns null. Without the fix, gap would be 150s and
+    // would return {projectedSeconds: 0}.
+    const r4 = tracker.record(sample(T0 + 950000, 100));
+    assertEqual(r4, null);
+});

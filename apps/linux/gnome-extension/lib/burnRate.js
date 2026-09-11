@@ -65,9 +65,14 @@ export class BurnRateTracker {
         }
 
         const remaining = 100 - utilization;
-        this._history.set(key, {prev: entry.prev, current: fresh, lastRate: entry.lastRate});
-        if (!(remaining > 0))
+        if (!(remaining > 0)) {
+            // Swift returns here without writing history, freezing
+            // current.recordedAt at the last non-exhausted sample. That freeze
+            // is what lets the >= 300 s branch eventually fire and retire the
+            // animal on a window that is pinned at 100%.
             return this._result(0);
+        }
+        this._history.set(key, {prev: entry.prev, current: fresh, lastRate: entry.lastRate});
         return this._result(remaining / entry.lastRate);
     }
 
