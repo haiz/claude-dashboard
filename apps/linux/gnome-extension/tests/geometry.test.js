@@ -59,11 +59,14 @@ test('an elapsed countdown yields nothing to draw', () => {
 test('a partly elapsed countdown drops leading segments and clips the boundary one', () => {
     const d = METRICS.smallDiameter, n = 5;
     const segs = countdownSegments(0.5 * 18000, 18000, d, n);
-    if (!(segs.length > 0 && segs.length < n))
-        throw new Error(`expected a partial set, got ${segs.length}`);
     const fillStart = 0.5 * (1 - gapFraction(d));
-    if (!(segs[0].start >= fillStart - 1e-12))
-        throw new Error('the first drawn segment must not start before the fill boundary');
+
+    // Segments 2, 3 and 4 survive; segment 2 straddles the boundary and must
+    // be clipped to it, not dropped. Dropping it would leave 2 segments
+    // starting at 0.6 — which is the regression this pins.
+    assertEqual(segs.length, 3, 'segment count');
+    assertClose(segs[0].start, fillStart, 1e-12, 'boundary segment clipped to fillStart');
+    assertClose(segs[0].end, segmentRange(2, d, n).end, 1e-12, 'boundary segment keeps its own end');
 });
 
 test('derived font sizes follow the diameter', () => {
