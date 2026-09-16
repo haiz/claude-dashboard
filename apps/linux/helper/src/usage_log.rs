@@ -69,15 +69,36 @@ impl UsageLog {
         Self { rows: Vec::new(), next_id: 1 }
     }
 
+    /// Lenient parse: any failure — malformed JSON, an unknown `version` —
+    /// is treated the same as "no log yet" and returns a fresh, empty log.
+    /// Safe for a caller that has nothing to lose (a reader, or a writer
+    /// that has already decided a fresh log is the correct outcome for this
+    /// input). A writer about to overwrite an *existing* file must not use
+    /// this: it cannot tell "legitimately new" from "corrupt", which is
+    /// exactly what destroys history. See `try_from_json`.
     pub fn from_json(text: &str) -> Self {
-        let Ok(doc) = serde_json::from_str::<Document>(text) else {
-            return Self::new();
-        };
+        Self::try_from_json(text).unwrap_or_else(|_| Self::new())
+    }
+
+    /// Like `from_json`, but distinguishes a legitimately empty/absent log
+    /// (`""`, which returns `Ok`) from bytes that exist but do not parse, or
+    /// parse into a `version` this build does not know (both `Err`). A
+    /// caller that is about to overwrite the file on disk needs this
+    /// distinction: overwriting on `Err` would silently discard whatever
+    /// history the corrupt bytes still held.
+    pub fn try_from_json(text: &str) -> Result<Self, String> {
+        if text.is_empty() {
+            return Ok(Self::new());
+        }
+        let doc: Document = serde_json::from_str(text).map_err(|e| e.to_string())?;
         if doc.version != FORMAT_VERSION {
-            return Self::new();
+            return Err(format!(
+                "unknown usage log version {} (expected {FORMAT_VERSION})",
+                doc.version
+            ));
         }
         let next_id = doc.rows.iter().map(|r| r.id).max().unwrap_or(0) + 1;
-        Self { rows: doc.rows, next_id }
+        Ok(Self { rows: doc.rows, next_id })
     }
 
     pub fn rows(&self) -> &[Row] {

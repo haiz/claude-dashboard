@@ -36,7 +36,20 @@ decode them. This is what keeps the Fable window — no top-level field, found i
 `utilization` — solved in exactly one place, `apps/linux/lib/model.js`.
 
 `errors` maps an account id to a human-readable message for that account's
-failed fetch. `fatal` is non-null only when no account could be polled at all.
+failed fetch. `fatal` is non-null in exactly two cases, and they are not the
+same situation:
+
+- `"no-accounts"` — the account store was read successfully and holds zero
+  accounts. Nothing is wrong; there is simply nothing to poll yet.
+- `"store-unreadable"` — the account store could not be read or parsed at
+  all, so this pass never learned what accounts exist. `accounts` is `[]`
+  here too, but only because there is nothing else to project — it must not
+  be read as "zero accounts" the way the first case is. See
+  `contract/account-schema.md`'s "An unreadable store is not an empty store",
+  the same distinction applied to what the daemon reports.
+
+A partial failure — some accounts fetched, others errored — is never fatal:
+`fatal` stays `null` and the per-account detail lives in `errors`.
 
 ## Rules
 
