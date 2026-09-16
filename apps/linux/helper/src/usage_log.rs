@@ -58,10 +58,22 @@ pub fn encode_utilization(utilization: f64) -> i64 {
     (utilization * 100.0).round() as i64
 }
 
-#[derive(Default)]
 pub struct UsageLog {
     rows: Vec<Row>,
     next_id: u64,
+}
+
+/// Hand-written rather than `#[derive(Default)]`: the derive would give
+/// `next_id: 0`, which contradicts `new()` (`next_id: 1`) and
+/// `contract/linux-usage-log.md`'s "a per-document counter starting at 1".
+/// `UsageLog` is `pub` in a `pub mod` of a lib crate, so `UsageLog::default()`
+/// is public API — a document produced from it that violates that contract,
+/// with `id: 0` on its first row, would also make the next `try_from_json`'s
+/// `max(id) + 1` hand out `1` again on the following load, colliding ids.
+impl Default for UsageLog {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl UsageLog {
@@ -185,6 +197,20 @@ pub fn write_string_atomic(path: &std::path::Path, text: &str) -> std::io::Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// MF-3: `UsageLog::default()` must not silently diverge from `new()`.
+    /// A `next_id: 0` default would hand out `id: 0` for the first row, and
+    /// `try_from_json`'s `max(id) + 1` would then hand out `1` again on the
+    /// next load, colliding with a row that legitimately used it.
+    #[test]
+    fn default_and_new_record_the_same_first_row_id() {
+        let mut defaulted = UsageLog::default();
+        let mut created = UsageLog::new();
+        defaulted.record("acc-1", WINDOW_FIVE_HOUR, 5_000_000, 1.0, false, 1000);
+        created.record("acc-1", WINDOW_FIVE_HOUR, 5_000_000, 1.0, false, 1000);
+        assert_eq!(defaulted.rows()[0].id, created.rows()[0].id);
+        assert_eq!(defaulted.rows()[0].id, 1);
+    }
 
     /// A clock step backwards within one `(aid, w, rat)` triple must still
     /// compress by `t DESC` (ties by `id DESC`), not by insertion order.
