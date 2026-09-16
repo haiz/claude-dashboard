@@ -106,10 +106,17 @@ impl UsageLog {
 
     /// Run-length "keep first and last of a plateau", scoped to an exact
     /// (aid, w, rat) triple. All three conditions must hold or nothing is
-    /// deleted: at least two existing rows for that exact triple, their last
-    /// two `u` values equal to each other, and equal to the incoming `u`.
+    /// deleted: at least two existing rows for that exact triple, the two
+    /// most recent by `t` (ties broken by `id`, both descending — matching
+    /// `apps/linux/lib/usageLog.js`'s `_applyCompression` and
+    /// `contract/usage-log.md`'s "Query the two most recent existing rows
+    /// ... ordered by `t DESC LIMIT 2`") have equal `u` values, and that `u`
+    /// equals the incoming `u`. Insertion order is only a proxy for `t DESC`
+    /// and diverges from it whenever the clock steps backwards between two
+    /// recordings of the same triple, so the matching set is sorted
+    /// explicitly rather than read off array position.
     fn apply_compression(&mut self, aid: &str, w: i64, rat: i64, u: i64) {
-        let matching: Vec<usize> = self
+        let mut matching: Vec<usize> = self
             .rows
             .iter()
             .enumerate()
@@ -119,10 +126,15 @@ impl UsageLog {
         if matching.len() < 2 {
             return;
         }
-        let last = matching[matching.len() - 1];
-        let prev = matching[matching.len() - 2];
-        if self.rows[last].u == u && self.rows[prev].u == u {
-            self.rows.remove(last);
+        // t DESC, id DESC — contract/usage-log.md step 1.
+        matching.sort_by(|&a, &b| {
+            (self.rows[b].t, self.rows[b].id).cmp(&(self.rows[a].t, self.rows[a].id))
+        });
+        let (newest, second) = (matching[0], matching[1]);
+        if self.rows[newest].u == u && self.rows[second].u == u {
+            // Delete the more recent of the two: once the incoming row is
+            // appended, that one becomes the middle of the run.
+            self.rows.remove(newest);
         }
     }
 
@@ -147,4 +159,63 @@ pub fn write_string_atomic(path: &std::path::Path, text: &str) -> std::io::Resul
         file.sync_all()?;
     }
     std::fs::rename(&tmp, path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A clock step backwards within one `(aid, w, rat)` triple must still
+    /// compress by `t DESC` (ties by `id DESC`), not by insertion order.
+    /// Recordings arrive t=300, t=100, t=200, all at the same utilization —
+    /// the two most recent BY TIME at the moment of the third insert are
+    /// t=300 and t=100 (id 1 and id 2), so id 1 (the newer of those two) is
+    /// the one deleted, leaving id 2 and the newly inserted id 3.
+    ///
+    /// The old, buggy "last two by array position" reading would instead see
+    /// id 1 and id 2 (insertion order) as the pair to compare, delete id 2,
+    /// and leave id 1 — the wrong row survives. Traced against
+    /// `apps/linux/lib/usageLog.js`'s `_applyCompression` by hand:
+    /// JS keeps rows 2 and 3.
+    #[test]
+    fn compression_orders_by_recorded_time_not_insertion_order() {
+        let mut log = UsageLog::new();
+        let rat_ms = 5_000_000_000_i64;
+        log.record("acc-1", WINDOW_FIVE_HOUR, rat_ms, 0.5, false, 300_000);
+        log.record("acc-1", WINDOW_FIVE_HOUR, rat_ms, 0.5, false, 100_000);
+        log.record("acc-1", WINDOW_FIVE_HOUR, rat_ms, 0.5, false, 200_000);
+
+        let survivors: Vec<(u64, i64)> = log.rows().iter().map(|r| (r.id, r.t)).collect();
+        assert_eq!(survivors, vec![(2, 100), (3, 200)]);
+    }
+
+    /// A non-monotone `t` sequence that flips compress-vs-no-compress
+    /// entirely, not just which row survives: (t=100,u=.5), (t=300,u=.5),
+    /// (t=50,u=.7), (t=200,u=.5) — same triple throughout.
+    ///
+    /// By `t DESC`, the third insert's two most recent existing rows are
+    /// id 2 (t=300) and id 1 (t=100), both u=.5, but the incoming u=.7
+    /// mismatches, so nothing compresses. The fourth insert's two most
+    /// recent existing rows are again id 2 (t=300) and id 1 (t=100) — id 3
+    /// (t=50) is now the OLDEST, not the newest, despite being inserted
+    /// last — both u=.5, and the incoming u=.5 matches, so id 2 is deleted.
+    /// Final: 3 rows (ids 1, 3, 4), id 2 gone.
+    ///
+    /// The old "last two by array position" reading would instead compare
+    /// id 3 (u=.7) against id 2 (u=.5) at both the third and fourth insert,
+    /// see a mismatch every time, and never compress at all — 4 rows,
+    /// nothing deleted.
+    #[test]
+    fn a_backwards_clock_step_can_flip_compress_vs_no_compress() {
+        let mut log = UsageLog::new();
+        let rat_ms = 5_000_000_000_i64;
+        log.record("acc-1", WINDOW_FIVE_HOUR, rat_ms, 0.5, false, 100_000);
+        log.record("acc-1", WINDOW_FIVE_HOUR, rat_ms, 0.5, false, 300_000);
+        log.record("acc-1", WINDOW_FIVE_HOUR, rat_ms, 0.7, false, 50_000);
+        log.record("acc-1", WINDOW_FIVE_HOUR, rat_ms, 0.5, false, 200_000);
+
+        let survivors: Vec<(u64, i64, i64)> =
+            log.rows().iter().map(|r| (r.id, r.t, r.u)).collect();
+        assert_eq!(survivors, vec![(1, 100, 50), (3, 50, 70), (4, 200, 50)]);
+    }
 }
