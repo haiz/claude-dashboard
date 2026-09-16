@@ -76,7 +76,12 @@ export function buildRows(accounts, usageByAccountId, nowMs = Date.now(), option
             chromeProfileName: account.chromeProfileName ?? null,
             windows,
             error: errorsByAccountId[account.id] ?? null,
-            isPinned: pinnedId !== null && account.id === pinnedId,
+            // Two sources, because pinning is moving. `account.isPinned` is
+            // the store's own field (contract/account-schema.md) and the one
+            // Linux now uses; `pinnedId` is the older per-consumer setting,
+            // kept so existing callers keep working.
+            isPinned: account.isPinned === true ||
+                (pinnedId !== null && account.id === pinnedId),
             // macOS matches the active Claude Code account by `account.email`
             // (isActiveClaudeCodeAccount), never by name — an account with no
             // email can never be the active one.

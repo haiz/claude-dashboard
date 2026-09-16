@@ -115,3 +115,27 @@ test('an unknown plan string still gets a tint rather than none', () => {
     assertEqual(planBadgeColor('Max 900x'), planBadgeColor('Max'));
     assertEqual(planBadgeColor(undefined), planBadgeColor('Max'));
 });
+
+test('an account pinned in the store sorts first with no pinnedId option', () => {
+    const accounts = [
+        {id: 'a', name: 'a', plan: 'Pro', status: 'active', isPinned: false},
+        {id: 'b', name: 'b', plan: 'Pro', status: 'active', isPinned: true},
+    ];
+    const rows = buildRows(accounts, {}, 0);
+    assertEqual(rows[0].id, 'b');
+    assertEqual(rows[0].isPinned, true);
+});
+
+test('the pinnedId option still pins, for callers that pass one', () => {
+    const accounts = [
+        {id: 'a', name: 'a', plan: 'Pro', status: 'active'},
+        {id: 'b', name: 'b', plan: 'Pro', status: 'active'},
+    ];
+    const rows = buildRows(accounts, {}, 0, {pinnedId: 'b'});
+    assertEqual(rows[0].id, 'b');
+});
+
+test('an account with neither signal is not pinned', () => {
+    const accounts = [{id: 'a', name: 'a', plan: 'Pro', status: 'active'}];
+    assertEqual(buildRows(accounts, {}, 0)[0].isPinned, false);
+});
