@@ -4,6 +4,7 @@
 pub mod config;
 pub mod state;
 pub mod usage_log;
+pub mod watch;
 
 #[cfg(test)]
 pub mod testsupport;

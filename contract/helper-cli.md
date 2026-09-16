@@ -396,6 +396,32 @@ deleted the wrong row should find out rather than see a silent success; an
 unreadable or unwritable store prints `Could not read the account store.\n` or
 `Could not write the account store.\n`.
 
+### `watch [--once]`
+
+The polling daemon. Runs until killed, re-reading
+`$XDG_CONFIG_HOME/claude-dashboard/config.json` on every pass so a changed
+interval applies on the next tick, and writing
+`$XDG_DATA_HOME/claude-dashboard/state.json` (`contract/linux-state.md`) plus
+`usage-log.json` (`contract/linux-usage-log.md`). `--once` performs a single
+pass and exits.
+
+The log is the one thing it decodes, through `core::usage::UsageData::decode`,
+which is already verified against `contract/cases/usage-decoding.json`. No new
+implementation of the Fable rule is introduced. What it *publishes* stays
+undecoded: `state.json` carries the payload verbatim.
+
+It exists because the GNOME Shell extension was split into a panel indicator
+that must not perform network I/O inside the compositor, and a GTK app that is
+closed most of the time. Neither can own a poll loop; the helper can.
+
+**It holds no policy.** Usage payloads are written through verbatim, and burn
+rate, sort order and panel selection are left to `apps/linux/lib/`. A second
+implementation of those rules here would be a third copy of what already
+exists in JS and Swift.
+
+`autoRefreshEnabled: false` stops polling but not the process: it keeps running
+so a later configuration change is still noticed.
+
 ## Test coverage of the network layer
 
 Every rule above is a rule about a *decision*, and every decision is covered by

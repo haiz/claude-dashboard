@@ -4,6 +4,7 @@ mod list;
 mod sync;
 mod usage;
 
+use claude_dashboard_helper::watch;
 use std::process::exit;
 
 /// Pinned by `contract/helper-cli.md`, "Dispatch" — the same seven lines the
@@ -39,6 +40,7 @@ fn main() {
         "add-key" => add_key::run_add_key(),
         "list" => list::run_list(),
         "remove" => list::run_remove(rest),
+        "watch" => watch::run_watch(rest),
         other => { eprintln!("Unknown command: {other}"); 1 }
     };
     exit(code);
