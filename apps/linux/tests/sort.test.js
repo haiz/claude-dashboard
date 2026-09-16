@@ -139,3 +139,18 @@ test('an account with neither signal is not pinned', () => {
     const accounts = [{id: 'a', name: 'a', plan: 'Pro', status: 'active'}];
     assertEqual(buildRows(accounts, {}, 0)[0].isPinned, false);
 });
+
+test('a store pin (isPinned, no pinnedId option) still suppresses tier 2', () => {
+    // anyPinned (lib/model.js:97) is computed from account.isPinned alone
+    // here — no pinnedId option is passed — which is exactly the input this
+    // branch widened isPinned to accept. 'b' is pinned via the store field;
+    // 'a' is the active Claude Code account. Tier 2 must vanish entirely, so
+    // the store-pinned account leads regardless of who is active.
+    const accounts = [
+        {id: 'a', name: 'a', email: 'a@example.com', plan: 'Pro', status: 'active', isPinned: false},
+        {id: 'b', name: 'b', email: 'b@example.com', plan: 'Pro', status: 'active', isPinned: true},
+    ];
+    const rows = buildRows(accounts, {}, 0, {activeEmail: 'a@example.com'});
+    assertEqual(rows[0].id, 'b');
+    assertEqual(rows[0].isPinned, true);
+});
