@@ -26,7 +26,7 @@ struct Fixture {
 
 fn fixture() -> Fixture {
     let repo = std::env::var("CLAUDE_DASHBOARD_REPO")
-        .unwrap_or_else(|_| format!("{}/../..", env!("CARGO_MANIFEST_DIR")));
+        .unwrap_or_else(|_| format!("{}/../../..", env!("CARGO_MANIFEST_DIR")));
     let text = std::fs::read_to_string(format!("{repo}/contract/cases/linux-usage-log.json"))
         .expect("contract case linux-usage-log.json must be readable");
     serde_json::from_str(&text).expect("fixture must parse")
