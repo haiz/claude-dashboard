@@ -2,6 +2,7 @@
 //! the modules the binary uses.
 
 pub mod config;
+pub mod pin;
 pub mod state;
 pub mod usage_log;
 pub mod watch;

@@ -422,6 +422,21 @@ exists in JS and Swift.
 `autoRefreshEnabled: false` stops polling but not the process: it keeps running
 so a later configuration change is still noticed.
 
+### `pin <id> [--off]`
+
+Sets or clears `isPinned` on one stored account, addressed by the same `id`
+`list` prints and `remove` takes. Exit 1 with `No account with id <id>.` when
+nothing matches.
+
+Pinning one account clears every other pin. The schema permits several pinned
+accounts and `contract/README.md`'s sort rule is written for that, but the
+Linux UI offers a single pin, and doing the clearing here keeps every caller
+from having to remember to.
+
+It exists because pinning moved out of the extension's GSettings and into the
+store, so that the panel indicator can sort correctly while reading only
+`state.json`.
+
 ## Test coverage of the network layer
 
 Every rule above is a rule about a *decision*, and every decision is covered by
