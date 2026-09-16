@@ -30,6 +30,17 @@ the GTK app read it and never write it.
 takes and `list` prints. It is not derived from email: two accounts can share
 an email across organisations.
 
+`activeClaudeCodeEmail` is shape, not yet behaviour: `watch.rs` currently
+passes `None` unconditionally, so today this field is **always null**. It
+will start carrying the active Claude Code account's email once
+`lib/claudeCode.js` is ported to the daemon side. A consumer must not read
+null as "no active account" — it must read it as "the daemon does not
+populate this yet", the same way it reads any field it does not recognise.
+Whoever slims the extension to read only `state.json` needs this: `buildRows`
+tier 2 (the active-Claude-Code-account sort tier, `contract/README.md`'s
+"Sort order") depends on a real value here, and it will silently vanish
+without anyone noticing an error.
+
 `usage` values are the upstream API payload **verbatim**. The daemon does not
 decode them. This is what keeps the Fable window — no top-level field, found in
 `limits[]` by `scope.model.display_name`, read from `percent` rather than

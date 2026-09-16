@@ -423,6 +423,29 @@ exists in JS and Swift.
 `autoRefreshEnabled: false` stops polling but not the process: it keeps running
 so a later configuration change is still noticed.
 
+Three facts about the current, early state of this command, not available
+anywhere else:
+
+- **Running `watch` alongside an enabled GNOME Shell extension loses rows.**
+  The extension's own `UsageLogStore` (`gnome-extension/usageLogStore.js`)
+  holds the whole `usage-log.json` document in memory and flushes it wholesale
+  every 20 seconds (`usageLogStore.js:88-104`). Two writers rewriting the same
+  file from independent in-memory copies clobber each other's rows. This is
+  later-phase work: it goes away once the extension stops writing the log
+  itself.
+- **The daemon implements no retention prune.** The extension prunes rows
+  older than 90 days on every load (`usageLogStore.js:17,32-34`); `watch`
+  does not. Once the extension stops writing — the end state this daemon is
+  built toward — nothing prunes the log at all. Also later-phase work.
+- **A single malformed row is fatal to every future write, silently.**
+  `UsageLog::try_from_json` is all-or-nothing: one row that fails to parse
+  makes the daemon refuse to touch `usage-log.json` on **every** subsequent
+  pass, indefinitely, and the only signal is a line on stderr — there is
+  nothing in `state.json` or anywhere else a consumer polls. The fix (some
+  form of per-row salvage rather than whole-document escalation) is a design
+  decision deferred to a later phase; this is only the warning that the
+  current behaviour is silent.
+
 ### `pin <id> [--off]`
 
 Sets or clears `isPinned` on one stored account, addressed by the same `id`
@@ -444,6 +467,13 @@ from having to remember to.
 It exists because pinning moved out of the extension's GSettings and into the
 store, so that the panel indicator can sort correctly while reading only
 `state.json`.
+
+`lib/model.js:82-83` ORs `account.isPinned` into `buildRows`' pin check, and
+`mergeAccounts` carries that field through from `list`, but the extension's
+own pin control still only toggles a GSetting. That means a store pin set by
+`helper pin <id>` is displayed by the extension but cannot be cleared from
+its UI: `helper pin <id> --off` is the only way to clear it, until the
+extension is slimmed to write pins through the store instead.
 
 ## Test coverage of the network layer
 
