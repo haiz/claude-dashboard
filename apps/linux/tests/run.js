@@ -9,6 +9,7 @@ import './model.test.js';
 import './state.test.js';
 import './sort.test.js';
 import './usageLog.test.js';
+import './usageLogFormat.test.js';
 import './chart.test.js';
 import './command.test.js';
 import './autoRun.test.js';
