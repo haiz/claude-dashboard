@@ -2,8 +2,26 @@ import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
-import {decryptArgv, usageArgv, parseAccounts, parseUsagePayload, isNoAccountsMessage} from './lib/helper.js';
+import {
+    decryptArgv, listArgv, usageArgv, parseAccounts, parseListedAccounts,
+    mergeAccounts, parseUsagePayload, isNoAccountsMessage,
+} from './lib/helper.js';
 import {buildRows} from './lib/model.js';
+import {activeEmailFrom} from './lib/claudeCode.js';
+
+// ClaudeCodeAccountDetector reads ~/.claude.json; every failure path (missing,
+// unreadable, malformed) resolves to "no active account", never to an error.
+function readActiveClaudeCodeEmail() {
+    const path = GLib.build_filenamev([GLib.get_home_dir(), '.claude.json']);
+    try {
+        const [ok, bytes] = GLib.file_get_contents(path);
+        if (!ok)
+            return null;
+        return activeEmailFrom(new TextDecoder().decode(bytes));
+    } catch {
+        return null;
+    }
+}
 
 const DEFAULT_HELPER_NAMES = ['claude-dashboard-helper'];
 
@@ -45,6 +63,9 @@ export const Poller = GObject.registerClass({
     Signals: {
         'updated': {param_types: [GObject.TYPE_JSOBJECT]},
         'failed': {param_types: [GObject.TYPE_STRING]},
+        // macOS flips DashboardViewModel.isRefreshing around a refresh pass so
+        // every card can show its spinner. The Shell needs the same edges.
+        'refreshing': {param_types: [GObject.TYPE_BOOLEAN]},
     },
 }, class Poller extends GObject.Object {
     _init(settings) {
@@ -52,6 +73,7 @@ export const Poller = GObject.registerClass({
         this._settings = settings;
         this._timeoutId = 0;
         this._settingsChangedId = 0;
+        this._autoRefreshChangedId = 0;
         this._cancellable = null;
         // One failed fetch must not blank a row that was fine a minute ago, so
         // the last good payload per account id is kept and reused.
@@ -91,6 +113,11 @@ export const Poller = GObject.registerClass({
                 this._scheduleTimeout();
             });
         }
+        if (!this._autoRefreshChangedId && this._settings) {
+            this._autoRefreshChangedId = this._settings.connect('changed::auto-refresh-enabled', () => {
+                this._scheduleTimeout();
+            });
+        }
     }
 
     _scheduleTimeout() {
@@ -98,6 +125,10 @@ export const Poller = GObject.registerClass({
             GLib.Source.remove(this._timeoutId);
             this._timeoutId = 0;
         }
+        // SettingsView's "Enable auto refresh" toggle: off means no timer at
+        // all, so the panel only updates when something asks it to.
+        if (this._settings && !this._settings.get_boolean('auto-refresh-enabled'))
+            return;
         const interval = this._settings?.get_int('refresh-interval') ?? 120;
         this._timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, interval, () => {
             this.refreshNow();
@@ -114,6 +145,10 @@ export const Poller = GObject.registerClass({
             this._settings?.disconnect(this._settingsChangedId);
             this._settingsChangedId = 0;
         }
+        if (this._autoRefreshChangedId) {
+            this._settings?.disconnect(this._autoRefreshChangedId);
+            this._autoRefreshChangedId = 0;
+        }
         this._cancel();
     }
 
@@ -129,9 +164,16 @@ export const Poller = GObject.registerClass({
         // rather than queueing behind it.
         this._cancel();
         this._cancellable = new Gio.Cancellable();
-        this._refresh(this._cancellable).catch(e => {
+        const cancellable = this._cancellable;
+        this.emit('refreshing', true);
+        this._refresh(cancellable).catch(e => {
             if (!e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
                 this.emit('failed', e.message ?? String(e));
+        }).finally(() => {
+            // A superseded generation must not clear the flag out from under
+            // the one that replaced it.
+            if (cancellable === this._cancellable)
+                this.emit('refreshing', false);
         });
     }
 
@@ -142,21 +184,31 @@ export const Poller = GObject.registerClass({
             return;
         }
 
+        // `list` runs first and decides which rows exist: it is the only
+        // command that reports expired accounts at all, and an all-expired
+        // store makes `decrypt` exit 1 with "No active accounts…" — which must
+        // show those accounts with their re-sync guidance, not an empty panel.
+        // A helper too old to know `list` fails harmlessly here and the merge
+        // falls back to `decrypt` alone.
+        const listed = await runAsync(listArgv(helper), cancellable);
+        if (cancellable.is_cancelled())
+            return;
+        const listedAccounts = listed.ok ? parseListedAccounts(listed.stdout) : [];
+
         const decrypted = await runAsync(decryptArgv(helper), cancellable);
         if (cancellable.is_cancelled())
             return;
 
-        if (isNoAccountsMessage(decrypted.stderr)) {
-            this.emit('updated', []);
-            return;
-        }
-        if (!decrypted.ok) {
+        const noActiveAccounts = isNoAccountsMessage(decrypted.stderr);
+        if (!decrypted.ok && !noActiveAccounts) {
             // A real decrypt failure must not masquerade as an empty store.
             this.emit('failed', 'decrypt-failed');
             return;
         }
 
-        const accounts = parseAccounts(decrypted.stdout);
+        const accounts = mergeAccounts(
+            listedAccounts,
+            noActiveAccounts ? [] : parseAccounts(decrypted.stdout));
         if (accounts.length === 0) {
             this.emit('updated', []);
             return;
@@ -187,6 +239,7 @@ export const Poller = GObject.registerClass({
         }
 
         const usageByAccountId = {};
+        const errorsByAccountId = {};
         for (const [id, payload] of settled) {
             if (payload) {
                 this._lastGood.set(id, payload);
@@ -195,9 +248,18 @@ export const Poller = GObject.registerClass({
                 const stale = this._lastGood.get(id);
                 if (stale)
                     usageByAccountId[id] = stale;
+                // macOS surfaces a failed fetch as red text on that card. Rows
+                // that fell back to a stale payload still say so, so a frozen
+                // reading is never mistaken for a live one.
+                errorsByAccountId[id] = 'Could not refresh usage.';
             }
         }
 
-        this.emit('updated', buildRows(accounts, usageByAccountId, Date.now()));
+        const pinnedId = this._settings?.get_string('pinned-account') ?? '';
+        this.emit('updated', buildRows(accounts, usageByAccountId, Date.now(), {
+            pinnedId: pinnedId === '' ? null : pinnedId,
+            activeEmail: readActiveClaudeCodeEmail(),
+            errorsByAccountId,
+        }));
     }
 });

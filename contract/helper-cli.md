@@ -332,6 +332,149 @@ profile fields, or `browser`: a key never changes which source a record has.
 
 `sync`'s rules above are unchanged by this command.
 
+## Linux-only commands
+
+`list`, `remove`, `watch` and `pin` exist only in `apps/linux/helper`. They
+have **no macOS counterpart** and are deliberately **absent from the usage
+banner**, which is shared contract and must stay byte-identical across the two
+helpers (see "Dispatch"). The macOS app manages accounts through its own
+Settings window, which talks to `AccountStore` directly and never shells out
+to the helper, and has no daemon; the GNOME Shell extension has no such
+in-process store or poll loop, so it needs these.
+
+Because they are not shared, nothing here is binding on a macOS
+implementation. What *is* binding is the reason they are separate commands
+rather than a widened `decrypt`.
+
+### Why not widen `decrypt`
+
+`decrypt`'s inclusion filter (`status == active && orgId != nil`) hides
+exactly the accounts an account-management UI exists to repair: an expired
+session has `status == expired`, so it never appears. Its six-field projection
+is also pinned, and it carries a session key, so it is the wrong shape to hand
+to a UI that only needs to display and delete.
+
+### `list`
+
+Source: `apps/linux/helper/src/list.rs`.
+
+Prints **every** stored account — no status filter, no orgId filter — as a
+pretty-printed JSON array with alphabetical keys. Fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | The store's own unique id. The only value safe to key on; two accounts can share an email across organisations. |
+| `name` | string | |
+| `email` | string or null | |
+| `orgId` | string or null | Null for an account that never completed a sync. |
+| `chromeProfileName` | string or null | Which browser profile to open when a session expires. |
+| `browser` | string | `chrome` / `arc` / `brave` / `edge`. |
+| `plan` | string | A wire value from `account-schema.md`. |
+| `status` | string | `active` / `expired` / `error`. |
+| `source` | string | `browser` or `manual`. Decides which expired-account guidance to show: a manual key has no profile to reopen. |
+| `isPinned` | bool | |
+| `lastSynced` | number or null | **Unix** seconds, already converted from the stored reference-date value. |
+
+**`sessionKey` is absent by construction**, not filtered out afterwards: the
+projection is built from named fields, so a field added to `Account` later
+cannot leak into it by accident. `apps/linux/helper/tests/list_remove.rs`
+asserts both that the key name and a planted key value are missing from the
+output.
+
+An **empty store is not an error** here — unlike `decrypt`, which exits 1 with
+`No accounts found.` — because "you have no accounts" is the answer the caller
+asked for. `list` prints `[]` and exits 0.
+
+### `remove <id>`
+
+Deletes one account from the store by its `list` `id` and prints
+`Removed <id>.` on success.
+
+Failure paths, all exit 1: no argument prints
+`Usage: claude-dashboard-helper remove <id>\n`; an id matching no account
+prints `No account with id <id>.\n` and leaves the store untouched — a UI that
+deleted the wrong row should find out rather than see a silent success; an
+unreadable or unwritable store prints `Could not read the account store.\n` or
+`Could not write the account store.\n`.
+
+### `watch [--once]`
+
+The polling daemon. Runs until killed, re-reading
+`$XDG_CONFIG_HOME/claude-dashboard/config.json` on every pass so a changed
+interval applies on the next tick, and writing
+`$XDG_DATA_HOME/claude-dashboard/state.json` (`contract/linux-state.md`) plus
+`usage-log.json` (`contract/linux-usage-log.md`). `--once` performs a single
+pass and exits.
+
+The log is the one thing it decodes, through `core::usage::UsageData::decode`,
+which is already verified against `contract/cases/usage-decoding.json`. No new
+implementation of the Fable rule is introduced. What it *publishes* stays
+undecoded: `state.json` carries the payload verbatim.
+
+It exists because the GNOME Shell extension was split into a panel indicator
+that must not perform network I/O inside the compositor, and a GTK app that is
+closed most of the time. Neither can own a poll loop; the helper can.
+
+**It holds no policy.** Usage payloads are written through verbatim, and burn
+rate, sort order and panel selection are left to `apps/linux/lib/`. A second
+implementation of those rules here would be a third copy of what already
+exists in JS and Swift.
+
+`autoRefreshEnabled: false` stops polling but not the process: it keeps running
+so a later configuration change is still noticed.
+
+Three facts about the current, early state of this command, not available
+anywhere else:
+
+- **Running `watch` alongside an enabled GNOME Shell extension loses rows.**
+  The extension's own `UsageLogStore` (`gnome-extension/usageLogStore.js`)
+  holds the whole `usage-log.json` document in memory and flushes it wholesale
+  every 20 seconds (`usageLogStore.js:88-104`). Two writers rewriting the same
+  file from independent in-memory copies clobber each other's rows. This is
+  later-phase work: it goes away once the extension stops writing the log
+  itself.
+- **The daemon implements no retention prune.** The extension prunes rows
+  older than 90 days on every load (`usageLogStore.js:17,32-34`); `watch`
+  does not. Once the extension stops writing — the end state this daemon is
+  built toward — nothing prunes the log at all. Also later-phase work.
+- **A single malformed row is fatal to every future write, silently.**
+  `UsageLog::try_from_json` is all-or-nothing: one row that fails to parse
+  makes the daemon refuse to touch `usage-log.json` on **every** subsequent
+  pass, indefinitely, and the only signal is a line on stderr — there is
+  nothing in `state.json` or anywhere else a consumer polls. The fix (some
+  form of per-row salvage rather than whole-document escalation) is a design
+  decision deferred to a later phase; this is only the warning that the
+  current behaviour is silent.
+
+### `pin <id> [--off]`
+
+Sets or clears `isPinned` on one stored account, addressed by the same `id`
+`list` prints and `remove` takes. Prints `Pinned <id>.` (or, with `--off`,
+`Unpinned <id>.`) and exits 0 on success.
+
+Failure paths, all exit 1: no argument prints
+`Usage: claude-dashboard-helper pin <id> [--off]\n`; an id matching no account
+prints `No account with id <id>.\n` and leaves the store untouched; a store
+that cannot be read prints `Could not read accounts: <error>\n`; a store that
+cannot be written prints `Could not save accounts: <error>\n`. Unlike
+`remove`'s fixed store-error text, `pin` interpolates the underlying error.
+
+Pinning one account clears every other pin. The schema permits several pinned
+accounts and `contract/README.md`'s sort rule is written for that, but the
+Linux UI offers a single pin, and doing the clearing here keeps every caller
+from having to remember to.
+
+It exists because pinning moved out of the extension's GSettings and into the
+store, so that the panel indicator can sort correctly while reading only
+`state.json`.
+
+`lib/model.js:82-83` ORs `account.isPinned` into `buildRows`' pin check, and
+`mergeAccounts` carries that field through from `list`, but the extension's
+own pin control still only toggles a GSetting. That means a store pin set by
+`helper pin <id>` is displayed by the extension but cannot be cleared from
+its UI: `helper pin <id> --off` is the only way to clear it, until the
+extension is slimmed to write pins through the store instead.
+
 ## Test coverage of the network layer
 
 Every rule above is a rule about a *decision*, and every decision is covered by

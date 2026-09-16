@@ -86,4 +86,12 @@ for member in claude-dashboard-core claude-dashboard-helper; do
     fi
 done
 
+# 6. GNOME Shell extension metadata — the "version-name" key, which is the
+# human release string GNOME shows and the one the extension's Help dialog
+# prints in its footer. ("version" is e.g.o's own revision counter and is
+# deliberately not touched here.)
+EXT_METADATA="apps/linux/gnome-extension/metadata.json"
+sed -i '' "s|\"version-name\": \"[^\"]*\"|\"version-name\": \"${VERSION}\"|" "$EXT_METADATA"
+report "$EXT_METADATA" "\"version-name\": \"${VERSION}\""
+
 echo "Done."

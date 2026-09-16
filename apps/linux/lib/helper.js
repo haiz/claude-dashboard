@@ -6,6 +6,15 @@ export function decryptArgv(helperPath) {
     return [helperPath, 'decrypt'];
 }
 
+// contract/helper-cli.md, "Linux-only commands": every stored account, with no
+// session key. Needed because decrypt's inclusion filter
+// (status == active && orgId != nil) hides exactly the expired accounts the UI
+// has to show, and its six-field projection carries neither `source` nor
+// `chromeProfileName` — the two fields the expired-card guidance branches on.
+export function listArgv(helperPath) {
+    return [helperPath, 'list'];
+}
+
 export function usageArgv(helperPath, orgId, sessionKey) {
     return [helperPath, 'usage', orgId, sessionKey];
 }
@@ -61,6 +70,47 @@ export function parseAccounts(stdout) {
     } catch {
         return [];
     }
+}
+
+// `list` rows carry the store's own unique `id`, but the rest of the extension
+// keys on the identity derived from email/name — changing that now would orphan
+// every usage-log row, pin and saved command already on disk. So the derived id
+// stays the row id, and the store id rides along as `storeId` for `remove`.
+export function parseListedAccounts(stdout) {
+    let parsed;
+    try {
+        parsed = JSON.parse(stdout);
+    } catch {
+        return [];
+    }
+    if (!Array.isArray(parsed))
+        return [];
+    return parsed
+        .filter(account => account !== null && typeof account === 'object')
+        .map(account => ({
+            ...account,
+            storeId: account.id,
+            id: deriveAccountId(account),
+        }));
+}
+
+// Joins the two commands: `list` decides which rows exist, `decrypt` supplies
+// the credentials for the ones that can be polled. An account present only in
+// `decrypt` is still kept — the two commands read the same store, so that
+// should not happen, but dropping a pollable account because a second process
+// rewrote the file mid-refresh would be the worse failure.
+export function mergeAccounts(listed, decrypted) {
+    const byId = new Map();
+    for (const account of listed)
+        byId.set(account.id, {...account});
+    for (const account of decrypted) {
+        const existing = byId.get(account.id);
+        if (existing)
+            Object.assign(existing, account, {storeId: existing.storeId});
+        else
+            byId.set(account.id, {...account, storeId: null});
+    }
+    return [...byId.values()];
 }
 
 export function parseUsagePayload(stdout) {

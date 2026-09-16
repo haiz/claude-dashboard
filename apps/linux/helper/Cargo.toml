@@ -8,6 +8,10 @@ rust-version.workspace = true
 name = "claude-dashboard-helper"
 path = "src/main.rs"
 
+[lib]
+name = "claude_dashboard_helper"
+path = "src/lib.rs"
+
 [dependencies]
 claude-dashboard-core = { path = "../core" }
 serde.workspace = true

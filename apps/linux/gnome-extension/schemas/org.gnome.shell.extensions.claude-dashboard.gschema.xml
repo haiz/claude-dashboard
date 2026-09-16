@@ -13,5 +13,35 @@
       <summary>Path to claude-dashboard-helper</summary>
       <description>Leave empty to find the helper on PATH.</description>
     </key>
+    <key name="pinned-account" type="s">
+      <default>''</default>
+      <summary>Id of the pinned account</summary>
+      <description>macOS stores isPinned inside the account record; the helper's six-field decrypt projection carries no such flag, so the extension keeps the pin here. Empty means nothing is pinned. Pinning is exclusive: one id at a time, matching sortStates()'s "unpin all, then pin target".</description>
+    </key>
+    <key name="run-commands" type="s">
+      <default>'{}'</default>
+      <summary>Saved run command per account, as a JSON object</summary>
+      <description>macOS keys these by Account.id in UserDefaults (RunCommandSettings). The helper's accounts carry no UUID, so this maps the same derived account id used everywhere else to its saved command.</description>
+    </key>
+    <key name="run-command-terminals" type="s">
+      <default>'{}'</default>
+      <summary>Per-account "open in terminal" preference, as a JSON object</summary>
+      <description>Only accounts the user explicitly switched on appear; everything else falls back to the classifier's verdict.</description>
+    </key>
+    <key name="auto-refresh-enabled" type="b">
+      <default>true</default>
+      <summary>Whether the panel refreshes on a timer</summary>
+      <description>SettingsView.swift's Toggle("Enable auto refresh"). With this off the panel only refreshes when asked. The interval itself is refresh-interval.</description>
+    </key>
+    <key name="auto-update-check" type="b">
+      <default>true</default>
+      <summary>Check GitHub for a newer release once a day</summary>
+      <description>SettingsView.swift's "Auto-update daily". The macOS app installs what it finds; this one only reports it, because a Shell extension cannot replace the helper binary or itself under a running session.</description>
+    </key>
+    <key name="last-update-check" type="d">
+      <default>0</default>
+      <summary>Unix seconds of the last update check</summary>
+      <description>Zero means never. Written whatever the outcome, so a failing check does not retry every hour.</description>
+    </key>
   </schema>
 </schemalist>

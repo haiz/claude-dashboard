@@ -1,0 +1,61 @@
+{
+  "recordings": [
+    {
+      "accountId": "acc-1",
+      "window": 0,
+      "resetsAtMs": 1789430000000,
+      "utilization": 5,
+      "isLimited": false,
+      "recordedAtMs": 1789420000000
+    },
+    {
+      "accountId": "acc-1",
+      "window": 0,
+      "resetsAtMs": 1789430000000,
+      "utilization": 5,
+      "isLimited": false,
+      "recordedAtMs": 1789420060000
+    },
+    {
+      "accountId": "acc-1",
+      "window": 0,
+      "resetsAtMs": 1789430000000,
+      "utilization": 5,
+      "isLimited": false,
+      "recordedAtMs": 1789420120000
+    },
+    {
+      "accountId": "acc-1",
+      "window": 0,
+      "resetsAtMs": 1789430000000,
+      "utilization": 7,
+      "isLimited": false,
+      "recordedAtMs": 1789420180000
+    },
+    {
+      "accountId": "acc-1",
+      "window": 0,
+      "resetsAtMs": 1789448000000,
+      "utilization": 5,
+      "isLimited": false,
+      "recordedAtMs": 1789440000000
+    },
+    {
+      "accountId": "acc-1",
+      "window": 1,
+      "resetsAtMs": 1789800000000,
+      "utilization": 92.5,
+      "isLimited": true,
+      "recordedAtMs": 1789420000000
+    },
+    {
+      "accountId": "acc-2",
+      "window": 3,
+      "resetsAtMs": 1789430000000,
+      "utilization": 38,
+      "isLimited": false,
+      "recordedAtMs": 1789420000000
+    }
+  ],
+  "serialized": "{\"version\":1,\"rows\":[{\"id\":1,\"aid\":\"acc-1\",\"w\":0,\"rat\":1789430000,\"t\":1789420000,\"u\":500,\"lim\":0},{\"id\":3,\"aid\":\"acc-1\",\"w\":0,\"rat\":1789430000,\"t\":1789420120,\"u\":500,\"lim\":0},{\"id\":4,\"aid\":\"acc-1\",\"w\":0,\"rat\":1789430000,\"t\":1789420180,\"u\":700,\"lim\":0},{\"id\":5,\"aid\":\"acc-1\",\"w\":0,\"rat\":1789448000,\"t\":1789440000,\"u\":500,\"lim\":0},{\"id\":6,\"aid\":\"acc-1\",\"w\":1,\"rat\":1789800000,\"t\":1789420000,\"u\":9250,\"lim\":1},{\"id\":7,\"aid\":\"acc-2\",\"w\":3,\"rat\":1789430000,\"t\":1789420000,\"u\":3800,\"lim\":0}]}"
+}

@@ -3,6 +3,7 @@
 // access on a Cairo image surface, so this file is verified by eye.
 
 import Cairo from 'gi://cairo';
+import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
@@ -125,6 +126,13 @@ class CountdownRing extends St.DrawingArea {
     }
 });
 
+// The panel ring has a fixed 16x16 box, so it must be centred against the
+// panel's own height. Without this it inherits ActorAlign.FILL, is allocated
+// the full ~26px panel height, and paints its 16px circle at the top of that
+// box — which is the vertical offset against the centred "NN%" label.
 export function panelRing() {
-    return new UsageRing(16, 2.5);
+    const ring = new UsageRing(16, 2.5);
+    ring.x_align = Clutter.ActorAlign.CENTER;
+    ring.y_align = Clutter.ActorAlign.CENTER;
+    return ring;
 }
