@@ -18,8 +18,8 @@ the GTK app read it and never write it.
       "activeClaudeCodeEmail": "someone@example.com",
       "accounts": [
         { "id": "...", "name": "...", "email": "...", "plan": "Max",
-          "status": "active", "orgId": "...", "chromeProfileName": null,
-          "isPinned": false }
+          "status": "active", "orgId": "...", "source": "browser",
+          "chromeProfileName": null, "isPinned": false }
       ],
       "usage":  { "<accountId>": { ...verbatim `usage` response... } },
       "errors": { "<accountId>": "Could not refresh usage." },

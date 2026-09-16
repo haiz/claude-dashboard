@@ -37,6 +37,7 @@ fn project(account: &Account) -> Value {
         "plan": account.plan,
         "status": account.status,
         "isPinned": account.is_pinned,
+        "source": account.source,
     })
 }
 
@@ -111,6 +112,12 @@ mod tests {
         assert_eq!(v["accounts"][0]["id"], "acc-1");
         assert_eq!(v["accounts"][0]["isPinned"], true);
         assert_eq!(v["accounts"][0]["orgId"], "org-acc-1");
+        // MF-2: `source` is part of the spec's state.json shape
+        // (docs/superpowers/specs/2026-09-16-linux-process-split-design.md
+        // line 140) and lib/model.js:75 reads it — a manually-added account
+        // must not lose its "pasted key" affordance once consumers read
+        // state.json instead of `decrypt`.
+        assert_eq!(v["accounts"][0]["source"], "browser");
     }
 
     #[test]

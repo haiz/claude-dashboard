@@ -1,6 +1,6 @@
 [
   { "name": "a healthy snapshot with one account",
-    "text": "{\"schemaVersion\":1,\"polledAtMs\":1789432100000,\"daemon\":{\"version\":\"1.17.2\",\"intervalSeconds\":120},\"activeClaudeCodeEmail\":\"a@example.com\",\"accounts\":[{\"id\":\"acc-1\",\"name\":\"a@example.com\",\"email\":\"a@example.com\",\"plan\":\"Max\",\"status\":\"active\",\"orgId\":\"org-1\",\"chromeProfileName\":null,\"isPinned\":false}],\"usage\":{\"acc-1\":{\"five_hour\":{\"utilization\":5,\"resets_at\":\"2026-09-16T11:40:00Z\"}}},\"errors\":{},\"fatal\":null}",
+    "text": "{\"schemaVersion\":1,\"polledAtMs\":1789432100000,\"daemon\":{\"version\":\"1.17.2\",\"intervalSeconds\":120},\"activeClaudeCodeEmail\":\"a@example.com\",\"accounts\":[{\"id\":\"acc-1\",\"name\":\"a@example.com\",\"email\":\"a@example.com\",\"plan\":\"Max\",\"status\":\"active\",\"orgId\":\"org-1\",\"source\":\"browser\",\"chromeProfileName\":null,\"isPinned\":false}],\"usage\":{\"acc-1\":{\"five_hour\":{\"utilization\":5,\"resets_at\":\"2026-09-16T11:40:00Z\"}}},\"errors\":{},\"fatal\":null}",
     "expect_parsed": true, "expect_account_count": 1, "expect_active_email": "a@example.com" },
 
   { "name": "an unknown future schemaVersion parses as null, never as a guess",
