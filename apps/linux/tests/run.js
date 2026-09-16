@@ -6,6 +6,7 @@ import './format.test.js';
 import './geometry.test.js';
 import './burnRate.test.js';
 import './model.test.js';
+import './state.test.js';
 import './sort.test.js';
 import './usageLog.test.js';
 import './chart.test.js';

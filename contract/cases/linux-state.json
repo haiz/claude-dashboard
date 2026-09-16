@@ -1,0 +1,25 @@
+[
+  { "name": "a healthy snapshot with one account",
+    "text": "{\"schemaVersion\":1,\"polledAtMs\":1789432100000,\"daemon\":{\"version\":\"1.17.2\",\"intervalSeconds\":120},\"activeClaudeCodeEmail\":\"a@example.com\",\"accounts\":[{\"id\":\"acc-1\",\"name\":\"a@example.com\",\"email\":\"a@example.com\",\"plan\":\"Max\",\"status\":\"active\",\"orgId\":\"org-1\",\"chromeProfileName\":null,\"isPinned\":false}],\"usage\":{\"acc-1\":{\"five_hour\":{\"utilization\":5,\"resets_at\":\"2026-09-16T11:40:00Z\"}}},\"errors\":{},\"fatal\":null}",
+    "expect_parsed": true, "expect_account_count": 1, "expect_active_email": "a@example.com" },
+
+  { "name": "an unknown future schemaVersion parses as null, never as a guess",
+    "text": "{\"schemaVersion\":2,\"polledAtMs\":1789432100000,\"daemon\":{\"intervalSeconds\":120},\"accounts\":[],\"usage\":{},\"errors\":{}}",
+    "expect_parsed": false },
+
+  { "name": "malformed JSON parses as null rather than throwing",
+    "text": "{not json",
+    "expect_parsed": false },
+
+  { "name": "a non-object payload parses as null",
+    "text": "[1,2,3]",
+    "expect_parsed": false },
+
+  { "name": "missing optional collections default to empty, not undefined",
+    "text": "{\"schemaVersion\":1,\"polledAtMs\":1,\"daemon\":{\"intervalSeconds\":120}}",
+    "expect_parsed": true, "expect_account_count": 0, "expect_active_email": null },
+
+  { "name": "an unknown extra field is ignored, not rejected",
+    "text": "{\"schemaVersion\":1,\"polledAtMs\":1,\"daemon\":{\"intervalSeconds\":120},\"accounts\":[],\"usage\":{},\"errors\":{},\"somethingNew\":42}",
+    "expect_parsed": true, "expect_account_count": 0, "expect_active_email": null }
+]
