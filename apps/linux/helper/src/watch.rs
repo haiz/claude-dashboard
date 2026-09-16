@@ -122,10 +122,17 @@ pub fn record_usage(log: &mut usage_log::UsageLog, snapshot: &Value, now_ms: i64
         // column, a separate encoding) — not a 0-1 fraction — so no rescale
         // is needed before the comparison.
         let mut write = |w: i64, utilization: f64, resets_at: Option<i64>| {
+            // A window with no reset time has never started a cycle. Matches
+            // `usageLogStore.js:68-72`: "a null here would encode as epoch 0
+            // and invent a cycle boundary." Skip the window entirely rather
+            // than defaulting to 0, which would collapse every null-reset row
+            // across all time into one `rat: 0` compression bucket that has
+            // nothing to do with any of them.
+            let Some(resets_at) = resets_at else { return };
             log.record(
                 account_id,
                 w,
-                resets_at.unwrap_or(0) * 1000,
+                resets_at * 1000,
                 utilization,
                 utilization >= 100.0,
                 now_ms,
@@ -468,8 +475,11 @@ mod tests {
     /// `BurnRateTracker.swift:33`.
     #[test]
     fn a_window_at_or_above_100_percent_records_lim_true() {
-        let body = r#"{"five_hour":{"utilization":100.0,"resets_at":null},
-                       "seven_day":{"utilization":50.0,"resets_at":null}}"#;
+        // Real reset times: a null `resets_at` is covered separately by
+        // `a_window_with_no_reset_time_is_skipped_not_defaulted_to_epoch_zero`,
+        // and reusing null here would pin the two concerns together.
+        let body = r#"{"five_hour":{"utilization":100.0,"resets_at":"2026-09-16T11:40:00Z"},
+                       "seven_day":{"utilization":50.0,"resets_at":"2026-09-18T07:00:00Z"}}"#;
         let fetch = |_: &str, _: &str| Ok(body.to_string());
         let env = PollEnv {
             accounts: Ok(vec![account("acc-1", Some("org-1"), AccountStatus::Active)]),
@@ -486,5 +496,35 @@ mod tests {
         let seven_day = log.rows().iter().find(|r| r.w == usage_log::WINDOW_SEVEN_DAY).unwrap();
         assert_eq!(five_hour.lim, 1, "utilization >= 100.0 must record lim:1");
         assert_eq!(seven_day.lim, 0, "utilization below 100.0 must record lim:0");
+    }
+
+    /// MF-1: a window with no reset time must be skipped entirely, not
+    /// defaulted to `rat: 0` — matching `usageLogStore.js:68-72`. Its
+    /// siblings, which do carry a reset time, must still be recorded.
+    #[test]
+    fn a_window_with_no_reset_time_is_skipped_not_defaulted_to_epoch_zero() {
+        let body = r#"{"five_hour":{"utilization":5,"resets_at":null},
+                       "seven_day":{"utilization":50.0,"resets_at":"2026-09-18T07:00:00Z"}}"#;
+        let fetch = |_: &str, _: &str| Ok(body.to_string());
+        let env = PollEnv {
+            accounts: Ok(vec![account("acc-1", Some("org-1"), AccountStatus::Active)]),
+            fetch: &fetch,
+            now_ms: 1000,
+            interval_seconds: 120,
+            active_email: None,
+        };
+        let snapshot = poll_once(&env);
+        let mut log = crate::usage_log::UsageLog::new();
+        record_usage(&mut log, &snapshot, 1000);
+
+        assert!(
+            log.rows().iter().all(|r| r.w != usage_log::WINDOW_FIVE_HOUR),
+            "a null resets_at must not produce a rat:0 row"
+        );
+        assert_eq!(
+            log.rows().iter().filter(|r| r.w == usage_log::WINDOW_SEVEN_DAY).count(),
+            1,
+            "the sibling window with a real reset time must still be recorded"
+        );
     }
 }
