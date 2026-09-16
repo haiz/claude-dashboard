@@ -1,5 +1,6 @@
 mod add_key;
 mod decrypt;
+mod list;
 mod sync;
 mod usage;
 
@@ -8,6 +9,12 @@ use std::process::exit;
 /// Pinned by `contract/helper-cli.md`, "Dispatch" — the same seven lines the
 /// macOS helper prints. `eprint!`, not `eprintln!`: the trailing newline is
 /// part of the literal, and a second one would break the byte-exact contract.
+///
+/// `list` and `remove` are deliberately absent: they are Linux-only commands
+/// with no macOS counterpart (the macOS app manages accounts through its own
+/// Settings window instead), and this banner is shared contract that must stay
+/// byte-identical across the two helpers. They are documented in
+/// `contract/helper-cli.md` under "Linux-only commands".
 const USAGE_BANNER: &str = "\
 Usage: claude-dashboard-helper <command>
 
@@ -30,6 +37,8 @@ fn main() {
         "usage" => usage::run_usage(rest),
         "sync" => sync::run_sync(),
         "add-key" => add_key::run_add_key(),
+        "list" => list::run_list(),
+        "remove" => list::run_remove(rest),
         other => { eprintln!("Unknown command: {other}"); 1 }
     };
     exit(code);

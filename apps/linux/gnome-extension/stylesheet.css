@@ -7,6 +7,11 @@
     font-weight: bold;
 }
 
+/* MenuBarPopover.swift:124's .frame(maxHeight: 400) on the card ScrollView. */
+.claude-popup-scroll {
+    max-height: 400px;
+}
+
 .claude-popup-content {
     padding: 8px 12px 4px 12px;
 }
@@ -19,11 +24,41 @@
     font-weight: bold;
 }
 
+/* background-color is set per row from lib/plan.js — AccountBadgeColor.swift
+   tints the pill by plan rather than using one fixed colour. */
 .claude-plan-pill {
-    background-color: rgba(140, 100, 220, 0.35);
     border-radius: 8px;
     padding: 1px 8px;
     font-size: 10px;
+    font-weight: bold;
+}
+
+.claude-account-email {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+/* The 8px dot marking the account Claude Code is authenticated as. */
+.claude-active-dot {
+    background-color: #2ec27e;
+    border-radius: 4px;
+}
+
+.claude-pin-icon {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.claude-row-spinner {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.claude-row-warning {
+    color: #ff7800;
+}
+
+.claude-error-text {
+    font-size: 11px;
+    color: #ff6b6b;
 }
 
 .claude-window-label {
@@ -40,6 +75,393 @@
     font-size: 11px;
 }
 
-.claude-gauges {
+/* .claude-gauges' spacing is set inline per size class from
+   AccountCard.swift:121's HStack(spacing: isCompact ? 20 : 30). */
+
+/* --- Dashboard window (DashboardWindow.swift) --- */
+
+.claude-window-toolbar {
+    spacing: 8px;
+    padding: 12px;
+}
+
+.claude-window-title {
+    font-size: 17px;
+    font-weight: bold;
+}
+
+.claude-window-divider {
+    height: 1px;
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.claude-toolbar-button {
+    border-radius: 6px;
+    padding: 4px 10px;
+    color: rgba(255, 255, 255, 0.85);
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.claude-toolbar-button:hover {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+
+.claude-toolbar-button:insensitive {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.claude-toolbar-button-content {
+    spacing: 6px;
+}
+
+.claude-window-grid {
+    spacing: 12px;
+    padding: 12px;
+}
+
+.claude-grid-row {
+    spacing: 12px;
+}
+
+/* SwiftUI's GroupBox around each card. */
+.claude-card {
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 8px;
+    padding: 4px 8px;
+}
+
+.claude-window-empty {
+    padding: 48px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* --- Help (HelpView.swift) --- */
+
+.claude-help-scroll {
+    padding: 0 4px;
+}
+
+.claude-help-content {
+    spacing: 20px;
+    padding: 16px;
+}
+
+/* SwiftUI's GroupBox per section. */
+.claude-help-section {
     spacing: 10px;
+    padding: 12px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.claude-help-heading {
+    spacing: 8px;
+}
+
+.claude-help-title {
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.claude-help-row {
+    spacing: 8px;
+}
+
+/* The fixed 16pt gutter HelpView gives both the step number and the bullet. */
+.claude-help-marker {
+    width: 16px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.claude-help-body {
+    font-size: 13px;
+}
+
+.claude-help-secondary {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.claude-help-problem {
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.claude-help-qa {
+    spacing: 3px;
+}
+
+.claude-help-tip {
+    spacing: 6px;
+    padding: 8px;
+    border-radius: 6px;
+    background-color: rgba(255, 210, 0, 0.08);
+}
+
+.claude-help-tip-icon {
+    color: #f6d32d;
+}
+
+.claude-help-footer {
+    font-size: 11px;
+    padding: 6px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+/* --- Charts (AccountDetailView.swift / OverviewChartView.swift) --- */
+
+.claude-chart-area {
+    margin: 8px 12px;
+}
+
+.claude-chart-readout {
+    font-size: 11px;
+    padding: 0 16px 8px 16px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.claude-pill-group {
+    spacing: 2px;
+}
+
+.claude-pill-button {
+    border-radius: 6px;
+    padding: 4px 10px;
+    color: rgba(255, 255, 255, 0.75);
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.claude-pill-button:hover {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+
+.claude-pill-button:checked {
+    background-color: rgba(0, 122, 255, 0.55);
+    color: #ffffff;
+}
+
+.claude-chart-legend {
+    spacing: 8px;
+    padding: 0 16px 12px 16px;
+}
+
+.claude-legend-entry {
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.claude-legend-entry:hover {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+
+/* A hidden series keeps its legend entry, dimmed, so it can be switched back on. */
+.claude-legend-off {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.claude-legend-entry-content {
+    spacing: 6px;
+}
+
+.claude-cycles {
+    spacing: 2px;
+    padding: 0 16px 12px 16px;
+}
+
+.claude-cycles-header {
+    font-weight: bold;
+    font-size: 12px;
+    padding: 4px 0;
+}
+
+.claude-cycle-row {
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-family: monospace;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.claude-cycle-row:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+}
+
+.claude-cycle-selected {
+    background-color: rgba(0, 122, 255, 0.35);
+    color: #ffffff;
+}
+
+/* --- Run Command (RunCommandSheet.swift) --- */
+
+.claude-run-content {
+    spacing: 12px;
+    padding: 16px;
+}
+
+.claude-run-entry {
+    padding: 6px 10px;
+}
+
+.claude-run-toggle-row {
+    spacing: 8px;
+}
+
+.claude-run-status {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.claude-run-output-scroll {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+}
+
+.claude-run-output {
+    font-family: monospace;
+    font-size: 11px;
+    padding: 8px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* --- Command Log (CommandLogView.swift) --- */
+
+.claude-log-list {
+    padding: 0 16px;
+}
+
+.claude-log-row {
+    spacing: 3px;
+    padding: 10px 0;
+}
+
+.claude-log-row-top {
+    spacing: 8px;
+}
+
+.claude-log-command {
+    font-family: monospace;
+    font-size: 12px;
+}
+
+.claude-log-status {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.claude-log-failed {
+    color: #ff6b6b;
+}
+
+.claude-log-meta {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.45);
+}
+
+.claude-log-output {
+    font-family: monospace;
+    font-size: 10px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.claude-destructive:hover {
+    background-color: rgba(224, 27, 36, 0.35);
+}
+
+/* The per-card terminal button (AccountCard.swift:47-62). */
+.claude-terminal-button {
+    border-radius: 4px;
+    padding: 2px 4px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.claude-terminal-button:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+    color: #ffffff;
+}
+
+/* --- Settings (SettingsView.swift) --- */
+
+.claude-settings-section {
+    font-weight: bold;
+    font-size: 12px;
+    padding: 12px 16px 4px 16px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.claude-settings-scroll {
+    padding: 0 8px;
+}
+
+.claude-settings-list {
+    spacing: 2px;
+    padding: 0 8px;
+}
+
+.claude-settings-account {
+    spacing: 10px;
+    padding: 8px;
+    border-radius: 6px;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.claude-settings-account-name {
+    font-size: 13px;
+}
+
+.claude-settings-account-meta {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.claude-settings-empty {
+    font-size: 12px;
+    padding: 12px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.claude-settings-row {
+    spacing: 8px;
+    padding: 4px 16px 12px 16px;
+}
+
+.claude-settings-value {
+    font-size: 12px;
+    min-width: 90px;
+    text-align: center;
+}
+
+.claude-settings-status {
+    font-size: 11px;
+    padding: 0 16px 8px 16px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.claude-stepper-button {
+    border-radius: 6px;
+    padding: 2px 10px;
+    background-color: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.claude-stepper-button:hover {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+
+/* A delete button waiting for its confirming second press. */
+.claude-arming {
+    background-color: rgba(224, 27, 36, 0.45);
+    color: #ffffff;
+}
+
+.claude-expired-box {
+    spacing: 6px;
+    padding: 4px 0;
 }

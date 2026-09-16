@@ -45,7 +45,22 @@ export function parseUsage(json) {
     };
 }
 
-export function buildRows(accounts, usageByAccountId, nowMs = Date.now()) {
+// contract/README.md's "Sort order" section: this is a three-tier ordering,
+// not a flat sort by burn rate.
+//
+//   1. Pinned first, unconditionally.
+//   2. The active Claude Code account next, but ONLY when nothing anywhere is
+//      pinned. `anyPinned` is computed once from the whole list, not per
+//      comparison — once something is pinned this tier vanishes entirely.
+//   3. Burn rate descending, as the final tiebreaker.
+//
+// `options` carries the two pieces of state tiers 1 and 2 need. Both default
+// to absent, which collapses the ordering back to tier 3 alone.
+export function buildRows(accounts, usageByAccountId, nowMs = Date.now(), options = {}) {
+    const pinnedId = options.pinnedId ?? null;
+    const activeEmail = options.activeEmail ?? null;
+    const errorsByAccountId = options.errorsByAccountId ?? {};
+
     const rows = accounts.map(account => {
         const raw = usageByAccountId[account.id];
         const windows = raw ? parseUsage(raw) : null;
@@ -55,7 +70,17 @@ export function buildRows(accounts, usageByAccountId, nowMs = Date.now()) {
             email: account.email ?? null,
             plan: account.plan,
             status: account.status,
+            // From `list`; absent when only `decrypt` saw this account.
+            storeId: account.storeId ?? null,
+            source: account.source ?? null,
+            chromeProfileName: account.chromeProfileName ?? null,
             windows,
+            error: errorsByAccountId[account.id] ?? null,
+            isPinned: pinnedId !== null && account.id === pinnedId,
+            // macOS matches the active Claude Code account by `account.email`
+            // (isActiveClaudeCodeAccount), never by name — an account with no
+            // email can never be the active one.
+            isActiveClaudeCode: activeEmail !== null && account.email === activeEmail,
             key: sortKey(
                 windows ? windows.fiveHour.utilization : null,
                 windows ? windows.fiveHour.resetsAtMs : null,
@@ -63,6 +88,14 @@ export function buildRows(accounts, usageByAccountId, nowMs = Date.now()) {
                 windows ? account.status : 'error'),
         };
     });
-    rows.sort((a, b) => b.key - a.key);
+
+    const anyPinned = rows.some(row => row.isPinned);
+    rows.sort((a, b) => {
+        if (a.isPinned !== b.isPinned)
+            return a.isPinned ? -1 : 1;
+        if (!anyPinned && a.isActiveClaudeCode !== b.isActiveClaudeCode)
+            return a.isActiveClaudeCode ? -1 : 1;
+        return b.key - a.key;
+    });
     return rows;
 }

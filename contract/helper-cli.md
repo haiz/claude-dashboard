@@ -332,6 +332,70 @@ profile fields, or `browser`: a key never changes which source a record has.
 
 `sync`'s rules above are unchanged by this command.
 
+## Linux-only commands
+
+`list` and `remove` exist only in `apps/linux/helper`. They have **no macOS
+counterpart** and are deliberately **absent from the usage banner**, which is
+shared contract and must stay byte-identical across the two helpers (see
+"Dispatch"). The macOS app manages accounts through its own Settings window,
+which talks to `AccountStore` directly and never shells out to the helper; the
+GNOME Shell extension has no such in-process store, so it needs these.
+
+Because they are not shared, nothing here is binding on a macOS
+implementation. What *is* binding is the reason they are separate commands
+rather than a widened `decrypt`.
+
+### Why not widen `decrypt`
+
+`decrypt`'s inclusion filter (`status == active && orgId != nil`) hides
+exactly the accounts an account-management UI exists to repair: an expired
+session has `status == expired`, so it never appears. Its six-field projection
+is also pinned, and it carries a session key, so it is the wrong shape to hand
+to a UI that only needs to display and delete.
+
+### `list`
+
+Source: `apps/linux/helper/src/list.rs`.
+
+Prints **every** stored account — no status filter, no orgId filter — as a
+pretty-printed JSON array with alphabetical keys. Fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | The store's own unique id. The only value safe to key on; two accounts can share an email across organisations. |
+| `name` | string | |
+| `email` | string or null | |
+| `orgId` | string or null | Null for an account that never completed a sync. |
+| `chromeProfileName` | string or null | Which browser profile to open when a session expires. |
+| `browser` | string | `chrome` / `arc` / `brave` / `edge`. |
+| `plan` | string | A wire value from `account-schema.md`. |
+| `status` | string | `active` / `expired` / `error`. |
+| `source` | string | `browser` or `manual`. Decides which expired-account guidance to show: a manual key has no profile to reopen. |
+| `isPinned` | bool | |
+| `lastSynced` | number or null | **Unix** seconds, already converted from the stored reference-date value. |
+
+**`sessionKey` is absent by construction**, not filtered out afterwards: the
+projection is built from named fields, so a field added to `Account` later
+cannot leak into it by accident. `apps/linux/helper/tests/list_remove.rs`
+asserts both that the key name and a planted key value are missing from the
+output.
+
+An **empty store is not an error** here — unlike `decrypt`, which exits 1 with
+`No accounts found.` — because "you have no accounts" is the answer the caller
+asked for. `list` prints `[]` and exits 0.
+
+### `remove <id>`
+
+Deletes one account from the store by its `list` `id` and prints
+`Removed <id>.` on success.
+
+Failure paths, all exit 1: no argument prints
+`Usage: claude-dashboard-helper remove <id>\n`; an id matching no account
+prints `No account with id <id>.\n` and leaves the store untouched — a UI that
+deleted the wrong row should find out rather than see a silent success; an
+unreadable or unwritable store prints `Could not read the account store.\n` or
+`Could not write the account store.\n`.
+
 ## Test coverage of the network layer
 
 Every rule above is a rule about a *decision*, and every decision is covered by

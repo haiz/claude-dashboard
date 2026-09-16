@@ -9,6 +9,10 @@ export const TAU = Math.PI * 2;
 // Cairo measures from 3 o'clock, so the same start is -pi/2.
 export const START_ANGLE = -Math.PI / 2;
 
+// UsageBar.swift carries two sets of sizes behind `isCompact` (lines 26-31,
+// 40): the popover/widget set and the dashboard-window set. METRICS keeps its
+// name and its compact values so existing callers are unchanged; metricsFor()
+// is how the dashboard window asks for the larger set.
 export const METRICS = {
     largeDiameter: 52,
     smallDiameter: 34,
@@ -17,8 +21,32 @@ export const METRICS = {
     windowLabelFontSize: 10,
     resetLabelFontSize: 8,
     animalFontSize: 10,
+    // HStack(spacing: isCompact ? 5 : 8) — the gap between the usage ring and
+    // the countdown column.
     ringGap: 5,
+    // VStack(alignment: .center, spacing: 5) (UsageBar.swift:39) — fixed in
+    // both size classes, which is why it is not `ringGap`.
+    columnGap: 5,
 };
+
+export const METRICS_REGULAR = {
+    largeDiameter: 68,
+    smallDiameter: 44,
+    largeLineWidth: 8,
+    smallLineWidth: 5,
+    windowLabelFontSize: 13,
+    // The reset label and the animal are fixed-size on macOS: .system(size: 8)
+    // (UsageBar.swift:88) and .system(size: 10) (line 233), outside the
+    // isCompact ternaries.
+    resetLabelFontSize: 8,
+    animalFontSize: 10,
+    ringGap: 8,
+    columnGap: 5,
+};
+
+export function metricsFor(isCompact) {
+    return isCompact ? METRICS : METRICS_REGULAR;
+}
 
 export function fillFraction(utilization) {
     return Math.min(Math.max(utilization, 0) / 100, 1);

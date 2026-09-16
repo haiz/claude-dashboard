@@ -14,13 +14,14 @@ FAIL=0
 make_fixture() {
     local tmp
     tmp="$(mktemp -d)"
-    mkdir -p "$tmp/apps/macos/ClaudeDashboard" "$tmp/apps/linux" "$tmp/cli" "$tmp/Formula" "$tmp/Casks" "$tmp/scripts"
+    mkdir -p "$tmp/apps/macos/ClaudeDashboard" "$tmp/apps/linux/gnome-extension" "$tmp/cli" "$tmp/Formula" "$tmp/Casks" "$tmp/scripts"
     cp "$REPO_ROOT/apps/macos/ClaudeDashboard/Info.plist" "$tmp/apps/macos/ClaudeDashboard/Info.plist"
     cp "$REPO_ROOT/apps/linux/Cargo.toml" "$tmp/apps/linux/Cargo.toml"
     cp "$REPO_ROOT/apps/linux/Cargo.lock" "$tmp/apps/linux/Cargo.lock"
     cp "$REPO_ROOT/cli/claude-dashboard-cli" "$tmp/cli/claude-dashboard-cli"
     cp "$REPO_ROOT/Formula/claude-dashboard-cli.rb" "$tmp/Formula/claude-dashboard-cli.rb"
     cp "$REPO_ROOT/Casks/claude-dashboard.rb" "$tmp/Casks/claude-dashboard.rb"
+    cp "$REPO_ROOT/apps/linux/gnome-extension/metadata.json" "$tmp/apps/linux/gnome-extension/metadata.json"
     cp "$SYNC" "$tmp/scripts/sync-version.sh"
     chmod +x "$tmp/scripts/sync-version.sh"
     echo "$tmp"
@@ -40,6 +41,10 @@ grep -q '^  version "9.9.9"' "$T1/Formula/claude-dashboard-cli.rb" && ok "Formul
 grep -q '/v9.9.9/' "$T1/Formula/claude-dashboard-cli.rb" && ok "Formula url bumped" || ko "Formula url bumped"
 grep -q '^  version "9.9.9"' "$T1/Casks/claude-dashboard.rb" && ok "Cask bumped" || ko "Cask bumped"
 grep -q '^version = "9.9.9"' "$T1/apps/linux/Cargo.toml" && ok "Cargo.toml bumped" || ko "Cargo.toml bumped"
+# "version-name", not "version": the latter is e.g.o's revision counter and
+# must stay put while the human release string moves.
+grep -q '"version-name": "9.9.9"' "$T1/apps/linux/gnome-extension/metadata.json" \
+    && ok "extension metadata bumped" || ko "extension metadata bumped"
 # Both workspace members carry the version in the lock; a stale one makes
 # `cargo --locked` fail on the next build. Asserted per member, so a dep that
 # happens to share the version cannot make this pass by accident.
@@ -62,6 +67,7 @@ cp "$T2/Formula/claude-dashboard-cli.rb" "$SNAPSHOT/"
 cp "$T2/Casks/claude-dashboard.rb" "$SNAPSHOT/"
 cp "$T2/apps/linux/Cargo.toml" "$SNAPSHOT/"
 cp "$T2/apps/linux/Cargo.lock" "$SNAPSHOT/"
+cp "$T2/apps/linux/gnome-extension/metadata.json" "$SNAPSHOT/"
 "$T2/scripts/sync-version.sh" >/dev/null
 diff -q "$SNAPSHOT/Info.plist" "$T2/apps/macos/ClaudeDashboard/Info.plist" >/dev/null && ok "Info.plist idempotent" || ko "Info.plist idempotent"
 diff -q "$SNAPSHOT/claude-dashboard-cli" "$T2/cli/claude-dashboard-cli" >/dev/null && ok "CLI idempotent" || ko "CLI idempotent"
@@ -69,6 +75,8 @@ diff -q "$SNAPSHOT/claude-dashboard-cli.rb" "$T2/Formula/claude-dashboard-cli.rb
 diff -q "$SNAPSHOT/claude-dashboard.rb" "$T2/Casks/claude-dashboard.rb" >/dev/null && ok "Cask idempotent" || ko "Cask idempotent"
 diff -q "$SNAPSHOT/Cargo.toml" "$T2/apps/linux/Cargo.toml" >/dev/null && ok "Cargo.toml idempotent" || ko "Cargo.toml idempotent"
 diff -q "$SNAPSHOT/Cargo.lock" "$T2/apps/linux/Cargo.lock" >/dev/null && ok "Cargo.lock idempotent" || ko "Cargo.lock idempotent"
+diff -q "$SNAPSHOT/metadata.json" "$T2/apps/linux/gnome-extension/metadata.json" >/dev/null \
+    && ok "extension metadata idempotent" || ko "extension metadata idempotent"
 rm -rf "$T2" "$SNAPSHOT"
 
 # --- Test 3: malformed VERSION is rejected. ---
