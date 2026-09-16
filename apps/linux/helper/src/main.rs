@@ -1,12 +1,8 @@
 mod add_key;
-mod config;
 mod decrypt;
 mod list;
-mod state;
 mod sync;
 mod usage;
-#[cfg(test)]
-mod testsupport;
 
 use std::process::exit;
 
