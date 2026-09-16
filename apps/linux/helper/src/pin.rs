@@ -83,9 +83,12 @@ mod tests {
     #[test]
     fn unpinning_clears_only_that_account() {
         let mut list = accounts();
-        list[1].is_pinned = true;
+        list[1].is_pinned = true; // b
+        list[2].is_pinned = true; // c
         assert!(apply_pin(&mut list, "b", false));
-        assert_eq!(list.iter().filter(|a| a.is_pinned).count(), 0);
+        assert!(!list.iter().find(|a| a.id == "b").unwrap().is_pinned);
+        assert!(list.iter().find(|a| a.id == "c").unwrap().is_pinned);
+        assert_eq!(list.iter().filter(|a| a.is_pinned).count(), 1);
     }
 
     #[test]

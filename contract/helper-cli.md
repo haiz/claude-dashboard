@@ -425,8 +425,15 @@ so a later configuration change is still noticed.
 ### `pin <id> [--off]`
 
 Sets or clears `isPinned` on one stored account, addressed by the same `id`
-`list` prints and `remove` takes. Exit 1 with `No account with id <id>.` when
-nothing matches.
+`list` prints and `remove` takes. Prints `Pinned <id>.` (or, with `--off`,
+`Unpinned <id>.`) and exits 0 on success.
+
+Failure paths, all exit 1: no argument prints
+`Usage: claude-dashboard-helper pin <id> [--off]\n`; an id matching no account
+prints `No account with id <id>.\n` and leaves the store untouched; a store
+that cannot be read prints `Could not read accounts: <error>\n`; a store that
+cannot be written prints `Could not save accounts: <error>\n`. Unlike
+`remove`'s fixed store-error text, `pin` interpolates the underlying error.
 
 Pinning one account clears every other pin. The schema permits several pinned
 accounts and `contract/README.md`'s sort rule is written for that, but the
