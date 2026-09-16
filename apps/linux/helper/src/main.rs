@@ -11,11 +11,12 @@ use std::process::exit;
 /// macOS helper prints. `eprint!`, not `eprintln!`: the trailing newline is
 /// part of the literal, and a second one would break the byte-exact contract.
 ///
-/// `list` and `remove` are deliberately absent: they are Linux-only commands
-/// with no macOS counterpart (the macOS app manages accounts through its own
-/// Settings window instead), and this banner is shared contract that must stay
-/// byte-identical across the two helpers. They are documented in
-/// `contract/helper-cli.md` under "Linux-only commands".
+/// `list`, `remove`, `watch` and `pin` are deliberately absent: they are
+/// Linux-only commands with no macOS counterpart (the macOS app manages
+/// accounts through its own Settings window instead, and has no daemon), and
+/// this banner is shared contract that must stay byte-identical across the
+/// two helpers. They are documented in `contract/helper-cli.md` under
+/// "Linux-only commands".
 const USAGE_BANNER: &str = "\
 Usage: claude-dashboard-helper <command>
 

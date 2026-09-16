@@ -334,12 +334,13 @@ profile fields, or `browser`: a key never changes which source a record has.
 
 ## Linux-only commands
 
-`list` and `remove` exist only in `apps/linux/helper`. They have **no macOS
-counterpart** and are deliberately **absent from the usage banner**, which is
-shared contract and must stay byte-identical across the two helpers (see
-"Dispatch"). The macOS app manages accounts through its own Settings window,
-which talks to `AccountStore` directly and never shells out to the helper; the
-GNOME Shell extension has no such in-process store, so it needs these.
+`list`, `remove`, `watch` and `pin` exist only in `apps/linux/helper`. They
+have **no macOS counterpart** and are deliberately **absent from the usage
+banner**, which is shared contract and must stay byte-identical across the two
+helpers (see "Dispatch"). The macOS app manages accounts through its own
+Settings window, which talks to `AccountStore` directly and never shells out
+to the helper, and has no daemon; the GNOME Shell extension has no such
+in-process store or poll loop, so it needs these.
 
 Because they are not shared, nothing here is binding on a macOS
 implementation. What *is* binding is the reason they are separate commands
