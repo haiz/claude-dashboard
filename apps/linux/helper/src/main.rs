@@ -1,4 +1,5 @@
 mod add_key;
+mod config;
 mod decrypt;
 mod list;
 mod sync;
