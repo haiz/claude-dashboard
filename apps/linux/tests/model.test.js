@@ -3,7 +3,7 @@ import {test, assertEqual} from './harness.js';
 import {parseUsage, buildRows} from '../lib/model.js';
 import {parseAccounts} from '../lib/helper.js';
 
-const REPO = GLib.getenv('CLAUDE_DASHBOARD_REPO') ?? '../../..';
+const REPO = GLib.getenv('CLAUDE_DASHBOARD_REPO') ?? '../..';
 
 function loadCases(name) {
     const [ok, bytes] = GLib.file_get_contents(`${REPO}/contract/cases/${name}`);

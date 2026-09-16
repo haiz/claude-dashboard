@@ -2,7 +2,7 @@ import GLib from 'gi://GLib';
 import {test, assertEqual, assertClose} from './harness.js';
 import {usageColor, countdownColor, burnRateLevel, burnRateAnimal} from '../lib/colors.js';
 
-const REPO = GLib.getenv('CLAUDE_DASHBOARD_REPO') ?? '../../..';
+const REPO = GLib.getenv('CLAUDE_DASHBOARD_REPO') ?? '../..';
 
 function loadCases(name) {
     const [ok, bytes] = GLib.file_get_contents(`${REPO}/contract/cases/${name}`);
