@@ -3,7 +3,6 @@ import Charts
 
 struct OverviewChartView: View {
     @ObservedObject var viewModel: DashboardViewModel
-    let onBack: () -> Void
 
     @State private var selectedWindow: UsageWindow = .fiveHour
     @State private var visibleRange: ClosedRange<Date> = {
@@ -25,19 +24,7 @@ struct OverviewChartView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                Button(action: onBack) {
-                    Label("Back", systemImage: "chevron.left")
-                }
-                .buttonStyle(HoverableButtonStyle(prominent: true))
-
-                Text("Overview")
-                    .font(.title2.bold())
-
-                Spacer()
-            }
-            .padding()
+            PaneHeader(title: "Overview")
 
             Divider()
 

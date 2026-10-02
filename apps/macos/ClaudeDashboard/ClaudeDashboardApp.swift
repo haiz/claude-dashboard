@@ -75,18 +75,18 @@ struct ClaudeDashboardApp: App {
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
                 onOpenOverview: {
-                    viewModel.navigation = .overview
+                    viewModel.selection = .overview
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
                 onOpenSettings: {
-                    viewModel.isPresentingSettings = true
+                    viewModel.selection = .settingsAccounts
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
                 onOpenCommandLog: {
                     appDelegate.openCommandLogWindow(viewModel: viewModel)
                 },
                 onOpenAccountDetail: { accountId, window in
-                    viewModel.navigation = .accountDetail(accountId, window)
+                    viewModel.openAccount(accountId, window: window)
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 }
             )
@@ -118,7 +118,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private weak var currentViewModel: DashboardViewModel?
     weak var updateViewModel: UpdateViewModel?
     var runningProcesses: RunningProcessRegistry?
-    private var navigationCancellable: AnyCancellable?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
@@ -150,7 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             sender.endSheet(sheet)
         }
         // Reset navigation so chart/detail subviews are released.
-        currentViewModel?.navigation = .dashboard
+        currentViewModel?.selection = .dashboard
         // Drop the SwiftUI view hierarchy to free memory while hidden.
         sender.contentView = nil
         sender.orderOut(nil)
@@ -174,12 +173,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if let uvm = updateViewModel { self.updateViewModel = uvm }
         let showSetup = viewModel.accountStore.accounts.isEmpty
         let uvm = self.updateViewModel ?? UpdateViewModel()
-        let contentView = DashboardWindowWrapper(
-            viewModel: viewModel,
-            showSetupOnAppear: showSetup,
-            onOpenCommandLog: { [weak self] in self?.openCommandLogWindow(viewModel: viewModel) }
-        )
-        .environmentObject(uvm)
+        let contentView = MainWindow(viewModel: viewModel, showSetupOnAppear: showSetup)
+            .environmentObject(uvm)
 
         let window: NSWindow
         if let existing = dashboardWindow {
@@ -204,15 +199,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         window.contentView = NSHostingView(rootView: contentView)
-        resizeWindowToFitContent(window: window, viewModel: viewModel)
-        navigationCancellable = viewModel.$navigation
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self, let win = self.dashboardWindow, let vm = self.currentViewModel else { return }
-                    self.resizeWindowToFitContent(window: win, viewModel: vm)
-                }
-            }
         NSApp.setActivationPolicy(.regular)  // show dock icon
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -245,61 +231,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.setActivationPolicy(.regular)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-    }
-
-    @MainActor private func resizeWindowToFitContent(window: NSWindow, viewModel: DashboardViewModel) {
-        let height = idealContentHeight(for: viewModel, in: window)
-        let width = max(window.frame.width, 1050)
-        let old = window.frame
-        window.setFrame(
-            NSRect(x: old.origin.x, y: old.origin.y + old.height - height, width: width, height: height),
-            display: true, animate: false
-        )
-    }
-
-    @MainActor private func idealContentHeight(for viewModel: DashboardViewModel, in window: NSWindow) -> CGFloat {
-        let n = viewModel.accountStates.count
-        let screenMax = (window.screen?.visibleFrame.height ?? 1200) - 80
-        let raw: CGFloat
-        switch viewModel.navigation {
-        case .overview:
-            // header 50 + chart container (toolbar 36 + chart 300) + 2 dividers
-            // + legend rows (accounts + 1 Total) * 28 + separator + padding
-            raw = 50 + 336 + 2 + CGFloat(max(1, n + 1)) * 28 + 12 + 16
-        case .dashboard:
-            // header 50 + grid rows * (card ~320 + spacing 12) + outer padding 24
-            let cols = 2  // adaptive(min: 440) at 1050 width → 2 columns
-            let rows = max(1, (n + cols - 1) / cols)
-            raw = 50 + CGFloat(rows) * (320 + 12) + 24
-        case .accountDetail:
-            raw = 720
-        }
-        return max(450, min(raw, screenMax))
-    }
-}
-
-/// Wrapper that handles first-time setup sheet via SwiftUI
-struct DashboardWindowWrapper: View {
-    @ObservedObject var viewModel: DashboardViewModel
-    let showSetupOnAppear: Bool
-    var onOpenCommandLog: (() -> Void)?
-    @State private var showingSetup = false
-
-    var body: some View {
-        DashboardWindow(
-            viewModel: viewModel,
-            onAddAccount: { showingSetup = true },
-            onOpenCommandLog: onOpenCommandLog
-        )
-        .onAppear {
-            if showSetupOnAppear {
-                showingSetup = true
-            }
-        }
-        .sheet(isPresented: $showingSetup) {
-            SetupView(viewModel: viewModel) {
-                showingSetup = false
-            }
-        }
     }
 }

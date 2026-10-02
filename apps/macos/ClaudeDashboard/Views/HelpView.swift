@@ -1,23 +1,11 @@
 import SwiftUI
 
 struct HelpView: View {
-    @Environment(\.dismiss) private var dismiss
-
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Help")
-                    .font(.title2.bold())
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding()
-
-            Divider()
-
+            PaneHeader(title: "Help")
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 14) {
                     gettingStartedSection
                     readingUsageSection
                     dashboardSection
@@ -25,27 +13,16 @@ struct HelpView: View {
                     autoRefreshSection
                     troubleshootingSection
                 }
-                .padding()
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
             }
-
-            Divider()
-
-            HStack {
-                Spacer()
-                Text("Claude Dashboard v\(AppVersion.string)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            .padding(.vertical, 6)
         }
-        .frame(width: 520, height: 560)
     }
 
     // MARK: - Sections
 
     private var gettingStartedSection: some View {
-        helpSection(title: "Getting Started", icon: "sparkles") {
+        helpSection(title: "Getting Started", icon: "sparkles", color: .blue) {
             bodyText("Claude Dashboard shows your Claude.ai token usage across multiple accounts, pulled directly from your Chrome sessions — no passwords required.")
 
             VStack(alignment: .leading, spacing: 6) {
@@ -59,7 +36,7 @@ struct HelpView: View {
     }
 
     private var readingUsageSection: some View {
-        helpSection(title: "Reading Your Usage", icon: "chart.bar.fill") {
+        helpSection(title: "Reading Your Usage", icon: "chart.bar.fill", color: .purple) {
             bodyText("Each account card shows up to three usage bars:")
 
             VStack(alignment: .leading, spacing: 6) {
@@ -77,7 +54,7 @@ struct HelpView: View {
     }
 
     private var dashboardSection: some View {
-        helpSection(title: "Working With the Dashboard", icon: "square.grid.2x2") {
+        helpSection(title: "Working With the Dashboard", icon: "square.grid.2x2", color: .indigo) {
             bodyText("The menu bar popover header has five icon buttons, left to right:")
 
             VStack(alignment: .leading, spacing: 6) {
@@ -99,11 +76,11 @@ struct HelpView: View {
     }
 
     private var managingAccountsSection: some View {
-        helpSection(title: "Managing Accounts", icon: "person.2.circle") {
+        helpSection(title: "Managing Accounts", icon: "person.2.circle", color: .green) {
             VStack(alignment: .leading, spacing: 6) {
-                bullet(icon: "plus.circle",  text: "**Add an account** — Settings → **Add Account**, then pick your browser (Chrome, Arc, Brave, Edge).")
-                bullet(icon: "arrow.clockwise", text: "**Re-sync** — Settings → **Re-sync All**, or use the **Re-sync** button on any expired card.")
-                bullet(icon: "trash",        text: "**Remove an account** — Settings → trash icon next to the account.")
+                bullet(icon: "plus.circle",  text: "**Add an account** — **Settings › Accounts** → **Add Account**, then pick your browser (Chrome, Arc, Brave, Edge).")
+                bullet(icon: "arrow.clockwise", text: "**Re-sync** — **Settings › Accounts** → **Re-sync All**, or use the **Re-sync** button on any expired card.")
+                bullet(icon: "trash",        text: "**Remove an account** — **Settings › Accounts** → trash icon next to the account, or **Remove Account…** on the account's page.")
             }
 
             tip("If a card shows an orange triangle, the session has expired. Open the matching browser profile, log into claude.ai, then re-sync.")
@@ -111,15 +88,15 @@ struct HelpView: View {
     }
 
     private var autoRefreshSection: some View {
-        helpSection(title: "Auto-Refresh & Updates", icon: "arrow.triangle.2.circlepath") {
-            bodyText("Enable **Auto Refresh** in Settings to keep usage current automatically. Set the interval anywhere from 1 to 60 minutes.")
+        helpSection(title: "Auto-Refresh & Updates", icon: "arrow.triangle.2.circlepath", color: .orange) {
+            bodyText("Enable **Auto Refresh** under **Settings › Auto Refresh** to keep usage current automatically. Set the interval anywhere from 1 to 60 minutes.")
 
             bodyText("**Auto-update daily** checks GitHub once a day and installs new releases in the background. Use **Check for Updates** to force a check immediately.")
         }
     }
 
     private var troubleshootingSection: some View {
-        helpSection(title: "Troubleshooting", icon: "wrench.and.screwdriver") {
+        helpSection(title: "Troubleshooting", icon: "wrench.and.screwdriver", color: .gray) {
             VStack(alignment: .leading, spacing: 10) {
                 problemAnswer(
                     problem: "\"No profiles found\"",
@@ -143,16 +120,25 @@ struct HelpView: View {
 
     // MARK: - Helpers
 
-    private func helpSection<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 10) {
-                content()
+    private func helpSection<Content: View>(title: String, icon: String, color: Color, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                SettingsIcon(systemImage: icon, color: color, size: 24)
+                Text(title)
+                    .font(.headline)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } label: {
-            Label(title, systemImage: icon)
-                .font(.headline)
+            content()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06))
+        )
     }
 
     private func bodyText(_ text: LocalizedStringKey) -> some View {

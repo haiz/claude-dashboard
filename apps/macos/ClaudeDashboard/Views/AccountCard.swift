@@ -131,7 +131,7 @@ struct AccountCard: View {
             // never renders for it and Re-sync cannot fix it either. Say where
             // the key comes from instead of leaving a dead button.
             if state.account.source == .manual {
-                Text("This key was pasted by hand. Add it again from Settings, Add Account, \"Paste a session key instead\".")
+                Text("This key was pasted by hand. Add it again from Settings \u{203A} Accounts, Add Account, \"Paste a session key instead\".")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if let profileName = state.account.chromeProfileName {

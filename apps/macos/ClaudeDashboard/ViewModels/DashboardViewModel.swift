@@ -80,13 +80,6 @@ final class DashboardViewModel: ObservableObject {
         didSet { AppDefaults.shared.set(autoRefreshMinutes, forKey: "autoRefreshMinutes"); scheduleAutoRefresh() }
     }
 
-    enum NavigationDestination: Equatable {
-        case dashboard
-        case accountDetail(UUID, UsageWindow)
-        case overview
-    }
-
-    @Published var navigation: NavigationDestination = .dashboard
     /// The sidebar row the main window shows.
     @Published var selection: SidebarItem = .dashboard
     /// Chart window an account pane opens on. Kept apart from `selection` so the
@@ -94,7 +87,6 @@ final class DashboardViewModel: ObservableObject {
     @Published var preselectedWindow: UsageWindow = .fiveHour
     /// Non-nil while a "Re-sync All" pass runs: (accounts re-synced so far, total).
     @Published private(set) var resyncAllProgress: (done: Int, total: Int)?
-    @Published var isPresentingSettings = false
     @Published var lastLogsUpdatedAt: Date = .distantPast
 
     let accountStore: AccountStore
