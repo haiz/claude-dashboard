@@ -163,6 +163,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @MainActor func openDashboardWindow(viewModel: DashboardViewModel, updateViewModel: UpdateViewModel? = nil) {
         currentViewModel = viewModel
         if let uvm = updateViewModel { self.updateViewModel = uvm }
+
+        // A live window (closing it sets contentView = nil) already renders
+        // `viewModel.selection`, which the caller has set. Raise it as is:
+        // ending its sheets or swapping its content would dismiss a Run Command
+        // sheet, whose onDisappear cancels the run and kills the process tree.
+        if let window = dashboardWindow, window.contentView != nil {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            NSApp.setActivationPolicy(.regular)
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
         let showSetup = viewModel.accountStore.accounts.isEmpty
         let uvm = self.updateViewModel ?? UpdateViewModel()
         let contentView = MainWindow(viewModel: viewModel, showSetupOnAppear: showSetup)
@@ -170,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let window: NSWindow
         if let existing = dashboardWindow {
+            // Hidden by windowShouldClose: rebuild the content it dropped.
             window = existing
             // Dismiss any lingering sheets from a previous session.
             while let sheet = window.attachedSheet {
