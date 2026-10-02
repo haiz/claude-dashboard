@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import Combine
 
 private enum MenuBarLabelRenderer {
     private static let barH: CGFloat = 22
@@ -75,18 +74,23 @@ struct ClaudeDashboardApp: App {
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
                 onOpenOverview: {
-                    viewModel.navigation = .overview
+                    viewModel.selection = .overview
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
                 onOpenSettings: {
-                    viewModel.isPresentingSettings = true
+                    viewModel.selection = .settingsAccounts
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
                 onOpenCommandLog: {
-                    appDelegate.openCommandLogWindow(viewModel: viewModel)
+                    viewModel.selection = .commandLog
+                    appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
+                },
+                onOpenHelp: {
+                    viewModel.selection = .help
+                    appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
                 onOpenAccountDetail: { accountId, window in
-                    viewModel.navigation = .accountDetail(accountId, window)
+                    viewModel.openAccount(accountId, window: window)
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 }
             )
@@ -113,12 +117,9 @@ struct ClaudeDashboardApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var dashboardWindow: NSWindow?
-    private var commandLogWindow: NSWindow?
-    private var commandLogViewModel: CommandLogViewModel?
     private weak var currentViewModel: DashboardViewModel?
     weak var updateViewModel: UpdateViewModel?
     var runningProcesses: RunningProcessRegistry?
-    private var navigationCancellable: AnyCancellable?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
@@ -133,24 +134,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // Keeping the NSWindow instance alive prevents SwiftUI/AppKit from treating
     // this as "last window closed" and terminating the menu-bar-only app.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard sender === dashboardWindow else {
-            if sender === commandLogWindow {
-                sender.orderOut(nil)
-                // Only drop the dock icon if the dashboard isn't also visible.
-                if dashboardWindow?.isVisible != true {
-                    NSApp.setActivationPolicy(.accessory)
-                }
-                return false  // keep the window instance alive for reuse
-            }
-            return true
-        }
-        // Dismiss any presented sheets (Settings, Setup) so AppKit
+        guard sender === dashboardWindow else { return true }
+        // Dismiss any presented sheets (Setup, Run Command) so AppKit
         // removes the dimming overlay before we hide the window.
         while let sheet = sender.attachedSheet {
             sender.endSheet(sheet)
         }
-        // Reset navigation so chart/detail subviews are released.
-        currentViewModel?.navigation = .dashboard
+        // Reset the sidebar selection so chart/detail subviews are released.
+        currentViewModel?.selection = .dashboard
         // Drop the SwiftUI view hierarchy to free memory while hidden.
         sender.contentView = nil
         sender.orderOut(nil)
@@ -172,17 +163,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @MainActor func openDashboardWindow(viewModel: DashboardViewModel, updateViewModel: UpdateViewModel? = nil) {
         currentViewModel = viewModel
         if let uvm = updateViewModel { self.updateViewModel = uvm }
+
+        // A live window (closing it sets contentView = nil) already renders
+        // `viewModel.selection`, which the caller has set. Raise it as is:
+        // ending its sheets or swapping its content would dismiss a Run Command
+        // sheet, whose onDisappear cancels the run and kills the process tree.
+        if let window = dashboardWindow, window.contentView != nil {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            NSApp.setActivationPolicy(.regular)
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
         let showSetup = viewModel.accountStore.accounts.isEmpty
         let uvm = self.updateViewModel ?? UpdateViewModel()
-        let contentView = DashboardWindowWrapper(
-            viewModel: viewModel,
-            showSetupOnAppear: showSetup,
-            onOpenCommandLog: { [weak self] in self?.openCommandLogWindow(viewModel: viewModel) }
-        )
-        .environmentObject(uvm)
+        let contentView = MainWindow(viewModel: viewModel, showSetupOnAppear: showSetup)
+            .environmentObject(uvm)
 
         let window: NSWindow
         if let existing = dashboardWindow {
+            // Hidden by windowShouldClose: rebuild the content it dropped.
             window = existing
             // Dismiss any lingering sheets from a previous session.
             while let sheet = window.attachedSheet {
@@ -190,116 +191,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         } else {
             window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1050, height: 700),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                contentRect: NSRect(x: 0, y: 0, width: 1200, height: 760),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
             )
+            // Mission Control and the Window menu still read the title; it is
+            // hidden in the bar so the sidebar runs to the top like System Settings.
             window.title = "Claude Dashboard"
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
             window.center()
-            window.minSize = NSSize(width: 1050, height: 450)
+            window.minSize = NSSize(width: 900, height: 560)
             window.isReleasedWhenClosed = false
             window.delegate = self
             dashboardWindow = window
         }
 
         window.contentView = NSHostingView(rootView: contentView)
-        resizeWindowToFitContent(window: window, viewModel: viewModel)
-        navigationCancellable = viewModel.$navigation
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self, let win = self.dashboardWindow, let vm = self.currentViewModel else { return }
-                    self.resizeWindowToFitContent(window: win, viewModel: vm)
-                }
-            }
         NSApp.setActivationPolicy(.regular)  // show dock icon
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-    }
-
-    @MainActor func openCommandLogWindow(viewModel: DashboardViewModel) {
-        let vm = commandLogViewModel ?? CommandLogViewModel(store: viewModel.commandLogStore, accountStore: viewModel.accountStore)
-        commandLogViewModel = vm
-        let contentView = CommandLogView(viewModel: vm)
-
-        let window: NSWindow
-        if let existing = commandLogWindow {
-            window = existing
-        } else {
-            window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = "Command Log"
-            window.center()
-            window.minSize = NSSize(width: 640, height: 400)
-            window.isReleasedWhenClosed = false
-            window.delegate = self
-            commandLogWindow = window
-        }
-
-        window.contentView = NSHostingView(rootView: contentView)
-        NSApp.setActivationPolicy(.regular)
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    @MainActor private func resizeWindowToFitContent(window: NSWindow, viewModel: DashboardViewModel) {
-        let height = idealContentHeight(for: viewModel, in: window)
-        let width = max(window.frame.width, 1050)
-        let old = window.frame
-        window.setFrame(
-            NSRect(x: old.origin.x, y: old.origin.y + old.height - height, width: width, height: height),
-            display: true, animate: false
-        )
-    }
-
-    @MainActor private func idealContentHeight(for viewModel: DashboardViewModel, in window: NSWindow) -> CGFloat {
-        let n = viewModel.accountStates.count
-        let screenMax = (window.screen?.visibleFrame.height ?? 1200) - 80
-        let raw: CGFloat
-        switch viewModel.navigation {
-        case .overview:
-            // header 50 + chart container (toolbar 36 + chart 300) + 2 dividers
-            // + legend rows (accounts + 1 Total) * 28 + separator + padding
-            raw = 50 + 336 + 2 + CGFloat(max(1, n + 1)) * 28 + 12 + 16
-        case .dashboard:
-            // header 50 + grid rows * (card ~320 + spacing 12) + outer padding 24
-            let cols = 2  // adaptive(min: 440) at 1050 width → 2 columns
-            let rows = max(1, (n + cols - 1) / cols)
-            raw = 50 + CGFloat(rows) * (320 + 12) + 24
-        case .accountDetail:
-            raw = 720
-        }
-        return max(450, min(raw, screenMax))
-    }
-}
-
-/// Wrapper that handles first-time setup sheet via SwiftUI
-struct DashboardWindowWrapper: View {
-    @ObservedObject var viewModel: DashboardViewModel
-    let showSetupOnAppear: Bool
-    var onOpenCommandLog: (() -> Void)?
-    @State private var showingSetup = false
-
-    var body: some View {
-        DashboardWindow(
-            viewModel: viewModel,
-            onAddAccount: { showingSetup = true },
-            onOpenCommandLog: onOpenCommandLog
-        )
-        .onAppear {
-            if showSetupOnAppear {
-                showingSetup = true
-            }
-        }
-        .sheet(isPresented: $showingSetup) {
-            SetupView(viewModel: viewModel) {
-                showingSetup = false
-            }
-        }
     }
 }

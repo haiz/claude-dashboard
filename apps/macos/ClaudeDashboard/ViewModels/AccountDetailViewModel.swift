@@ -4,8 +4,6 @@ import SwiftUI
 @MainActor
 final class AccountDetailViewModel: ObservableObject {
     let accountId: UUID
-    let accountName: String
-    let accountPlan: AccountPlan
     private let logStore: UsageLogStore
 
     @Published var selectedWindow: UsageWindow = .fiveHour
@@ -18,10 +16,8 @@ final class AccountDetailViewModel: ObservableObject {
         return now.addingTimeInterval(-86400)...now
     }()
 
-    init(accountId: UUID, accountName: String, accountPlan: AccountPlan, logStore: UsageLogStore, preselectedWindow: UsageWindow = .fiveHour) {
+    init(accountId: UUID, logStore: UsageLogStore, preselectedWindow: UsageWindow = .fiveHour) {
         self.accountId = accountId
-        self.accountName = accountName
-        self.accountPlan = accountPlan
         self.logStore = logStore
         self.selectedWindow = preselectedWindow
     }

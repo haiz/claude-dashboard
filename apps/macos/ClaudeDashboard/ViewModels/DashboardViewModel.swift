@@ -11,6 +11,16 @@ struct AccountUsageState: Identifiable {
     var burnRates: BurnRates?
 }
 
+extension AccountUsageState {
+    /// Highest utilization across the 5h, 7d and Fable windows; nil until usage loads.
+    var peakUtilization: Double? {
+        guard let usage = usage else { return nil }
+        return [usage.fiveHour.utilization, usage.sevenDay.utilization, usage.fable?.utilization]
+            .compactMap { $0 }
+            .max()
+    }
+}
+
 /// What applying a pasted session key did. The view maps this to a message; the
 /// key itself never appears in any of them.
 enum ManualKeyOutcome: Equatable {
@@ -70,16 +80,13 @@ final class DashboardViewModel: ObservableObject {
         didSet { AppDefaults.shared.set(autoRefreshMinutes, forKey: "autoRefreshMinutes"); scheduleAutoRefresh() }
     }
 
-    enum NavigationDestination: Equatable {
-        case dashboard
-        case accountDetail(UUID, UsageWindow)
-        case overview
-    }
-
-    @Published var navigation: NavigationDestination = .dashboard
+    /// The sidebar row the main window shows.
+    @Published var selection: SidebarItem = .dashboard
+    /// Chart window an account pane opens on. Kept apart from `selection` so the
+    /// sidebar row keeps one identity whichever gauge opened it.
+    @Published var preselectedWindow: UsageWindow = .fiveHour
     /// Non-nil while a "Re-sync All" pass runs: (accounts re-synced so far, total).
     @Published private(set) var resyncAllProgress: (done: Int, total: Int)?
-    @Published var isPresentingSettings = false
     @Published var lastLogsUpdatedAt: Date = .distantPast
 
     let accountStore: AccountStore
@@ -573,6 +580,24 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Navigation
+
+    func openAccount(_ id: UUID, window: UsageWindow) {
+        preselectedWindow = window
+        selection = .account(id)
+    }
+
+    /// A row the user clicked in the sidebar. Moving to another row resets the
+    /// chart window, so account B never opens on the window last chosen for A;
+    /// `openAccount` (a gauge tap) sets the window instead and does not come here.
+    ///
+    ///     vm.selectFromSidebar(.account(id))   // pane opens on the 5h chart
+    func selectFromSidebar(_ item: SidebarItem) {
+        guard item != selection else { return }
+        preselectedWindow = .fiveHour
+        selection = item
+    }
+
     // MARK: - Menubar Label
 
     private var menuBarSource: UsageLimit? {
@@ -643,6 +668,10 @@ final class DashboardViewModel: ObservableObject {
         }
         // Sort: pinned > (active Claude Code if no pin) > burn rate
         sortStates()
+        // A removed account cannot stay selected: fall back to the dashboard.
+        if case .account(let id) = selection, !accounts.contains(where: { $0.id == id }) {
+            selection = .dashboard
+        }
     }
 
     private static func fetchWithRetry<T>(

@@ -29,15 +29,11 @@ struct CommandLogView: View {
                 }
             }
         }
-        .frame(minWidth: 640, minHeight: 400)
         .task { await viewModel.load() }
     }
 
     private var header: some View {
-        HStack {
-            Text("Command Log")
-                .font(.title2.bold())
-            Spacer()
+        PaneHeader(title: "Command Log") {
             Button(action: { Task { await viewModel.load() } }) {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
@@ -46,7 +42,6 @@ struct CommandLogView: View {
             }
             .disabled(viewModel.entries.isEmpty)
         }
-        .padding()
         .confirmationDialog("Clear all command logs?", isPresented: $confirmingClear, titleVisibility: .visible) {
             Button("Clear All", role: .destructive) { Task { await viewModel.clear() } }
             Button("Cancel", role: .cancel) {}
