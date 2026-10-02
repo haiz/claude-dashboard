@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import Combine
 
 private enum MenuBarLabelRenderer {
     private static let barH: CGFloat = 22
@@ -83,7 +82,12 @@ struct ClaudeDashboardApp: App {
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
                 onOpenCommandLog: {
-                    appDelegate.openCommandLogWindow(viewModel: viewModel)
+                    viewModel.selection = .commandLog
+                    appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
+                },
+                onOpenHelp: {
+                    viewModel.selection = .help
+                    appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
                 onOpenAccountDetail: { accountId, window in
                     viewModel.openAccount(accountId, window: window)
@@ -113,8 +117,6 @@ struct ClaudeDashboardApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var dashboardWindow: NSWindow?
-    private var commandLogWindow: NSWindow?
-    private var commandLogViewModel: CommandLogViewModel?
     private weak var currentViewModel: DashboardViewModel?
     weak var updateViewModel: UpdateViewModel?
     var runningProcesses: RunningProcessRegistry?
@@ -132,23 +134,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // Keeping the NSWindow instance alive prevents SwiftUI/AppKit from treating
     // this as "last window closed" and terminating the menu-bar-only app.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard sender === dashboardWindow else {
-            if sender === commandLogWindow {
-                sender.orderOut(nil)
-                // Only drop the dock icon if the dashboard isn't also visible.
-                if dashboardWindow?.isVisible != true {
-                    NSApp.setActivationPolicy(.accessory)
-                }
-                return false  // keep the window instance alive for reuse
-            }
-            return true
-        }
-        // Dismiss any presented sheets (Settings, Setup) so AppKit
+        guard sender === dashboardWindow else { return true }
+        // Dismiss any presented sheets (Setup, Run Command) so AppKit
         // removes the dimming overlay before we hide the window.
         while let sheet = sender.attachedSheet {
             sender.endSheet(sheet)
         }
-        // Reset navigation so chart/detail subviews are released.
+        // Reset the sidebar selection so chart/detail subviews are released.
         currentViewModel?.selection = .dashboard
         // Drop the SwiftUI view hierarchy to free memory while hidden.
         sender.contentView = nil
@@ -185,14 +177,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         } else {
             window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1050, height: 700),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                contentRect: NSRect(x: 0, y: 0, width: 1200, height: 760),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
             )
+            // Mission Control and the Window menu still read the title; it is
+            // hidden in the bar so the sidebar runs to the top like System Settings.
             window.title = "Claude Dashboard"
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
             window.center()
-            window.minSize = NSSize(width: 1050, height: 450)
+            window.minSize = NSSize(width: 900, height: 560)
             window.isReleasedWhenClosed = false
             window.delegate = self
             dashboardWindow = window
@@ -200,35 +196,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         window.contentView = NSHostingView(rootView: contentView)
         NSApp.setActivationPolicy(.regular)  // show dock icon
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    @MainActor func openCommandLogWindow(viewModel: DashboardViewModel) {
-        let vm = commandLogViewModel ?? CommandLogViewModel(store: viewModel.commandLogStore, accountStore: viewModel.accountStore)
-        commandLogViewModel = vm
-        let contentView = CommandLogView(viewModel: vm)
-
-        let window: NSWindow
-        if let existing = commandLogWindow {
-            window = existing
-        } else {
-            window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = "Command Log"
-            window.center()
-            window.minSize = NSSize(width: 640, height: 400)
-            window.isReleasedWhenClosed = false
-            window.delegate = self
-            commandLogWindow = window
-        }
-
-        window.contentView = NSHostingView(rootView: contentView)
-        NSApp.setActivationPolicy(.regular)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
