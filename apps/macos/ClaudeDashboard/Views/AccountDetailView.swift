@@ -2,10 +2,8 @@ import SwiftUI
 import Charts
 
 struct AccountDetailView: View {
-    @StateObject var viewModel: AccountDetailViewModel
+    @ObservedObject var viewModel: AccountDetailViewModel
     @ObservedObject var dashboardViewModel: DashboardViewModel
-    let onBack: () -> Void
-    let onAllAccounts: () -> Void
 
     @State private var hoverDate: Date?
     @State private var hoverX: CGFloat = 0
@@ -29,38 +27,9 @@ struct AccountDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                Button(action: onBack) {
-                    Label("Back", systemImage: "chevron.left")
-                }
-                .buttonStyle(HoverableButtonStyle(prominent: true))
-
-                Button(action: onAllAccounts) {
-                    Label("All accounts", systemImage: "rectangle.grid.2x2")
-                }
-                .buttonStyle(HoverableButtonStyle(prominent: true))
-
-                Text(viewModel.accountName)
-                    .font(.title2.bold())
-
-                Spacer()
-
-                Text(viewModel.accountPlan.rawValue)
-                    .font(.caption2.bold())
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(viewModel.accountPlan.badgeColor.opacity(0.15))
-                    .clipShape(Capsule())
-            }
-            .padding()
-
-            Divider()
-
             // Interactive chart
             if viewModel.logs.isEmpty {
                 VStack(spacing: 8) {
-                    Spacer()
                     Image(systemName: "chart.line.downtrend.xyaxis")
                         .font(.system(size: 36))
                         .foregroundStyle(.secondary)
@@ -70,9 +39,8 @@ struct AccountDetailView: View {
                     Text("Data will appear after the next refresh.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
-                    Spacer()
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 200)
             } else {
                 InteractiveChartContainer(
                     initialPreset: .day,

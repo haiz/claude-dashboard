@@ -11,20 +11,12 @@ struct DashboardWindow: View {
             switch viewModel.navigation {
             case .dashboard:
                 dashboardContent
-            case .accountDetail(let accountId, let preselectedWindow):
+            case .accountDetail(let accountId, _):
+                // Temporary until Task 5 deletes this file: no Back button here.
                 if let state = viewModel.accountStates.first(where: { $0.id == accountId }) {
-                    AccountDetailView(
-                        viewModel: AccountDetailViewModel(
-                            accountId: accountId,
-                            accountName: state.account.name,
-                            accountPlan: state.account.plan,
-                            logStore: viewModel.logStore,
-                            preselectedWindow: preselectedWindow
-                        ),
-                        dashboardViewModel: viewModel,
-                        onBack: { viewModel.navigation = .dashboard },
-                        onAllAccounts: { viewModel.navigation = .overview }
-                    )
+                    AccountPane(dashboardViewModel: viewModel, state: state,
+                                onRunCommand: { runCommandAccount = state.account })
+                        .id(accountId)
                 }
             case .overview:
                 OverviewChartView(

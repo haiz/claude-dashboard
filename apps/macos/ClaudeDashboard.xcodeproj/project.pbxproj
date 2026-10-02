@@ -37,6 +37,7 @@
 		4BA658DB89EAC4997E431C13 /* ClaudeCodeAccountDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CECA8F5BDB86E3741F82280 /* ClaudeCodeAccountDetector.swift */; };
 		4C53E5634BE6BEB75B5E870C /* BrowserCookieService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4ED0121EB136414664B103B /* BrowserCookieService.swift */; };
 		4CA534BEA7CEF61184000A1A /* HoverableButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E104FF0D60CC558E8D93B0 /* HoverableButtonStyle.swift */; };
+		4D7FBC890DD263E8B631E033 /* AccountPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD5987436CCEAA1F1FC1DC6 /* AccountPane.swift */; };
 		4DAC62ECE4128ED5AF364BE5 /* CommandLogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E980125C6DA9C24229B20C59 /* CommandLogModels.swift */; };
 		4E96F2399828773E0E34BC8A /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2535C231EBCF76F786F7B7E /* Account.swift */; };
 		4EB420FAF10C4FBDC9133FF8 /* SettingsIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 348C8E47DD7A1A6C254070A5 /* SettingsIcon.swift */; };
@@ -298,6 +299,7 @@
 		ECA6F1383F2CAD53A92748C8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F32C9470D69868D82CEF8ECD /* TerminalLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalLauncher.swift; sourceTree = "<group>"; };
 		FC6B7044313E37D1A46EFB3C /* APIBaseURLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIBaseURLTests.swift; sourceTree = "<group>"; };
+		FFD5987436CCEAA1F1FC1DC6 /* AccountPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountPane.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -443,6 +445,7 @@
 			children = (
 				786E54BCD656D51F01E86B77 /* AccountCard.swift */,
 				268FCC5C51E46A928607748C /* AccountDetailView.swift */,
+				FFD5987436CCEAA1F1FC1DC6 /* AccountPane.swift */,
 				653DEC7215637CF705CDA949 /* CommandLogView.swift */,
 				BFA0F9129D3367D395937E5E /* DashboardWindow.swift */,
 				DC394CD29F6E869A54D1CE5A /* HelpView.swift */,
@@ -817,6 +820,7 @@
 				56CDB1C08E0C2EB2BED3CE7D /* AccountDetailView.swift in Sources */,
 				411CACBC4F1791E139BDF4BA /* AccountDetailViewModel.swift in Sources */,
 				BE0B91642615126F59A02F3F /* AccountIdentity.swift in Sources */,
+				4D7FBC890DD263E8B631E033 /* AccountPane.swift in Sources */,
 				9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */,
 				A2FF70F4B5C293C3974806C5 /* AccountStoreQuarantine.swift in Sources */,
 				128088AF39F18164CCF8402B /* AccountsSettingsPane.swift in Sources */,
