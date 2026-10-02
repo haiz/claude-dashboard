@@ -88,8 +88,8 @@ struct AccountPane: View {
         .padding(.vertical, 4)
     }
 
-    /// Same guidance as `AccountCard.expiredContent`; the Re-sync button itself is
-    /// in the Actions section.
+    /// Same guidance and Re-sync button as `AccountCard.expiredContent`; the
+    /// Actions section also keeps a Re-sync row.
     @ViewBuilder private var statusLine: some View {
         if state.account.status == .expired {
             Label("Session expired", systemImage: "exclamationmark.triangle.fill")
@@ -104,6 +104,10 @@ struct AccountPane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Button("Re-sync") {
+                Task { await dashboardViewModel.resyncAccount(state.id) }
+            }
+            .controlSize(.small)
         } else if let error = state.error {
             Text(error)
                 .font(.callout)
