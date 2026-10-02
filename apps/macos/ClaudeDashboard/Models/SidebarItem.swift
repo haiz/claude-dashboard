@@ -3,7 +3,7 @@ import SwiftUI
 /// One row of the main window's sidebar. `.account` carries only the id, so the
 /// row keeps one identity while that account's usage changes.
 ///
-///     viewModel.selection = .settingsUpdates
+///     viewModel.selection = .settingsGeneral
 ///     SidebarItem.overview.style?.title   // "Overview"
 enum SidebarItem: Hashable {
     case dashboard
@@ -12,9 +12,7 @@ enum SidebarItem: Hashable {
     case commandLog
     case help
     case settingsAccounts
-    case settingsRefresh
-    case settingsUpdates
-    case about
+    case settingsGeneral
 
     struct Style {
         let title: String
@@ -32,13 +30,11 @@ enum SidebarItem: Hashable {
         case .commandLog: return Style(title: "Command Log", systemImage: "list.bullet.rectangle", tileColor: .gray)
         case .help: return Style(title: "Help", systemImage: "questionmark", tileColor: .green)
         case .settingsAccounts: return Style(title: "Accounts", systemImage: "person.2", tileColor: .blue)
-        case .settingsRefresh: return Style(title: "Auto Refresh", systemImage: "arrow.clockwise", tileColor: .orange)
-        case .settingsUpdates: return Style(title: "Updates", systemImage: "arrow.down.circle", tileColor: .red)
-        case .about: return Style(title: "About", systemImage: "info", tileColor: .gray)
+        case .settingsGeneral: return Style(title: "General", systemImage: "gearshape", tileColor: .gray)
         }
     }
 
     static let usageItems: [SidebarItem] = [.dashboard, .overview]
     static let toolItems: [SidebarItem] = [.commandLog, .help]
-    static let settingsItems: [SidebarItem] = [.settingsAccounts, .settingsRefresh, .settingsUpdates, .about]
+    static let settingsItems: [SidebarItem] = [.settingsAccounts, .settingsGeneral]
 }

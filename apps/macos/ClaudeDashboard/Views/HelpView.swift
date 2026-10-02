@@ -89,7 +89,7 @@ struct HelpView: View {
 
     private var autoRefreshSection: some View {
         helpSection(title: "Auto-Refresh & Updates", icon: "arrow.triangle.2.circlepath", color: .orange) {
-            bodyText("Enable **Auto Refresh** under **Settings › Auto Refresh** to keep usage current automatically. Set the interval anywhere from 1 to 60 minutes.")
+            bodyText("Enable **Auto Refresh** under **Settings › General** to keep usage current automatically. Set the interval anywhere from 1 to 60 minutes.")
 
             bodyText("**Auto-update daily** checks GitHub once a day and installs new releases in the background. Use **Check for Updates** to force a check immediately.")
         }

@@ -71,12 +71,8 @@ struct MainWindow: View {
             HelpView()
         case .settingsAccounts:
             AccountsSettingsPane(viewModel: viewModel, onAddAccount: { showingSetup = true })
-        case .settingsRefresh:
-            RefreshSettingsPane(viewModel: viewModel)
-        case .settingsUpdates:
-            UpdatesSettingsPane()
-        case .about:
-            AboutPane()
+        case .settingsGeneral:
+            GeneralSettingsPane(viewModel: viewModel)
         }
     }
 }

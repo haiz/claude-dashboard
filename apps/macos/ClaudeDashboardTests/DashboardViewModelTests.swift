@@ -1009,11 +1009,11 @@ final class DashboardViewModelTests: XCTestCase {
             switch item {
             case .account: return false
             case .dashboard, .overview, .commandLog, .help,
-                 .settingsAccounts, .settingsRefresh, .settingsUpdates, .about: return true
+                 .settingsAccounts, .settingsGeneral: return true
             }
         }
         let expected: [SidebarItem] = [.dashboard, .overview, .commandLog, .help,
-                                       .settingsAccounts, .settingsRefresh, .settingsUpdates, .about]
+                                       .settingsAccounts, .settingsGeneral]
         XCTAssertTrue(expected.allSatisfy(isStatic))
         let listed = SidebarItem.usageItems + SidebarItem.toolItems + SidebarItem.settingsItems
 

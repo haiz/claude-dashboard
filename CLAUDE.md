@@ -57,11 +57,11 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 ### Views
 - **ClaudeDashboardApp** — Entry point. `MenuBarExtra` with `AppDelegate` managing window lifecycle.
 - **MenuBarPopover** — Compact menu bar dropdown. Expand button opens `MainWindow`.
-- **MainWindow** — System Settings-style `NavigationSplitView`. `SidebarView` lists Usage (Dashboard, Overview), Accounts (one row per account), Tools (Command Log, Help) and Settings (Accounts, Auto Refresh, Updates, About); `DashboardViewModel.selection: SidebarItem` picks the pane. Each pane starts with a `PaneHeader` (title + its buttons; the AppKit window has no native toolbar).
+- **MainWindow** — System Settings-style `NavigationSplitView`. `SidebarView` lists Usage (Dashboard, Overview), Accounts (one row per account), Tools (Command Log, Help) and Settings (Accounts, General); `DashboardViewModel.selection: SidebarItem` picks the pane. Each pane starts with a `PaneHeader` (title + its buttons; the AppKit window has no native toolbar).
 - **DashboardPane / AccountPane** — the `AccountCard` grid, and the per-account page (header, `UsageGaugeRow`, the `AccountDetailView` chart, actions).
 - **AccountCard / UsageBar** — Per-account display with color-interpolated progress bars (green→red).
 - **SetupView** — Wizard scanning browser profiles for active Claude sessions. Offers the installed browsers (Chrome, Arc, Brave, Edge) and scans the one the user picks, remembering the choice in `preferredScanBrowser`.
-- **Settings panes** (`Views/Settings/`) — `AccountsSettingsPane` (add via the `SetupView` sheet, delete, Re-sync All), `RefreshSettingsPane`, `UpdatesSettingsPane`, `AboutPane`. There is no rename UI; an account's name is derived at sync time (email when available, else the browser profile name).
+- **Settings panes** (`Views/Settings/`) — `AccountsSettingsPane` (add via the `SetupView` sheet, delete, Re-sync All) and `GeneralSettingsPane` (About header, Auto Refresh, Updates). There is no rename UI; an account's name is derived at sync time (email when available, else the browser profile name).
 
 ### Tests
 - **ClaudeDashboardTests** — the app bundle, hosted by `ClaudeDashboard.app`.
