@@ -10,6 +10,7 @@ apps/macos/
 │   ├── Models/
 │   │   ├── AccountBadgeColor.swift
 │   │   ├── CommandLogModels.swift
+│   │   ├── SidebarItem.swift          # Main-window sidebar rows + their title/icon/tile color
 │   │   └── UsageLogModels.swift       # BurnRateResult, burn-rate levels/animals
 │   ├── Services/
 │   │   ├── AccountStore.swift         # CRUD over UserDefaults JSON, Combine @Published
@@ -31,16 +32,19 @@ apps/macos/
 │   │   └── UpdateViewModel.swift
 │   └── Views/
 │       ├── AccountCard.swift          # Per-account display with color progress bars
-│       ├── AccountDetailView.swift
-│       ├── CommandLogView.swift
-│       ├── Components/HoverableButtonStyle.swift
-│       ├── DashboardWindow.swift      # Adaptive grid of AccountCards
-│       ├── HelpView.swift
+│       ├── AccountDetailView.swift    # Usage chart embedded in AccountPane
+│       ├── AccountPane.swift          # Apple ID-style pane for one account: header, gauges, chart, actions
+│       ├── CommandLogView.swift       # Command Log sidebar pane (no separate window)
+│       ├── Components/                # HoverableButtonStyle, PaneHeader, SettingsIcon, AccountAvatar, UsageGaugeRow
+│       ├── DashboardPane.swift        # Adaptive grid of AccountCards
+│       ├── HelpView.swift             # Help sidebar pane
+│       ├── MainWindow.swift           # System Settings-style NavigationSplitView: SidebarView + selected pane; hosts Setup / Run Command sheets
 │       ├── InteractiveChartContainer.swift
 │       ├── MenuBarPopover.swift       # Compact menu bar dropdown
 │       ├── OverviewChartView.swift
 │       ├── RunCommandSheet.swift
-│       ├── SettingsView.swift         # Account management (add via SetupView sheet, delete, Re-sync All) + update check; no rename UI
+│       ├── Settings/                  # Sidebar panes: AccountsSettingsPane (add via SetupView sheet, delete, Re-sync All; no rename UI), RefreshSettingsPane, UpdatesSettingsPane, AboutPane
+│       ├── Sidebar/SidebarView.swift  # Grouped sidebar; row clicks go through DashboardViewModel.selectFromSidebar
 │       ├── SetupView.swift            # Wizard scanning browser profiles
 │       └── UsageBar.swift             # Color-interpolated progress bar (green→red)
 ├── Shared/                            # Used by both the app target and the Helper CLI binary
@@ -76,5 +80,4 @@ apps/macos/
 
 ## Entry Point
 - **ClaudeDashboardApp** — SwiftUI App with MenuBarExtra, uses AppDelegate for window lifecycle
-- **AppDelegate** — Manages dashboardWindow (NSWindow)
-- **DashboardWindowWrapper** — Bridge between MenuBarExtra and main window
+- **AppDelegate** — Manages the single dashboardWindow (NSWindow hosting `MainWindow`). Popover actions set `DashboardViewModel.selection` (or call `openAccount`) and then `openDashboardWindow`, which raises a live window as is and rebuilds content only for a window hidden by close
