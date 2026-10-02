@@ -43,7 +43,7 @@ fn project(account: &Account) -> BTreeMap<String, serde_json::Value> {
     );
     m.insert(
         "source".to_string(),
-        serde_json::to_value(&account.source).expect("AccountSource always serializes to a string"),
+        serde_json::to_value(account.source).expect("AccountSource always serializes to a string"),
     );
     m.insert("isPinned".to_string(), account.is_pinned.into());
     // Unix seconds, so a caller need not know about the reference-date offset
