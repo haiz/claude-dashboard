@@ -5,18 +5,15 @@ struct OverviewChartView: View {
     @ObservedObject var viewModel: DashboardViewModel
 
     @State private var selectedWindow: UsageWindow = .fiveHour
-    @State private var visibleRange: ClosedRange<Date> = {
-        let now = Date()
-        return now.addingTimeInterval(-86400)...now
-    }()
+    @State private var visibleRange: ClosedRange<Date> = TimeRangePreset.fiveHour.range(endingAt: Date())
     @State private var selectedAccounts: Set<UUID> = []
     @State private var logs: [UsageLogEntry] = []
-    @State private var showTotalLine: Bool = false
+    @State private var loadTask: Task<Void, Never>?
+    @State private var isLoading = false
+    @State private var hasLoaded = false
     @State private var hoverDate: Date?
     @State private var hoverX: CGFloat = 0
     @State private var chartWidth: CGFloat = 1
-
-    private static let totalColor = Color.white.opacity(0.5)
 
     private static let lineColors: [Color] = [
         .orange, .cyan, .green, .purple, .pink, .blue, .yellow, .mint, .indigo, .red
@@ -24,12 +21,19 @@ struct OverviewChartView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PaneHeader(title: "Overview")
+            PaneHeader(title: "Overview") {
+                if isLoading {
+                    ProgressView().controlSize(.small)
+                }
+            }
 
             Divider()
 
             // Interactive chart
-            if logs.isEmpty {
+            if logs.isEmpty && !hasLoaded {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if logs.isEmpty {
                 VStack(spacing: 8) {
                     Spacer()
                     Image(systemName: "chart.line.downtrend.xyaxis")
@@ -43,28 +47,17 @@ struct OverviewChartView: View {
                 .frame(maxWidth: .infinity)
             } else {
                 InteractiveChartContainer(
-                    initialPreset: .day,
+                    initialPreset: .fiveHour,
                     dataPoints: logs,
                     chartHeight: 300,
                     liveTick: viewModel.lastLogsUpdatedAt,
                     autoFollowsLiveEdge: true,
-                    averageRateProvider: { range, allLogs in
-                        let totalPoints = computeTotalLine().filter {
-                            $0.time >= range.lowerBound && $0.time <= range.upperBound
-                        }
-                        guard totalPoints.count >= 2 else { return nil }
-                        let totalHours = range.upperBound.timeIntervalSince(range.lowerBound) / 3600
-                        guard totalHours > 0.01 else { return nil }
-                        var positiveDeltas = 0.0
-                        for i in 1..<totalPoints.count {
-                            let delta = totalPoints[i].value - totalPoints[i - 1].value
-                            if delta > 0 { positiveDeltas += delta }
-                        }
-                        return positiveDeltas / totalHours
+                    averageRateProvider: { range, _ in
+                        weightedAverageRate(in: range)
                     },
                     onRangeChanged: { range in
                         visibleRange = range
-                        Task { await loadLogs(range: range) }
+                        loadLogs(range: range)
                     },
                     chartContent: { range in
                         overviewChart(range: range)
@@ -87,13 +80,14 @@ struct OverviewChartView: View {
             // Legend with toggles
             legendView
         }
-        .task { await loadLogs() }
-        .onChange(of: selectedWindow) { _ in Task { await loadLogs(range: visibleRange) } }
+        .onAppear { loadLogs() }
+        .onDisappear { loadTask?.cancel() }
+        .onChange(of: selectedWindow) { _ in loadLogs(range: visibleRange) }
         // While the chart is on screen, InteractiveChartContainer drives the per-refresh
         // reload (advancing the live window as needed). Only bootstrap the empty state here,
         // since the container isn't in the tree until there's data to show.
         .onChange(of: viewModel.lastLogsUpdatedAt) { _ in
-            if logs.isEmpty { Task { await loadLogs() } }
+            if logs.isEmpty { loadLogs() }
         }
     }
 
@@ -113,20 +107,6 @@ struct OverviewChartView: View {
                         )
                         .foregroundStyle(by: .value("Account", state.account.name))
                         .lineStyle(StrokeStyle(lineWidth: 1.5))
-                        .interpolationMethod(.monotone)
-                    }
-                }
-
-                // Total line
-                if showTotalLine {
-                    ForEach(computeTotalLine(), id: \.time) { point in
-                        LineMark(
-                            x: .value("Time", point.time),
-                            y: .value("Usage", point.value),
-                            series: .value("Account", "Total")
-                        )
-                        .foregroundStyle(by: .value("Account", "Total"))
-                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 3]))
                         .interpolationMethod(.monotone)
                     }
                 }
@@ -299,11 +279,11 @@ struct OverviewChartView: View {
     }
 
     private var chartColorDomain: [String] {
-        viewModel.accountStates.map { $0.account.name } + ["Total"]
+        viewModel.accountStates.map { $0.account.name }
     }
 
     private var chartColorRange: [Color] {
-        viewModel.accountStates.indices.map { Self.lineColors[$0 % Self.lineColors.count] } + [Self.totalColor]
+        viewModel.accountStates.indices.map { Self.lineColors[$0 % Self.lineColors.count] }
     }
 
     // MARK: - Legend
@@ -321,7 +301,7 @@ struct OverviewChartView: View {
                         } else {
                             selectedAccounts.insert(state.id)
                         }
-                        Task { await loadLogs(range: visibleRange) }
+                        loadLogs(range: visibleRange)
                     } label: {
                         HStack {
                             Circle()
@@ -348,30 +328,6 @@ struct OverviewChartView: View {
                     }
                     .buttonStyle(HoverableRowStyle(selected: isSelected))
                 }
-
-                Divider()
-                    .padding(.vertical, 2)
-
-                // Total row
-                Button {
-                    showTotalLine.toggle()
-                } label: {
-                    HStack {
-                        Circle()
-                            .fill(showTotalLine ? Self.totalColor : Color.secondary.opacity(0.3))
-                            .frame(width: 8, height: 8)
-                        Text("Total")
-                            .font(.caption.bold())
-                            .foregroundStyle(showTotalLine ? .primary : .secondary)
-                        Text("(dashed)")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 4)
-                }
-                .buttonStyle(HoverableRowStyle(selected: showTotalLine))
             }
         }
         .frame(maxHeight: .infinity)
@@ -379,45 +335,39 @@ struct OverviewChartView: View {
 
     // MARK: - Data Helpers
 
-    struct TotalPoint: Identifiable {
-        let time: Date
-        let value: Double
-        var id: Date { time }
+    /// Plan-weighted mean of each selected account's burn rate over `range`: the sum
+    /// of its positive utilization deltas (resets are drops, so they are skipped) per
+    /// hour. One pass over `logs`, which are sorted by `recordedAt`.
+    private func weightedAverageRate(in range: ClosedRange<Date>) -> Double? {
+        let totalHours = range.upperBound.timeIntervalSince(range.lowerBound) / 3600
+        guard totalHours > 0.01 else { return nil }
+
+        var lastUtilization: [UUID: Double] = [:]
+        var positiveDeltas: [UUID: Double] = [:]
+        for log in logs where selectedAccounts.contains(log.accountId) && range.contains(log.recordedAt) {
+            if let previous = lastUtilization[log.accountId] {
+                positiveDeltas[log.accountId, default: 0] += max(0, log.utilization - previous)
+            }
+            lastUtilization[log.accountId] = log.utilization
+        }
+
+        var weightedSum = 0.0
+        var totalWeight = 0.0
+        for state in viewModel.accountStates where positiveDeltas[state.id] != nil {
+            let w = Self.planWeight(state.account.plan)
+            weightedSum += positiveDeltas[state.id, default: 0] * w
+            totalWeight += w
+        }
+        guard totalWeight > 0 else { return nil }
+        return weightedSum / totalWeight / totalHours
     }
 
-    private func computeTotalLine() -> [TotalPoint] {
-        let selected = viewModel.accountStates.filter { selectedAccounts.contains($0.id) }
-        guard !selected.isEmpty else { return [] }
-
-        let selectedLogs = logs.filter { selectedAccounts.contains($0.accountId) }
-        let allTimes = Set(selectedLogs.map { $0.recordedAt }).sorted()
-
-        let weights: [UUID: Double] = Dictionary(uniqueKeysWithValues: selected.map { state in
-            let w: Double
-            switch state.account.plan {
-            case .pro: w = 1
-            case .max5x: w = 5
-            case .max20x: w = 20
-            case .max200: w = 10
-            }
-            return (state.id, w)
-        })
-
-        return allTimes.map { time in
-            var weightedSum = 0.0
-            var totalWeight = 0.0
-
-            for state in selected {
-                let accountLogs = selectedLogs.filter { $0.accountId == state.id }
-                if let utilization = interpolate(at: time, in: accountLogs) {
-                    let w = weights[state.id] ?? 1
-                    weightedSum += utilization * w
-                    totalWeight += w
-                }
-            }
-
-            let avg = totalWeight > 0 ? weightedSum / totalWeight : 0
-            return TotalPoint(time: time, value: avg)
+    private static func planWeight(_ plan: AccountPlan) -> Double {
+        switch plan {
+        case .pro: return 1
+        case .max5x: return 5
+        case .max20x: return 20
+        case .max200: return 10
         }
     }
 
@@ -502,7 +452,11 @@ struct OverviewChartView: View {
         return result
     }
 
-    private func loadLogs(range: ClosedRange<Date>? = nil) async {
+    /// Starts a load for `range` (or the current window slid to now), cancelling any
+    /// load still in flight so a stale result never overwrites a newer one. The fetch
+    /// runs off the main actor; the header spinner appears only if it takes > 200 ms,
+    /// so quick reloads (live ticks, pan steps) do not flicker it.
+    private func loadLogs(range: ClosedRange<Date>? = nil) {
         if selectedAccounts.isEmpty {
             selectedAccounts = Set(viewModel.accountStates.map(\.id))
         }
@@ -519,12 +473,44 @@ struct OverviewChartView: View {
         }
 
         let store = viewModel.logStore
-        let rangeLogs = await store.allLogs(window: selectedWindow, from: effectiveRange.lowerBound, to: effectiveRange.upperBound)
-        var borderLogs: [UsageLogEntry] = []
-        for accountId in viewModel.accountStates.map(\.id) {
-            borderLogs += await store.logsBefore(accountId: accountId, window: selectedWindow, before: effectiveRange.lowerBound, limit: 2)
-            borderLogs += await store.logsAfter(accountId: accountId, window: selectedWindow, after: effectiveRange.upperBound, limit: 2)
+        let window = selectedWindow
+        let accountIds = viewModel.accountStates.map(\.id)
+
+        loadTask?.cancel()
+        loadTask = Task { @MainActor in
+            let spinner = Task {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                if !Task.isCancelled { isLoading = true }
+            }
+            defer { spinner.cancel() }
+
+            guard let fetched = await Self.fetchLogs(
+                store: store, window: window, range: effectiveRange, accountIds: accountIds
+            ) else { return }
+            logs = fetched
+            hasLoaded = true
+            isLoading = false
         }
-        logs = (rangeLogs + borderLogs).sorted { $0.recordedAt < $1.recordedAt }.withResetTransitions()
+    }
+
+    /// Fetches `range` plus the two points either side of it per account, so lines
+    /// run to the chart edges. One indexed query per account: measured faster than
+    /// `allLogs`, which scans the whole index. Runs off the main actor, as does the
+    /// reset-transition pass. Returns nil once cancelled.
+    nonisolated private static func fetchLogs(
+        store: UsageLogStore,
+        window: UsageWindow,
+        range: ClosedRange<Date>,
+        accountIds: [UUID]
+    ) async -> [UsageLogEntry]? {
+        var fetched: [UsageLogEntry] = []
+        for accountId in accountIds {
+            if Task.isCancelled { return nil }
+            fetched += await store.logsBefore(accountId: accountId, window: window, before: range.lowerBound, limit: 2)
+            fetched += await store.logs(accountId: accountId, window: window, from: range.lowerBound, to: range.upperBound)
+            fetched += await store.logsAfter(accountId: accountId, window: window, after: range.upperBound, limit: 2)
+        }
+        if Task.isCancelled { return nil }
+        return fetched.withResetTransitions()
     }
 }

@@ -28,6 +28,9 @@ struct MainWindow: View {
         } detail: {
             pane
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                // The transparent titlebar would otherwise push every pane down
+                // by its full height; System Settings puts the title on that row.
+                .ignoresSafeArea(.container, edges: .top)
         }
         .frame(minWidth: 900, minHeight: 560)
         .onAppear {
