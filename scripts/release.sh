@@ -159,7 +159,8 @@ echo "==> Step 7: Commit, tag, push"
 # tree dirty, and the next release's preflight check refuses to start.
 git add VERSION apps/macos/ClaudeDashboard/Info.plist cli/claude-dashboard-cli \
     Formula/claude-dashboard-cli.rb Casks/claude-dashboard.rb \
-    apps/linux/Cargo.toml apps/linux/Cargo.lock
+    apps/linux/Cargo.toml apps/linux/Cargo.lock \
+    apps/linux/gnome-extension/metadata.json
 git commit -m "chore: release v${NEW_VERSION}"
 git tag "v${NEW_VERSION}"
 git push
