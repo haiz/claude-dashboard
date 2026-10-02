@@ -43,7 +43,10 @@ struct AccountPane: View {
             }
             .formStyle(.grouped)
         }
-        // A dashboard card gauge tapped while this pane is already showing.
+        // The one path that moves the chart: this pane's gauges and picker, and
+        // a popover gauge tapped while this account's pane is showing, all write
+        // preselectedWindow. The picker keeps it equal to the chart's window, so
+        // an unchanged value never means a stale chart.
         .onChange(of: dashboardViewModel.preselectedWindow) { window in
             chartViewModel.selectWindow(window)
         }
@@ -116,7 +119,7 @@ struct AccountPane: View {
     @ViewBuilder private var gauges: some View {
         if let usage = state.usage {
             UsageGaugeRow(usage: usage, burnRates: state.burnRates, isCompact: false,
-                          onOpenChart: { window in chartViewModel.selectWindow(window) })
+                          onOpenChart: { window in dashboardViewModel.openAccount(state.id, window: window) })
                 .padding(.vertical, 6)
         } else {
             Text(state.isLoading ? "Loading\u{2026}" : "No usage data yet.")
