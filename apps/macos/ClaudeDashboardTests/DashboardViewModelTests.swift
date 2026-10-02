@@ -914,6 +914,59 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertFalse(outcome.message.contains(Self.leakSentinel),
                        "a session key must never reach a user-visible string")
     }
+
+    // MARK: - Sidebar selection
+
+    func testOpenAccountSelectsAccountAndPreselectsWindow() throws {
+        let vm = try makeViewModel()
+        let id = UUID()
+
+        vm.openAccount(id, window: .sevenDay)
+
+        XCTAssertEqual(vm.selection, .account(id))
+        XCTAssertEqual(vm.preselectedWindow, .sevenDay)
+    }
+
+    func testRemovingSelectedAccountResetsSelectionToDashboard() async throws {
+        let (vm, store) = try makeViewModelWithStore()
+        let account = makeAccount()
+        store.addAccount(account)
+        // AccountStore.$accounts reaches the view model via .receive(on: .main).
+        await Task.yield()
+        vm.openAccount(account.id, window: .fiveHour)
+
+        store.removeAccount(id: account.id)
+        await Task.yield()
+
+        XCTAssertEqual(vm.selection, .dashboard)
+    }
+
+    func testRemovingAnotherAccountKeepsSelection() async throws {
+        let (vm, store) = try makeViewModelWithStore()
+        let kept = makeAccount(name: "Kept", profilePath: "Profile 1")
+        let removed = makeAccount(name: "Removed", profilePath: "Profile 2")
+        store.addAccount(kept)
+        store.addAccount(removed)
+        await Task.yield()
+        vm.openAccount(kept.id, window: .fiveHour)
+
+        store.removeAccount(id: removed.id)
+        await Task.yield()
+
+        XCTAssertEqual(vm.selection, .account(kept.id))
+    }
+
+    func testPeakUtilizationIsHighestWindowOrNilWithoutUsage() {
+        let account = makeAccount()
+        let usage = UsageData(
+            fiveHour: UsageLimit(utilization: 20, resetsAt: nil),
+            sevenDay: UsageLimit(utilization: 65, resetsAt: nil),
+            fable: UsageLimit(utilization: 40, resetsAt: nil)
+        )
+
+        XCTAssertEqual(AccountUsageState(id: account.id, account: account, usage: usage).peakUtilization, 65)
+        XCTAssertNil(AccountUsageState(id: account.id, account: account).peakUtilization)
+    }
 }
 
 /// Thread-safe tally of the paths `MockURLProtocol` served: the handler runs on
