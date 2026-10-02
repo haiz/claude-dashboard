@@ -587,6 +587,17 @@ final class DashboardViewModel: ObservableObject {
         selection = .account(id)
     }
 
+    /// A row the user clicked in the sidebar. Moving to another row resets the
+    /// chart window, so account B never opens on the window last chosen for A;
+    /// `openAccount` (a gauge tap) sets the window instead and does not come here.
+    ///
+    ///     vm.selectFromSidebar(.account(id))   // pane opens on the 5h chart
+    func selectFromSidebar(_ item: SidebarItem) {
+        guard item != selection else { return }
+        preselectedWindow = .fiveHour
+        selection = item
+    }
+
     // MARK: - Menubar Label
 
     private var menuBarSource: UsageLimit? {

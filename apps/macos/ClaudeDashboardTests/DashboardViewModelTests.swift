@@ -927,6 +927,29 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(vm.preselectedWindow, .sevenDay)
     }
 
+    func testSelectFromSidebarResetsPreselectedWindowForANewRow() throws {
+        let vm = try makeViewModel()
+        let a = UUID(), b = UUID()
+        vm.openAccount(a, window: .sevenDay)
+
+        vm.selectFromSidebar(.account(b))
+
+        XCTAssertEqual(vm.selection, .account(b))
+        XCTAssertEqual(vm.preselectedWindow, .fiveHour,
+                       "account B must not inherit the window last chosen for account A")
+    }
+
+    func testSelectFromSidebarKeepsWindowWhenTheRowIsAlreadySelected() throws {
+        let vm = try makeViewModel()
+        let a = UUID()
+        vm.openAccount(a, window: .sevenDay)
+
+        vm.selectFromSidebar(.account(a))
+
+        XCTAssertEqual(vm.selection, .account(a))
+        XCTAssertEqual(vm.preselectedWindow, .sevenDay)
+    }
+
     func testRemovingSelectedAccountResetsSelectionToDashboard() async throws {
         let (vm, store) = try makeViewModelWithStore()
         let account = makeAccount()
@@ -966,6 +989,49 @@ final class DashboardViewModelTests: XCTestCase {
 
         XCTAssertEqual(AccountUsageState(id: account.id, account: account, usage: usage).peakUtilization, 65)
         XCTAssertNil(AccountUsageState(id: account.id, account: account).peakUtilization)
+    }
+
+    func testPeakUtilizationIgnoresAMissingFableWindow() {
+        let account = makeAccount()
+        let usage = UsageData(
+            fiveHour: UsageLimit(utilization: 30, resetsAt: nil),
+            sevenDay: UsageLimit(utilization: 10, resetsAt: nil),
+            fable: nil
+        )
+
+        XCTAssertEqual(AccountUsageState(id: account.id, account: account, usage: usage).peakUtilization, 30)
+    }
+
+    func testPeakUtilizationPicksFableWhenItIsHighest() {
+        let account = makeAccount()
+        let usage = UsageData(
+            fiveHour: UsageLimit(utilization: 30, resetsAt: nil),
+            sevenDay: UsageLimit(utilization: 10, resetsAt: nil),
+            fable: UsageLimit(utilization: 90, resetsAt: nil)
+        )
+
+        XCTAssertEqual(AccountUsageState(id: account.id, account: account, usage: usage).peakUtilization, 90)
+    }
+
+    func testSidebarSectionsListEveryStaticRowExactlyOnce() {
+        // Exhaustive switch: adding a SidebarItem case fails to compile here until
+        // it is classified, so a new static row cannot silently miss its section.
+        func isStatic(_ item: SidebarItem) -> Bool {
+            switch item {
+            case .account: return false
+            case .dashboard, .overview, .commandLog, .help,
+                 .settingsAccounts, .settingsRefresh, .settingsUpdates, .about: return true
+            }
+        }
+        let expected: [SidebarItem] = [.dashboard, .overview, .commandLog, .help,
+                                       .settingsAccounts, .settingsRefresh, .settingsUpdates, .about]
+        XCTAssertTrue(expected.allSatisfy(isStatic))
+        let listed = SidebarItem.usageItems + SidebarItem.toolItems + SidebarItem.settingsItems
+
+        XCTAssertEqual(listed.count, Set(listed).count, "a row is listed twice")
+        XCTAssertEqual(Set(listed), Set(expected))
+        XCTAssertTrue(listed.allSatisfy { $0.style != nil }, "every static row needs a style")
+        XCTAssertNil(SidebarItem.account(UUID()).style)
     }
 }
 

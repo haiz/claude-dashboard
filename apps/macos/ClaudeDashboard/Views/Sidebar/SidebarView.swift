@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The main window's sidebar, grouped like System Settings. Selecting a row
-/// writes `DashboardViewModel.selection`; `MainWindow` renders the matching pane.
+/// goes through `DashboardViewModel.selectFromSidebar`; `MainWindow` renders the matching pane.
 ///
 ///     NavigationSplitView { SidebarView(viewModel: vm) } detail: { ... }
 struct SidebarView: View {
@@ -35,7 +35,7 @@ struct SidebarView: View {
     private var selectionBinding: Binding<SidebarItem?> {
         Binding(
             get: { viewModel.selection },
-            set: { if let item = $0 { viewModel.selection = item } }
+            set: { if let item = $0 { viewModel.selectFromSidebar(item) } }
         )
     }
 
