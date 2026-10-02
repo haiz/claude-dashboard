@@ -21,8 +21,6 @@ struct AccountPane: View {
         self.onRunCommand = onRunCommand
         _chartViewModel = StateObject(wrappedValue: AccountDetailViewModel(
             accountId: state.id,
-            accountName: state.account.name,
-            accountPlan: state.account.plan,
             logStore: dashboardViewModel.logStore,
             preselectedWindow: dashboardViewModel.preselectedWindow
         ))
