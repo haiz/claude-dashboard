@@ -979,38 +979,16 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(vm.selection, .account(kept.id))
     }
 
-    func testPeakUtilizationIsHighestWindowOrNilWithoutUsage() {
+    func testFiveHourUtilizationIgnoresHigherSevenDayAndFableWindows() {
         let account = makeAccount()
         let usage = UsageData(
             fiveHour: UsageLimit(utilization: 20, resetsAt: nil),
             sevenDay: UsageLimit(utilization: 65, resetsAt: nil),
-            fable: UsageLimit(utilization: 40, resetsAt: nil)
-        )
-
-        XCTAssertEqual(AccountUsageState(id: account.id, account: account, usage: usage).peakUtilization, 65)
-        XCTAssertNil(AccountUsageState(id: account.id, account: account).peakUtilization)
-    }
-
-    func testPeakUtilizationIgnoresAMissingFableWindow() {
-        let account = makeAccount()
-        let usage = UsageData(
-            fiveHour: UsageLimit(utilization: 30, resetsAt: nil),
-            sevenDay: UsageLimit(utilization: 10, resetsAt: nil),
-            fable: nil
-        )
-
-        XCTAssertEqual(AccountUsageState(id: account.id, account: account, usage: usage).peakUtilization, 30)
-    }
-
-    func testPeakUtilizationPicksFableWhenItIsHighest() {
-        let account = makeAccount()
-        let usage = UsageData(
-            fiveHour: UsageLimit(utilization: 30, resetsAt: nil),
-            sevenDay: UsageLimit(utilization: 10, resetsAt: nil),
             fable: UsageLimit(utilization: 90, resetsAt: nil)
         )
 
-        XCTAssertEqual(AccountUsageState(id: account.id, account: account, usage: usage).peakUtilization, 90)
+        XCTAssertEqual(AccountUsageState(id: account.id, account: account, usage: usage).fiveHourUtilization, 20)
+        XCTAssertNil(AccountUsageState(id: account.id, account: account).fiveHourUtilization)
     }
 
     func testSidebarSectionsListEveryStaticRowExactlyOnce() {

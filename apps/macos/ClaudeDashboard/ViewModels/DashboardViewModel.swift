@@ -12,12 +12,9 @@ struct AccountUsageState: Identifiable {
 }
 
 extension AccountUsageState {
-    /// Highest utilization across the 5h, 7d and Fable windows; nil until usage loads.
-    var peakUtilization: Double? {
-        guard let usage = usage else { return nil }
-        return [usage.fiveHour.utilization, usage.sevenDay.utilization, usage.fable?.utilization]
-            .compactMap { $0 }
-            .max()
+    /// The 5h window's utilization, the figure the sidebar row shows; nil until usage loads.
+    var fiveHourUtilization: Double? {
+        usage?.fiveHour.utilization
     }
 }
 
