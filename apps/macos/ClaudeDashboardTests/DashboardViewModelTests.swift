@@ -979,16 +979,27 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(vm.selection, .account(kept.id))
     }
 
-    func testFiveHourUtilizationIgnoresHigherSevenDayAndFableWindows() {
+    func testSidebarUtilizationIsFiveHourWhileSevenDayHasHeadroom() {
         let account = makeAccount()
         let usage = UsageData(
             fiveHour: UsageLimit(utilization: 20, resetsAt: nil),
-            sevenDay: UsageLimit(utilization: 65, resetsAt: nil),
-            fable: UsageLimit(utilization: 90, resetsAt: nil)
+            sevenDay: UsageLimit(utilization: 99, resetsAt: nil),
+            fable: UsageLimit(utilization: 100, resetsAt: nil)
         )
 
-        XCTAssertEqual(AccountUsageState(id: account.id, account: account, usage: usage).fiveHourUtilization, 20)
-        XCTAssertNil(AccountUsageState(id: account.id, account: account).fiveHourUtilization)
+        XCTAssertEqual(AccountUsageState(id: account.id, account: account, usage: usage).sidebarUtilization, 20)
+        XCTAssertNil(AccountUsageState(id: account.id, account: account).sidebarUtilization)
+    }
+
+    func testSidebarUtilizationIsSevenDayOnceItIsExhausted() {
+        let account = makeAccount()
+        let usage = UsageData(
+            fiveHour: UsageLimit(utilization: 20, resetsAt: nil),
+            sevenDay: UsageLimit(utilization: 100, resetsAt: nil),
+            fable: nil
+        )
+
+        XCTAssertEqual(AccountUsageState(id: account.id, account: account, usage: usage).sidebarUtilization, 100)
     }
 
     func testSidebarSectionsListEveryStaticRowExactlyOnce() {

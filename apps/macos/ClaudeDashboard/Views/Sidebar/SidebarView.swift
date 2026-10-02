@@ -60,10 +60,10 @@ struct SidebarView: View {
             if state.account.status == .expired {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-            } else if let fiveHour = state.fiveHourUtilization {
-                Text("\(Int(fiveHour))%")
+            } else if let utilization = state.sidebarUtilization {
+                Text("\(Int(utilization))%")
                     .monospacedDigit()
-                    .foregroundStyle(DashboardViewModel.usageColor(for: fiveHour))
+                    .foregroundStyle(DashboardViewModel.usageColor(for: utilization))
             }
         }
     }

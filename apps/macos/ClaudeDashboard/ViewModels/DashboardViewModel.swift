@@ -12,9 +12,12 @@ struct AccountUsageState: Identifiable {
 }
 
 extension AccountUsageState {
-    /// The 5h window's utilization, the figure the sidebar row shows; nil until usage loads.
-    var fiveHourUtilization: Double? {
-        usage?.fiveHour.utilization
+    /// The figure the sidebar row shows: the 5h window, unless the 7d window is
+    /// exhausted, since then the account is out of tokens whatever 5h says.
+    /// Nil until usage loads.
+    var sidebarUtilization: Double? {
+        guard let usage = usage else { return nil }
+        return usage.sevenDay.utilization >= 100 ? usage.sevenDay.utilization : usage.fiveHour.utilization
     }
 }
 
