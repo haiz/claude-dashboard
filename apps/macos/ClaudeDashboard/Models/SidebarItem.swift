@@ -25,11 +25,11 @@ enum SidebarItem: Hashable {
     var style: Style? {
         switch self {
         case .dashboard: return Style(title: "Dashboard", systemImage: "square.grid.2x2", tileColor: .blue)
-        case .overview: return Style(title: "Overview", systemImage: "chart.xyaxis.line", tileColor: .purple)
+        case .overview: return Style(title: "Overview", systemImage: "chart.xyaxis.line", tileColor: .orange)
         case .account: return nil
-        case .commandLog: return Style(title: "Command Log", systemImage: "list.bullet.rectangle", tileColor: .gray)
+        case .commandLog: return Style(title: "Command Log", systemImage: "list.bullet.rectangle", tileColor: .indigo)
         case .help: return Style(title: "Help", systemImage: "questionmark", tileColor: .green)
-        case .settingsAccounts: return Style(title: "Accounts", systemImage: "person.2", tileColor: .blue)
+        case .settingsAccounts: return Style(title: "Accounts", systemImage: "person.2", tileColor: .teal)
         case .settingsGeneral: return Style(title: "General", systemImage: "gearshape", tileColor: .gray)
         }
     }

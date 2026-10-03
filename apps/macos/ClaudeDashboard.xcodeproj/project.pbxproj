@@ -65,6 +65,7 @@
 		6D2C7F0EC9D99E1A21AA3C6C /* HelperAccountStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8004A1F7B3F59AC4C7ECE6D6 /* HelperAccountStoreTests.swift */; };
 		72F79D9B1FC6DBCE50D32532 /* DecryptCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF7DEAC28930337FB1D5772 /* DecryptCommand.swift */; };
 		74AAC2BB9743F4E1DDA24F4B /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */; };
+		76BA8139F5DCA27C87F3D8D1 /* AccountAvatarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67AC5563CF36D085E954208F /* AccountAvatarTests.swift */; };
 		799960A4D530BF35FAB68326 /* UsageLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A9C824A446A4513554E6BC5 /* UsageLogStore.swift */; };
 		7A5C31588D87CBAB9CCC7CD1 /* CommandLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 653DEC7215637CF705CDA949 /* CommandLogView.swift */; };
 		7C270378E7A24C8959633F69 /* APIBaseURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BF0A4FB04BB2713656EADBF /* APIBaseURL.swift */; };
@@ -226,6 +227,7 @@
 		653DEC7215637CF705CDA949 /* CommandLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandLogView.swift; sourceTree = "<group>"; };
 		65B6FF0D0BD63D5125DBE9E9 /* OrgSelectionContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrgSelectionContractTests.swift; sourceTree = "<group>"; };
 		662D8F8CC3123336688030BC /* CommandLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandLogStore.swift; sourceTree = "<group>"; };
+		67AC5563CF36D085E954208F /* AccountAvatarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountAvatarTests.swift; sourceTree = "<group>"; };
 		690E18B51A43CF7A0BFFA627 /* DashboardViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModelTests.swift; sourceTree = "<group>"; };
 		6A9C824A446A4513554E6BC5 /* UsageLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogStore.swift; sourceTree = "<group>"; };
 		6BF0A4FB04BB2713656EADBF /* APIBaseURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIBaseURL.swift; sourceTree = "<group>"; };
@@ -353,6 +355,7 @@
 		109421F311E289DC97EE7C52 /* ClaudeDashboardTests */ = {
 			isa = PBXGroup;
 			children = (
+				67AC5563CF36D085E954208F /* AccountAvatarTests.swift */,
 				CBC96C2BB8D763106FBEA74A /* AccountCodableTests.swift */,
 				D05E2848D8529F3B12BFF386 /* AccountSourceTests.swift */,
 				23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */,
@@ -705,6 +708,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				76BA8139F5DCA27C87F3D8D1 /* AccountAvatarTests.swift in Sources */,
 				BCF9465CD27C5B80FF29FE9A /* AccountCodableTests.swift in Sources */,
 				A6F05ADA316EC6FF3F96B159 /* AccountSourceTests.swift in Sources */,
 				A39C01692A8EA4FA3A76ED88 /* AccountStoreTests.swift in Sources */,
