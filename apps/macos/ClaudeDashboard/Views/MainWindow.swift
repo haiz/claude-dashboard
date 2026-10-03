@@ -12,6 +12,7 @@ struct MainWindow: View {
     @StateObject private var commandLogViewModel: CommandLogViewModel
     @State private var showingSetup = false
     @State private var runCommandAccount: Account?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     init(viewModel: DashboardViewModel, showSetupOnAppear: Bool) {
         self.viewModel = viewModel
@@ -23,14 +24,17 @@ struct MainWindow: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(viewModel: viewModel)
         } detail: {
             pane
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 // The transparent titlebar would otherwise push every pane down
                 // by its full height; System Settings puts the title on that row.
-                .ignoresSafeArea(.container, edges: .top)
+                // With the sidebar collapsed the traffic lights and the sidebar
+                // toggle sit on that row instead, so the pane stays below it.
+                .ignoresSafeArea(.container,
+                                 edges: columnVisibility == .detailOnly ? [] : .top)
         }
         .frame(minWidth: 900, minHeight: 560)
         .onAppear {
