@@ -218,7 +218,9 @@ export component AppWindow inherits Window {
                     GroupHeader { text: "Settings"; }
                     SidebarRow {
                         label: "Accounts"; glyph: "\u{E77B}"; tile: #40c8e0;
-                        text-color: Theme.text-primary; enabled: false;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.settings-accounts;
+                        clicked => { root.selection = Pane.settings-accounts; }
                     }
                     SidebarRow {
                         label: "General"; glyph: "\u{E713}"; tile: #8e8e93;
