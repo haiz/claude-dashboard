@@ -107,7 +107,9 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
     per-account page, tray ring icon (peak usage) with a Mica flyout popover, a background
     refresh loop, a single-instance mutex, and the consumer of the `\\.\pipe\claude-dashboard`
     reload pipe. Closing the window hides it; the app lives in the tray. GUI rendering is
-    verified by run-checks, not CI.
+    verified by run-checks, not CI. Sub-project 3 adds the Add Account wizard (extension / scan /
+    paste tabs) and the Settings Accounts (delete + mute, re-sync) and General (auto refresh,
+    launch at startup) panes.
   - **apps/windows/bridge/** — `claude-dashboard-bridge.exe`, a native-messaging host for the
     browser extension. `handler.rs` runs the key intake over an injected `Environment` trait
     (so tests touch no network/store/pipe); `real_env.rs` is the production wiring; `framing.rs`
@@ -125,6 +127,10 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 - **Presentation `core` modules** (ported from `apps/linux/lib/`, same values, tested): `colors`
   (usage color interpolation), `geometry` (ring-gauge geometry), `format` (percent/reset text),
   `rows` (`DisplayRow` view models and burn-rate ordering).
+- **Setup & Settings `core` modules:** `settings.rs` (`settings.json`: auto refresh, preferred scan
+  browser, launch at startup; non-critical, missing/corrupt -> defaults); `scan.rs` (scans Windows
+  profiles and classifies each as `ScannedSession` / `AppBound` / `NoSession`); `startup.rs`
+  (launch-at-startup via the HKCU `Run` key).
 
 ## Key Technical Details
 

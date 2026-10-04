@@ -106,6 +106,28 @@ silently re-added. Settings offers an unmute. This file is kept out of
 `accounts.json` so the cross-platform account schema stays unchanged;
 extension-sourced accounts are stored with `source: "manual"`.
 
+## settings.json
+
+`%APPDATA%\claude-dashboard\settings.json`:
+
+    { "autoRefreshSeconds": 60, "preferredScanBrowser": "chrome", "launchAtStartup": false }
+
+Settings are **non-critical**: a missing or corrupt file yields defaults and never
+blocks startup. `autoRefreshSeconds` is clamped to [30, 3600] (default 60).
+Changes take effect without a restart.
+
+## Launch at startup
+
+Enabled by writing value `ClaudeDashboard` = the quoted exe path under
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; removing the value disables it.
+
+## Scan behaviour
+
+The Add Account scan classifies each browser profile as Found (a decodable `v10`
+session), AppBound (`v20` cookie: the UI says "use the extension") or NoSession.
+AppBound profiles are never force-decoded. Deleting an extension-sourced account
+from the Settings Accounts pane mutes its install (see the muted rule above).
+
 ## App reload pipe
 
 The app serves a named pipe `\\.\pipe\claude-dashboard`; the bridge writes
