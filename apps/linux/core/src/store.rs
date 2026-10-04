@@ -473,6 +473,14 @@ pub struct UsageLogStore {
     aid_cache: HashMap<String, i64>,
 }
 
+/// One chart sample: Unix-seconds time and utilization in percent
+/// (`u / 100`, the inverse of the `round(utilization * 100)` stored form).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SeriesPoint {
+    pub t_unix: f64,
+    pub utilization: f64,
+}
+
 impl UsageLogStore {
     /// Opens an in-memory database — for tests only (a fresh, empty store
     /// with no on-disk footprint).
@@ -637,6 +645,49 @@ impl UsageLogStore {
             )
             .unwrap_or(0)
     }
+
+    /// Points for one account + window within `[from_unix, to_unix]`
+    /// (inclusive, truncated toward zero like `record_at`'s `t`), ascending
+    /// by `t`. Read-only; any query error yields an empty vec.
+    pub fn series(&self, account_id: &str, window: i64, from_unix: f64, to_unix: f64) -> Vec<SeriesPoint> {
+        let run = || -> rusqlite::Result<Vec<SeriesPoint>> {
+            let mut stmt = self.conn.prepare(
+                "SELECT l.t, l.u FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
+                 WHERE m.account_id = ?1 AND l.w = ?2 AND l.t BETWEEN ?3 AND ?4 \
+                 ORDER BY l.t ASC, l.id ASC",
+            )?;
+            let rows = stmt.query_map(params![account_id, window, from_unix as i64, to_unix as i64], |row| {
+                Ok(SeriesPoint { t_unix: row.get::<_, i64>(0)? as f64, utilization: row.get::<_, i64>(1)? as f64 / 100.0 })
+            })?;
+            rows.collect()
+        };
+        run().unwrap_or_default()
+    }
+
+    /// Like [`Self::series`] but for every account, grouped by `account_id`
+    /// (for the Overview chart).
+    pub fn series_all(&self, window: i64, from_unix: f64, to_unix: f64) -> HashMap<String, Vec<SeriesPoint>> {
+        let run = || -> rusqlite::Result<HashMap<String, Vec<SeriesPoint>>> {
+            let mut stmt = self.conn.prepare(
+                "SELECT m.account_id, l.t, l.u FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
+                 WHERE l.w = ?1 AND l.t BETWEEN ?2 AND ?3 \
+                 ORDER BY m.account_id, l.t ASC, l.id ASC",
+            )?;
+            let rows = stmt.query_map(params![window, from_unix as i64, to_unix as i64], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    SeriesPoint { t_unix: row.get::<_, i64>(1)? as f64, utilization: row.get::<_, i64>(2)? as f64 / 100.0 },
+                ))
+            })?;
+            let mut map: HashMap<String, Vec<SeriesPoint>> = HashMap::new();
+            for r in rows {
+                let (id, p) = r?;
+                map.entry(id).or_default().push(p);
+            }
+            Ok(map)
+        };
+        run().unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
@@ -733,6 +784,61 @@ mod tests {
         s.record_at("ACC", 0, 1000.0, 42.0, false, 20.0);
         s.record_at("ACC", 0, 2000.0, 42.0, false, 30.0);
         assert_eq!(s.count("ACC", 0), 3);
+    }
+
+    #[test]
+    fn series_returns_points_ascending_with_rounded_utilization() {
+        let mut s = mem_store();
+        s.record_at("ACC", 0, 1000.0, 42.0, false, 10.0);
+        s.record_at("ACC", 0, 1000.0, 45.005, false, 20.0);
+        s.record_at("ACC", 0, 1000.0, 10.0, false, 30.0);
+        let pts = s.series("ACC", 0, 0.0, 1e12);
+        assert_eq!(
+            pts,
+            vec![
+                SeriesPoint { t_unix: 10.0, utilization: 42.0 },
+                SeriesPoint { t_unix: 20.0, utilization: 45.01 },
+                SeriesPoint { t_unix: 30.0, utilization: 10.0 },
+            ]
+        );
+    }
+
+    #[test]
+    fn series_range_is_inclusive() {
+        let mut s = mem_store();
+        s.record_at("ACC", 0, 1000.0, 42.0, false, 20.0);
+        assert_eq!(s.series("ACC", 0, 20.0, 20.0).len(), 1);
+        assert!(s.series("ACC", 0, 0.0, 19.0).is_empty());
+    }
+
+    #[test]
+    fn series_filters_by_window_and_account() {
+        let mut s = mem_store();
+        s.record_at("ACC", 0, 1000.0, 1.0, false, 10.0);
+        s.record_at("ACC", 1, 1000.0, 2.0, false, 10.0);
+        s.record_at("OTHER", 0, 1000.0, 3.0, false, 10.0);
+        let pts = s.series("ACC", 0, 0.0, 1e12);
+        assert_eq!(pts, vec![SeriesPoint { t_unix: 10.0, utilization: 1.0 }]);
+    }
+
+    #[test]
+    fn series_unknown_account_is_empty() {
+        let s = mem_store();
+        assert!(s.series("NOPE", 0, 0.0, 1e12).is_empty());
+    }
+
+    #[test]
+    fn series_all_groups_by_account() {
+        let mut s = mem_store();
+        s.record_at("A", 0, 1000.0, 1.0, false, 10.0);
+        s.record_at("A", 0, 1000.0, 2.0, false, 20.0);
+        s.record_at("B", 0, 1000.0, 3.0, false, 10.0);
+        s.record_at("B", 1, 1000.0, 4.0, false, 10.0);
+        let all = s.series_all(0, 0.0, 1e12);
+        assert_eq!(all.len(), 2);
+        assert_eq!(all["A"].len(), 2);
+        assert_eq!(all["B"].len(), 1);
+        assert_eq!(all["A"][0].t_unix, 10.0);
     }
 
     #[test]
