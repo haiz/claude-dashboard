@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Claude Dashboard Sync",
+  "description": "Sends your claude.ai session to the local Claude Dashboard app.",
+  "version": "1.18.1",
+  "minimum_chrome_version": "110",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsyGVIgK+AYPWrhrCoY+/TYX0GivGfWh+uyUXLbCfHU4ZlyRrTwk/yE8SZVOCfmmyhJlGNSeXiTkv7tb6HyV6jOHPA3t3INp1A13i5D0eRhrqFbq7EdhWK2WnkibpSR+/4tPQRGocZRNbwXMJrHzUg+ecNJWV+M3G5JT/kGAV2v8o4taKJuZnNNxOJ1t/x9IelmS3zFQX322VPqX+deWj7ZQkPW5L8EbjnjEtfFIxa8JAAtyZbb55kgQLgr4d3+eXAmZiGz+AgR8ROW/BMSDWPbNiwULofoJs0XXhhyD0Ipkf3HCUDKGg+glzMTaPt/O14ZZhMWgNlJD58IkxqWLj0QIDAQAB",
+  "permissions": ["cookies", "nativeMessaging", "alarms", "storage"],
+  "host_permissions": ["https://claude.ai/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Claude Dashboard Sync"
+  }
+}
