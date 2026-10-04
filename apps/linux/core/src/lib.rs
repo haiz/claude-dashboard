@@ -11,6 +11,7 @@ pub mod identity;
 pub mod key_intake;
 pub mod manual_key;
 pub mod format;
+pub mod rows;
 
 #[cfg(windows)]
 pub mod userprotect;
