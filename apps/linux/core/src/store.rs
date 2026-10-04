@@ -296,6 +296,36 @@ fn write_and_publish(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), StoreE
     Ok(())
 }
 
+/// Held for the whole read-modify-write of `accounts.json`. Two processes
+/// write the store on Windows (the app and its native-messaging bridge);
+/// without this, each can load, change and save, and the second save drops
+/// the first's change. Released when dropped. On Unix it is equally valid and
+/// used wherever two writers might race.
+pub struct StoreLock {
+    _file: fs::File,
+}
+
+/// Blocks until this process holds the exclusive lock on
+/// `accounts.json.lock`, a sibling of the store. A separate lock file, because
+/// the store itself is replaced by `rename` on every save, which would drop a
+/// lock held on the store inode.
+pub fn lock_store() -> Result<StoreLock, StoreError> {
+    let path = accounts_path().with_extension("json.lock");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)?;
+    // `File::lock` is an advisory exclusive lock: `flock` on Unix,
+    // `LockFileEx` on Windows. Blocks until granted; released on drop/close.
+    file.lock()?;
+    Ok(StoreLock { _file: file })
+}
+
 // ---------------------------------------------------------------------
 // At-rest session-key encryption — Linux-local scheme
 // ---------------------------------------------------------------------
@@ -753,6 +783,40 @@ mod tests {
         point_store_at(dir.path());
         let accounts = load_accounts().unwrap();
         assert!(accounts.is_empty());
+    }
+
+    #[test]
+    fn lock_store_serialises_writers() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        point_store_at(dir.path());
+
+        let first = lock_store().unwrap();
+        let released = Arc::new(AtomicBool::new(false));
+        let seen = Arc::clone(&released);
+        let second = std::thread::spawn(move || {
+            // Blocks until `first` is dropped; must observe `released` set.
+            let _lock = lock_store().unwrap();
+            seen.load(Ordering::SeqCst)
+        });
+
+        std::thread::sleep(Duration::from_millis(200));
+        released.store(true, Ordering::SeqCst);
+        drop(first);
+
+        assert!(
+            second.join().unwrap(),
+            "the second lock was granted while the first was still held"
+        );
+        assert!(dir
+            .path()
+            .join("claude-dashboard")
+            .join("accounts.json.lock")
+            .is_file());
     }
 
     #[test]
