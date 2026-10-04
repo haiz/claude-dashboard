@@ -6,6 +6,7 @@ pub mod colors;
 pub mod cookie;
 pub mod api;
 pub mod store;
+pub mod settings;
 pub mod browser;
 pub mod identity;
 pub mod key_intake;
