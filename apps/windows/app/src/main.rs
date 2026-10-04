@@ -2,6 +2,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
 mod instance;
+mod chart_model;
 mod model;
 mod pipe;
 mod popover;
