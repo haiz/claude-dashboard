@@ -337,6 +337,71 @@ fn read_info_cache(local_state: &Path) -> Option<HashMap<String, InfoCacheEntry>
     Some(map)
 }
 
+/// One Windows browser profile that carries a cookie database. Separate from
+/// [`DiscoveredProfile`]: Windows has no keyring `application`, and decrypting
+/// needs the install's `Local State` (it holds the DPAPI-sealed cookie key).
+pub struct WindowsProfile {
+    pub browser: Browser,
+    pub profile_dir: String,
+    pub display_name: Option<String>,
+    pub google_email: Option<String>,
+    pub cookies_db: PathBuf,
+    pub local_state: PathBuf,
+}
+
+/// The `User Data` directories under `%LOCALAPPDATA%`, by browser. Arc on
+/// Windows is a packaged app with a per-install path; it is reached through
+/// the browser extension, not scanned here.
+fn windows_user_data_roots() -> [(Browser, [&'static str; 3]); 3] {
+    [
+        (Browser::Chrome, ["Google", "Chrome", "User Data"]),
+        (Browser::Edge, ["Microsoft", "Edge", "User Data"]),
+        (Browser::Brave, ["BraveSoftware", "Brave-Browser", "User Data"]),
+    ]
+}
+
+/// Every profile, browser by browser in [`windows_user_data_roots`] order and
+/// by directory name within a browser, whose cookie DB exists — at
+/// `<profile>\Network\Cookies` (Chromium 96+) or the older `<profile>\Cookies`.
+/// Display name and e-mail come from that install's own `Local State`.
+///
+/// Pure path logic (no `cfg(windows)`), so it is unit-tested on every OS.
+pub fn discover_windows_profiles_under(local_app_data: &Path) -> Vec<WindowsProfile> {
+    let mut out = Vec::new();
+    for (browser, parts) in windows_user_data_roots() {
+        let base = parts.iter().fold(local_app_data.to_path_buf(), |p, part| p.join(part));
+        let Ok(entries) = fs::read_dir(&base) else {
+            continue;
+        };
+        let local_state = base.join("Local State");
+        let info_cache = read_info_cache(&local_state);
+        let mut found: Vec<(String, PathBuf)> = entries
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter_map(|dir| {
+                let profile = base.join(&dir);
+                [profile.join("Network").join("Cookies"), profile.join("Cookies")]
+                    .into_iter()
+                    .find(|p| p.is_file())
+                    .map(|db| (dir, db))
+            })
+            .collect();
+        found.sort_by(|a, b| a.0.cmp(&b.0));
+        for (dir, cookies_db) in found {
+            let entry = info_cache.as_ref().and_then(|m| m.get(&dir));
+            out.push(WindowsProfile {
+                browser: browser.clone(),
+                display_name: entry.and_then(|e| e.name.clone()),
+                google_email: entry.and_then(|e| e.user_name.clone()),
+                profile_dir: dir,
+                cookies_db,
+                local_state: local_state.clone(),
+            });
+        }
+    }
+    out
+}
+
 /// A per-process-unique counter so concurrent reads never collide on a
 /// temp DB name.
 static COPY_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -693,5 +758,35 @@ mod tests {
         assert_eq!(snap_name(&Browser::Chrome), None);
         assert_eq!(snap_name(&Browser::Edge), None);
         assert_eq!(snap_name(&Browser::Arc), None);
+    }
+
+    #[test]
+    fn windows_profiles_are_found_under_each_browsers_user_data() {
+        let d = tempfile::tempdir().unwrap();
+        let chrome = d.path().join("Google").join("Chrome").join("User Data");
+        let edge = d.path().join("Microsoft").join("Edge").join("User Data");
+        // Chrome 96+ keeps cookies under Network\; Edge here uses the old spot.
+        write(&chrome.join("Default").join("Network").join("Cookies"), "");
+        std::fs::create_dir_all(chrome.join("Profile 2")).unwrap(); // no cookies: skipped
+        write(&edge.join("Default").join("Cookies"), "");
+        write(
+            &chrome.join("Local State"),
+            r#"{"profile":{"info_cache":{"Default":{"name":"Work","user_name":"me@x.com"}}}}"#,
+        );
+
+        let found = discover_windows_profiles_under(d.path());
+
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].browser, Browser::Chrome);
+        assert_eq!(found[0].profile_dir, "Default");
+        assert_eq!(found[0].display_name.as_deref(), Some("Work"));
+        assert_eq!(found[0].google_email.as_deref(), Some("me@x.com"));
+        assert_eq!(
+            found[0].cookies_db,
+            chrome.join("Default").join("Network").join("Cookies")
+        );
+        assert_eq!(found[0].local_state, chrome.join("Local State"));
+        assert_eq!(found[1].browser, Browser::Edge);
+        assert_eq!(found[1].cookies_db, edge.join("Default").join("Cookies"));
     }
 }
