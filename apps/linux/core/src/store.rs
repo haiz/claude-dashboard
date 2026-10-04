@@ -23,12 +23,16 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(unix)]
 use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
+#[cfg(unix)]
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
+#[cfg(unix)]
 use hkdf::Hkdf;
 use rusqlite::{params, Connection, OptionalExtension};
+#[cfg(unix)]
 use sha2::Sha256;
 
 use crate::model::Account;
@@ -316,8 +320,10 @@ fn write_and_publish(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), StoreE
 //   intentional: `sessionKey` was never a portable value (see the contract
 //   note above) and this port does not need to make it one.
 
+#[cfg(unix)]
 const HKDF_SALT: &[u8] = b"com.claude-dashboard.v1";
 
+#[cfg(unix)]
 fn machine_id_bytes() -> Vec<u8> {
     for path in ["/etc/machine-id", "/var/lib/dbus/machine-id"] {
         if let Ok(s) = fs::read_to_string(path) {
@@ -332,6 +338,7 @@ fn machine_id_bytes() -> Vec<u8> {
     b"claude-dashboard-linux-fallback-machine-id".to_vec()
 }
 
+#[cfg(unix)]
 fn derive_key() -> [u8; 32] {
     let ikm = machine_id_bytes();
     let hk = Hkdf::<Sha256>::new(Some(HKDF_SALT), &ikm);
@@ -343,6 +350,7 @@ fn derive_key() -> [u8; 32] {
 
 /// Seals `plain` with AES-256-GCM, keyed by [`derive_key`], and returns
 /// `base64(nonce || ciphertext || tag)`.
+#[cfg(unix)]
 pub fn encrypt_session_key(plain: &str) -> String {
     let key_bytes = derive_key();
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
@@ -361,6 +369,7 @@ pub fn encrypt_session_key(plain: &str) -> String {
 /// Reverses [`encrypt_session_key`]. Returns `None` on any malformed input
 /// or decryption failure (wrong host, corrupted value, truncated data) —
 /// there is no partial result to salvage.
+#[cfg(unix)]
 pub fn decrypt_session_key(cipher_b64: &str) -> Option<String> {
     let combined = BASE64.decode(cipher_b64).ok()?;
     if combined.len() < 12 {
@@ -375,6 +384,30 @@ pub fn decrypt_session_key(cipher_b64: &str) -> Option<String> {
 
     let plaintext = cipher.decrypt(nonce, ciphertext).ok()?;
     String::from_utf8(plaintext).ok()
+}
+
+// ---------------------------------------------------------------------
+// At-rest session-key encryption — Windows scheme (DPAPI)
+// ---------------------------------------------------------------------
+//
+// DPAPI, current-user scope: only this Windows user on this machine can open
+// the value. Same wire shape as the Unix scheme (one base64 string), not the
+// same bytes — `sessionKey` was never portable between machines or platforms.
+
+/// Seals `plain` with DPAPI (current user) and returns `base64(blob)`.
+#[cfg(windows)]
+pub fn encrypt_session_key(plain: &str) -> String {
+    let sealed = crate::userprotect::protect(plain.as_bytes())
+        .expect("DPAPI CryptProtectData does not fail for the logged-in user");
+    BASE64.encode(sealed)
+}
+
+/// Reverses [`encrypt_session_key`]. `None` on malformed base64 or any DPAPI
+/// failure (another user's blob, corrupted or truncated data).
+#[cfg(windows)]
+pub fn decrypt_session_key(cipher_b64: &str) -> Option<String> {
+    let sealed = BASE64.decode(cipher_b64).ok()?;
+    String::from_utf8(crate::userprotect::unprotect(&sealed)?).ok()
 }
 
 // ---------------------------------------------------------------------

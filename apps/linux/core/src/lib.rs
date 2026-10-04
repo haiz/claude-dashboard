@@ -8,3 +8,6 @@ pub mod store;
 pub mod browser;
 pub mod identity;
 pub mod manual_key;
+
+#[cfg(windows)]
+pub mod userprotect;
