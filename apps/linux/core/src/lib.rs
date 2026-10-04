@@ -13,3 +13,4 @@ pub mod manual_key;
 
 #[cfg(windows)]
 pub mod userprotect;
+pub mod geometry;
