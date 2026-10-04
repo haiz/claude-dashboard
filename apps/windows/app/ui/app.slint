@@ -2,7 +2,8 @@ import { AboutSlint } from "std-widgets.slint";
 import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "components.slint";
 import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
-export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem }
+import { ChartPanel, ChartState, ChartTick } from "chart.slint";
+export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
 export enum Pane { dashboard, overview, account, command-log, help, settings-accounts, general }
@@ -262,6 +263,21 @@ export component AppWindow inherits Window {
     callback unmute(string);
     callback add-account();
 
+    // Per-account usage chart overlay (state is computed in Rust, chart.rs).
+    in property <ChartState> chart;
+    in-out property <bool> chart-open: false;
+    in-out property <string> chart-title;
+    in-out property <color> chart-color: Theme.accent;
+    callback view-chart(string);
+    callback chart-preset(string);
+    callback chart-close();
+    callback chart-size(float, float);
+    callback chart-hover(float, float);
+    callback chart-select(float, float);
+    callback chart-reset();
+    changed selection => { root.chart-open = false; root.chart-close(); }
+    changed selected-account-id => { root.chart-open = false; root.chart-close(); }
+
     in property <string> app-name;
     in property <string> app-version;
     in-out property <int> auto-refresh-seconds: 60;
@@ -366,6 +382,12 @@ export component AppWindow inherits Window {
                     width: parent.width;
                     height: parent.height;
                     resync => { root.resync(); }
+                    view-chart => {
+                        root.chart-title = acct.name;
+                        root.chart-color = acct.avatar-color;
+                        root.chart-open = true;
+                        root.view-chart(acct.id);
+                    }
                 }
             }
             if root.selection == Pane.dashboard && root.account-rows.length == 0: EmptyState {
@@ -416,6 +438,21 @@ export component AppWindow inherits Window {
             }
             if root.selection != Pane.dashboard: Rectangle { }
         }
+    }
+
+    if root.chart-open && root.selection == Pane.account: ChartPanel {
+        x: 240px;
+        width: parent.width - 240px;
+        height: parent.height;
+        title: root.chart-title;
+        state: root.chart;
+        line-color: root.chart-color;
+        preset(p) => { root.chart-preset(p); }
+        close => { root.chart-open = false; root.chart-close(); }
+        size-changed(w, h) => { root.chart-size(w, h); }
+        hover(x, y) => { root.chart-hover(x, y); }
+        select(a, b) => { root.chart-select(a, b); }
+        reset => { root.chart-reset(); }
     }
 }
 

@@ -1,8 +1,9 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
-mod instance;
+mod chart;
 mod chart_model;
+mod instance;
 mod model;
 mod pipe;
 mod popover;
@@ -306,6 +307,7 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
     // Re-sync button: same nudge the reload pipe sends (refreshes all accounts).
+    chart::install(&app);
     app.on_resync(move || {
         let _ = nudge_tx.send(());
     });
@@ -430,6 +432,7 @@ fn main() -> Result<(), slint::PlatformError> {
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
         apply_output(&app.as_weak(), &popover.as_weak(), &fake_rows(now), now);
+        chart::seed_fake_history();
     } else {
         spawn_refresh_loop(nudge_rx, app.as_weak(), popover.as_weak());
     }

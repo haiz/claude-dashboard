@@ -295,6 +295,7 @@ export component AccountPane inherits VerticalLayout {
     in property <UiRow> data;
     // Re-sync refreshes all accounts (one shared refresh nudge).
     callback resync();
+    callback view-chart();
     spacing: 18px;
     alignment: start;
 
@@ -373,7 +374,7 @@ export component AccountPane inherits VerticalLayout {
         spacing: 10px;
         alignment: start;
         ActionButton { label: "Re-sync"; clicked => { root.resync(); } }
-        ActionButton { label: "View chart"; enabled: false; }
+        ActionButton { label: "View chart"; clicked => { root.view-chart(); } }
         ActionButton { label: "Command Log"; enabled: false; }
     }
     Text {

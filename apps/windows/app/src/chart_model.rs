@@ -1,6 +1,5 @@
 //! Pure chart model for the Slint UI: Path strings, axis ticks and hover
 //! hit-testing. All geometry comes from `claude_dashboard_core::chart`.
-#![allow(dead_code)]
 
 use claude_dashboard_core::chart::{
     format_tick, segments, time_ticks, Entry, Range, Scale, Y_TICKS,
