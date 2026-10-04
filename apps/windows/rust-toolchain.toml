@@ -1,0 +1,4 @@
+# Same pin as apps/linux/rust-toolchain.toml; bump both together.
+[toolchain]
+channel = "1.98.0"
+components = ["clippy"]

@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["bridge"]
+
+[workspace.package]
+edition = "2021"
+version = "1.18.1"   # kept in sync with /VERSION (sync-version.sh gains this file in sub-project 6)
+# 1.89: this workspace depends on apps/linux/core, which uses std::fs::File::lock
+# (stable 1.89). Keep in step with apps/linux/Cargo.toml.
+rust-version = "1.89"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+claude-dashboard-core = { path = "../linux/core" }
