@@ -1,4 +1,4 @@
-import { SidebarRow, AccountCard } from "components.slint";
+import { SidebarRow, AccountCard, AccountPane } from "components.slint";
 import { Theme, UiRow, UiWindow } from "theme.slint";
 export { Theme, UiRow, UiWindow }
 
@@ -26,6 +26,7 @@ export component AppWindow inherits Window {
     in property <[UiRow]> account-rows;
     in-out property <Pane> selection: Pane.dashboard;
     in-out property <string> selected-account-id;
+    callback resync();
 
     property <string> pane-title: root.selection == Pane.dashboard ? "Dashboard"
         : root.selection == Pane.overview ? "Overview"
@@ -112,9 +113,15 @@ export component AppWindow inherits Window {
                 font-size: 24px;
                 font-weight: 600;
             }
-            if root.selection == Pane.account: Text {
-                text: "Account: " + root.selected-account-id;
-                color: Theme.text-secondary;
+            if root.selection == Pane.account: Rectangle {
+                // Non-layout container: one pane per row, only the selected one visible.
+                for acct in root.account-rows: AccountPane {
+                    visible: root.selected-account-id == acct.id;
+                    data: acct;
+                    width: parent.width;
+                    height: parent.height;
+                    resync => { root.resync(); }
+                }
             }
             if root.selection == Pane.dashboard && root.account-rows.length == 0: Text {
                 text: "No accounts yet.";

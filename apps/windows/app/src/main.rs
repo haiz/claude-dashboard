@@ -108,11 +108,16 @@ fn main() -> Result<(), slint::PlatformError> {
         return Ok(());
     };
     let (nudge_tx, nudge_rx) = std::sync::mpsc::channel::<()>();
+    let pipe_tx = nudge_tx.clone();
     pipe::serve_reload(move || {
-        let _ = nudge_tx.send(());
+        let _ = pipe_tx.send(());
     });
 
     let app = AppWindow::new()?;
+    // Re-sync button: same nudge the reload pipe sends (refreshes all accounts).
+    app.on_resync(move || {
+        let _ = nudge_tx.send(());
+    });
     app.global::<Theme>().set_dark(system_is_dark());
     app.show()?;
     if !apply_mica(app.window()) {

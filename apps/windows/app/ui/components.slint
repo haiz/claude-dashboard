@@ -56,16 +56,17 @@ export component SidebarRow inherits Rectangle {
 // Ring gauge: track + Rust-built progress arc (core::geometry) + centered percent.
 export component UsageGauge inherits Rectangle {
     in property <UiWindow> win;
-    width: root.win.diameter * 1px;
-    height: root.win.diameter * 1px;
+    in property <float> zoom: 1.0;
+    width: root.win.diameter * root.zoom * 1px;
+    height: root.win.diameter * root.zoom * 1px;
     // Track: full circle at the same radius/stroke as the arc.
     Rectangle {
-        width: parent.width - root.win.line-width * 1px;
+        width: parent.width - root.win.line-width * root.zoom * 1px;
         height: self.width;
-        x: root.win.line-width * 0.5px;
+        x: root.win.line-width * root.zoom * 0.5px;
         y: self.x;
         border-radius: self.width / 2;
-        border-width: root.win.line-width * 1px;
+        border-width: root.win.line-width * root.zoom * 1px;
         border-color: Theme.dark ? #ffffff22 : #00000014;
     }
     Path {
@@ -75,7 +76,7 @@ export component UsageGauge inherits Rectangle {
         viewbox-height: root.win.diameter;
         commands: root.win.gauge-path;
         stroke: root.win.color;
-        stroke-width: root.win.line-width * 1px;
+        stroke-width: root.win.line-width * root.zoom * 1px;
         stroke-line-cap: round;
         fill: transparent;
         animate stroke { duration: 300ms; easing: ease-out; }
@@ -83,7 +84,7 @@ export component UsageGauge inherits Rectangle {
     Text {
         text: round(root.win.percent) + "%";
         color: Theme.text-primary;
-        font-size: root.win.diameter * 0.24px;
+        font-size: root.win.diameter * root.zoom * 0.24px;
         font-weight: 600;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -223,5 +224,161 @@ export component AccountCard inherits Rectangle {
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
+    }
+}
+
+component BigGauge inherits VerticalLayout {
+    in property <string> label;
+    in property <UiWindow> win;
+    spacing: 6px;
+    alignment: center;
+    Text {
+        text: root.label;
+        color: Theme.text-secondary;
+        font-size: 13px;
+        font-weight: 600;
+        horizontal-alignment: center;
+    }
+    HorizontalLayout {
+        alignment: center;
+        UsageGauge { win: root.win; zoom: 1.8; }
+    }
+    Text {
+        text: root.win.countdown;
+        color: root.win.countdown-color;
+        font-size: 13px;
+        horizontal-alignment: center;
+    }
+    Text {
+        text: root.win.reset-label;
+        color: Theme.text-secondary;
+        font-size: 11px;
+        horizontal-alignment: center;
+    }
+}
+
+// Larger 5h / 7d / Fable gauge row (macOS UsageGaugeRow). Fable only when present.
+export component UsageGaugeRow inherits HorizontalLayout {
+    in property <UiRow> data;
+    spacing: 32px;
+    alignment: center;
+    if root.data.five-hour.present: BigGauge { label: "5h"; win: root.data.five-hour; }
+    if root.data.seven-day.present: BigGauge { label: "7d"; win: root.data.seven-day; }
+    if root.data.fable.present: BigGauge { label: "Fable"; win: root.data.fable; }
+}
+
+component ActionButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 32px;
+    width: t.preferred-width + 28px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    background: root.enabled ? (touch.has-hover ? Theme.accent.with-alpha(0.15) : Theme.card-bg) : transparent;
+    opacity: root.enabled ? 1.0 : 0.45;
+    t := Text {
+        text: root.label;
+        color: root.enabled ? Theme.accent : Theme.text-secondary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Per-account page (macOS AccountPane): header, gauge row, actions.
+export component AccountPane inherits VerticalLayout {
+    in property <UiRow> data;
+    // Re-sync refreshes all accounts (one shared refresh nudge).
+    callback resync();
+    spacing: 18px;
+    alignment: start;
+
+    HorizontalLayout {
+        spacing: 14px;
+        Avatar { size: 48px; initial: root.data.initial; tint: root.data.avatar-color; }
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: root.data.name;
+                color: Theme.text-primary;
+                font-size: 20px;
+                font-weight: 600;
+                overflow: elide;
+            }
+            Text {
+                text: root.data.email != "" ? root.data.email : root.data.staleness;
+                color: Theme.text-secondary;
+                font-size: 12px;
+                overflow: elide;
+            }
+        }
+        Rectangle {
+            width: plan.preferred-width + 16px;
+            height: 22px;
+            y: 13px;
+            border-radius: 11px;
+            background: Theme.accent.with-alpha(0.15);
+            plan := Text {
+                text: root.data.plan;
+                color: Theme.accent;
+                font-size: 12px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        Rectangle {
+            width: status.preferred-width + 16px;
+            height: 22px;
+            y: 13px;
+            border-radius: 11px;
+            background: (root.data.status == "Active" ? Theme.ok : Theme.danger).with-alpha(0.15);
+            status := Text {
+                text: root.data.status;
+                color: root.data.status == "Active" ? Theme.ok : Theme.danger;
+                font-size: 12px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    if root.data.error != "": Text {
+        text: root.data.error;
+        color: Theme.danger;
+        font-size: 12px;
+        wrap: word-wrap;
+    }
+
+    Rectangle {
+        background: Theme.card-bg;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.card-border;
+        height: 300px;
+        UsageGaugeRow {
+            data: root.data;
+            width: parent.width;
+            height: parent.height;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+        ActionButton { label: "Re-sync"; clicked => { root.resync(); } }
+        ActionButton { label: "View chart"; enabled: false; }
+        ActionButton { label: "Command Log"; enabled: false; }
+    }
+    Text {
+        text: root.data.staleness;
+        color: Theme.text-secondary;
+        font-size: 11px;
     }
 }
