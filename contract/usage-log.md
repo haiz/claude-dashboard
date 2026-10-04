@@ -141,3 +141,13 @@ values equal, and equal to the incoming value) against the same key, not an
 approximation like "collapse adjacent duplicates" without the exact-`rat`
 scoping — the scoping is what keeps a window's actual reset transition (a
 drop to a different `u`, or a new `rat`) from ever being compressed away.
+
+## Series read and chart math
+
+`UsageLogStore::series`/`series_all` (Rust core) read rows for charting: `u` is decoded as
+`u/100` (utilization 0..100), rows are filtered by `w` (window code) and by `t` range
+(inclusive), and returned in ascending `t` order.
+
+The chart math is shared via `core::chart`, ported from `apps/linux/lib/chart.js` with the
+same values: line segments split on a RESET (a 0 after a non-zero value), and zoom clamps to
+[60s, 90d].

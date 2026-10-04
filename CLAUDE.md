@@ -109,7 +109,9 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
     reload pipe. Closing the window hides it; the app lives in the tray. GUI rendering is
     verified by run-checks, not CI. Sub-project 3 adds the Add Account wizard (extension / scan /
     paste tabs) and the Settings Accounts (delete + mute, re-sync) and General (auto refresh,
-    launch at startup) panes.
+    launch at startup) panes. Sub-project 4 adds charts: the per-account interactive usage chart
+    (`ui/chart.slint`, `src/chart.rs`, pure helpers in `chart_model.rs`), opened by the "View
+    chart" button, and the Overview multi-account chart opened from the sidebar "Overview" item.
   - **apps/windows/bridge/** — `claude-dashboard-bridge.exe`, a native-messaging host for the
     browser extension. `handler.rs` runs the key intake over an injected `Environment` trait
     (so tests touch no network/store/pipe); `real_env.rs` is the production wiring; `framing.rs`
@@ -131,6 +133,9 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   browser, launch at startup; non-critical, missing/corrupt -> defaults); `scan.rs` (scans Windows
   profiles and classifies each as `ScannedSession` / `AppBound` / `NoSession`); `startup.rs`
   (launch-at-startup via the HKCU `Run` key).
+- **Chart `core` modules:** `chart` (chart math ported from `apps/linux/lib/chart.js`: scale, ticks,
+  zoom, reset-split segments) and the `UsageLogStore::series`/`series_all` read of the usage log
+  that feeds it. See `contract/usage-log.md`.
 
 ## Key Technical Details
 
