@@ -1,3 +1,5 @@
+import { Theme, UiRow, UiWindow } from "theme.slint";
+
 // Sidebar row: coloured tile + Segoe Fluent glyph + label. Hover/selected highlight.
 export component SidebarRow inherits Rectangle {
     in property <string> label;
@@ -47,6 +49,179 @@ export component SidebarRow inherits Rectangle {
 
     touch := TouchArea {
         enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Ring gauge: track + Rust-built progress arc (core::geometry) + centered percent.
+export component UsageGauge inherits Rectangle {
+    in property <UiWindow> win;
+    width: root.win.diameter * 1px;
+    height: root.win.diameter * 1px;
+    // Track: full circle at the same radius/stroke as the arc.
+    Rectangle {
+        width: parent.width - root.win.line-width * 1px;
+        height: self.width;
+        x: root.win.line-width * 0.5px;
+        y: self.x;
+        border-radius: self.width / 2;
+        border-width: root.win.line-width * 1px;
+        border-color: Theme.dark ? #ffffff22 : #00000014;
+    }
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: root.win.diameter;
+        viewbox-height: root.win.diameter;
+        commands: root.win.gauge-path;
+        stroke: root.win.color;
+        stroke-width: root.win.line-width * 1px;
+        stroke-line-cap: round;
+        fill: transparent;
+        animate stroke { duration: 300ms; easing: ease-out; }
+    }
+    Text {
+        text: round(root.win.percent) + "%";
+        color: Theme.text-primary;
+        font-size: root.win.diameter * 0.24px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// Usage bar: fill width animates; colour comes from core::colors via the row.
+export component UsageBar inherits Rectangle {
+    in property <float> fraction;
+    in property <color> fill-color;
+    height: 6px;
+    border-radius: 3px;
+    background: Theme.dark ? #ffffff22 : #00000014;
+    Rectangle {
+        x: 0px;
+        width: parent.width * clamp(root.fraction, 0.0, 1.0);
+        height: parent.height;
+        border-radius: 3px;
+        background: root.fill-color;
+        animate width { duration: 300ms; easing: ease-out; }
+    }
+}
+
+export component Avatar inherits Rectangle {
+    in property <string> initial;
+    in property <color> tint;
+    in property <length> size: 32px;
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 2;
+    background: root.tint;
+    Text {
+        text: root.initial;
+        color: white;
+        font-size: root.size * 0.45;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component WindowColumn inherits VerticalLayout {
+    in property <string> label;
+    in property <UiWindow> win;
+    spacing: 4px;
+    alignment: start;
+    Text {
+        text: root.label;
+        color: Theme.text-secondary;
+        font-size: 12px;
+        horizontal-alignment: center;
+    }
+    HorizontalLayout {
+        alignment: center;
+        UsageGauge { win: root.win; }
+    }
+    Text {
+        text: root.win.countdown;
+        color: root.win.countdown-color;
+        font-size: 11px;
+        horizontal-alignment: center;
+    }
+    UsageBar { fraction: root.win.fraction; fill-color: root.win.color; }
+}
+
+export component AccountCard inherits Rectangle {
+    in property <UiRow> data;
+    callback clicked();
+    background: Theme.card-bg;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.accent : Theme.card-border;
+    animate border-color { duration: 120ms; }
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 10px;
+            Avatar { initial: root.data.initial; tint: root.data.avatar-color; }
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: root.data.name;
+                    color: Theme.text-primary;
+                    font-size: 15px;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.data.email != "" ? root.data.email : root.data.plan;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    overflow: elide;
+                }
+            }
+            Text {
+                text: root.data.animal;
+                font-size: 18px;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                width: plan.preferred-width + 12px;
+                height: 20px;
+                y: 6px;
+                border-radius: 10px;
+                background: Theme.accent.with-alpha(0.15);
+                plan := Text {
+                    text: root.data.plan;
+                    color: Theme.accent;
+                    font-size: 11px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        if root.data.error != "": Text {
+            text: root.data.error;
+            color: Theme.danger;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: 14px;
+            alignment: center;
+            if root.data.five-hour.present: WindowColumn { label: "5h"; win: root.data.five-hour; }
+            if root.data.seven-day.present: WindowColumn { label: "7d"; win: root.data.seven-day; }
+        }
+        Text {
+            text: root.data.staleness;
+            color: Theme.text-secondary;
+            font-size: 11px;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
 }

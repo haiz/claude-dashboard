@@ -4,6 +4,9 @@
 
 use claude_dashboard_core::burn_rate::BurnRateResult;
 use claude_dashboard_core::colors::{avatar_color, countdown_color, usage_color, Rgb};
+use claude_dashboard_core::geometry::{
+    fill_fraction, progress_arc, ring_center, ring_radius, METRICS_REGULAR, TAU,
+};
 use claude_dashboard_core::format::{format_reset_time, formatted_countdown};
 use claude_dashboard_core::model::{AccountPlan, AccountStatus};
 use claude_dashboard_core::rows::{DisplayRow, WindowView};
@@ -61,9 +64,44 @@ fn staleness(last: Option<f64>, now: f64) -> String {
     }
 }
 
+/// Gauge diameter / stroke for the card ring, from `core::geometry` metrics.
+pub const GAUGE_DIAMETER: f64 = METRICS_REGULAR.large_diameter;
+pub const GAUGE_LINE_WIDTH: f64 = METRICS_REGULAR.large_line_width;
+
+fn pt(c: f64, r: f64, a: f64) -> (f64, f64) {
+    (c + r * a.cos(), c + r * a.sin())
+}
+
+/// Slint `Path` commands for the utilization arc, built from
+/// `core::geometry::progress_arc`. Empty at 0%; a full ring is two half arcs
+/// (a single 360-degree arc is degenerate in SVG path syntax).
+pub fn gauge_path(utilization: f64, diameter: f64, line_width: f64) -> String {
+    if fill_fraction(utilization) <= 0.0 {
+        return String::new();
+    }
+    let (start, end) = progress_arc(utilization);
+    let sweep = end - start;
+    let c = ring_center(diameter);
+    let r = ring_radius(diameter, line_width);
+    let (x0, y0) = pt(c, r, start);
+    if sweep >= TAU - 1e-9 {
+        let (x1, y1) = pt(c, r, start + TAU / 2.0);
+        return format!(
+            "M {x0:.3} {y0:.3} A {r:.3} {r:.3} 0 1 1 {x1:.3} {y1:.3} A {r:.3} {r:.3} 0 1 1 {x0:.3} {y0:.3}"
+        );
+    }
+    let (x1, y1) = pt(c, r, end);
+    let large = if sweep > TAU / 2.0 { 1 } else { 0 };
+    format!("M {x0:.3} {y0:.3} A {r:.3} {r:.3} 0 {large} 1 {x1:.3} {y1:.3}")
+}
+
 fn window(w: &Option<WindowView>, total_s: f64, now: f64, local_shift: f64) -> UiWindow {
     match w {
-        None => UiWindow::default(),
+        None => UiWindow {
+            diameter: GAUGE_DIAMETER as f32,
+            line_width: GAUGE_LINE_WIDTH as f32,
+            ..UiWindow::default()
+        },
         Some(v) => {
             let (reset_label, countdown, cd_color) = match v.resets_at_unix {
                 Some(r) => {
@@ -81,6 +119,10 @@ fn window(w: &Option<WindowView>, total_s: f64, now: f64, local_shift: f64) -> U
                 percent: v.utilization as f32,
                 color: to_color(usage_color(v.utilization)),
                 limited: v.is_limited,
+                fraction: fill_fraction(v.utilization) as f32,
+                gauge_path: gauge_path(v.utilization, GAUGE_DIAMETER, GAUGE_LINE_WIDTH).into(),
+                diameter: GAUGE_DIAMETER as f32,
+                line_width: GAUGE_LINE_WIDTH as f32,
                 reset_label: reset_label.into(),
                 countdown: countdown.into(),
                 countdown_color: cd_color,
@@ -142,6 +184,21 @@ mod tests {
             error: None,
             last_synced_unix: None,
         }
+    }
+
+    #[test]
+    fn gauge_path_empty_at_zero_and_differs_by_usage() {
+        let p0 = gauge_path(0.0, 68.0, 8.0);
+        let p50 = gauge_path(50.0, 68.0, 8.0);
+        let p100 = gauge_path(100.0, 68.0, 8.0);
+        assert!(p0.is_empty());
+        assert!(p50.starts_with("M "));
+        assert_ne!(p50, p100);
+        let mut r = row();
+        r.five_hour = Some(WindowView { utilization: 50.0, resets_at_unix: None, is_limited: false });
+        let ui = to_ui_row(&r, 1e9);
+        assert!(!ui.five_hour.gauge_path.is_empty());
+        assert!((ui.five_hour.fraction - 0.5).abs() < 1e-6);
     }
 
     #[test]

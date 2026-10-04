@@ -72,6 +72,35 @@ fn spawn_refresh_loop(rx: std::sync::mpsc::Receiver<()>, weak: slint::Weak<AppWi
     });
 }
 
+
+/// Dev-only: `CLAUDE_DASHBOARD_FAKE_ROWS=1` seeds sample cards (no network).
+fn fake_rows(now: f64) -> Vec<UiRow> {
+    use claude_dashboard_core::model::{AccountPlan, AccountStatus};
+    use claude_dashboard_core::rows::{DisplayRow, WindowView};
+    let mk = |id: &str, name: &str, plan, u5: f64, u7: f64, burn: Option<f64>| DisplayRow {
+        account_id: id.into(),
+        name: name.into(),
+        email: Some(format!("{name}@example.com")),
+        plan,
+        status: AccountStatus::Active,
+        five_hour: Some(WindowView { utilization: u5, resets_at_unix: Some(now + 7200.0), is_limited: false }),
+        seven_day: Some(WindowView { utilization: u7, resets_at_unix: Some(now + 259200.0), is_limited: false }),
+        fable: None,
+        peak_utilization: u5.max(u7),
+        burn_projected_seconds: burn,
+        is_extension_sourced: false,
+        error: None,
+        last_synced_unix: Some(now),
+    };
+    [
+        mk("f1", "alice", AccountPlan::Pro, 12.0, 30.0, None),
+        mk("f2", "bob", AccountPlan::Max5x, 64.0, 48.0, Some(3600.0)),
+        mk("f3", "carol", AccountPlan::Max20x, 100.0, 91.0, Some(600.0)),
+    ]
+    .iter()
+    .map(|r| model::to_ui_row(r, now))
+    .collect()
+}
 fn main() -> Result<(), slint::PlatformError> {
     let Some(_instance) = instance::acquire_single_instance() else {
         // Already running: ask that instance to refresh/show, then leave.
@@ -103,6 +132,14 @@ fn main() -> Result<(), slint::PlatformError> {
         timer
     });
 
-    spawn_refresh_loop(nudge_rx, app.as_weak());
+    if std::env::var_os("CLAUDE_DASHBOARD_FAKE_ROWS").is_some() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        app.set_account_rows(slint::ModelRc::new(slint::VecModel::from(fake_rows(now))));
+    } else {
+        spawn_refresh_loop(nudge_rx, app.as_weak());
+    }
     app.run()
 }
