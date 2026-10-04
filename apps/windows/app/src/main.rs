@@ -1,4 +1,4 @@
-﻿use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
 mod instance;
@@ -301,6 +301,13 @@ fn main() -> Result<(), slint::PlatformError> {
         timer
     });
 
+    // KNOWN DEV-PATH ANOMALY (not root-caused, production unaffected): under
+    // FAKE_ROWS a second dark framed empty window has been observed besides the
+    // main window; it does not appear on the normal refresh-loop path. The only
+    // difference is apply_output running synchronously here, before the event
+    // loop starts, instead of via invoke_from_event_loop. The popover is
+    // no-frame and only show()n by toggle_flyout, so a pre-loop Slint window
+    // realisation is suspected. Left as-is.
     if std::env::var_os("CLAUDE_DASHBOARD_FAKE_ROWS").is_some() {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

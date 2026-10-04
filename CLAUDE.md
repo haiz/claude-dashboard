@@ -36,6 +36,8 @@ cd apps/linux && cargo test -p claude-dashboard-core
 cd apps/windows && cargo test --workspace
 # Windows: the browser extension
 cd apps/windows/extension && node --test
+# Windows: run the Slint app (CLAUDE_DASHBOARD_FAKE_ROWS=1 seeds sample cards, no network)
+cd apps/windows && cargo run -p claude-dashboard
 ```
 
 No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Security, CommonCrypto, SQLite3).
@@ -99,7 +101,13 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 ### Windows
 - **apps/windows/** — a separate Cargo workspace (Rust) for the Windows port. It reuses
   `apps/linux/core` by path dependency (no crate move), so the Linux CI and release flow are
-  untouched. The Slint UI app is a later sub-project; sub-project 1 delivers:
+  untouched. Sub-project 1 delivers the bridge and extension; sub-project 2 the Slint app:
+  - **apps/windows/app/** — `claude-dashboard`, the Slint UI binary: main window with Mica and
+    system light/dark theme, sidebar, Dashboard card grid with core-driven ring gauges,
+    per-account page, tray ring icon (peak usage) with a Mica flyout popover, a background
+    refresh loop, a single-instance mutex, and the consumer of the `\\.\pipe\claude-dashboard`
+    reload pipe. Closing the window hides it; the app lives in the tray. GUI rendering is
+    verified by run-checks, not CI.
   - **apps/windows/bridge/** — `claude-dashboard-bridge.exe`, a native-messaging host for the
     browser extension. `handler.rs` runs the key intake over an injected `Environment` trait
     (so tests touch no network/store/pipe); `real_env.rs` is the production wiring; `framing.rs`
@@ -114,6 +122,9 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   `cookie/win.rs` decodes `v10` cookies and refuses `v20` app-bound ones; `browser.rs` gains
   `discover_windows_profiles_under`. The add/repair logic shared by the helper's `add-key` and
   the bridge lives in `core::key_intake`. The cross-process store lock is `store::lock_store`.
+- **Presentation `core` modules** (ported from `apps/linux/lib/`, same values, tested): `colors`
+  (usage color interpolation), `geometry` (ring-gauge geometry), `format` (percent/reset text),
+  `rows` (`DisplayRow` view models and burn-rate ordering).
 
 ## Key Technical Details
 

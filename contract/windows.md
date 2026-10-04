@@ -112,6 +112,14 @@ The app serves a named pipe `\\.\pipe\claude-dashboard`; the bridge writes
 `reload\n` after a successful store change so a running app refreshes. A missing
 pipe means the app is not running and is not an error.
 
+## App shell
+
+- **Single instance:** the app holds the named mutex
+  `Local\ClaudeDashboardSingleInstance` for its lifetime; a second launch fails
+  to acquire it and exits.
+- **Reload pipe consumer:** the app is the *reader* of `\\.\pipe\claude-dashboard`
+  and refreshes on each `reload` line; the bridge (sub-project 1) is the writer.
+
 ## Manual smoke test
 
 End-to-end extension → bridge → store is verified by hand (the automated
