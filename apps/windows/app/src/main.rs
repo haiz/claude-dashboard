@@ -1,6 +1,10 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
+mod instance;
+mod pipe;
+mod refresh;
+
 slint::include_modules!();
 
 /// Apply Mica; returns false where unsupported (Windows 10) so the caller can
@@ -11,7 +15,7 @@ fn apply_mica(window: &slint::Window) -> bool {
         return false;
     };
     matches!(handle.as_raw(), RawWindowHandle::Win32(_))
-        && window_vibrancy::apply_mica(&handle, None).is_ok()
+        && window_vibrancy::apply_mica(handle, None).is_ok()
 }
 
 /// True when the system app theme is dark (AppsUseLightTheme == 0).
@@ -37,7 +41,42 @@ fn system_is_dark() -> bool {
     rc == 0 && data == 0
 }
 
+const REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Background loop: refresh now, then every interval or whenever nudged.
+fn spawn_refresh_loop(rx: std::sync::mpsc::Receiver<()>) {
+    std::thread::spawn(move || {
+        let mut prev: Vec<claude_dashboard_core::rows::DisplayRow> = Vec::new();
+        loop {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(0.0);
+            let out = refresh::merge_errors(&prev, Ok(refresh::refresh_once(now)));
+            prev = out.rows.clone();
+            // Task 7 binds this to the UI model; for now just log the count.
+            let _ = slint::invoke_from_event_loop(move || {
+                eprintln!("refresh: {} rows, peak {:.0}%", out.rows.len(), out.peak);
+            });
+            match rx.recv_timeout(REFRESH_INTERVAL) {
+                Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+            }
+        }
+    });
+}
+
 fn main() -> Result<(), slint::PlatformError> {
+    let Some(_instance) = instance::acquire_single_instance() else {
+        // Already running: ask that instance to refresh/show, then leave.
+        pipe::send("show");
+        return Ok(());
+    };
+    let (nudge_tx, nudge_rx) = std::sync::mpsc::channel::<()>();
+    pipe::serve_reload(move || {
+        let _ = nudge_tx.send(());
+    });
+
     let app = AppWindow::new()?;
     app.global::<Theme>().set_dark(system_is_dark());
     app.show()?;
@@ -58,5 +97,6 @@ fn main() -> Result<(), slint::PlatformError> {
         timer
     });
 
+    spawn_refresh_loop(nudge_rx);
     app.run()
 }
