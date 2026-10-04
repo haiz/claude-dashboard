@@ -29,6 +29,13 @@ xcodebuild test -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDash
 
 # Run the GNOME Shell extension's test suite (apps/linux/)
 cd apps/linux && CLAUDE_DASHBOARD_REPO="$(git rev-parse --show-toplevel)" gjs -m tests/run.js
+
+# Windows: core on Windows (paths, DPAPI, v10 cookies)
+cd apps/linux && cargo test -p claude-dashboard-core
+# Windows: the bridge workspace (framing, sources, handler, roundtrip)
+cd apps/windows && cargo test --workspace
+# Windows: the browser extension
+cd apps/windows/extension && node --test
 ```
 
 No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Security, CommonCrypto, SQLite3).
@@ -88,6 +95,25 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   `cd apps/linux && CLAUDE_DASHBOARD_REPO="$(git rev-parse --show-toplevel)" gjs -m tests/run.js`.
 - **apps/linux/gnome-extension/** — a GNOME Shell panel indicator driving the same
   `claude-dashboard-helper` binary the CLI uses.
+
+### Windows
+- **apps/windows/** — a separate Cargo workspace (Rust) for the Windows port. It reuses
+  `apps/linux/core` by path dependency (no crate move), so the Linux CI and release flow are
+  untouched. The Slint UI app is a later sub-project; sub-project 1 delivers:
+  - **apps/windows/bridge/** — `claude-dashboard-bridge.exe`, a native-messaging host for the
+    browser extension. `handler.rs` runs the key intake over an injected `Environment` trait
+    (so tests touch no network/store/pipe); `real_env.rs` is the production wiring; `framing.rs`
+    speaks the Chrome native-messaging length-prefix framing; `sources.rs` owns
+    `extension-sources.json` (install→account bindings and muted installs); `notify.rs` pokes
+    the app's named pipe. See `contract/windows.md`.
+  - **apps/windows/extension/** — an MV3 browser extension (ES modules) that reads the claude.ai
+    `sessionKey` cookie via `chrome.cookies` and forwards it to the bridge. Logic lives in
+    `lib/` and is tested with `node --test`; the extension id is fixed by the manifest `key`.
+- **Windows-specific `core` modules:** `store.rs` resolves `%APPDATA%`/`%LOCALAPPDATA%` and seals
+  session keys with DPAPI (`cfg(windows)`); `userprotect.rs` wraps `CryptProtectData`;
+  `cookie/win.rs` decodes `v10` cookies and refuses `v20` app-bound ones; `browser.rs` gains
+  `discover_windows_profiles_under`. The add/repair logic shared by the helper's `add-key` and
+  the bridge lives in `core::key_intake`. The cross-process store lock is `store::lock_store`.
 
 ## Key Technical Details
 
