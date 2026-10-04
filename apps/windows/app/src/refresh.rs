@@ -29,12 +29,15 @@ const WINDOW_FIVE_HOUR: i64 = 0;
 const WINDOW_SEVEN_DAY: i64 = 1;
 const WINDOW_FABLE: i64 = 3;
 
-fn fetch_one(org_id: &str, session_key: &str) -> Result<UsageData, String> {
+type Fetched = (UsageData, Option<String>);
+
+fn fetch_one(org_id: &str, session_key: &str) -> Result<Fetched, String> {
     let resp = api::usage_raw(org_id, session_key).map_err(|e| e.to_string())?;
     if resp.body.is_empty() {
         return Err("Empty response.".into());
     }
-    UsageData::decode(&resp.body).map_err(|e| e.to_string())
+    let usage = UsageData::decode(&resp.body).map_err(|e| e.to_string())?;
+    Ok((usage, resp.new_session_key))
 }
 
 /// Account ids fed by a browser-extension install (empty if unreadable).
@@ -44,15 +47,33 @@ fn extension_account_ids() -> HashSet<String> {
         .unwrap_or_default()
 }
 
+/// Saves rotated session keys in one locked load-modify-save (shared with the
+/// bridge writers), after all fetches so there are no write races.
+fn persist_rotated_keys(rotated: &HashMap<String, String>) {
+    if rotated.is_empty() {
+        return;
+    }
+    let Ok(_lock) = store::lock_store() else { return };
+    let Ok((mut accounts, _)) = store::load_accounts_for_write() else { return };
+    for a in accounts.iter_mut() {
+        if let Some(k) = rotated.get(&a.id) {
+            a.session_key = Some(store::encrypt_session_key(k));
+        }
+    }
+    if let Err(e) = store::save_accounts(&accounts) {
+        eprintln!("could not persist rotated session key: {e}");
+    }
+}
+
 /// Loads accounts, fetches usage per account (one thread each), logs, builds
 /// rows. A store failure yields no rows; the caller merges via `merge_errors`.
-pub fn refresh_once(now_unix_s: f64) -> RefreshOutput {
+pub fn refresh_once(now_unix_s: f64) -> Result<RefreshOutput, String> {
     let accounts = match store::load_accounts() {
         Ok(a) => a,
-        Err(e) => return merge_errors(&[], Err(e.to_string())),
+        Err(e) => return Err(e.to_string()),
     };
 
-    let results: Vec<(String, Result<UsageData, String>)> = std::thread::scope(|s| {
+    let results: Vec<(String, Result<Fetched, String>)> = std::thread::scope(|s| {
         let handles: Vec<_> = accounts
             .iter()
             .map(|a| {
@@ -74,9 +95,13 @@ pub fn refresh_once(now_unix_s: f64) -> RefreshOutput {
 
     let mut usage_by_account: HashMap<String, UsageData> = HashMap::new();
     let mut errors: HashMap<String, String> = HashMap::new();
+    let mut rotated: HashMap<String, String> = HashMap::new();
     for (id, r) in results {
         match r {
-            Ok(u) => {
+            Ok((u, new_key)) => {
+                if let Some(k) = new_key {
+                    rotated.insert(id.clone(), k);
+                }
                 usage_by_account.insert(id, u);
             }
             Err(e) => {
@@ -84,6 +109,8 @@ pub fn refresh_once(now_unix_s: f64) -> RefreshOutput {
             }
         }
     }
+
+    persist_rotated_keys(&rotated);
 
     if let Ok(mut log) = UsageLogStore::open() {
         for (id, u) in &usage_by_account {
@@ -107,7 +134,7 @@ pub fn refresh_once(now_unix_s: f64) -> RefreshOutput {
         now_unix_s,
     });
     let peak = peak_utilization(&rows);
-    RefreshOutput { rows, peak }
+    Ok(RefreshOutput { rows, peak })
 }
 
 #[cfg(test)]
@@ -160,6 +187,14 @@ mod tests {
         let merged = merge_errors(&prev, Err("offline".into()));
         assert_eq!(merged.rows, prev);
         assert_eq!(merged.peak, 70.0);
+    }
+
+    #[test]
+    fn whole_refresh_failure_keeps_last_good_rows() {
+        let prev = rows(&[("a", "old")]);
+        let merged = merge_errors(&prev, Err("store unreadable".into()));
+        assert_eq!(merged.rows.len(), 3);
+        assert_eq!(merged.rows, prev);
     }
 
     #[test]

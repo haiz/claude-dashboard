@@ -52,7 +52,7 @@ fn spawn_refresh_loop(rx: std::sync::mpsc::Receiver<()>) {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs_f64())
                 .unwrap_or(0.0);
-            let out = refresh::merge_errors(&prev, Ok(refresh::refresh_once(now)));
+            let out = refresh::merge_errors(&prev, refresh::refresh_once(now));
             prev = out.rows.clone();
             // Task 7 binds this to the UI model; for now just log the count.
             let _ = slint::invoke_from_event_loop(move || {
