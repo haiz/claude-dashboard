@@ -1,3 +1,5 @@
+﻿import { SidebarRow } from "components.slint";
+
 // Color tokens shared by all windows/components. `dark` is driven from Rust
 // (or the system scheme); light values are the default.
 export global Theme {
@@ -16,34 +18,155 @@ export global Theme {
     out property <string> font-family: "Segoe UI Variable";
 }
 
+export struct UiWindow {
+    present: bool,
+    percent: float,
+    color: color,
+    limited: bool,
+    reset-label: string,
+    countdown: string,
+    countdown-color: color,
+}
+
+export struct UiRow {
+    id: string,
+    name: string,
+    email: string,
+    initial: string,
+    plan: string,
+    status: string,
+    peak: float,
+    peak-color: color,
+    five-hour: UiWindow,
+    seven-day: UiWindow,
+    fable: UiWindow,
+    avatar-color: color,
+    animal: string,
+    staleness: string,
+    error: string,
+    extension-sourced: bool,
+}
+
+// Pane selection. `account` is the per-account page (see selected-account-id).
+export enum Pane { dashboard, overview, account, command-log, help, settings-accounts, general }
+
+component GroupHeader inherits Text {
+    color: Theme.text-secondary;
+    font-size: 12px;
+    font-weight: 600;
+}
+
 export component AppWindow inherits Window {
     title: "Claude Dashboard";
-    min-width: 480px;
-    min-height: 360px;
-    preferred-width: 900px;
-    preferred-height: 640px;
+    min-width: 640px;
+    min-height: 400px;
+    preferred-width: 960px;
+    preferred-height: 660px;
     default-font-family: Theme.font-family;
     default-font-size: 14px;
     // Transparent so Mica shows through; the solid fill below is used only
     // when Mica is unavailable (Windows 10).
     background: transparent;
     in property <bool> use-solid-background: false;
+    in property <[UiRow]> account-rows;
+    in-out property <Pane> selection: Pane.dashboard;
+    in-out property <string> selected-account-id;
+
+    property <string> pane-title: root.selection == Pane.dashboard ? "Dashboard"
+        : root.selection == Pane.overview ? "Overview"
+        : root.selection == Pane.command-log ? "Command Log"
+        : root.selection == Pane.help ? "Help"
+        : root.selection == Pane.settings-accounts ? "Accounts"
+        : root.selection == Pane.general ? "General"
+        : "Account";
 
     Rectangle {
         background: root.use-solid-background ? Theme.window-bg : transparent;
     }
 
-    VerticalLayout {
-        padding: 24px;
-        Text {
-            text: "Claude Dashboard";
-            color: Theme.text-primary;
-            font-size: 24px;
-            font-weight: 600;
+    HorizontalLayout {
+        // Sidebar
+        Rectangle {
+            width: 240px;
+            background: Theme.dark ? #ffffff08 : #ffffff80;
+            Rectangle {
+                x: parent.width - 1px;
+                width: 1px;
+                background: Theme.card-border;
+            }
+            Flickable {
+                content-height: side.preferred-height;
+                side := VerticalLayout {
+                    padding: 12px;
+                    spacing: 2px;
+                    alignment: start;
+
+                    GroupHeader { text: "Usage"; }
+                    SidebarRow {
+                        label: "Dashboard"; glyph: "\u{E80A}"; tile: #0a84ff;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.dashboard;
+                        clicked => { root.selection = Pane.dashboard; }
+                    }
+                    SidebarRow {
+                        label: "Overview"; glyph: "\u{E9D2}"; tile: #ff9f0a;
+                        text-color: Theme.text-primary; enabled: false;
+                    }
+
+                    GroupHeader { text: "Accounts"; }
+                    for acct in root.account-rows: SidebarRow {
+                        label: acct.name; initial: acct.initial; tile: acct.avatar-color;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.account && root.selected-account-id == acct.id;
+                        clicked => {
+                            root.selected-account-id = acct.id;
+                            root.selection = Pane.account;
+                        }
+                    }
+
+                    GroupHeader { text: "Tools"; }
+                    SidebarRow {
+                        label: "Command Log"; glyph: "\u{E756}"; tile: #5e5ce6;
+                        text-color: Theme.text-primary; enabled: false;
+                    }
+                    SidebarRow {
+                        label: "Help"; glyph: "\u{E897}"; tile: #30d158;
+                        text-color: Theme.text-primary; enabled: false;
+                    }
+
+                    GroupHeader { text: "Settings"; }
+                    SidebarRow {
+                        label: "Accounts"; glyph: "\u{E77B}"; tile: #40c8e0;
+                        text-color: Theme.text-primary; enabled: false;
+                    }
+                    SidebarRow {
+                        label: "General"; glyph: "\u{E713}"; tile: #8e8e93;
+                        text-color: Theme.text-primary; enabled: false;
+                    }
+                }
+            }
         }
-        Text {
-            text: "Usage data will appear here.";
-            color: Theme.text-secondary;
+
+        // Content
+        VerticalLayout {
+            padding: 24px;
+            spacing: 12px;
+            Text {
+                text: root.pane-title;
+                color: Theme.text-primary;
+                font-size: 24px;
+                font-weight: 600;
+            }
+            if root.selection == Pane.account: Text {
+                text: "Account: " + root.selected-account-id;
+                color: Theme.text-secondary;
+            }
+            if root.selection != Pane.account: Text {
+                text: root.account-rows.length == 0 ? "No accounts yet." : "Usage data will appear here.";
+                color: Theme.text-secondary;
+            }
+            Rectangle { }
         }
     }
 }
+

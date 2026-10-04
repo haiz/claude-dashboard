@@ -2,6 +2,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
 mod instance;
+mod model;
 mod pipe;
 mod refresh;
 
@@ -44,7 +45,7 @@ fn system_is_dark() -> bool {
 const REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Background loop: refresh now, then every interval or whenever nudged.
-fn spawn_refresh_loop(rx: std::sync::mpsc::Receiver<()>) {
+fn spawn_refresh_loop(rx: std::sync::mpsc::Receiver<()>, weak: slint::Weak<AppWindow>) {
     std::thread::spawn(move || {
         let mut prev: Vec<claude_dashboard_core::rows::DisplayRow> = Vec::new();
         loop {
@@ -54,9 +55,14 @@ fn spawn_refresh_loop(rx: std::sync::mpsc::Receiver<()>) {
                 .unwrap_or(0.0);
             let out = refresh::merge_errors(&prev, refresh::refresh_once(now));
             prev = out.rows.clone();
-            // Task 7 binds this to the UI model; for now just log the count.
+            let weak = weak.clone();
             let _ = slint::invoke_from_event_loop(move || {
                 eprintln!("refresh: {} rows, peak {:.0}%", out.rows.len(), out.peak);
+                if let Some(app) = weak.upgrade() {
+                    let rows: Vec<UiRow> =
+                        out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
+                    app.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+                }
             });
             match rx.recv_timeout(REFRESH_INTERVAL) {
                 Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
@@ -97,6 +103,6 @@ fn main() -> Result<(), slint::PlatformError> {
         timer
     });
 
-    spawn_refresh_loop(nudge_rx);
+    spawn_refresh_loop(nudge_rx, app.as_weak());
     app.run()
 }

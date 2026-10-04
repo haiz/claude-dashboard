@@ -1,0 +1,52 @@
+// Sidebar row: coloured tile + Segoe Fluent glyph + label. Hover/selected highlight.
+export component SidebarRow inherits Rectangle {
+    in property <string> label;
+    in property <string> glyph;
+    in property <color> tile: #808080;
+    in property <string> initial; // when set, the tile is a round avatar showing this letter
+    in property <bool> selected: false;
+    in property <bool> enabled: true;
+    in property <color> text-color: #1a1a1a;
+    in property <color> hover-color: #00000010;
+    in property <color> selected-color: #00000020;
+    callback clicked();
+
+    height: 32px;
+    border-radius: 6px;
+    background: root.selected ? root.selected-color : (touch.has-hover && root.enabled ? root.hover-color : transparent);
+    opacity: root.enabled ? 1.0 : 0.45;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 10px;
+        alignment: start;
+        Rectangle {
+            width: 22px;
+            height: 22px;
+            y: (parent.height - self.height) / 2;
+            border-radius: root.initial != "" ? 11px : 5px;
+            background: root.tile;
+            Text {
+                text: root.initial != "" ? root.initial : root.glyph;
+                font-family: root.initial != "" ? "Segoe UI Variable" : "Segoe Fluent Icons";
+                font-size: 12px;
+                font-weight: root.initial != "" ? 600 : 400;
+                color: white;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        Text {
+            text: root.label;
+            color: root.text-color;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
