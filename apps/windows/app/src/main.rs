@@ -7,6 +7,7 @@ mod pipe;
 mod popover;
 mod refresh;
 mod settings_accounts;
+mod settings_general;
 mod setup;
 #[cfg(test)]
 mod testenv;
@@ -49,8 +50,6 @@ fn system_is_dark() -> bool {
     rc == 0 && data == 0
 }
 
-const REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
-
 thread_local! {
     static LAST_PEAK: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
 }
@@ -76,7 +75,8 @@ fn apply_output(
     }
 }
 
-/// Background loop: refresh now, then every interval or whenever nudged.
+/// Background loop: refresh now, then every Auto Refresh interval (re-read each
+/// cycle, so a settings change applies without restart) or whenever nudged.
 fn spawn_refresh_loop(
     rx: std::sync::mpsc::Receiver<()>,
     weak: slint::Weak<AppWindow>,
@@ -93,7 +93,7 @@ fn spawn_refresh_loop(
             prev = out.rows.clone();
             let (weak, pop_weak) = (weak.clone(), pop_weak.clone());
             let _ = slint::invoke_from_event_loop(move || apply_output(&weak, &pop_weak, &out, now));
-            match rx.recv_timeout(REFRESH_INTERVAL) {
+            match rx.recv_timeout(refresh::loop_timeout(&claude_dashboard_core::settings::load())) {
                 Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
             }
@@ -252,6 +252,55 @@ fn main() -> Result<(), slint::PlatformError> {
                     eprintln!("unmute failed: {e}");
                 }
                 let _ = slint::invoke_from_event_loop(reload);
+            });
+        });
+    }
+    // Settings > General: settings/registry I/O on workers, results back on the UI thread.
+    {
+        app.set_app_name(settings_general::APP_NAME.into());
+        app.set_app_version(settings_general::APP_VERSION.into());
+        let w = app.as_weak();
+        std::thread::spawn(move || {
+            let secs = settings_general::current_auto_refresh() as i32;
+            let launch = settings_general::launch_is_enabled();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(a) = w.upgrade() {
+                    a.set_auto_refresh_seconds(secs);
+                    a.set_launch_at_startup(launch);
+                }
+            });
+        });
+        let tx = nudge_tx.clone();
+        let w = app.as_weak();
+        app.on_set_auto_refresh(move |secs| {
+            let (tx, w) = (tx.clone(), w.clone());
+            if let Some(a) = w.upgrade() {
+                a.set_auto_refresh_seconds(secs);
+            }
+            std::thread::spawn(move || {
+                match settings_general::set_auto_refresh(secs.max(0) as u64) {
+                    // Nudge: the loop wakes and re-reads the interval right away.
+                    Ok(()) => {
+                        let _ = tx.send(());
+                    }
+                    Err(e) => eprintln!("save auto refresh failed: {e}"),
+                }
+            });
+        });
+        let w = app.as_weak();
+        app.on_set_launch_at_startup(move |on| {
+            let w = w.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = settings_general::set_launch_at_startup(on) {
+                    eprintln!("launch at startup failed: {e}");
+                }
+                // Re-read the real state so the toggle reflects what stuck.
+                let actual = settings_general::launch_is_enabled();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(a) = w.upgrade() {
+                        a.set_launch_at_startup(actual);
+                    }
+                });
             });
         });
     }

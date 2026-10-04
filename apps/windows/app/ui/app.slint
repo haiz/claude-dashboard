@@ -1,3 +1,4 @@
+import { AboutSlint } from "std-widgets.slint";
 import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "components.slint";
 import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
@@ -132,6 +133,114 @@ component AccountsSettingsPane inherits VerticalLayout {
     }
 }
 
+component SettingsCard inherits Rectangle {
+    background: Theme.card-bg;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+}
+
+// A preset chip for the Auto Refresh interval.
+component IntervalChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    height: 28px;
+    width: t.preferred-width + 24px;
+    border-radius: 6px;
+    background: root.active ? Theme.accent : (touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent);
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : Theme.card-border;
+    t := Text {
+        text: root.label;
+        color: root.active ? #ffffff : Theme.text-primary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Settings > General (macOS GeneralSettingsPane): About, Auto Refresh,
+// Launch at startup, Updates.
+component GeneralSettingsPane inherits Flickable {
+    in property <string> app-name;
+    in property <string> app-version;
+    in property <int> auto-refresh-seconds;
+    in property <bool> launch-at-startup;
+    callback set-auto-refresh(int);
+    callback set-launch-at-startup(bool);
+    content-height: col.preferred-height;
+    col := VerticalLayout {
+        spacing: 12px;
+        alignment: start;
+
+        GroupHeader { text: "About"; }
+        SettingsCard {
+            height: about-col.preferred-height + 24px;
+            about-col := VerticalLayout {
+                padding: 12px;
+                spacing: 4px;
+                Text { text: root.app-name + "  v" + root.app-version; color: Theme.text-primary; font-weight: 600; }
+                Text {
+                    text: "Monitors Claude.ai token usage across your accounts from the system tray.";
+                    color: Theme.text-secondary; font-size: 12px; wrap: word-wrap;
+                }
+                AboutSlint { height: 120px; }
+            }
+        }
+
+        GroupHeader { text: "Auto Refresh"; }
+        SettingsCard {
+            height: 76px;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                Text { text: "Refresh usage every"; color: Theme.text-primary; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    for p[i] in [{l: "30s", s: 30}, {l: "1 min", s: 60}, {l: "2 min", s: 120}, {l: "5 min", s: 300}, {l: "15 min", s: 900}]: IntervalChip {
+                        label: p.l;
+                        active: root.auto-refresh-seconds == p.s;
+                        clicked => { root.set-auto-refresh(p.s); }
+                    }
+                }
+            }
+        }
+
+        GroupHeader { text: "Startup"; }
+        SettingsCard {
+            height: 52px;
+            HorizontalLayout {
+                padding: 12px;
+                Text { text: "Launch at startup"; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; }
+                Rectangle {
+                    width: 40px; height: 22px; y: (parent.height - self.height) / 2;
+                    border-radius: 11px;
+                    background: root.launch-at-startup ? Theme.accent : Theme.card-border;
+                    Rectangle {
+                        width: 16px; height: 16px; border-radius: 8px; background: #ffffff;
+                        y: 3px;
+                        x: root.launch-at-startup ? parent.width - self.width - 3px : 3px;
+                    }
+                    TouchArea { clicked => { root.set-launch-at-startup(!root.launch-at-startup); } }
+                }
+            }
+        }
+
+        GroupHeader { text: "Updates"; }
+        SettingsCard {
+            height: 52px;
+            HorizontalLayout {
+                padding: 12px;
+                spacing: 10px;
+                Text { text: "Check for updates"; color: Theme.text-secondary; vertical-alignment: center; }
+                Text { text: "Coming soon"; color: Theme.text-secondary; font-size: 11px; vertical-alignment: center; }
+            }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "Claude Dashboard";
     min-width: 640px;
@@ -152,6 +261,13 @@ export component AppWindow inherits Window {
     callback delete-account(string);
     callback unmute(string);
     callback add-account();
+
+    in property <string> app-name;
+    in property <string> app-version;
+    in-out property <int> auto-refresh-seconds: 60;
+    in-out property <bool> launch-at-startup;
+    callback set-auto-refresh(int);
+    callback set-launch-at-startup(bool);
 
     property <string> pane-title: root.selection == Pane.dashboard ? "Dashboard"
         : root.selection == Pane.overview ? "Overview"
@@ -254,7 +370,7 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
                 add-account => { root.add-account(); }
             }
-            if root.selection != Pane.account && root.selection != Pane.dashboard && root.selection != Pane.settings-accounts: Text {
+            if root.selection != Pane.account && root.selection != Pane.dashboard && root.selection != Pane.settings-accounts && root.selection != Pane.general: Text {
                 text: "Coming soon.";
                 color: Theme.text-secondary;
             }
@@ -286,6 +402,15 @@ export component AppWindow inherits Window {
                 resync => { root.resync(); }
                 delete-account(id) => { root.delete-account(id); }
                 unmute(id) => { root.unmute(id); }
+            }
+            if root.selection == Pane.general: GeneralSettingsPane {
+                vertical-stretch: 1;
+                app-name: root.app-name;
+                app-version: root.app-version;
+                auto-refresh-seconds: root.auto-refresh-seconds;
+                launch-at-startup: root.launch-at-startup;
+                set-auto-refresh(s) => { root.set-auto-refresh(s); }
+                set-launch-at-startup(on) => { root.set-launch-at-startup(on); }
             }
             if root.selection != Pane.dashboard: Rectangle { }
         }

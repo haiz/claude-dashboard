@@ -167,9 +167,29 @@ pub fn refresh_once(now_unix_s: f64) -> Result<RefreshOutput, String> {
     Ok(RefreshOutput { rows, peak })
 }
 
+/// How long the refresh loop waits between cycles: the user's Auto Refresh
+/// setting, clamped/defaulted by `effective_refresh_seconds`.
+pub fn loop_timeout(s: &claude_dashboard_core::settings::Settings) -> std::time::Duration {
+    std::time::Duration::from_secs(s.effective_refresh_seconds())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn timeout_for(secs: u64) -> std::time::Duration {
+        let s = claude_dashboard_core::settings::Settings { auto_refresh_seconds: secs, ..Default::default() };
+        loop_timeout(&s)
+    }
+
+    #[test]
+    fn loop_timeout_uses_effective_refresh_seconds() {
+        use std::time::Duration;
+        assert_eq!(timeout_for(0), Duration::from_secs(60));
+        assert_eq!(timeout_for(5), Duration::from_secs(30));
+        assert_eq!(timeout_for(99999), Duration::from_secs(3600));
+        assert_eq!(timeout_for(120), Duration::from_secs(120));
+    }
     use claude_dashboard_core::model::Account;
 
     const NOW: f64 = 1_000_000.0;
