@@ -4,7 +4,9 @@ use slint::ComponentHandle;
 mod instance;
 mod model;
 mod pipe;
+mod popover;
 mod refresh;
+mod tray;
 
 slint::include_modules!();
 
@@ -45,7 +47,11 @@ fn system_is_dark() -> bool {
 const REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Background loop: refresh now, then every interval or whenever nudged.
-fn spawn_refresh_loop(rx: std::sync::mpsc::Receiver<()>, weak: slint::Weak<AppWindow>) {
+fn spawn_refresh_loop(
+    rx: std::sync::mpsc::Receiver<()>,
+    weak: slint::Weak<AppWindow>,
+    pop_weak: slint::Weak<PopoverWindow>,
+) {
     std::thread::spawn(move || {
         let mut prev: Vec<claude_dashboard_core::rows::DisplayRow> = Vec::new();
         loop {
@@ -55,14 +61,18 @@ fn spawn_refresh_loop(rx: std::sync::mpsc::Receiver<()>, weak: slint::Weak<AppWi
                 .unwrap_or(0.0);
             let out = refresh::merge_errors(&prev, refresh::refresh_once(now));
             prev = out.rows.clone();
-            let weak = weak.clone();
+            let (weak, pop_weak) = (weak.clone(), pop_weak.clone());
             let _ = slint::invoke_from_event_loop(move || {
                 eprintln!("refresh: {} rows, peak {:.0}%", out.rows.len(), out.peak);
                 if let Some(app) = weak.upgrade() {
                     let rows: Vec<UiRow> =
                         out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
-                    app.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+                    app.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows.clone())));
+                    if let Some(pop) = pop_weak.upgrade() {
+                        pop.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+                    }
                 }
+                tray::update_peak(out.peak);
             });
             match rx.recv_timeout(REFRESH_INTERVAL) {
                 Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
@@ -101,6 +111,65 @@ fn fake_rows(now: f64) -> Vec<UiRow> {
     .map(|r| model::to_ui_row(r, now))
     .collect()
 }
+
+/// Time after a focus-loss hide during which a tray click is treated as the
+/// same click that stole focus (so it does not immediately re-open the flyout).
+const REOPEN_GUARD: std::time::Duration = std::time::Duration::from_millis(350);
+/// Grace period after showing before focus-loss can hide the flyout.
+const SHOW_GRACE: std::time::Duration = std::time::Duration::from_millis(400);
+
+#[derive(Default)]
+struct FlyoutState {
+    shown_at: Option<std::time::Instant>,
+    hidden_at: Option<std::time::Instant>,
+    styled: bool,
+}
+
+thread_local! {
+    static FLYOUT: std::cell::RefCell<FlyoutState> = std::cell::RefCell::new(FlyoutState::default());
+}
+
+fn hide_flyout(pop: &PopoverWindow) {
+    let _ = pop.hide();
+    FLYOUT.with(|f| f.borrow_mut().hidden_at = Some(std::time::Instant::now()));
+}
+
+/// Left-click on the tray: show the flyout next to the tray icon, or hide it.
+fn toggle_flyout(pop: &PopoverWindow, tray_rect: popover::Rect) {
+    if pop.window().is_visible() {
+        hide_flyout(pop);
+        return;
+    }
+    let recently_hidden = FLYOUT.with(|f| {
+        f.borrow().hidden_at.is_some_and(|t| t.elapsed() < REOPEN_GUARD)
+    });
+    if recently_hidden {
+        return;
+    }
+    if pop.show().is_err() {
+        return;
+    }
+    let first = FLYOUT.with(|f| !std::mem::replace(&mut f.borrow_mut().styled, true));
+    if first {
+        popover::style_flyout(pop.window());
+        if !apply_mica(pop.window()) {
+            pop.set_use_solid_background(true);
+        }
+    }
+    let phys = pop.window().size();
+    let size = popover::Size { width: phys.width as i32, height: phys.height as i32 };
+    let origin = popover::popover_origin(tray_rect, size, popover::work_area_near(tray_rect));
+    pop.window()
+        .set_position(slint::PhysicalPosition::new(origin.x, origin.y));
+    popover::focus_flyout(pop.window());
+    FLYOUT.with(|f| f.borrow_mut().shown_at = Some(std::time::Instant::now()));
+}
+
+fn show_main(app: &AppWindow) {
+    let _ = app.show();
+    app.window().set_minimized(false);
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     let Some(_instance) = instance::acquire_single_instance() else {
         // Already running: ask that instance to refresh/show, then leave.
@@ -112,17 +181,100 @@ fn main() -> Result<(), slint::PlatformError> {
     pipe::serve_reload(move || {
         let _ = pipe_tx.send(());
     });
+    let tray_nudge = nudge_tx.clone();
+    let pop_nudge = nudge_tx.clone();
 
+    let dark = system_is_dark();
     let app = AppWindow::new()?;
     // Re-sync button: same nudge the reload pipe sends (refreshes all accounts).
     app.on_resync(move || {
         let _ = nudge_tx.send(());
     });
-    app.global::<Theme>().set_dark(system_is_dark());
+    app.global::<Theme>().set_dark(dark);
     app.show()?;
     if !apply_mica(app.window()) {
         app.set_use_solid_background(true);
     }
+
+    // Tray flyout (created hidden; shown on tray left-click).
+    let popover = PopoverWindow::new()?;
+    popover.global::<Theme>().set_dark(dark);
+    popover.on_refresh(move || {
+        let _ = pop_nudge.send(());
+    });
+    popover.on_quit(|| {
+        let _ = slint::quit_event_loop();
+    });
+    {
+        let (app_w, pop_w) = (app.as_weak(), popover.as_weak());
+        popover.on_expand(move || {
+            if let Some(p) = pop_w.upgrade() {
+                hide_flyout(&p);
+            }
+            if let Some(a) = app_w.upgrade() {
+                show_main(&a);
+            }
+        });
+    }
+    // Hide on focus loss (Slint has no focus-out callback for a Window).
+    let focus_timer = slint::Timer::default();
+    {
+        let pop_w = popover.as_weak();
+        focus_timer.start(
+            slint::TimerMode::Repeated,
+            std::time::Duration::from_millis(150),
+            move || {
+                let Some(p) = pop_w.upgrade() else { return };
+                let settled = FLYOUT.with(|f| {
+                    f.borrow().shown_at.is_some_and(|t| t.elapsed() > SHOW_GRACE)
+                });
+                if p.window().is_visible() && settled && popover::lost_focus(p.window()) {
+                    hide_flyout(&p);
+                }
+            },
+        );
+    }
+
+    let _tray = {
+        let pop_w = popover.as_weak();
+        let (open_app_w, open_pop_w) = (app.as_weak(), popover.as_weak());
+        let actions = tray::TrayActions {
+            toggle_popover: Box::new(move |rect| {
+                let pop_w = pop_w.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(p) = pop_w.upgrade() {
+                        toggle_flyout(&p, rect);
+                    }
+                });
+            }),
+            open_dashboard: Box::new(move || {
+                let (a, p) = (open_app_w.clone(), open_pop_w.clone());
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(p) = p.upgrade() {
+                        hide_flyout(&p);
+                    }
+                    if let Some(a) = a.upgrade() {
+                        show_main(&a);
+                    }
+                });
+            }),
+            refresh: Box::new(move || {
+                let _ = tray_nudge.send(());
+            }),
+            quit: Box::new(|| {
+                let _ = slint::invoke_from_event_loop(|| {
+                    let _ = slint::quit_event_loop();
+                });
+            }),
+        };
+        match tray::install_tray(0.0, actions) {
+            Ok(h) => Some(h),
+            Err(e) => {
+                eprintln!("tray unavailable: {e}");
+                None
+            }
+        }
+    };
 
     // Smoke path: exit on its own so launches can be verified unattended.
     let _smoke = std::env::var_os("CLAUDE_DASHBOARD_SMOKE").map(|_| {
@@ -142,9 +294,16 @@ fn main() -> Result<(), slint::PlatformError> {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
-        app.set_account_rows(slint::ModelRc::new(slint::VecModel::from(fake_rows(now))));
+        let rows = fake_rows(now);
+        app.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows.clone())));
+        popover.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+        tray::update_peak(100.0);
     } else {
-        spawn_refresh_loop(nudge_rx, app.as_weak());
+        spawn_refresh_loop(nudge_rx, app.as_weak(), popover.as_weak());
     }
-    app.run()
+    // `run()` quits when the last visible window closes; the hidden flyout
+    // does not keep the loop alive. Dropping `_tray` on return removes the icon.
+    let result = app.run();
+    drop(focus_timer);
+    result
 }

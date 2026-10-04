@@ -1,4 +1,4 @@
-import { SidebarRow, AccountCard, AccountPane } from "components.slint";
+import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "components.slint";
 import { Theme, UiRow, UiWindow } from "theme.slint";
 export { Theme, UiRow, UiWindow }
 
@@ -156,3 +156,116 @@ export component AppWindow inherits Window {
     }
 }
 
+
+component FlyoutIconButton inherits Rectangle {
+    in property <string> glyph;
+    callback clicked();
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent;
+    Text {
+        text: root.glyph;
+        font-family: "Segoe Fluent Icons";
+        font-size: 14px;
+        color: Theme.text-primary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Tray flyout (macOS MenuBarPopover): header, compact account rows, footer.
+// Borderless; Rust applies Mica + rounded corners and places it at the tray.
+export component PopoverWindow inherits Window {
+    no-frame: true;
+    width: 340px;
+    height: 420px;
+    default-font-family: Theme.font-family;
+    default-font-size: 14px;
+    background: transparent;
+    in property <bool> use-solid-background: false;
+    in property <[UiRow]> account-rows;
+    callback expand();
+    callback refresh();
+    callback quit();
+
+    Rectangle {
+        background: root.use-solid-background ? Theme.window-bg : (Theme.dark ? #20202080 : #f3f3f380);
+    }
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 4px;
+            Text {
+                text: "Claude Dashboard";
+                color: Theme.text-primary;
+                font-size: 15px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            Rectangle { }
+            FlyoutIconButton { glyph: "\u{E72C}"; clicked => { root.refresh(); } }
+            FlyoutIconButton { glyph: "\u{E740}"; clicked => { root.expand(); } }
+        }
+        if root.account-rows.length == 0: Text {
+            text: "No accounts configured";
+            color: Theme.text-secondary;
+            horizontal-alignment: center;
+        }
+        Flickable {
+            content-height: list.preferred-height;
+            list := VerticalLayout {
+                spacing: 6px;
+                alignment: start;
+                for acct in root.account-rows: Rectangle {
+                    height: 60px;
+                    background: Theme.card-bg;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: Theme.card-border;
+                    HorizontalLayout {
+                        padding: 8px;
+                        spacing: 10px;
+                        Avatar { size: 32px; initial: acct.initial; tint: acct.avatar-color; y: (parent.height - self.height) / 2; }
+                        VerticalLayout {
+                            alignment: center;
+                            Text { text: acct.name; color: Theme.text-primary; font-weight: 600; overflow: elide; }
+                            Text {
+                                text: acct.error != "" ? acct.error : acct.plan;
+                                color: acct.error != "" ? Theme.danger : Theme.text-secondary;
+                                font-size: 11px;
+                                overflow: elide;
+                            }
+                        }
+                        if acct.five-hour.present: UsageGauge { win: acct.five-hour; zoom: 0.55; y: (parent.height - self.height) / 2; }
+                        if acct.seven-day.present: UsageGauge { win: acct.seven-day; zoom: 0.55; y: (parent.height - self.height) / 2; }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: space-between;
+            Rectangle {
+                height: 32px;
+                width: expand-text.preferred-width + 28px;
+                border-radius: 6px;
+                background: expand-touch.has-hover ? Theme.accent.with-alpha(0.15) : Theme.card-bg;
+                border-width: 1px;
+                border-color: Theme.card-border;
+                expand-text := Text { text: "Expand"; color: Theme.accent; horizontal-alignment: center; vertical-alignment: center; }
+                expand-touch := TouchArea { clicked => { root.expand(); } }
+            }
+            Rectangle {
+                height: 32px;
+                width: quit-text.preferred-width + 28px;
+                border-radius: 6px;
+                background: quit-touch.has-hover ? Theme.danger.with-alpha(0.15) : transparent;
+                quit-text := Text { text: "Quit"; color: Theme.text-secondary; horizontal-alignment: center; vertical-alignment: center; }
+                quit-touch := TouchArea { clicked => { root.quit(); } }
+            }
+        }
+    }
+}
