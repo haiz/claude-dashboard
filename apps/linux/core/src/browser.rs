@@ -615,6 +615,8 @@ mod tests {
         assert_eq!(flathub_id(&Browser::Arc), None);
     }
 
+    // Unix-only: builds the snap layout with a real symlink (std::os::unix).
+    #[cfg(unix)]
     #[test]
     fn discovers_a_snap_brave_profile_through_the_current_symlink() {
         let d = tempfile::tempdir().unwrap();

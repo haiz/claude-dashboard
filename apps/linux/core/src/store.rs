@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -74,10 +75,12 @@ impl From<rusqlite::Error> for StoreError {
 // Accounts JSON
 // ---------------------------------------------------------------------
 
+#[cfg(unix)]
 fn home_dir() -> PathBuf {
     env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("."))
 }
 
+#[cfg(unix)]
 fn xdg_dir(var: &str, fallback: &[&str]) -> PathBuf {
     match env::var(var) {
         Ok(v) if !v.is_empty() => PathBuf::from(v),
@@ -91,14 +94,48 @@ fn xdg_dir(var: &str, fallback: &[&str]) -> PathBuf {
     }
 }
 
-/// `$XDG_CONFIG_HOME` (or `~/.config`) + `/claude-dashboard/accounts.json`.
-pub fn accounts_path() -> PathBuf {
-    xdg_dir("XDG_CONFIG_HOME", &[".config"]).join("claude-dashboard").join("accounts.json")
+/// Roaming per-user config dir: `$XDG_CONFIG_HOME` (or `~/.config`) on Unix,
+/// `%APPDATA%` on Windows.
+#[cfg(unix)]
+fn config_dir() -> PathBuf {
+    xdg_dir("XDG_CONFIG_HOME", &[".config"])
 }
 
-/// `$XDG_DATA_HOME` (or `~/.local/share`) + `/claude-dashboard/usage_logs.db`.
+/// Machine-local per-user data dir: `$XDG_DATA_HOME` (or `~/.local/share`) on
+/// Unix, `%LOCALAPPDATA%` on Windows.
+#[cfg(unix)]
+fn data_dir() -> PathBuf {
+    xdg_dir("XDG_DATA_HOME", &[".local", "share"])
+}
+
+#[cfg(windows)]
+fn config_dir() -> PathBuf {
+    known_dir("APPDATA")
+}
+
+#[cfg(windows)]
+fn data_dir() -> PathBuf {
+    known_dir("LOCALAPPDATA")
+}
+
+/// Windows always sets both variables for an interactive user; the `.`
+/// fallback only keeps a broken environment from panicking.
+#[cfg(windows)]
+fn known_dir(var: &str) -> PathBuf {
+    match env::var(var) {
+        Ok(v) if !v.is_empty() => PathBuf::from(v),
+        _ => PathBuf::from("."),
+    }
+}
+
+/// `<config dir>/claude-dashboard/accounts.json`.
+pub fn accounts_path() -> PathBuf {
+    config_dir().join("claude-dashboard").join("accounts.json")
+}
+
+/// `<data dir>/claude-dashboard/usage_logs.db`.
 pub fn usage_log_path() -> PathBuf {
-    xdg_dir("XDG_DATA_HOME", &[".local", "share"]).join("claude-dashboard").join("usage_logs.db")
+    data_dir().join("claude-dashboard").join("usage_logs.db")
 }
 
 /// Loads the accounts array. A missing file is not an error — it means no
@@ -190,7 +227,9 @@ pub fn save_accounts(accounts: &[Account]) -> Result<(), StoreError> {
         // The leaf `claude-dashboard` directory only. `create_dir_all` goes
         // by the umask (0755 under the usual 022), while `$XDG_CONFIG_HOME`
         // itself holds the user's wider configuration and is not ours to
-        // narrow.
+        // narrow. On Windows the file mode has no meaning and `%APPDATA%` is
+        // already per-user by ACL, so this step is Unix-only.
+        #[cfg(unix)]
         fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
     }
     let json = Account::to_json_array(accounts)?;
@@ -223,11 +262,15 @@ fn write_and_publish(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), StoreE
     // even for the moment between the write and a chmod. `rename` carries
     // this mode onto the destination, which is also what repairs a `0644`
     // store left by a version predating the rule — no separate chmod step.
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(tmp)?;
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    // Mode at creation on Unix, so the new store never exists world-readable,
+    // not even between the write and a chmod; `rename` then carries this mode
+    // onto the destination. Windows has no file mode and `%APPDATA%` is
+    // per-user by ACL.
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options.open(tmp)?;
     #[cfg(test)]
     {
         fail_if_fault_injected("after_open")?;
@@ -238,6 +281,9 @@ fn write_and_publish(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), StoreE
     // "lost every account" outcome by another route. The directory is
     // deliberately left unsynced; see the contract section for why.
     file.sync_all()?;
+    // Close the handle before the rename: Windows will not reliably rename a
+    // file this process still holds open. On Unix the drop is harmless.
+    drop(file);
     #[cfg(test)]
     {
         fail_if_fault_injected("after_write")?;
@@ -550,6 +596,31 @@ mod tests {
         ENV_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// Points every store path at `dir`, whichever platform's variables the
+    /// path functions read (XDG on Unix, APPDATA/LOCALAPPDATA on Windows).
+    /// Callers hold `env_lock()`.
+    fn point_store_at(dir: &Path) {
+        for var in ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"] {
+            env::set_var(var, dir);
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_store_lives_under_appdata_and_localappdata() {
+        let _guard = env_lock();
+        env::set_var("APPDATA", r"C:\Users\u\AppData\Roaming");
+        env::set_var("LOCALAPPDATA", r"C:\Users\u\AppData\Local");
+        assert_eq!(
+            accounts_path(),
+            PathBuf::from(r"C:\Users\u\AppData\Roaming\claude-dashboard\accounts.json")
+        );
+        assert_eq!(
+            usage_log_path(),
+            PathBuf::from(r"C:\Users\u\AppData\Local\claude-dashboard\usage_logs.db")
+        );
+    }
+
     #[test]
     fn three_identical_values_keep_first_and_last() {
         let mut s = mem_store();
@@ -646,7 +717,7 @@ mod tests {
     fn missing_accounts_file_loads_empty() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         let accounts = load_accounts().unwrap();
         assert!(accounts.is_empty());
     }
@@ -655,7 +726,7 @@ mod tests {
     fn accounts_roundtrip_reference_epoch_and_uuid() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         let a: Vec<Account> = serde_json::from_str(
             r#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"x",
                  "chromeProfilePath":"/p","plan":"Pro","status":"active","lastSynced":0.0}]"#,
@@ -673,7 +744,7 @@ mod tests {
         // (deferred from Task 2) with more than one account.
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         let a: Vec<Account> = serde_json::from_str(
             r#"[
                 {"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"one",
@@ -715,6 +786,7 @@ mod tests {
     // mode is the only thing separating two local users.
     // -----------------------------------------------------------------
 
+    #[cfg(unix)]
     fn mode_of(p: &std::path::Path) -> u32 {
         fs::metadata(p).unwrap().permissions().mode() & 0o777
     }
@@ -728,20 +800,24 @@ mod tests {
         .unwrap()
     }
 
+    // Unix-only: asserts the store's permission bits (PermissionsExt).
+    #[cfg(unix)]
     #[test]
     fn save_accounts_writes_the_store_mode_600() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         save_accounts(&one_account()).unwrap();
         assert_eq!(mode_of(&accounts_path()), 0o600);
     }
 
+    // Unix-only: asserts the leaf directory's permission bits.
+    #[cfg(unix)]
     #[test]
     fn save_accounts_creates_the_leaf_dir_mode_700() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         save_accounts(&one_account()).unwrap();
         let leaf = accounts_path().parent().unwrap().to_path_buf();
         assert_eq!(mode_of(&leaf), 0o700);
@@ -753,11 +829,14 @@ mod tests {
     /// store written before this rule is `644`. Nothing chmods it back —
     /// `rename` carries the temp file's own `0600` onto the destination, and
     /// this is the test that holds that property down.
+    // Unix-only: creates a 0644 store and asserts it is repaired to 0600
+    // (PermissionsExt / from_mode).
+    #[cfg(unix)]
     #[test]
     fn save_accounts_repairs_a_pre_existing_644_store() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         let path = accounts_path();
         let leaf = path.parent().unwrap().to_path_buf();
         fs::create_dir_all(&leaf).unwrap();
@@ -778,6 +857,7 @@ mod tests {
     // in place"
     // -----------------------------------------------------------------
 
+    #[cfg(unix)]
     fn inode_of(p: &std::path::Path) -> u64 {
         use std::os::unix::fs::MetadataExt;
         fs::metadata(p).unwrap().ino()
@@ -821,11 +901,15 @@ mod tests {
     /// guarantee, not something a test inside one process can watch. So this
     /// pairs with `a_failed_save_leaves_the_previous_store_intact`, which is
     /// what stops unlink-then-create from passing here as well.
+    // Unix-only: identifies the store by inode (MetadataExt::ino) to prove
+    // replacement. The "replace, not rewrite" property is also covered on all
+    // platforms by the fault tests below.
+    #[cfg(unix)]
     #[test]
     fn the_store_is_replaced_not_rewritten_in_place() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         save_accounts(&one_account()).unwrap();
         let first = inode_of(&accounts_path());
 
@@ -840,7 +924,7 @@ mod tests {
     fn the_store_survives_a_fault_at(point: &str) {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         save_accounts(&one_account()).unwrap();
         let before = fs::read_to_string(accounts_path()).unwrap();
 
@@ -873,7 +957,7 @@ mod tests {
     fn a_successful_save_leaves_no_temp_file_behind() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
 
         save_accounts(&one_account()).unwrap();
 
@@ -903,7 +987,7 @@ mod tests {
     fn an_absent_store_is_no_accounts_and_quarantines_nothing() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
 
         let (accounts, kept) = load_accounts_for_write().unwrap();
 
@@ -915,7 +999,7 @@ mod tests {
     fn a_readable_store_is_returned_untouched() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         save_accounts(&two_accounts()).unwrap();
 
         let (accounts, kept) = load_accounts_for_write().unwrap();
@@ -931,7 +1015,7 @@ mod tests {
     fn an_unparseable_store_is_moved_aside_and_reported() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         let path = accounts_path();
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         let garbage = r#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"tru"#;
@@ -953,7 +1037,7 @@ mod tests {
     fn an_unreadable_store_is_an_error_and_is_not_quarantined() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         fs::create_dir_all(accounts_path()).unwrap();
 
         let result = load_accounts_for_write();
