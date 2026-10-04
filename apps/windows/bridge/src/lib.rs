@@ -2,4 +2,5 @@
 //! one `sessionKey` message, stores the account, replies, and exits.
 
 pub mod framing;
+pub mod handler;
 pub mod sources;
