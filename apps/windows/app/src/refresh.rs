@@ -17,10 +17,33 @@ pub struct RefreshOutput {
 /// Ok -> the fresh output; Err -> the previous rows, unchanged.
 pub fn merge_errors(prev: &[DisplayRow], fresh: Result<RefreshOutput, String>) -> RefreshOutput {
     match fresh {
-        Ok(out) => out,
+        Ok(mut out) => {
+            backfill_errored_rows(prev, &mut out.rows);
+            out.peak = peak_utilization(&out.rows);
+            out
+        }
         Err(e) => {
             eprintln!("refresh failed, keeping previous rows: {e}");
             RefreshOutput { rows: prev.to_vec(), peak: peak_utilization(prev) }
+        }
+    }
+}
+
+/// An errored row with no window data of its own keeps the previous row's last-good
+/// windows, so a transient failure does not blank its gauges.
+fn backfill_errored_rows(prev: &[DisplayRow], fresh: &mut [DisplayRow]) {
+    for row in fresh.iter_mut() {
+        if row.error.is_none() || row.five_hour.is_some() || row.seven_day.is_some() || row.fable.is_some() {
+            continue;
+        }
+        if let Some(p) = prev.iter().find(|p| p.account_id == row.account_id) {
+            row.five_hour = p.five_hour.clone();
+            row.seven_day = p.seven_day.clone();
+            row.fable = p.fable.clone();
+            row.peak_utilization = p.peak_utilization;
+            if row.last_synced_unix.is_none() {
+                row.last_synced_unix = p.last_synced_unix;
+            }
         }
     }
 }
@@ -47,10 +70,13 @@ fn extension_account_ids() -> HashSet<String> {
         .unwrap_or_default()
 }
 
-/// Saves rotated session keys in one locked load-modify-save (shared with the
+/// Saves rotated session keys and last_synced stamps in one locked load-modify-save (shared with the
 /// bridge writers), after all fetches so there are no write races.
-fn persist_rotated_keys(rotated: &HashMap<String, String>) {
-    if rotated.is_empty() {
+/// Reference-date (2001-01-01) offset from the Unix epoch, as `Account.last_synced` uses.
+const REFERENCE_EPOCH_OFFSET: f64 = 978_307_200.0;
+
+fn persist_refresh(rotated: &HashMap<String, String>, synced: &HashSet<String>, now_unix_s: f64) {
+    if rotated.is_empty() && synced.is_empty() {
         return;
     }
     let Ok(_lock) = store::lock_store() else { return };
@@ -59,9 +85,12 @@ fn persist_rotated_keys(rotated: &HashMap<String, String>) {
         if let Some(k) = rotated.get(&a.id) {
             a.session_key = Some(store::encrypt_session_key(k));
         }
+        if synced.contains(&a.id) {
+            a.last_synced = Some(now_unix_s - REFERENCE_EPOCH_OFFSET);
+        }
     }
     if let Err(e) = store::save_accounts(&accounts) {
-        eprintln!("could not persist rotated session key: {e}");
+        eprintln!("could not persist refresh results: {e}");
     }
 }
 
@@ -110,7 +139,8 @@ pub fn refresh_once(now_unix_s: f64) -> Result<RefreshOutput, String> {
         }
     }
 
-    persist_rotated_keys(&rotated);
+    let synced: HashSet<String> = usage_by_account.keys().cloned().collect();
+    persist_refresh(&rotated, &synced, now_unix_s);
 
     if let Ok(mut log) = UsageLogStore::open() {
         for (id, u) in &usage_by_account {
@@ -195,6 +225,24 @@ mod tests {
         let merged = merge_errors(&prev, Err("store unreadable".into()));
         assert_eq!(merged.rows.len(), 3);
         assert_eq!(merged.rows, prev);
+    }
+
+    #[test]
+    fn errored_row_keeps_previous_window_data_not_blank() {
+        let prev = rows(&[]);
+        let mut fresh = rows(&[("b", "HTTP 500")]);
+        let b = fresh.iter_mut().find(|r| r.account_id == "b").unwrap();
+        b.five_hour = None;
+        b.seven_day = None;
+        b.fable = None;
+        b.peak_utilization = 0.0;
+        let merged = merge_errors(&prev, Ok(out(fresh)));
+        let b = merged.rows.iter().find(|r| r.account_id == "b").unwrap();
+        assert_eq!(b.error.as_deref(), Some("HTTP 500"));
+        assert_eq!(b.five_hour.as_ref().map(|w| w.utilization), Some(70.0));
+        assert!(b.seven_day.is_some());
+        assert_eq!(merged.peak, 70.0);
+        assert_eq!(merged.rows.len(), 3);
     }
 
     #[test]
