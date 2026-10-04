@@ -12,6 +12,7 @@ pub mod key_intake;
 pub mod manual_key;
 pub mod format;
 pub mod rows;
+pub mod extension_sources;
 
 #[cfg(windows)]
 pub mod userprotect;
