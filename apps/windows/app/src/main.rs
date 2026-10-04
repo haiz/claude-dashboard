@@ -6,6 +6,7 @@ mod model;
 mod pipe;
 mod popover;
 mod refresh;
+mod setup;
 mod tray;
 
 slint::include_modules!();
