@@ -7,6 +7,7 @@ pub mod api;
 pub mod store;
 pub mod browser;
 pub mod identity;
+pub mod key_intake;
 pub mod manual_key;
 
 #[cfg(windows)]
