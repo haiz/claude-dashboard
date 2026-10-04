@@ -10,6 +10,7 @@ pub mod browser;
 pub mod identity;
 pub mod key_intake;
 pub mod manual_key;
+pub mod format;
 
 #[cfg(windows)]
 pub mod userprotect;
