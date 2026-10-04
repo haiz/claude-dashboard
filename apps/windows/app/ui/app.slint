@@ -340,7 +340,9 @@ export component AppWindow inherits Window {
                     }
                     SidebarRow {
                         label: "General"; glyph: "\u{E713}"; tile: #8e8e93;
-                        text-color: Theme.text-primary; enabled: false;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.general;
+                        clicked => { root.selection = Pane.general; }
                     }
                 }
             }
