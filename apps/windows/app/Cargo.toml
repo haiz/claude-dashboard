@@ -1,0 +1,16 @@
+[package]
+name = "claude-dashboard"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+
+[dependencies]
+slint = { version = "1", features = ["raw-window-handle-06"] }
+claude-dashboard-core.workspace = true
+window-vibrancy = "0.5"
+raw-window-handle = "0.6"
+
+[build-dependencies]
+slint-build = "1"
