@@ -6,7 +6,10 @@ mod model;
 mod pipe;
 mod popover;
 mod refresh;
+mod settings_accounts;
 mod setup;
+#[cfg(test)]
+mod testenv;
 mod tray;
 mod wizard;
 
@@ -205,6 +208,52 @@ fn main() -> Result<(), slint::PlatformError> {
     {
         let open = open_wizard.clone();
         app.on_add_account(move || open());
+    }
+    // Settings > Accounts: store I/O (under the store lock) runs on a worker;
+    // results come back via invoke_from_event_loop, then the list is refreshed.
+    {
+        let reload_muted = {
+            let w = app.as_weak();
+            move || {
+                let w = w.clone();
+                std::thread::spawn(move || {
+                    let muted = settings_accounts::muted_sources();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(a) = w.upgrade() {
+                            let items: Vec<slint::SharedString> =
+                                muted.into_iter().map(Into::into).collect();
+                            a.set_muted_sources(slint::ModelRc::new(slint::VecModel::from(items)));
+                        }
+                    });
+                });
+            }
+        };
+        reload_muted();
+        let (reload, tx) = (reload_muted.clone(), nudge_tx.clone());
+        app.on_delete_account(move |id| {
+            let (reload, tx) = (reload.clone(), tx.clone());
+            let id = id.to_string();
+            std::thread::spawn(move || {
+                match settings_accounts::delete_account(&id) {
+                    Ok(_) => {
+                        let _ = tx.send(());
+                    }
+                    Err(e) => eprintln!("delete account failed: {e}"),
+                }
+                let _ = slint::invoke_from_event_loop(reload);
+            });
+        });
+        let reload = reload_muted;
+        app.on_unmute(move |id| {
+            let reload = reload.clone();
+            let id = id.to_string();
+            std::thread::spawn(move || {
+                if let Err(e) = settings_accounts::unmute(&id) {
+                    eprintln!("unmute failed: {e}");
+                }
+                let _ = slint::invoke_from_event_loop(reload);
+            });
+        });
     }
     // Re-sync button: same nudge the reload pipe sends (refreshes all accounts).
     app.on_resync(move || {

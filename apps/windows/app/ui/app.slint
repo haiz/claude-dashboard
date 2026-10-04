@@ -35,6 +35,103 @@ component EmptyState inherits VerticalLayout {
     }
 }
 
+component PaneButton inherits Rectangle {
+    in property <string> label;
+    in property <color> tint: Theme.accent;
+    callback clicked();
+    height: 32px;
+    width: t.preferred-width + 28px;
+    border-radius: 6px;
+    background: touch.has-hover ? root.tint.with-alpha(0.15) : Theme.card-bg;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    t := Text { text: root.label; color: root.tint; horizontal-alignment: center; vertical-alignment: center; }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Settings > Accounts (macOS AccountsSettingsPane): list, delete (inline
+// confirm), Add Account, Re-sync All, and the muted extension sources.
+component AccountsSettingsPane inherits VerticalLayout {
+    in property <[UiRow]> rows;
+    in property <[string]> muted;
+    callback add-account();
+    callback resync();
+    callback delete-account(string);
+    callback unmute(string);
+    property <string> confirming-id;
+    spacing: 12px;
+
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        PaneButton { label: "Add Account"; clicked => { root.add-account(); } }
+        PaneButton { label: "Re-sync All"; clicked => { root.resync(); } }
+    }
+    Flickable {
+        content-height: list.preferred-height;
+        list := VerticalLayout {
+            spacing: 8px;
+            alignment: start;
+            if root.rows.length == 0: Text { text: "No accounts."; color: Theme.text-secondary; }
+            for acct in root.rows: Rectangle {
+                height: 56px;
+                background: Theme.card-bg;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.card-border;
+                HorizontalLayout {
+                    padding: 8px;
+                    spacing: 10px;
+                    Avatar { size: 32px; initial: acct.initial; tint: acct.avatar-color; y: (parent.height - self.height) / 2; }
+                    VerticalLayout {
+                        alignment: center;
+                        Text { text: acct.name; color: Theme.text-primary; font-weight: 600; overflow: elide; }
+                        Text {
+                            text: (acct.email != "" ? acct.email + "  \u{b7}  " : "") + acct.plan;
+                            color: Theme.text-secondary;
+                            font-size: 11px;
+                            overflow: elide;
+                        }
+                    }
+                    if root.confirming-id != acct.id: PaneButton {
+                        label: "Delete"; tint: Theme.danger;
+                        y: (parent.height - self.height) / 2;
+                        clicked => { root.confirming-id = acct.id; }
+                    }
+                    if root.confirming-id == acct.id: PaneButton {
+                        label: "Confirm delete"; tint: Theme.danger;
+                        y: (parent.height - self.height) / 2;
+                        clicked => { root.confirming-id = ""; root.delete-account(acct.id); }
+                    }
+                    if root.confirming-id == acct.id: PaneButton {
+                        label: "Cancel"; tint: Theme.text-secondary;
+                        y: (parent.height - self.height) / 2;
+                        clicked => { root.confirming-id = ""; }
+                    }
+                }
+            }
+            if root.muted.length > 0: GroupHeader { text: "Muted sources"; }
+            if root.muted.length > 0: Text {
+                text: "Browser-extension installs whose account was deleted. Unmute to let them add accounts again.";
+                color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
+            }
+            for inst in root.muted: Rectangle {
+                height: 44px;
+                background: Theme.card-bg;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.card-border;
+                HorizontalLayout {
+                    padding: 8px;
+                    spacing: 10px;
+                    Text { text: inst; color: Theme.text-primary; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                    PaneButton { label: "Unmute"; y: (parent.height - self.height) / 2; clicked => { root.unmute(inst); } }
+                }
+            }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "Claude Dashboard";
     min-width: 640px;
@@ -51,6 +148,9 @@ export component AppWindow inherits Window {
     in-out property <Pane> selection: Pane.dashboard;
     in-out property <string> selected-account-id;
     callback resync();
+    in property <[string]> muted-sources;
+    callback delete-account(string);
+    callback unmute(string);
     callback add-account();
 
     property <string> pane-title: root.selection == Pane.dashboard ? "Dashboard"
@@ -152,7 +252,7 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
                 add-account => { root.add-account(); }
             }
-            if root.selection != Pane.account && root.selection != Pane.dashboard: Text {
+            if root.selection != Pane.account && root.selection != Pane.dashboard && root.selection != Pane.settings-accounts: Text {
                 text: "Coming soon.";
                 color: Theme.text-secondary;
             }
@@ -175,6 +275,15 @@ export component AppWindow inherits Window {
                         root.selection = Pane.account;
                     }
                 }
+            }
+            if root.selection == Pane.settings-accounts: AccountsSettingsPane {
+                vertical-stretch: 1;
+                rows: root.account-rows;
+                muted: root.muted-sources;
+                add-account => { root.add-account(); }
+                resync => { root.resync(); }
+                delete-account(id) => { root.delete-account(id); }
+                unmute(id) => { root.unmute(id); }
             }
             if root.selection != Pane.dashboard: Rectangle { }
         }

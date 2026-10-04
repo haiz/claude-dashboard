@@ -126,9 +126,10 @@ mod tests {
 
     #[test]
     fn paste_rejects_unaccepted_key_without_writing() {
+        let _env = crate::testenv::lock();
         let dir = tempfile::tempdir().unwrap();
         // Closed port: the validation fetch fails, so the key is "not accepted".
-        // Only this test touches these variables in the app crate.
+        // Serialised with other env-mutating tests via testenv::lock.
         std::env::set_var("CLAUDE_DASHBOARD_API_BASE", "http://127.0.0.1:1");
         std::env::set_var("APPDATA", dir.path());
         std::env::set_var("LOCALAPPDATA", dir.path());
