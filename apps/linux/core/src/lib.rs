@@ -15,6 +15,7 @@ pub mod format;
 pub mod rows;
 pub mod extension_sources;
 pub mod scan;
+pub mod startup;
 
 #[cfg(windows)]
 pub mod userprotect;
