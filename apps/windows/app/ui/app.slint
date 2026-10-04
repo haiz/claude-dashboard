@@ -24,7 +24,14 @@ export component AppWindow inherits Window {
     preferred-height: 640px;
     default-font-family: Theme.font-family;
     default-font-size: 14px;
-    background: Theme.window-bg;
+    // Transparent so Mica shows through; the solid fill below is used only
+    // when Mica is unavailable (Windows 10).
+    background: transparent;
+    in property <bool> use-solid-background: false;
+
+    Rectangle {
+        background: root.use-solid-background ? Theme.window-bg : transparent;
+    }
 
     VerticalLayout {
         padding: 24px;

@@ -3,21 +3,47 @@ use slint::ComponentHandle;
 
 slint::include_modules!();
 
-/// Apply Mica to the window; silently ignored where unsupported (Windows 10).
-fn apply_mica(window: &slint::Window) {
+/// Apply Mica; returns false where unsupported (Windows 10) so the caller can
+/// fall back to a solid background.
+fn apply_mica(window: &slint::Window) -> bool {
     let binding = window.window_handle();
     let Ok(handle) = binding.window_handle() else {
-        return;
+        return false;
     };
-    if let RawWindowHandle::Win32(_) = handle.as_raw() {
-        let _ = window_vibrancy::apply_mica(&handle, None);
-    }
+    matches!(handle.as_raw(), RawWindowHandle::Win32(_))
+        && window_vibrancy::apply_mica(&handle, None).is_ok()
+}
+
+/// True when the system app theme is dark (AppsUseLightTheme == 0).
+fn system_is_dark() -> bool {
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+    let key: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0"
+        .encode_utf16()
+        .collect();
+    let val: Vec<u16> = "AppsUseLightTheme\0".encode_utf16().collect();
+    let mut data: u32 = 1;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    let rc = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            key.as_ptr(),
+            val.as_ptr(),
+            RRF_RT_REG_DWORD,
+            std::ptr::null_mut(),
+            &mut data as *mut u32 as *mut _,
+            &mut size,
+        )
+    };
+    rc == 0 && data == 0
 }
 
 fn main() -> Result<(), slint::PlatformError> {
     let app = AppWindow::new()?;
+    app.global::<Theme>().set_dark(system_is_dark());
     app.show()?;
-    apply_mica(app.window());
+    if !apply_mica(app.window()) {
+        app.set_use_solid_background(true);
+    }
 
     // Smoke path: exit on its own so launches can be verified unattended.
     let _smoke = std::env::var_os("CLAUDE_DASHBOARD_SMOKE").map(|_| {
