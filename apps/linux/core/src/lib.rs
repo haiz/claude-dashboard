@@ -14,6 +14,7 @@ pub mod manual_key;
 pub mod format;
 pub mod rows;
 pub mod extension_sources;
+pub mod scan;
 
 #[cfg(windows)]
 pub mod userprotect;
