@@ -4,7 +4,6 @@
 //! Order mirrors the bridge handler: validate (`/api/account`) -> fetch orgs
 //! -> lock -> load -> `apply_session_key` -> save. The session key never
 //! appears in an [`AddOutcome`].
-#![allow(dead_code)] // wired to the Setup UI in a later task
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

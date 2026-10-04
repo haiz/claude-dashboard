@@ -8,6 +8,7 @@ mod popover;
 mod refresh;
 mod setup;
 mod tray;
+mod wizard;
 
 slint::include_modules!();
 
@@ -198,7 +199,13 @@ fn main() -> Result<(), slint::PlatformError> {
     let pop_nudge = nudge_tx.clone();
 
     let dark = system_is_dark();
+    // Add Account wizard (hidden until opened); its poll timer stops on close.
+    let open_wizard = wizard::install(dark, nudge_tx.clone())?;
     let app = AppWindow::new()?;
+    {
+        let open = open_wizard.clone();
+        app.on_add_account(move || open());
+    }
     // Re-sync button: same nudge the reload pipe sends (refreshes all accounts).
     app.on_resync(move || {
         let _ = nudge_tx.send(());
@@ -218,6 +225,15 @@ fn main() -> Result<(), slint::PlatformError> {
     popover.on_quit(|| {
         let _ = slint::quit_event_loop();
     });
+    {
+        let (pop_w, open) = (popover.as_weak(), open_wizard.clone());
+        popover.on_add_account(move || {
+            if let Some(p) = pop_w.upgrade() {
+                hide_flyout(&p);
+            }
+            open();
+        });
+    }
     {
         let (app_w, pop_w) = (app.as_weak(), popover.as_weak());
         popover.on_expand(move || {

@@ -1,0 +1,263 @@
+import { Theme } from "theme.slint";
+
+// One row of the scan results. `idx >= 0` is a detected session (checkbox);
+// `idx < 0` is an informational row (app-bound profile).
+export struct ScanItem {
+    idx: int,
+    label: string,
+    detail: string,
+    checked: bool,
+}
+
+component WizButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> primary: false;
+    callback clicked();
+    height: 32px;
+    width: t.preferred-width + 28px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    background: root.primary ? (touch.has-hover ? Theme.accent.with-alpha(0.35) : Theme.accent.with-alpha(0.25))
+        : (touch.has-hover ? Theme.accent.with-alpha(0.15) : Theme.card-bg);
+    opacity: root.enabled ? 1.0 : 0.45;
+    t := Text {
+        text: root.label;
+        color: Theme.accent;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+component TabButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected: false;
+    callback clicked();
+    height: 30px;
+    border-radius: 6px;
+    background: root.selected ? Theme.accent.with-alpha(0.2) : (touch.has-hover ? Theme.accent.with-alpha(0.08) : transparent);
+    Text {
+        text: root.label;
+        color: root.selected ? Theme.accent : Theme.text-secondary;
+        font-weight: root.selected ? 600 : 400;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Add Account wizard: browser extension (default) / scan browser / paste key.
+// Rust owns all behaviour; every long action runs on a worker thread.
+export component SetupWizardWindow inherits Window {
+    title: "Add Account";
+    width: 560px;
+    height: 560px;
+    default-font-family: Theme.font-family;
+    default-font-size: 14px;
+    background: Theme.window-bg;
+
+    in-out property <int> tab: 0;
+    // Extension tab
+    in property <string> ext-status: "Waiting for a key\u{2026}";
+    in property <bool> ext-done: false;
+    // Scan tab
+    in property <bool> scanning: false;
+    in property <bool> adding: false;
+    in property <[ScanItem]> scan-items;
+    in property <string> scan-message;
+    // Paste tab
+    in property <bool> pasting: false;
+    in property <string> paste-result;
+    in property <bool> paste-ok: false;
+
+    callback tab-changed(int);
+    callback scan();
+    callback toggle(int);
+    callback add-selected();
+    callback paste-add(string);
+    callback done();
+
+    in property <int> selected-count: 0;
+
+    VerticalLayout {
+        padding: 20px;
+        spacing: 14px;
+
+        Text { text: "Add Account"; color: Theme.text-primary; font-size: 22px; font-weight: 600; }
+
+        HorizontalLayout {
+            spacing: 6px;
+            TabButton { label: "Browser extension"; selected: root.tab == 0; clicked => { root.tab = 0; root.tab-changed(0); } }
+            TabButton { label: "Scan browser"; selected: root.tab == 1; clicked => { root.tab = 1; root.tab-changed(1); } }
+            TabButton { label: "Paste a session key"; selected: root.tab == 2; clicked => { root.tab = 2; root.tab-changed(2); } }
+        }
+
+        // ---- Tab 0: browser extension ----
+        if root.tab == 0: VerticalLayout {
+            spacing: 10px;
+            vertical-stretch: 1;
+            alignment: start;
+            Text {
+                text: "Recommended. Works with Chrome, Edge, Brave and Arc, including profiles the scan cannot read.";
+                color: Theme.text-secondary; wrap: word-wrap;
+            }
+            Text { text: "How to install"; color: Theme.text-primary; font-weight: 600; }
+            Text {
+                text: "1. In your browser, open the extensions page (chrome://extensions or edge://extensions) and turn on Developer mode.\n2. Choose Load unpacked and select apps\\windows\\extension in this repository.\n3. Run apps\\windows\\scripts\\register-dev-host.ps1 once to register the native host.\n4. Open claude.ai in that browser while signed in. The extension sends the key automatically.\n\n(A store link will replace these steps once the extension is published.)";
+                color: Theme.text-secondary; wrap: word-wrap;
+            }
+            Rectangle {
+                height: 44px;
+                border-radius: 8px;
+                background: root.ext-done ? Theme.ok.with-alpha(0.15) : Theme.card-bg;
+                border-width: 1px;
+                border-color: root.ext-done ? Theme.ok : Theme.card-border;
+                Text {
+                    x: 12px;
+                    width: parent.width - 24px;
+                    text: root.ext-status;
+                    color: root.ext-done ? Theme.ok : Theme.text-secondary;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+
+        // ---- Tab 1: scan ----
+        if root.tab == 1: VerticalLayout {
+            spacing: 10px;
+            vertical-stretch: 1;
+            Text {
+                text: "Looks for a signed-in claude.ai session in your installed browsers.";
+                color: Theme.text-secondary; wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                WizButton {
+                    label: root.scanning ? "Scanning\u{2026}" : "Scan";
+                    enabled: !root.scanning && !root.adding;
+                    clicked => { root.scan(); }
+                }
+                WizButton {
+                    label: "Add selected (" + root.selected-count + ")";
+                    primary: true;
+                    enabled: root.selected-count > 0 && !root.scanning && !root.adding;
+                    clicked => { root.add-selected(); }
+                }
+            }
+            Flickable {
+                vertical-stretch: 1;
+                content-height: list.preferred-height;
+                list := VerticalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    for it[i] in root.scan-items: Rectangle {
+                        height: 52px;
+                        border-radius: 8px;
+                        background: Theme.card-bg;
+                        border-width: 1px;
+                        border-color: Theme.card-border;
+                        HorizontalLayout {
+                            padding: 10px;
+                            spacing: 10px;
+                            if it.idx >= 0: Rectangle {
+                                width: 18px;
+                                height: 18px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 4px;
+                                border-width: 1px;
+                                border-color: Theme.accent;
+                                background: it.checked ? Theme.accent : transparent;
+                                Text {
+                                    text: it.checked ? "\u{2713}" : "";
+                                    color: Theme.window-bg;
+                                    font-size: 12px;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                Text { text: it.label; color: Theme.text-primary; font-weight: 600; overflow: elide; }
+                                Text {
+                                    text: it.detail;
+                                    color: it.idx >= 0 ? Theme.text-secondary : Theme.warn;
+                                    font-size: 11px;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+                        if it.idx >= 0: TouchArea { clicked => { root.toggle(i); } }
+                    }
+                }
+            }
+            Text {
+                text: root.scan-message;
+                color: Theme.text-secondary;
+                wrap: word-wrap;
+                visible: root.scan-message != "";
+            }
+        }
+
+        // ---- Tab 2: paste ----
+        if root.tab == 2: VerticalLayout {
+            spacing: 10px;
+            vertical-stretch: 1;
+            alignment: start;
+            Text {
+                text: "Paste the sessionKey cookie value from claude.ai (browser dev tools > Application > Cookies).";
+                color: Theme.text-secondary; wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                Rectangle {
+                    height: 34px;
+                    border-radius: 6px;
+                    background: Theme.card-bg;
+                    border-width: 1px;
+                    border-color: key-input.has-focus ? Theme.accent : Theme.card-border;
+                    key-input := TextInput {
+                        x: 10px;
+                        width: parent.width - 20px;
+                        height: parent.height;
+                        vertical-alignment: center;
+                        color: Theme.text-primary;
+                        single-line: true;
+                        enabled: !root.pasting;
+                        accepted => { root.paste-add(self.text); }
+                    }
+                    Text {
+                        x: 10px;
+                        text: "sk-ant-sid01-\u{2026}";
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                        visible: key-input.text == "";
+                    }
+                }
+                WizButton {
+                    label: root.pasting ? "Adding\u{2026}" : "Add";
+                    primary: true;
+                    enabled: !root.pasting && key-input.text != "";
+                    clicked => { root.paste-add(key-input.text); }
+                }
+            }
+            Text {
+                text: root.paste-result;
+                color: root.paste-ok ? Theme.ok : Theme.danger;
+                wrap: word-wrap;
+                visible: root.paste-result != "";
+            }
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            WizButton { label: "Done"; clicked => { root.done(); } }
+        }
+    }
+}
