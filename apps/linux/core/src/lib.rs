@@ -20,3 +20,5 @@ pub mod startup;
 #[cfg(windows)]
 pub mod userprotect;
 pub mod geometry;
+
+pub mod chart;
