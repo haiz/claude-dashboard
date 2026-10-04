@@ -32,6 +32,18 @@ struct AccountPane: View {
                 if state.isLoading {
                     ProgressView().controlSize(.small)
                 }
+                // Scoped to this account: a whole-fleet pass would re-fetch usage
+                // nobody asked for and clear the error other cards are showing.
+                // `refreshAll` skips expired accounts, so Re-sync is the way back.
+                Button {
+                    Task { await dashboardViewModel.refreshAll(only: [state.id]) }
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .disabled(dashboardViewModel.isRefreshing || state.account.status == .expired)
+                .help(state.account.status == .expired
+                      ? "Session expired. Re-sync to read a fresh key from the browser."
+                      : "Fetch the latest usage for this account")
             }
             // A grouped Form caps its content width on macOS, leaving wide
             // empty margins; a ScrollView of PaneSections fills the pane.
