@@ -3,6 +3,7 @@ use slint::ComponentHandle;
 
 mod chart;
 mod chart_model;
+mod overview;
 mod instance;
 mod model;
 mod pipe;
@@ -308,6 +309,7 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     // Re-sync button: same nudge the reload pipe sends (refreshes all accounts).
     chart::install(&app);
+    overview::install(&app);
     app.on_resync(move || {
         let _ = nudge_tx.send(());
     });

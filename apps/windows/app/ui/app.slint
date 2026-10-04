@@ -2,8 +2,8 @@ import { AboutSlint } from "std-widgets.slint";
 import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "components.slint";
 import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
-import { ChartPanel, ChartState, ChartTick } from "chart.slint";
-export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick }
+import { ChartPanel, OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem } from "chart.slint";
+export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
 export enum Pane { dashboard, overview, account, command-log, help, settings-accounts, general }
@@ -275,7 +275,21 @@ export component AppWindow inherits Window {
     callback chart-hover(float, float);
     callback chart-select(float, float);
     callback chart-reset();
-    changed selection => { root.chart-open = false; root.chart-close(); }
+    in-out property <ChartState> overview;
+    callback overview-open();
+    callback overview-close();
+    callback overview-window(string);
+    callback overview-preset(string);
+    callback overview-toggle(string);
+    callback overview-size(float, float);
+    callback overview-hover(float, float);
+    callback overview-select(float, float);
+    callback overview-reset();
+    changed selection => {
+        root.chart-open = false;
+        root.chart-close();
+        if root.selection == Pane.overview { root.overview-open(); } else { root.overview-close(); }
+    }
     changed selected-account-id => { root.chart-open = false; root.chart-close(); }
 
     in property <string> app-name;
@@ -323,7 +337,9 @@ export component AppWindow inherits Window {
                     }
                     SidebarRow {
                         label: "Overview"; glyph: "\u{E9D2}"; tile: #ff9f0a;
-                        text-color: Theme.text-primary; enabled: false;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.overview;
+                        clicked => { root.selection = Pane.overview; }
                     }
 
                     GroupHeader { text: "Accounts"; }
@@ -394,7 +410,7 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
                 add-account => { root.add-account(); }
             }
-            if root.selection != Pane.account && root.selection != Pane.dashboard && root.selection != Pane.settings-accounts && root.selection != Pane.general: Text {
+            if root.selection != Pane.account && root.selection != Pane.dashboard && root.selection != Pane.overview && root.selection != Pane.settings-accounts && root.selection != Pane.general: Text {
                 text: "Coming soon.";
                 color: Theme.text-secondary;
             }
@@ -417,6 +433,17 @@ export component AppWindow inherits Window {
                         root.selection = Pane.account;
                     }
                 }
+            }
+            if root.selection == Pane.overview: OverviewPane {
+                vertical-stretch: 1;
+                state: root.overview;
+                window(w) => { root.overview-window(w); }
+                preset(p) => { root.overview-preset(p); }
+                toggle(id) => { root.overview-toggle(id); }
+                size-changed(w, h) => { root.overview-size(w, h); }
+                hover(x, y) => { root.overview-hover(x, y); }
+                select(a, b) => { root.overview-select(a, b); }
+                reset => { root.overview-reset(); }
             }
             if root.selection == Pane.settings-accounts: AccountsSettingsPane {
                 vertical-stretch: 1;

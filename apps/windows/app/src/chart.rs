@@ -18,7 +18,7 @@ use crate::chart_model::{
 use crate::{AppWindow, ChartState, ChartTick};
 
 /// Uniform padding (px) around the plot; holds the axis labels.
-const PAD: f64 = 36.0;
+pub(crate) const PAD: f64 = 36.0;
 const DEFAULT_PRESET: &str = "24h";
 
 /// Bumped on every open/preset/close so a slow worker never overwrites a newer view.
@@ -64,7 +64,7 @@ impl Interaction {
         }
     }
 
-    fn scale(&self) -> Scale {
+    pub(crate) fn scale(&self) -> Scale {
         make_scale(self.range, self.size.0, self.size.1, PAD)
     }
 
@@ -101,6 +101,10 @@ impl Interaction {
 
     pub fn hover_at(&mut self, x: f64, y: f64) {
         self.hover = Some((x, y));
+    }
+
+    pub(crate) fn hover_pos(&self) -> Option<(f64, f64)> {
+        self.hover
     }
 
     pub fn hover_off(&mut self) {
@@ -166,7 +170,7 @@ impl Interaction {
 /// Entries inside the range plus one neighbour on each side, so the line
 /// enters and leaves the plot edge instead of starting mid-air when zoomed
 /// (the .slint clips the path to the plot frame).
-fn vis_with_context(entries: &[Entry], r: Range) -> Vec<Entry> {
+pub(crate) fn vis_with_context(entries: &[Entry], r: Range) -> Vec<Entry> {
     let first = entries.iter().position(|e| e.ms >= r.from_ms);
     let last = entries.iter().rposition(|e| e.ms <= r.to_ms);
     match (first, last) {
@@ -179,19 +183,19 @@ fn vis_with_context(entries: &[Entry], r: Range) -> Vec<Entry> {
     }
 }
 
-fn preset_range(preset: &str, now_ms: f64) -> Range {
+pub(crate) fn preset_range(preset: &str, now_ms: f64) -> Range {
     let (_, span) = preset_window_and_span(preset);
     Range { from_ms: now_ms - span, to_ms: now_ms }
 }
 
-fn now_ms() -> f64 {
+pub(crate) fn now_ms() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs_f64() * 1000.0)
         .unwrap_or(0.0)
 }
 
-fn offset_ms() -> f64 {
+pub(crate) fn offset_ms() -> f64 {
     crate::model::local_offset_s() * 1000.0
 }
 
@@ -199,7 +203,7 @@ thread_local! {
     static STATE: RefCell<Option<(String, Interaction)>> = const { RefCell::new(None) };
 }
 
-fn to_state(v: &View) -> ChartState {
+pub(crate) fn to_state(v: &View) -> ChartState {
     let ticks = |t: &[(f64, String)]| -> slint::ModelRc<ChartTick> {
         let items: Vec<ChartTick> = t
             .iter()
@@ -223,6 +227,7 @@ fn to_state(v: &View) -> ChartState {
         plot_top: v.plot.1 as f32,
         plot_width: v.plot.2 as f32,
         plot_height: v.plot.3 as f32,
+        ..Default::default()
     }
 }
 
