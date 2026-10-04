@@ -1,4 +1,4 @@
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+﻿use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
 mod instance;
@@ -46,6 +46,31 @@ fn system_is_dark() -> bool {
 
 const REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
+thread_local! {
+    static LAST_PEAK: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
+}
+
+/// The single fan-out for one refresh result: main window rows, popover rows
+/// and the tray icon (redrawn only when the peak changes). UI thread only.
+fn apply_output(
+    weak: &slint::Weak<AppWindow>,
+    pop_weak: &slint::Weak<PopoverWindow>,
+    out: &refresh::RefreshOutput,
+    now: f64,
+) {
+    eprintln!("refresh: {} rows, peak {:.0}%", out.rows.len(), out.peak);
+    let rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
+    if let Some(pop) = pop_weak.upgrade() {
+        pop.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows.clone())));
+    }
+    if let Some(app) = weak.upgrade() {
+        app.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+    }
+    if LAST_PEAK.with(|p| p.replace(Some(out.peak))) != Some(out.peak) {
+        tray::update_peak(out.peak);
+    }
+}
+
 /// Background loop: refresh now, then every interval or whenever nudged.
 fn spawn_refresh_loop(
     rx: std::sync::mpsc::Receiver<()>,
@@ -62,18 +87,7 @@ fn spawn_refresh_loop(
             let out = refresh::merge_errors(&prev, refresh::refresh_once(now));
             prev = out.rows.clone();
             let (weak, pop_weak) = (weak.clone(), pop_weak.clone());
-            let _ = slint::invoke_from_event_loop(move || {
-                eprintln!("refresh: {} rows, peak {:.0}%", out.rows.len(), out.peak);
-                if let Some(app) = weak.upgrade() {
-                    let rows: Vec<UiRow> =
-                        out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
-                    app.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows.clone())));
-                    if let Some(pop) = pop_weak.upgrade() {
-                        pop.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
-                    }
-                }
-                tray::update_peak(out.peak);
-            });
+            let _ = slint::invoke_from_event_loop(move || apply_output(&weak, &pop_weak, &out, now));
             match rx.recv_timeout(REFRESH_INTERVAL) {
                 Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
@@ -84,7 +98,7 @@ fn spawn_refresh_loop(
 
 
 /// Dev-only: `CLAUDE_DASHBOARD_FAKE_ROWS=1` seeds sample cards (no network).
-fn fake_rows(now: f64) -> Vec<UiRow> {
+fn fake_rows(now: f64) -> refresh::RefreshOutput {
     use claude_dashboard_core::model::{AccountPlan, AccountStatus};
     use claude_dashboard_core::rows::{DisplayRow, WindowView};
     let mk = |id: &str, name: &str, plan, u5: f64, u7: f64, burn: Option<f64>| DisplayRow {
@@ -102,14 +116,12 @@ fn fake_rows(now: f64) -> Vec<UiRow> {
         error: None,
         last_synced_unix: Some(now),
     };
-    [
+    let rows = vec![
         mk("f1", "alice", AccountPlan::Pro, 12.0, 30.0, None),
         mk("f2", "bob", AccountPlan::Max5x, 64.0, 48.0, Some(3600.0)),
         mk("f3", "carol", AccountPlan::Max20x, 100.0, 91.0, Some(600.0)),
-    ]
-    .iter()
-    .map(|r| model::to_ui_row(r, now))
-    .collect()
+    ];
+    refresh::RefreshOutput { peak: 100.0, rows }
 }
 
 /// Time after a focus-loss hide during which a tray click is treated as the
@@ -294,16 +306,17 @@ fn main() -> Result<(), slint::PlatformError> {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
-        let rows = fake_rows(now);
-        app.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows.clone())));
-        popover.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
-        tray::update_peak(100.0);
+        apply_output(&app.as_weak(), &popover.as_weak(), &fake_rows(now), now);
     } else {
         spawn_refresh_loop(nudge_rx, app.as_weak(), popover.as_weak());
     }
-    // `run()` quits when the last visible window closes; the hidden flyout
-    // does not keep the loop alive. Dropping `_tray` on return removes the icon.
-    let result = app.run();
+    // Closing the main window hides it; the app lives in the tray and quits
+    // only via the tray/flyout "Quit" (or the smoke timer) -> quit_event_loop.
+    app.window()
+        .on_close_requested(|| slint::CloseRequestResponse::HideWindow);
+    // Hidden windows do not end this loop; only quit_event_loop does.
+    // Dropping `_tray` on return removes the icon.
+    let result = slint::run_event_loop_until_quit();
     drop(focus_timer);
     result
 }

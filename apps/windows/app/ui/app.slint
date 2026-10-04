@@ -11,6 +11,29 @@ component GroupHeader inherits Text {
     font-weight: 600;
 }
 
+// Shown in the Dashboard pane and the flyout when no accounts exist. The
+// button is a disabled placeholder until sub-project 3 wires account setup.
+component EmptyState inherits VerticalLayout {
+    alignment: center;
+    spacing: 10px;
+    Text { text: "No accounts yet"; color: Theme.text-primary; font-size: 16px; font-weight: 600; horizontal-alignment: center; }
+    Text { text: "Add an account to start tracking usage."; color: Theme.text-secondary; horizontal-alignment: center; wrap: word-wrap; }
+    HorizontalLayout {
+        alignment: center;
+        Rectangle {
+            height: 32px;
+            width: add-text.preferred-width + 28px;
+            border-radius: 6px;
+            background: Theme.card-bg;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            opacity: 0.5;
+            add-text := Text { text: "Add Account"; color: Theme.accent; horizontal-alignment: center; vertical-alignment: center; }
+        }
+    }
+    Text { text: "Coming soon"; color: Theme.text-secondary; font-size: 11px; horizontal-alignment: center; }
+}
+
 export component AppWindow inherits Window {
     title: "Claude Dashboard";
     min-width: 640px;
@@ -123,9 +146,8 @@ export component AppWindow inherits Window {
                     resync => { root.resync(); }
                 }
             }
-            if root.selection == Pane.dashboard && root.account-rows.length == 0: Text {
-                text: "No accounts yet.";
-                color: Theme.text-secondary;
+            if root.selection == Pane.dashboard && root.account-rows.length == 0: EmptyState {
+                vertical-stretch: 1;
             }
             if root.selection != Pane.account && root.selection != Pane.dashboard: Text {
                 text: "Coming soon.";
@@ -210,11 +232,7 @@ export component PopoverWindow inherits Window {
             FlyoutIconButton { glyph: "\u{E72C}"; clicked => { root.refresh(); } }
             FlyoutIconButton { glyph: "\u{E740}"; clicked => { root.expand(); } }
         }
-        if root.account-rows.length == 0: Text {
-            text: "No accounts configured";
-            color: Theme.text-secondary;
-            horizontal-alignment: center;
-        }
+        if root.account-rows.length == 0: EmptyState { vertical-stretch: 1; }
         Flickable {
             content-height: list.preferred-height;
             list := VerticalLayout {
