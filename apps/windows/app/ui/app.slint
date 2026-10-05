@@ -5,6 +5,7 @@ import { SetupWizardWindow, ScanItem } from "wizard.slint";
 import { ChartPanel, OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem } from "chart.slint";
 import { CommandLogPane, UiLogEntry } from "command_log.slint";
 import { RunCommandPanel } from "run_command.slint";
+import { HelpPane } from "help.slint";
 export struct UiShell { key: string, label: string }
 
 export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, UiLogEntry, ChartState, ChartTick, ChartLine, ChartLegendItem }
@@ -411,7 +412,9 @@ export component AppWindow inherits Window {
                     }
                     SidebarRow {
                         label: "Help"; glyph: "\u{E897}"; tile: #30d158;
-                        text-color: Theme.text-primary; enabled: false;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.help;
+                        clicked => { root.selection = Pane.help; }
                     }
 
                     GroupHeader { text: "Settings"; }
@@ -461,10 +464,6 @@ export component AppWindow inherits Window {
             if root.selection == Pane.dashboard && root.account-rows.length == 0: EmptyState {
                 vertical-stretch: 1;
                 add-account => { root.add-account(); }
-            }
-            if root.selection != Pane.account && root.selection != Pane.dashboard && root.selection != Pane.overview && root.selection != Pane.settings-accounts && root.selection != Pane.general && root.selection != Pane.command-log: Text {
-                text: "Coming soon.";
-                color: Theme.text-secondary;
             }
             if root.selection == Pane.dashboard: Flickable {
                 // Responsive wrap: as many fixed-width cards per row as fit.
@@ -525,6 +524,7 @@ export component AppWindow inherits Window {
                 reload => { root.command-log-open(); }
                 clear => { root.command-log-clear(); }
             }
+            if root.selection == Pane.help: HelpPane { vertical-stretch: 1; }
             if root.selection != Pane.dashboard: Rectangle { }
         }
     }

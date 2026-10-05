@@ -1,0 +1,59 @@
+import { Theme } from "theme.slint";
+
+// Local equivalents of app.slint's GroupHeader / SettingsCard (not exported
+// there; importing app.slint from here would be circular).
+component HelpHeader inherits Text {
+    color: Theme.text-secondary;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+component HelpSection inherits VerticalLayout {
+    in property <string> title;
+    in property <string> body;
+    spacing: 6px;
+    HelpHeader { text: root.title; }
+    Rectangle {
+        background: Theme.card-bg;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.card-border;
+        VerticalLayout {
+            padding: 14px;
+            Text {
+                text: root.body;
+                color: Theme.text-primary;
+                font-size: 13px;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
+export component HelpPane inherits Flickable {
+    content-height: col.preferred-height;
+    col := VerticalLayout {
+        width: root.width;
+        spacing: 16px;
+        HelpSection {
+            title: "Getting Started";
+            body: "Claude Dashboard shows your Claude.ai usage across several accounts from the system tray. Add an account from Settings › Accounts › Add Account. The browser extension is the easiest way: install it once per browser profile and it keeps the session key current. You can also scan a browser profile (Chrome may block this; the extension always works) or paste a session key.";
+        }
+        HelpSection {
+            title: "Reading Your Usage";
+            body: "Each card shows the 5-hour and 7-day windows, plus Fable where your plan has it. Color shows how much is left: green is plenty, yellow is halfway, red is nearly out. The countdown shows when the window resets. The animal shows your burn rate: a sloth is slow, a cheetah is fast. A green dot next to a name marks the account Claude Code is signed in to.";
+        }
+        HelpSection {
+            title: "Dashboard and Charts";
+            body: "Click a card to open the account. View chart shows its history; drag to zoom, double-click to reset. Overview compares all accounts. Left-click the tray icon for a quick summary; right-click it for Open Dashboard, Refresh and Quit. Closing the window keeps the app running in the tray.";
+        }
+        HelpSection {
+            title: "Commands";
+            body: "Run Command (the terminal button on a card, or on the account page) saves one command per account and runs it. Programs that need a terminal, like claude, vim or ssh, open in Windows Terminal; others run hidden, and their output goes to the Command Log. A hidden run stops after 60 seconds. The saved command also runs on its own when a usage window resets. Choose the shell under Settings › General › Commands. It starts with your profile, so your functions and aliases work.";
+        }
+        HelpSection {
+            title: "Troubleshooting";
+            body: "An account marked Expired needs a fresh key: open claude.ai in that browser (extension) or paste the key again. If the extension shows a red !, the helper is missing or reported an error; reinstall the app. If scanning says the cookie is app-bound, use the extension instead.";
+        }
+    }
+}
