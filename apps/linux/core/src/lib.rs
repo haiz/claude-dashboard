@@ -19,6 +19,7 @@ pub mod startup;
 pub mod command_log;
 pub mod command_classifier;
 pub mod claude_code;
+pub mod auto_run;
 
 #[cfg(windows)]
 pub mod userprotect;
