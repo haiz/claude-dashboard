@@ -21,6 +21,7 @@ mod shell;
 mod testenv;
 mod terminal;
 mod tray;
+mod updater;
 mod wizard;
 
 slint::include_modules!();
