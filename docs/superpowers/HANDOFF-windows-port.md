@@ -1,107 +1,139 @@
-# Handoff — Windows port, resume at Sub-project 5 (Command Log)
+# Handoff — Windows port, resume at Sub-project 6 (Release)
 
-**Written:** 2026-10-05. **Branch:** `feat/windows-app` (head `54b6ad0`, 48 commits ahead of `main`, working tree clean). **Platform:** Windows 11, this machine. User language: **Vietnamese** (reply in Vietnamese).
+**Written:** 2026-10-05. **Branch:** `feat/windows-app`. SP5 is on top of `5e25355`, followed by this handoff commit. The working tree is clean. **Platform:** Windows 11, this machine. User language: **Vietnamese** (reply in Vietnamese).
 
-This file is the single source of truth for picking the work back up. Read it, then write the Sub-project 5 plan and execute it the same way SP1–SP4 were done.
+This file is the single source of truth for resuming. Read it, then write the Sub-project 6 plan and execute it the same way SP1–SP5 were done.
 
 ---
 
 ## 1. Where the project stands
 
-Goal: a Windows 11 port of the macOS "Claude Dashboard", at feature parity, Rust + Slint, reusing `apps/linux/core`. Overall design spec: `docs/superpowers/specs/2026-10-04-windows-app-design.md` (6 sub-projects). Done so far, all on `feat/windows-app`, each with its own plan + SDD ledger under `.superpowers/sdd/<plan-name>/progress.md`:
+Goal: a Windows 11 port of the macOS "Claude Dashboard", at feature parity, in Rust + Slint, reusing `apps/linux/core`. The overall design spec is `docs/superpowers/specs/2026-10-04-windows-app-design.md` (6 sub-projects). All work so far is on `feat/windows-app`, and each sub-project has its own plan and its own SDD ledger under `.superpowers/sdd/<plan-name>/progress.md`.
 
-- **SP1 — Core on Windows + bridge + extension** (plan `2026-10-04-windows-core-bridge.md`). Done inline (Sonnet was rate-limited that day). core builds/tests on Windows (APPDATA/LOCALAPPDATA paths, DPAPI at-rest via `userprotect.rs`, `cookie/win.rs` v10 decode / v20→AppBound, `discover_windows_profiles_under`, `store::lock_store`, `core::key_intake`). `apps/windows/bridge` native-messaging host + `apps/windows/extension` MV3 (fixed id `cadpjcfajhlgdaipepkdojcehfmkkedh`). `contract/windows.md`, `.github/workflows/ci.yml`.
-- **SP2 — App shell (Slint)** (plan `2026-10-04-windows-app-shell.md`). `core::{colors,geometry,format,rows}` ported from `apps/linux/lib/`. `apps/windows/app`: Mica window + system theme, sidebar, Dashboard card grid with ring gauges, per-account page, tray ring + Mica flyout popover, refresh loop, single-instance mutex, reload-pipe consumer, tray-resident (close hides). Controller screenshot-verified Dashboard + empty state.
-- **SP3 — Setup & Settings** (plan `2026-10-04-windows-setup-settings.md`). `core::{settings,scan,startup}`. Add Account wizard (extension/scan/paste), Settings›Accounts (delete+mute/re-sync/unmute), Settings›General (About+AboutSlint, live Auto Refresh, Launch-at-startup via HKCU Run, Updates placeholder).
-- **SP4 — Charts** (plan `2026-10-04-windows-charts.md`). `UsageLogStore::series`/`series_all`, `core::chart` (ported from `lib/chart.js`), app `chart_model.rs`, per-account interactive chart (`ui/chart.slint`/`src/chart.rs`) + Overview multi-account chart. "View chart" button + sidebar "Overview" enabled.
+- **SP1 — Core on Windows + bridge + extension** (plan `2026-10-04-windows-core-bridge.md`). Core runs on Windows: DPAPI at rest, `v10` cookies, `v20` reported as app-bound. Also the `apps/windows/bridge` native-messaging host, the `apps/windows/extension` MV3 extension (fixed id `cadpjcfajhlgdaipepkdojcehfmkkedh`), `contract/windows.md`, and the CI workflow.
+- **SP2 — App shell (Slint)** (plan `2026-10-04-windows-app-shell.md`): Mica window, sidebar, Dashboard grid, per-account page, tray ring + flyout, refresh loop, single instance, reload pipe.
+- **SP3 — Setup & Settings** (plan `2026-10-04-windows-setup-settings.md`): Add Account wizard, Settings › Accounts, Settings › General, launch at startup.
+- **SP4 — Charts** (plan `2026-10-04-windows-charts.md`): per-account interactive chart and the Overview chart.
+- **SP5 — Command Log** (plan `2026-10-05-windows-command-log.md`, commits `2485a4b..5e25355`).
+  - New `core` modules: `command_log` (SQLite, 500 rows, 4096-byte tail), `command_classifier`, `auto_run` (latch), `claude_code` (+ tier-2 sort), `run_commands` (`run-commands.json`), `Settings.shell`, and `settings::update` (an RMW mutex).
+  - New app modules: `shell.rs`, `terminal.rs` (wt.exe / conhost), `runner.rs` (Job Object, KILL_ON_JOB_CLOSE, suspended → assign → resume), `commands.rs`, `log_view.rs`, `run_command.rs`.
+  - New UI: the Command Log pane, Run Command panel, auto-run on reset, shell picker, Claude Code green dot, and Help pane. No sidebar row says "Coming soon" any more.
+  - The final review (opus) said "With fixes"; one fix wave closed it and the re-review was clean.
 
-Each sub-project's final whole-branch review (opus) returned **PASS, no merge-blockers**.
+Every sub-project's final review returned no merge-blockers.
 
 ### NOT done / caveats (tell the user, don't paper over)
-- **Nothing is merged and CI has NEVER actually run.** The branch is 48 commits of Windows-only work. SP1's **Linux** side (helper integration tests, Linux build) is only *reasoned* correct — the `linux` CI job has not been executed. Strongly recommend the user push the branch / open a PR to get CI (both `linux` and `windows` jobs) green before or alongside more sub-projects.
-- **GUI screenshot coverage is partial.** Controller verified the Dashboard grid + empty state (SP2). The Settings panes, Add Account wizard, and both charts are **code-reviewed + unit-tested but not visually run-checked** — they need a human/controller run-check (they require clicking to reach).
-- A backlog of **deferred minors** is recorded in each `progress.md` (search `minor (deferred)`), to be triaged by `superpowers:finishing-a-development-branch` before merge. None are merge-blockers.
+- **CI on SP5.** The branch was pushed once after SP4, and SP5 is being pushed now. `gh` is **not installed** on this machine, so the controller cannot read CI results. Ask the user to check https://github.com/haiz/claude-dashboard/actions, both the `linux` and the `windows` job. The Linux side of SP1 and the core modules SP5 added have only been tested on Windows.
+- **GUI click-through run-checks are still owed** (they need clicking; screenshots only covered the Dashboard grid, the Claude Code dot, the enabled sidebar rows, and the card glyph no longer overlapping the plan pill).
+  - **SP3–SP4:** the Settings panes, the wizard, and the charts.
+  - **SP5:**
+    1. Run `echo hi` → a row reading `exit 0`.
+    2. Type `htop` → the Terminal checkbox turns on. Click it off, then edit to `vim x` → it follows classification again.
+    3. Run `ping -n 100 127.0.0.1`, then Cancel → the row reads "Cancelled" and no `PING.EXE` is left.
+    4. Cancel, then reopen the panel for another account → not stuck on "Running…".
+    5. A cmd command with quotes opens correctly under wt.
+    6. Git Bash `find … -exec … \;` under wt.
+    7. The Settings › General › Commands card is not clipped, and the shell choice persists across a restart.
+- **Pre-existing:** `apps/linux/helper/tests/add_key_transport.rs` fails 5/7 tests on Windows. The tests point the store via XDG, so they are Unix-only. Windows CI never runs them, and Linux CI is the gate. They are not `cfg(unix)`-gated; triage this at finishing.
+- **Deferred minors:** each `progress.md` has a backlog (search for `minor (deferred)`). `superpowers:finishing-a-development-branch` triages it once SP6 is done. None of them blocks a merge.
 
 ---
 
-## 2. How the work is run (the loop that produced SP2–SP4)
+## 2. How the work is run (the loop that produced SP2–SP5)
 
-Process skills: `superpowers:brainstorming` (already done at the architecture level — the spec is approved; a new sub-project does NOT re-brainstorm, it goes straight to a plan) → `superpowers:writing-plans` → `superpowers:subagent-driven-development`.
+Process skills: `superpowers:writing-plans` → `superpowers:subagent-driven-development`. Brainstorming is done at the architecture level and the spec is approved. A new sub-project does NOT re-brainstorm; it goes straight to a plan.
 
 For each sub-project:
-1. **Write the plan** to `docs/superpowers/plans/2026-10-05-windows-command-log.md` (header + Global Constraints + Review Focus + file structure + bite-size tasks). `docs/superpowers/` is **gitignored** — commit plans with `git add -f`. Present it to the user for approval before executing.
-2. **Set up SDD**: `bash <skill>/scripts/sdd-workspace <plan>` → ledger dir; write `progress.md` with the plan path as line 1, a pre-flight conflict-scan table, and any rulings. (`<skill>` = `C:/Users/cthai/.claude/plugins/cache/claude-plugins-official/superpowers/6.4.1/skills/subagent-driven-development`.)
-3. **Per task**: record BASE (`git rev-parse HEAD`); `bash <skill>/scripts/task-brief <plan> N`; dispatch an implementer subagent (**model: sonnet**, `general-purpose`) with the brief path + interfaces + the report-file path; on DONE, `bash <skill>/scripts/review-package <plan> BASE HEAD` and dispatch a reviewer subagent (**sonnet**) with brief+report+diff paths; run the fix loop (resume the same implementer via `SendMessage to: <agentId>`) until the review is clean; append a `Task N: complete` line to the ledger.
-4. **Final whole-branch review** on **opus** over the sub-project's commit range, pointed at the ledger's deferred-minors for triage.
-5. Update `CLAUDE.md` + `contract/` in the last task. Do **not** merge — that's the user's call.
+1. **Write the plan** to `docs/superpowers/plans/2026-10-0X-windows-release.md`: header, Global Constraints, Rulings, Review Focus, file structure, bite-size tasks. `docs/superpowers/` is **gitignored**, so commit plans with `git add -f`. Present the plan to the user for approval before executing.
+2. **Set up SDD.** Run `bash <skill>/scripts/sdd-workspace <plan>` to get the ledger dir. Write `progress.md` with the plan path on line 1, a pre-flight conflict-scan table, and the rulings. `<skill>` = `C:/Users/cthai/.claude/plugins/cache/claude-plugins-official/superpowers/6.4.1/skills/subagent-driven-development`.
+   - **Reusable contracts (SP5 pattern, saves prompt size).** Write `global-constraints.md` (the plan's Global Constraints + Rulings + environment notes), `implementer-contract.md`, `reviewer-contract.md` and `rereview-contract.md` into the ledger dir. Copy the SP5 ones from `.superpowers/sdd/2026-10-05-windows-command-log/` and adapt them. Then each dispatch is short: the brief path, the contract paths, the interfaces from earlier tasks, and the controller rulings.
+   - Pre-extract every brief: `bash <skill>/scripts/task-brief <plan> N`.
+3. **Per task:**
+   - Record BASE.
+   - Dispatch the implementer (**model: sonnet**, `general-purpose`).
+   - On DONE, run `bash <skill>/scripts/review-package <plan> BASE HEAD`, then dispatch the reviewer (sonnet; **opus** for risky unsafe/concurrency code, as T7 runner was).
+   - Fix loop: resume the same implementer via `SendMessage` (load it with `ToolSearch select:SendMessage`), then a scoped re-review on the fix range.
+   - Append `Task N: complete` to the ledger.
+4. **Final whole-branch review** on **opus** over the sub-project's range, pointed at the ledger's deferred minors. Then ONE fix wave and one re-review.
+5. Update `CLAUDE.md` and `contract/` in the last task. Do **not** merge; that is the user's call.
 
-Commit author identity must be passed explicitly (git user is unset on this machine):
-`git -c user.email="backend@gotitapp.co" -c user.name="cthai" commit -m "..."`.
-Commit-message trailer (current attribution): `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` on its own line. **Re-read the session's attribution system-reminder each session — the model name in the trailer changes.**
+Commit author must be explicit (git user is unset): `git -c user.email="backend@gotitapp.co" -c user.name="cthai" commit -m "..."`. Trailer: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. **Re-read the session's attribution system-reminder each session, because the model name changes.** Subagents see a different reminder (Sonnet) and will ask; the contract's line wins.
 
 ### Dispatch hygiene that mattered
-- Implementer + reviewer contracts: **no nested subagents**; implementer edits only the task's files; reviewer is read-only. Always name the exact model.
-- Keep diffs/reports as files (the scripts write them under the ledger dir); don't paste big blobs into prompts.
-- Pure logic → TDD (failing test first). GUI → build + run-check; only the **named pure helpers** are unit-tested (this is a recorded ruling in every GUI sub-project).
+- Contracts: **no nested subagents**; the implementer edits only its task's files; the reviewer is read-only. Always name the model.
+- Diffs and reports live as files under the ledger dir; never paste big blobs into prompts.
+- Pure logic → TDD. GUI → build + smoke run + screenshot, with only the named pure helpers unit-tested (a recorded ruling every time).
+- Pre-flight scan pays off. In SP5 it caught two test expectations that contradicted their own code (Rulings A and B) before dispatch.
 
 ---
 
 ## 3. Environment specifics (this Windows machine)
 
-- **cargo** is via rustup but not always on PATH in the Bash tool. In PowerShell: `$env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"` then `cd` to the crate. Toolchain **1.98.0** is pinned (`rust-toolchain.toml`) and auto-activates; workspaces declare `rust-version = 1.89` (because `store::lock_store` uses `std::fs::File::lock`, stable 1.89 — clippy's incompatible-msrv enforces it).
-- Build/test commands (also in CLAUDE.md): core `cd apps/linux && cargo test -p claude-dashboard-core`; windows workspace `cd apps/windows && cargo test --workspace`; app only `cargo test -p claude-dashboard`; extension `cd apps/windows/extension && node --test`.
-- **Run the app**: `cd apps/windows && cargo run -p claude-dashboard`. Env flags: `CLAUDE_DASHBOARD_SMOKE=1` makes it self-quit after ~1.2s (use in every GUI smoke check so the event loop can't hang a subagent); `CLAUDE_DASHBOARD_FAKE_ROWS=1` seeds 3 sample accounts (alice/bob/carol) with no network — and SP4 also seeds usage-log history for f2/f3 so charts draw (alice left empty for the "No data yet" state).
-- **Controller screenshot recipe** (to visually verify a running GUI): build, `Start-Process` the exe with the env flags, `Start-Sleep -Seconds 4`, capture with `System.Windows.Forms`/`System.Drawing` `CopyFromScreen` to a PNG in the scratchpad, `Stop-Process -Force`, then Read the PNG. Panes that need a click (Settings, wizard, charts) can't be reached this way without a dev flag — note that limitation rather than claim a visual check you didn't do.
-- Git warns `LF will be replaced by CRLF` constantly — harmless.
+- **cargo** comes via rustup but is not always on PATH in the Bash tool. In PowerShell, run `$env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"` first. Toolchain **1.98.0** is pinned; the workspaces declare `rust-version = 1.89`.
+- **No `python`** (the Store alias stub only) and **no `gh`**. Use `node` for scripting.
+- Build/test commands:
+  - core: `cd apps/linux && cargo test -p claude-dashboard-core`. Don't use `--workspace` here on Windows, because of the helper XDG tests.
+  - Windows workspace: `cd apps/windows && cargo test --workspace` and `cargo clippy --all-targets -- -D warnings`.
+  - extension: `cd apps/windows/extension && node --test`.
+- **Run the app:** `cd apps/windows && cargo run -p claude-dashboard`. `CLAUDE_DASHBOARD_SMOKE=1` self-quits after about 1.2 s. `CLAUDE_DASHBOARD_FAKE_ROWS=1` seeds alice/bob/carol with chart history, and bob is marked as the active Claude Code account.
+- **Screenshot recipe:** build, `Start-Process` the exe (`apps/windows/target/debug/claude-dashboard.exe`) with the env flags, `Start-Sleep -Seconds 4`, capture with `System.Windows.Forms`/`System.Drawing` `CopyFromScreen` to a PNG, `Stop-Process -Force`, then Read the PNG. Panes that need a click can't be reached this way.
+- Git warns `LF will be replaced by CRLF`; this is harmless.
 
 ---
 
-## 4. Recurring gotchas (cost fix rounds in SP2–SP4 — avoid them)
+## 4. Recurring gotchas
 
-1. **Enabling a sidebar row is the #1 repeat defect.** Three times an implementer reported a `SidebarRow` enabled+routed while a `perl`/`sed` edit had silently not matched, leaving the pane unreachable (two fix rounds in SP3). For SP5's "Command Log" row (currently `app.slint:358-360`, `enabled: false`), **require the implementer to read the 4 edited lines back and paste them** in the report, and the reviewer to confirm in the diff. Pattern to apply (mirror the Accounts/General/Overview rows): remove `enabled: false`, add `selected: root.selection == Pane.command-log;` and `clicked => { root.selection = Pane.command-log; }`. (`Pane.command-log` already exists.)
-2. **GUI implementers edit `.slint` with the Edit tool, not perl/sed** — the shell edits miss silently.
-3. A `Set-Content` in PowerShell adds a **UTF-8 BOM** — it crept into `main.rs` once. Edit `.rs`/`.md` with the Edit tool or bash, never `Set-Content`. Verify `head -c 3`.
-4. **Store writes** (accounts.json / extension-sources.json) hold `core::store::lock_store()` across the whole read-modify-write, shared with the bridge; a delete-then-mute holds **one** lock across both writes. Reads are lock-free.
-5. **`core::format`/`core::chart::format_tick` are timezone-naive (UTC)** — the GUI caller shifts by the local offset (see `model.rs` `local_offset_s` / `GetTimeZoneInformation`). A single offset is fine (slightly off only across a DST boundary — documented).
-6. Remove any temporary `#![allow(dead_code)]` once the UI wires a glue module (bit SP3/SP4).
-7. The **session key must never** appear in a log, UI string, `AddOutcome`, or error.
-8. GUI long work runs off the UI thread (`std::thread::spawn` + `slint::invoke_from_event_loop`); any poll/timer is stopped on close so the smoke self-quit still fires.
+1. **Enabling or routing UI elements is the #1 repeat defect.** Require the implementer to read the edited lines back and paste them verbatim, and have the reviewer confirm them in the diff. This held in SP5: no wiring defects.
+2. Edit `.slint`, `.rs` and `.md` files with the Edit tool. Never use perl, sed or `Set-Content`, which miss silently or add a BOM. Verify with `head -c 3`.
+3. Store writes (`accounts.json` / `extension-sources.json`) hold `core::store::lock_store()` across the whole read-modify-write. `settings.json` writes go through `core::settings::update` (in-process mutex). `run-commands.json` has its own mutex.
+4. `core::format` / `chart::format_tick` are timezone-naive; the GUI shifts by `model::local_offset_s()`.
+5. Remove temporary `#![allow(dead_code)]` once the UI wires a module in.
+6. The session key must never appear in a log, UI string, command-log row or error.
+7. GUI long work runs off the UI thread (`std::thread::spawn` + `slint::invoke_from_event_loop`). Timers stop on close.
+8. **Slint specifics learned in SP5:**
+   - A one-way `checked:` binding detaches after a user click; use an `in-out` `<=>` chain.
+   - A later-declared `TouchArea` sits on top, so declare the card's own TouchArea first and the inner buttons after it.
+   - A child's `y:` inside a `HorizontalLayout` is ignored.
 
 ---
 
-## 5. Sub-project 5 — Command Log (what to plan + build)
+## 5. Sub-project 6 — Release (what to plan + build)
 
-**Spec reference:** the SP5 section of `docs/superpowers/specs/2026-10-04-windows-app-design.md`. **Out of scope:** release/installer/auto-update (that's SP6, the last one).
+**Spec reference:** the "Release" section of the spec (lines 248–259) plus "Registration" (lines 159–165). **Out of scope** (spec): code signing, winget/Scoop, publishing to the Chrome Web Store or Edge Add-ons, and `v20` decryption.
 
-**Port targets (macOS → Windows), all present under `apps/macos/ClaudeDashboard/`:**
-- `Services/CommandRunner.swift` — the one place commands launch. macOS runs `/bin/zsh -lc`, sources `~/.zshrc`, enforces a timeout, kills the whole process tree on timeout/cancel, captures a bounded output tail, records one row to the log. **Windows:** run the user's chosen shell with its profile; put every child in a **Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`** so cancel/timeout kills the whole tree cleanly (simpler than macOS's `ProcessTree` walk).
-- `Services/CommandClassifier.swift` + a `CommandResolver` — decides interactive vs non-interactive. macOS expands the leading token via the shell. **Windows resolver:** `Get-Command` (PowerShell) or `type` (bash). The pure classification logic should port to a tested `core` or app module.
-- `Services/TerminalLauncher.swift` — macOS uses `osascript`/Terminal. **Windows:** launch interactive commands in **Windows Terminal** (`wt.exe new-tab …`), fall back to `conhost`.
-- `Services/RunningProcessRegistry.swift`, `Services/ProcessTree.swift` — process tracking/kill. On Windows most of this collapses into the Job Object.
-- `Services/CommandLogStore.swift` + `Models/CommandLogModels.swift` — the run-log (time, account, trigger, exit code, duration, output tail), SQLite. `CommandTrigger` enum: `manual` / `autoReset` (a usage window reset detected) / `autoEmpty` (a refresh produced no 5h/7d usage). Consider a `core` store like `UsageLogStore`, or an app-local SQLite.
-- `Models/RunCommandSettings.swift` — per-account saved run command (keyed by account id) + interactive override. Lives in settings; integrate with `core::settings` or a sibling store.
-- `Services/ClaudeCodeAccountDetector.swift` — reads `~/.claude.json` `oauthAccount.emailAddress` for the active-Claude-Code account (the sort tier + card badge). **Windows:** `%USERPROFILE%\.claude.json`.
-- `Views/CommandLogView.swift`, `Views/RunCommandSheet.swift` — the log table UI and the per-account "run command" editor/runner.
-- **Shell selection** (new Settings›General control, or in the Command Log UI): PowerShell 7 if present, else Windows PowerShell; or cmd; or Git Bash — started with the user's profile so functions/aliases resolve (the macOS `source ~/.zshrc` analogue).
-- **Auto triggers:** the refresh loop already detects resets/empty; wire `autoReset`/`autoEmpty` to run the saved command (mirror macOS `DashboardViewModel.refreshAll` which calls `runner.run(..., trigger: .autoReset)`).
-- **Sidebar:** enable + route the Tools›"Command Log" row (see gotcha #1). ("Help" stays a placeholder unless the user asks — not in SP5 scope.)
+Targets:
+- **`.github/workflows/release-windows.yml`** on `windows-latest`, triggered by a release. It builds and uploads `ClaudeDashboard-x64.msi` and `claude-dashboard-extension.zip`. Mirror how the macOS release flow attaches artifacts (`scripts/release.sh`, `gh release create`); check whether the Windows job uploads to the release the macOS script creates.
+- **MSI via `cargo-wix`, per user, no admin.**
+  - It installs to `%LOCALAPPDATA%\Programs\ClaudeDashboard` (`claude-dashboard.exe` + `claude-dashboard-bridge.exe`) and adds a Start Menu shortcut.
+  - It writes the host manifest `com.claude_dashboard.bridge.json` next to the bridge and registers it under `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.claude_dashboard.bridge` (Chrome, Brave and Arc read this key) and `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\…`.
+  - `allowed_origins` lists the unpacked ID (`cadpjcfajhlgdaipepkdojcehfmkkedh`) and reserves the Store IDs. See `contract/windows.md` "Registration" for the exact manifest shape the bridge expects.
+  - Uninstall removes the registry keys.
+- **Auto-update,** like macOS `apps/macos/ClaudeDashboard/Services/UpdateService.swift`: poll GitHub `releases/latest`, compare versions, download the `.msi` asset, run `msiexec /i <msi> /passive`, relaunch. Wire it into Settings › General › Updates, which currently shows "Coming soon" (`app.slint` ~line 271). Pure logic (version compare, asset pick from the release JSON) goes in a tested module; the Linux port has `apps/linux/lib/update.js` + `tests/update.test.js` to port from.
+- **Version sync:** `scripts/sync-version.sh` and `scripts/release.sh` must also bump `apps/windows/Cargo.toml` (`[workspace.package] version`, currently `1.18.1` with a comment pointing at SP6) and `apps/windows/extension/manifest.json`. `scripts/test-sync-version.sh` must cover them.
+- **CLAUDE.md / contract:** document the release flow, the MSI layout and registry keys, and the update flow; add the Windows release steps to the "Releasing" section.
 
-**Likely task decomposition (TDD core/pure, run-check GUI):**
-1. `core` (or app) command-log store (record/read rows) — TDD.
-2. Command classifier port (pure interactive/non-interactive decision + a resolver trait) — TDD.
-3. Windows command runner: Job Object run with timeout/cancel/bounded output (the Job Object + process spawn is the risky bit; test what's testable — exit code, output tail, timeout — against a trivial command like `cmd /c echo`).
-4. Terminal launcher (wt.exe/conhost) + shell selection — small, mostly build-verified.
-5. Active-Claude-Code account detector (`%USERPROFILE%\.claude.json`) — TDD the JSON parse.
-6. Command Log UI (log table) + RunCommand editor/runner + wire the Tools sidebar + auto-trigger hookup — GUI run-check.
-7. CI/docs/contract.
+**Likely task decomposition:**
+1. Version sync (scripts + test-sync-version), TDD via the shell test.
+2. Update-check pure logic (version compare, asset selection) in a tested module (core or app).
+3. Update apply (download + `msiexec /passive` + relaunch) + the Settings › General › Updates UI (GUI run-check).
+4. WiX/`cargo-wix` config: files, per-user install dir, Start Menu shortcut, native-messaging manifest + HKCU keys, uninstall cleanup. Verified with a local `cargo wix` build plus an install/uninstall check on this machine (ask the user before running an installer, since it is a side effect outside the repo).
+5. Extension zip packaging.
+6. `release-windows.yml`.
+7. Docs, contract, CLAUDE.md.
 
-**Review-Focus candidates:** cancel/timeout kills the whole child tree (Job Object), not just the parent; a classifier that misreads an interactive program doesn't hang a non-interactive run; the saved-command store is keyed by account id and survives delete/re-add; auto-trigger fires at most once per detected reset (no loops); the run never blocks the UI thread; the command/output is captured bounded (no unbounded memory).
+**Review-Focus candidates:**
+- The MSI installs without admin rights, and an upgrade over an older version keeps the user's data (`%APPDATA%` / `%LOCALAPPDATA%\claude-dashboard` is never touched by the installer).
+- Uninstall leaves no dangling native-messaging keys.
+- Auto-update never downgrades, ignores pre-releases and drafts, and handles a missing `.msi` asset or offline gracefully.
+- The running app is closed or handled correctly when `msiexec` replaces its exe; the single-instance mutex must not block the relaunch.
+- Version strings stay in sync across `VERSION`, the Cargo workspace and the extension manifest.
 
 ---
 
 ## 6. First actions for the next session
 
-1. Reply in Vietnamese. Confirm the user still wants SP5 now vs. verifying SP1–SP4 on CI first (recommend CI first — see §1 caveats).
-2. If proceeding: invoke `superpowers:writing-plans`, write `docs/superpowers/plans/2026-10-05-windows-command-log.md`, present for approval (`git add -f` to commit it).
-3. On approval: `superpowers:subagent-driven-development`, set up the ledger, run the task loop per §2 with the §4 gotchas front-of-mind (especially the sidebar read-back).
-4. Keep the user's standing recommendation visible: this branch needs a CI run + an interactive GUI run-check before merge; `finishing-a-development-branch` triages the deferred-minor backlog.
+1. Reply in Vietnamese. Ask the user for the CI result of the SP5 push (no `gh` here). If anything is red, fix that first.
+2. Offer the owed GUI run-checks (§1), since the user has to click through them.
+3. Invoke `superpowers:writing-plans`, write the SP6 plan, present it for approval, and commit it with `git add -f`.
+4. On approval, run `superpowers:subagent-driven-development` per §2, reusing the SP5 contract files.
+5. After SP6, run `superpowers:finishing-a-development-branch`: triage every ledger's deferred minors, then present the merge/PR options. The user decides.
