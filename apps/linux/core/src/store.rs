@@ -142,6 +142,12 @@ pub fn usage_log_path() -> PathBuf {
     data_dir().join("claude-dashboard").join("usage_logs.db")
 }
 
+/// `<data dir>/claude-dashboard/command_logs.db` — the run log, a separate
+/// file from the usage log (no shared schema, as on macOS).
+pub fn command_log_path() -> PathBuf {
+    data_dir().join("claude-dashboard").join("command_logs.db")
+}
+
 /// Loads the accounts array. A missing file is not an error — it means no
 /// accounts have been saved yet, so this returns an empty `Vec`.
 pub fn load_accounts() -> Result<Vec<Account>, StoreError> {
