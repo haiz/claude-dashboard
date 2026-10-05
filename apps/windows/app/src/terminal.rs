@@ -1,5 +1,4 @@
 //! Interactive terminal launch (Windows Terminal, else conhost).
-#![allow(dead_code)]
 
 use crate::shell::{Invocation, ShellKind, ShellSpec};
 use std::path::{Path, PathBuf};

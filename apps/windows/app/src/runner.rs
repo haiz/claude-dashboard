@@ -1,8 +1,6 @@
 //! Job Object command runner: spawn suspended, assign to a KILL_ON_JOB_CLOSE job,
 //! resume. Timeout and cancel kill the whole tree; closing the job after the shell
 //! exits ends background leftovers so the output pipes always reach EOF.
-// Unused by the binary until Task 8 wires it in; Task 8 removes this.
-#![allow(dead_code)]
 
 use std::io::Read;
 use std::os::windows::io::AsRawHandle;
@@ -36,6 +34,7 @@ impl CancelToken {
     pub fn new() -> Self {
         Self::default()
     }
+    #[allow(dead_code)] // used by run_command.rs (Task 10)
     pub fn cancel(&self) {
         self.0.store(true, Ordering::SeqCst);
     }

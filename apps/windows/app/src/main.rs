@@ -3,6 +3,7 @@ use slint::ComponentHandle;
 
 mod chart;
 mod chart_model;
+mod commands;
 mod overview;
 mod instance;
 mod model;
