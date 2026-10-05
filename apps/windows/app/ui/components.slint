@@ -153,6 +153,7 @@ component WindowColumn inherits VerticalLayout {
 export component AccountCard inherits Rectangle {
     in property <UiRow> data;
     callback clicked();
+    callback run-command();
     background: Theme.card-bg;
     border-radius: 8px;
     border-width: 1px;
@@ -225,6 +226,28 @@ export component AccountCard inherits Rectangle {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
+
+    // Terminal glyph, top-right; declared after the card's TouchArea so it wins the click.
+    Rectangle {
+        x: parent.width - self.width - 8px;
+        y: 8px;
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        background: run-touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent;
+        Text {
+            text: "\u{E756}";
+            font-family: "Segoe Fluent Icons";
+            font-size: 14px;
+            color: Theme.accent;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        run-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.run-command(); }
+        }
+    }
 }
 
 component BigGauge inherits VerticalLayout {
@@ -296,6 +319,7 @@ export component AccountPane inherits VerticalLayout {
     // Re-sync refreshes all accounts (one shared refresh nudge).
     callback resync();
     callback view-chart();
+    callback run-command();
     spacing: 18px;
     alignment: start;
 
@@ -375,7 +399,7 @@ export component AccountPane inherits VerticalLayout {
         alignment: start;
         ActionButton { label: "Re-sync"; clicked => { root.resync(); } }
         ActionButton { label: "View chart"; clicked => { root.view-chart(); } }
-        ActionButton { label: "Command Log"; enabled: false; }
+        ActionButton { label: "Run Command"; clicked => { root.run-command(); } }
     }
     Text {
         text: root.data.staleness;

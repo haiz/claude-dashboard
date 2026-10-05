@@ -4,6 +4,7 @@ import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
 import { ChartPanel, OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem } from "chart.slint";
 import { CommandLogPane, UiLogEntry } from "command_log.slint";
+import { RunCommandPanel } from "run_command.slint";
 export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, UiLogEntry, ChartState, ChartTick, ChartLine, ChartLegendItem }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
@@ -289,6 +290,17 @@ export component AppWindow inherits Window {
     in property <[UiLogEntry]> command-log;
     callback command-log-open();
     callback command-log-clear();
+    in-out property <bool> run-open: false;
+    in property <string> run-account-name;
+    in-out property <string> run-command-text;
+    in property <bool> run-in-terminal;
+    in property <bool> run-running;
+    in property <[string]> run-lines;
+    callback open-run-command(string);
+    callback run-command-edited(string);
+    callback run-terminal-toggled(bool);
+    callback run-command-start();
+    callback run-command-cancel();
     changed selection => {
         root.chart-open = false;
         root.chart-close();
@@ -411,6 +423,7 @@ export component AppWindow inherits Window {
                         root.chart-open = true;
                         root.view-chart(acct.id);
                     }
+                    run-command => { root.open-run-command(acct.id); }
                 }
             }
             if root.selection == Pane.dashboard && root.account-rows.length == 0: EmptyState {
@@ -439,6 +452,7 @@ export component AppWindow inherits Window {
                         root.selected-account-id = acct.id;
                         root.selection = Pane.account;
                     }
+                    run-command => { root.open-run-command(acct.id); }
                 }
             }
             if root.selection == Pane.overview: OverviewPane {
@@ -493,6 +507,19 @@ export component AppWindow inherits Window {
         hover(x, y) => { root.chart-hover(x, y); }
         select(a, b) => { root.chart-select(a, b); }
         reset => { root.chart-reset(); }
+    }
+
+    if root.run-open: RunCommandPanel {
+        width: parent.width; height: parent.height;
+        account-name: root.run-account-name;
+        command <=> root.run-command-text;
+        open-in-terminal: root.run-in-terminal;
+        running: root.run-running;
+        lines: root.run-lines;
+        edited(t) => { root.run-command-edited(t); }
+        toggle-terminal(on) => { root.run-terminal-toggled(on); }
+        run => { root.run-command-start(); }
+        cancel => { root.run-command-cancel(); }
     }
 }
 

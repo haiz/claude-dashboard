@@ -14,6 +14,7 @@ mod refresh;
 mod settings_accounts;
 mod settings_general;
 mod setup;
+mod run_command;
 mod runner;
 mod shell;
 #[cfg(test)]
@@ -317,6 +318,7 @@ fn main() -> Result<(), slint::PlatformError> {
     chart::install(&app);
     log_view::install(&app);
     overview::install(&app);
+    run_command::install(&app, nudge_tx.clone());
     app.on_resync(move || {
         let _ = nudge_tx.send(());
     });

@@ -16,6 +16,9 @@ pub fn delete_account(account_id: &str) -> Result<Option<String>, String> {
         return Ok(None);
     }
     store::save_accounts(&accounts).map_err(|e| e.to_string())?;
+    if let Err(e) = claude_dashboard_core::run_commands::remove(account_id) {
+        eprintln!("drop run command failed: {e}");
+    }
 
     let path = extension_sources::sources_path();
     let mut sources = extension_sources::load(&path)?;
@@ -60,6 +63,21 @@ mod tests {
             r#"{{"id":"{id}","name":"n","chromeProfilePath":"","plan":"Pro","status":"active"}}"#
         ))
         .unwrap()
+    }
+
+    #[test]
+    fn delete_drops_the_saved_run_command() {
+        let _env = crate::testenv::lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("APPDATA", dir.path());
+        std::env::set_var("LOCALAPPDATA", dir.path());
+        store::save_accounts(&[account("a"), account("b")]).unwrap();
+        use claude_dashboard_core::run_commands::{get, set, RunCommand};
+        set("a", &RunCommand { command: "ccbf".into(), open_in_terminal: false }).unwrap();
+        set("b", &RunCommand { command: "echo".into(), open_in_terminal: false }).unwrap();
+        delete_account("a").unwrap();
+        assert!(get("a").is_none());
+        assert!(get("b").is_some(), "other account untouched");
     }
 
     #[test]

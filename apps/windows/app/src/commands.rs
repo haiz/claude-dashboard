@@ -9,7 +9,6 @@ use claude_dashboard_core::command_log::{CommandLogStore, CommandStatus, Command
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[allow(dead_code)] // used by execute (Task 10)
 pub const RUN_TIMEOUT: Duration = Duration::from_secs(60);
 pub const RESOLVE_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -33,7 +32,6 @@ fn record(e: &NewEntry) {
 }
 
 /// Run `command` hidden, record one log row, and return the outcome.
-#[allow(dead_code)] // used by run_command.rs / refresh auto-run (Tasks 9-10)
 pub fn execute(
     command: &str,
     account_id: Option<&str>,
@@ -74,7 +72,6 @@ pub fn execute(
 }
 
 /// Open `command` in a visible terminal and record the handoff.
-#[allow(dead_code)] // used by run_command.rs (Task 10)
 pub fn launch_in_terminal(
     command: &str,
     account_id: Option<&str>,
@@ -113,7 +110,6 @@ pub fn launch_in_terminal(
 
 /// Classify by expanding the leading token through the shell (alias/function
 /// bodies), then applying the shared classifier. The resolver run is not logged.
-#[allow(dead_code)] // used by run_command.rs (Task 10)
 pub fn classify(command: &str, shell: Option<&ShellSpec>) -> CommandKind {
     let expanded = match (resolvable_token(command), shell) {
         (Some(tok), Some(spec)) => {

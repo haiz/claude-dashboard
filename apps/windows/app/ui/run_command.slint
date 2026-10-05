@@ -1,0 +1,88 @@
+import { LineEdit, CheckBox } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+component RunButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> primary: false;
+    callback clicked();
+    height: 30px;
+    width: t.preferred-width + 28px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: root.primary ? Theme.accent : Theme.card-border;
+    background: root.primary ? (touch.has-hover && root.enabled ? Theme.accent.with-alpha(0.85) : Theme.accent)
+        : (touch.has-hover ? Theme.accent.with-alpha(0.15) : Theme.card-bg);
+    opacity: root.enabled ? 1.0 : 0.45;
+    t := Text {
+        text: root.label;
+        color: root.primary ? #ffffff : Theme.accent;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+// Modal Run Command overlay (macOS RunCommandSheet).
+export component RunCommandPanel inherits Rectangle {
+    in property <string> account-name;
+    in-out property <string> command;
+    in property <bool> open-in-terminal;
+    in property <bool> running;
+    in property <[string]> lines;
+    callback edited(string);
+    callback toggle-terminal(bool);
+    callback run();
+    callback cancel();
+
+    background: #00000066;
+    TouchArea { }
+
+    Rectangle {
+        width: 420px;
+        height: col.preferred-height + 40px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Theme.card-bg;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: Theme.card-border;
+
+        col := VerticalLayout {
+            padding: 20px;
+            spacing: 12px;
+            Text { text: "Run Command"; color: Theme.text-primary; font-size: 16px; font-weight: 600; }
+            Text { text: root.account-name; color: Theme.text-secondary; font-size: 12px; overflow: elide; }
+            le := LineEdit {
+                text <=> root.command;
+                placeholder-text: "Command";
+                edited(t) => { root.edited(t); }
+                accepted => { if root.command != "" && !root.running { root.run(); } }
+                init => { le.focus(); }
+            }
+            CheckBox {
+                text: "Open in Terminal";
+                checked: root.open-in-terminal;
+                toggled => { root.toggle-terminal(self.checked); }
+            }
+            for line in root.lines: Text {
+                text: line;
+                font-family: "Consolas";
+                font-size: 11px;
+                color: Theme.text-secondary;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                RunButton { label: "Cancel"; clicked => { root.cancel(); } }
+                RunButton {
+                    primary: true;
+                    label: root.running ? "Running…" : "Run";
+                    enabled: root.command != "" && !root.running;
+                    clicked => { root.run(); }
+                }
+            }
+        }
+    }
+}

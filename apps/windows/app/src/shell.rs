@@ -138,7 +138,6 @@ fn real_exists(p: &Path) -> bool {
     p.is_file()
 }
 
-#[allow(dead_code)] // used by run_command.rs (Task 10)
 pub fn detect(setting: Option<&str>) -> Option<ShellSpec> {
     resolve(setting, &Probe { env: &real_env, exists: &real_exists })
 }

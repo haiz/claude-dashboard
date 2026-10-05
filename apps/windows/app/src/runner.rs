@@ -34,7 +34,6 @@ impl CancelToken {
     pub fn new() -> Self {
         Self::default()
     }
-    #[allow(dead_code)] // used by run_command.rs (Task 10)
     pub fn cancel(&self) {
         self.0.store(true, Ordering::SeqCst);
     }
