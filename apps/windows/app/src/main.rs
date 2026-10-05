@@ -6,6 +6,7 @@ mod chart_model;
 mod commands;
 mod overview;
 mod instance;
+mod log_view;
 mod model;
 mod pipe;
 mod popover;
@@ -314,6 +315,7 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     // Re-sync button: same nudge the reload pipe sends (refreshes all accounts).
     chart::install(&app);
+    log_view::install(&app);
     overview::install(&app);
     app.on_resync(move || {
         let _ = nudge_tx.send(());

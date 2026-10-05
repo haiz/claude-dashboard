@@ -3,7 +3,8 @@ import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "compon
 import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
 import { ChartPanel, OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem } from "chart.slint";
-export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem }
+import { CommandLogPane, UiLogEntry } from "command_log.slint";
+export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, UiLogEntry, ChartState, ChartTick, ChartLine, ChartLegendItem }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
 export enum Pane { dashboard, overview, account, command-log, help, settings-accounts, general }
@@ -285,10 +286,14 @@ export component AppWindow inherits Window {
     callback overview-hover(float, float);
     callback overview-select(float, float);
     callback overview-reset();
+    in property <[UiLogEntry]> command-log;
+    callback command-log-open();
+    callback command-log-clear();
     changed selection => {
         root.chart-open = false;
         root.chart-close();
         if root.selection == Pane.overview { root.overview-open(); } else { root.overview-close(); }
+        if root.selection == Pane.command-log { root.command-log-open(); }
     }
     changed selected-account-id => { root.chart-open = false; root.chart-close(); }
 
@@ -356,7 +361,9 @@ export component AppWindow inherits Window {
                     GroupHeader { text: "Tools"; }
                     SidebarRow {
                         label: "Command Log"; glyph: "\u{E756}"; tile: #5e5ce6;
-                        text-color: Theme.text-primary; enabled: false;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.command-log;
+                        clicked => { root.selection = Pane.command-log; }
                     }
                     SidebarRow {
                         label: "Help"; glyph: "\u{E897}"; tile: #30d158;
@@ -410,7 +417,7 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
                 add-account => { root.add-account(); }
             }
-            if root.selection != Pane.account && root.selection != Pane.dashboard && root.selection != Pane.overview && root.selection != Pane.settings-accounts && root.selection != Pane.general: Text {
+            if root.selection != Pane.account && root.selection != Pane.dashboard && root.selection != Pane.overview && root.selection != Pane.settings-accounts && root.selection != Pane.general && root.selection != Pane.command-log: Text {
                 text: "Coming soon.";
                 color: Theme.text-secondary;
             }
@@ -462,6 +469,12 @@ export component AppWindow inherits Window {
                 launch-at-startup: root.launch-at-startup;
                 set-auto-refresh(s) => { root.set-auto-refresh(s); }
                 set-launch-at-startup(on) => { root.set-launch-at-startup(on); }
+            }
+            if root.selection == Pane.command-log: CommandLogPane {
+                vertical-stretch: 1;
+                entries: root.command-log;
+                reload => { root.command-log-open(); }
+                clear => { root.command-log-clear(); }
             }
             if root.selection != Pane.dashboard: Rectangle { }
         }
