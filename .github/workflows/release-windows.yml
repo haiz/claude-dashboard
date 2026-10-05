@@ -41,6 +41,17 @@ jobs:
           ref: ${{ steps.resolve.outputs.tag }}
           persist-credentials: false
 
+      - name: Verify version
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          $ver = (Get-Content VERSION).Trim()
+          if ($env:TAG -ne "v$ver") { throw "Tag $env:TAG does not match VERSION v$ver" }
+          $line = Select-String -Path apps/windows/Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1
+          if (-not $line) { throw "No version line found in apps/windows/Cargo.toml" }
+          $cargo = $line.Matches[0].Groups[1].Value
+          if ($cargo -ne $ver) { throw "apps/windows/Cargo.toml version $cargo does not match VERSION $ver" }
+
       - name: Install pinned toolchain
         run: cd apps/windows; rustup toolchain install --no-self-update
 

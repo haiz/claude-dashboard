@@ -254,9 +254,22 @@ fn post_update_state(weak: &slint::Weak<AppWindow>, state: updater::UpdateState)
     });
 }
 
+/// Process-wide claim on the download+install pipeline: the manual Install
+/// button and the background auto-update must never run two at once (two
+/// concurrent msiexec would fail with error 1618).
+static UPDATE_IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Worker: download, hand off to the relauncher, then quit. Any failure is shown.
+/// A second claimant does nothing; the claim is released on failure (on success the app quits).
 fn download_and_apply(weak: &slint::Weak<AppWindow>, info: &claude_dashboard_core::update::UpdateInfo, exe: &std::path::Path) {
+    use std::sync::atomic::Ordering;
     use updater::UpdateState as S;
+    if UPDATE_IN_FLIGHT
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
     post_update_state(weak, S::Downloading);
     let result = updater::download(info, settings_general::APP_VERSION).and_then(|msi| {
         post_update_state(weak, S::Installing);
@@ -268,7 +281,10 @@ fn download_and_apply(weak: &slint::Weak<AppWindow>, info: &claude_dashboard_cor
                 let _ = slint::quit_event_loop();
             });
         }
-        Err(m) => post_update_state(weak, S::Failed(m)),
+        Err(m) => {
+            UPDATE_IN_FLIGHT.store(false, Ordering::Release);
+            post_update_state(weak, S::Failed(m));
+        }
     }
 }
 
@@ -278,6 +294,7 @@ fn install_updates(app: &AppWindow) {
     let exe = std::env::current_exe().unwrap_or_default();
     let local_appdata = std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default());
     let installed = updater::is_installed_copy(&exe, &local_appdata);
+    eprintln!("updater: installed copy = {installed}");
 
     show_update_state(app, if installed { S::Idle } else { S::DevBuild(None) });
     let w = app.as_weak();
@@ -314,6 +331,11 @@ fn install_updates(app: &AppWindow) {
         let S::Available(info) = state else { return };
         if !installed {
             return;
+        }
+        // Clear can-install right now, on the UI thread, so a double click
+        // cannot reach this handler twice with the state still Available.
+        if let Some(a) = w.upgrade() {
+            show_update_state(&a, S::Downloading);
         }
         let (w, exe) = (w.clone(), exe_i.clone());
         std::thread::spawn(move || download_and_apply(&w, &info, &exe));
@@ -359,8 +381,23 @@ fn install_updates(app: &AppWindow) {
             }
             match updater::check(settings_general::APP_VERSION) {
                 Ok(Some(i)) => download_and_apply(&w, &i, &exe),
-                Ok(None) => post_update_state(&w, S::UpToDate),
-                Err(e) => eprintln!("auto update check failed: {e}"),
+                Ok(None) => {
+                    // Never overwrite a Downloading/Installing state.
+                    if !UPDATE_IN_FLIGHT.load(std::sync::atomic::Ordering::Acquire) {
+                        post_update_state(&w, S::UpToDate);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("auto update check failed: {e}");
+                    // The release exists but its MSI isn't uploaded yet: retry hourly.
+                    if let Some(t) = updater::restamp_after(&e, now) {
+                        if let Err(e) = claude_dashboard_core::settings::update(|s| {
+                            s.last_auto_update_check_unix = Some(t)
+                        }) {
+                            eprintln!("restamp update check failed: {e}");
+                        }
+                    }
+                }
             }
         }
         std::thread::sleep(std::time::Duration::from_secs(3600));

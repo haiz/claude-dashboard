@@ -69,12 +69,14 @@ pub fn relaunch_script(pid: u32, msi: &Path, exe: &Path) -> String {
     // MSI path carries its own double quotes.
     let msi_arg = ps_quote(&format!("\"{}\"", msi.display()));
     let exe_arg = ps_quote(&exe.display().to_string());
+    let msi_plain = ps_quote(&msi.display().to_string());
     [
         "$ErrorActionPreference = 'SilentlyContinue'".to_string(),
         format!("Wait-Process -Id {pid} -Timeout 30"),
         format!(
             "Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', {msi_arg}, '/passive', '/norestart') -Wait"
         ),
+        format!("Remove-Item -LiteralPath {msi_plain} -Force"),
         format!("Start-Process -FilePath {exe_arg}"),
     ]
     .join("; ")
@@ -173,6 +175,13 @@ pub fn check(current_version: &str) -> Result<Option<UpdateInfo>, String> {
     parse_release(&json, current_version, MSI_ASSET).map_err(|e| e.to_string())
 }
 
+/// When the check fails because the release's MSI isn't uploaded yet, the
+/// `last_auto_update_check_unix` stamp to write so the next hourly tick retries.
+pub fn restamp_after(err_msg: &str, now: f64) -> Option<f64> {
+    use claude_dashboard_core::update::{UpdateError, CHECK_INTERVAL_S};
+    (err_msg == UpdateError::AssetNotFound.to_string()).then_some(now - CHECK_INTERVAL_S + 3600.0)
+}
+
 pub fn status_text(state: &UpdateState, current: &str) -> String {
     match state {
         UpdateState::Idle => format!("Version {current}"),
@@ -245,6 +254,39 @@ mod tests {
         );
         assert!(s.contains("'C:\\Users\\O\u{2019}\u{2019}B\\claude-dashboard.exe'"), "{s}");
         assert!(s.contains("\"C:\\Users\\O\u{2019}\u{2019}B\\x.msi\""), "{s}");
+    }
+
+    #[test]
+    fn relaunch_script_deletes_msi_between_msiexec_and_relaunch() {
+        let s = relaunch_script(
+            7,
+            Path::new(r"C:\Users\O'Brien\Temp\u.msi"),
+            Path::new(r"C:\Users\O'Brien\claude-dashboard.exe"),
+        );
+        let rm = s.find(r"Remove-Item -LiteralPath 'C:\Users\O''Brien\Temp\u.msi' -Force").expect(&s);
+        assert!(s.find("msiexec").unwrap() < rm, "{s}");
+        assert!(rm < s.rfind("Start-Process").unwrap(), "{s}");
+    }
+
+    #[test]
+    fn restamp_only_for_missing_asset() {
+        let missing = claude_dashboard_core::update::UpdateError::AssetNotFound.to_string();
+        let now = 1_000_000.0;
+        let want = now - claude_dashboard_core::update::CHECK_INTERVAL_S + 3600.0;
+        assert_eq!(restamp_after(&missing, now), Some(want));
+        assert_eq!(restamp_after("network down", now), None);
+    }
+
+    /// Manual end-to-end check: `CD_E2E_MSI=... CD_E2E_EXE=... cargo test -- --ignored e2e_apply_relaunch`.
+    /// Returning lets the test process exit so the relauncher proceeds.
+    #[test]
+    #[ignore]
+    fn e2e_apply_relaunch() {
+        let (Ok(msi), Ok(exe)) = (std::env::var("CD_E2E_MSI"), std::env::var("CD_E2E_EXE")) else {
+            eprintln!("CD_E2E_MSI / CD_E2E_EXE not set; skipping");
+            return;
+        };
+        assert_eq!(apply(Path::new(&msi), Path::new(&exe)), Ok(()));
     }
 
     #[test]

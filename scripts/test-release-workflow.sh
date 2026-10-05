@@ -118,6 +118,13 @@ check_windows() {
     grep -qF '.build/claude-dashboard-extension.zip' "$STRIPPED" || fail "windows: upload does not name the exact extension zip path"
     grep -q '6AC824E1642D6F7277D0ED7EA09411A508F6116BA6FAE0AA5F2C7DAA2FF43D31' "$STRIPPED" || fail "windows: WiX download is not pinned by SHA-256"
     grep -q 'cargo install cargo-wix --locked --version 0.3.9' "$STRIPPED" || fail "windows: cargo-wix not pinned"
+    grep -qE 'cargo clippy .*--locked' "$STRIPPED" || fail "windows: the clippy line lacks --locked"
+    grep -qE 'cargo test .*--locked' "$STRIPPED" || fail "windows: the test line lacks --locked"
+    # The tag/VERSION/Cargo.toml agreement gate (the tag must reach it via env:).
+    grep -q 'name: Verify version' "$STRIPPED" || fail "windows: no 'Verify version' step"
+    grep -qF 'Get-Content VERSION' "$STRIPPED" || fail "windows: Verify version does not read VERSION"
+    grep -qF 'apps/windows/Cargo.toml' "$STRIPPED" || fail "windows: Verify version does not check apps/windows/Cargo.toml"
+    grep -q 'throw' "$STRIPPED" || fail "windows: Verify version never throws on a mismatch"
 }
 
 check_common .github/workflows/release-linux.yml

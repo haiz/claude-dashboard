@@ -23,6 +23,7 @@
     </Directory>
 
     <DirectoryRef Id="INSTALLDIR">
+      <!-- Fixed GUID — never change it, and never add/remove resources in this component; ship a new file in a NEW component with its own GUID (MSI component rules). -->
       <Component Id="AppFiles" Guid="6E1A2C54-9B3D-4F0A-8C71-2D5E7A9B1C03" Win64="yes">
         <File Id="AppExe" Source="$(var.CargoTargetBinDir)\claude-dashboard.exe" />
         <File Id="BridgeExe" Source="$(var.CargoTargetBinDir)\claude-dashboard-bridge.exe" />
@@ -33,6 +34,7 @@
         <RemoveFolder Id="RemoveInstallDir" Directory="INSTALLDIR" On="uninstall" />
         <RemoveFolder Id="RemoveProgramsDir" Directory="ProgramsDir" On="uninstall" />
       </Component>
+      <!-- Fixed GUID — never change it, and never add/remove resources in this component; ship a new file in a NEW component with its own GUID (MSI component rules). -->
       <Component Id="NativeMessagingHost" Guid="A47D90E2-5C18-4B6F-9E3A-7F1B2D4C8E65" Win64="yes">
         <RegistryValue Root="HKCU" Key="Software\Google\Chrome\NativeMessagingHosts\com.claude_dashboard.bridge"
                        Type="string" Value="[INSTALLDIR]com.claude_dashboard.bridge.json" KeyPath="yes" />
