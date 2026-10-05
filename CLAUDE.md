@@ -38,6 +38,10 @@ cd apps/windows && cargo test --workspace
 cd apps/windows/extension && node --test
 # Windows: run the Slint app (CLAUDE_DASHBOARD_FAKE_ROWS=1 seeds sample cards, no network)
 cd apps/windows && cargo run -p claude-dashboard
+# Windows: build the per-user MSI (needs WiX 3.14 + cargo-wix 0.3.9; output apps/windows/target/wix/)
+powershell -File apps/windows/scripts/build-msi.ps1
+# Windows: check the extension zip packer
+powershell -File apps/windows/scripts/test-pack-extension.ps1
 ```
 
 No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Security, CommonCrypto, SQLite3).
@@ -116,7 +120,13 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
     Terminal toggle, classifier-driven default), auto-run on reset (hidden, once per episode), the
     shell picker (Settings > General > Commands), the green Claude Code badge, and the Help pane
     (`log_view.rs`, `run_command.rs`); the sidebar "Coming soon" placeholder is gone. See
-    `contract/windows.md`, "Command Log".
+    `contract/windows.md`, "Command Log". Sub-project 6 adds release: a per-user MSI
+    (`app/wix/main.wxs`, built by `scripts/build-msi.ps1`; relative-path host manifest, fixed
+    UpgradeCode and component GUIDs, uninstall keeps user data), the extension zip
+    (`scripts/pack-extension.ps1`), auto-update (`app/src/updater.rs` for guards, MSI download
+    checks and the detached relauncher, over `core::update` and the `autoUpdate` /
+    `lastAutoUpdateCheck` settings; installed copy only, `DISABLE_AUTOUPDATER=1` disables) and
+    the `release-windows.yml` workflow. See `contract/windows.md`, "Installer", "Updates", "Release".
   - **apps/windows/bridge/** — `claude-dashboard-bridge.exe`, a native-messaging host for the
     browser extension. `handler.rs` runs the key intake over an injected `Environment` trait
     (so tests touch no network/store/pipe); `real_env.rs` is the production wiring; `framing.rs`
@@ -202,5 +212,7 @@ If no `--notes` flag is passed, the script falls back to GitHub's auto-generated
    - `claude-dashboard-cli.tar.gz` (must contain both `claude-dashboard-cli` AND `claude-dashboard-helper`)
 4. Update `sha256` in `Formula/claude-dashboard-cli.rb` and `Casks/claude-dashboard.rb`.
 5. Commit, tag, push, `gh release create` with both artifacts.
+
+After `release.sh` publishes, `.github/workflows/release-windows.yml` builds and attaches `ClaudeDashboard-x64.msi` and `claude-dashboard-extension.zip`; if it fails, re-run it by hand with `workflow_dispatch` and the tag. `scripts/test-release-workflow.sh` enforces its upload-only guardrails.
 
 Validate version sync at any time with `./scripts/test-sync-version.sh`.

@@ -79,9 +79,13 @@ bind the install, save sources → after the lock: notify the app.
 
 ## Registration
 
-The host manifest (`com.claude_dashboard.bridge.json`) is written next to the
-bridge exe with an absolute `path`, and registered under the per-user key each
-browser reads:
+The host manifest (`com.claude_dashboard.bridge.json`) sits next to the bridge
+exe and is registered under the per-user key each browser reads. The MSI ships
+a static manifest (`apps/windows/app/wix/com.claude_dashboard.bridge.json`)
+whose `path` is the relative `claude-dashboard-bridge.exe`; Chromium resolves a
+relative `path` against the manifest's directory on Windows. It registers the
+same two HKCU keys, each defaulting to the installed manifest's absolute path
+(`[INSTALLDIR]com.claude_dashboard.bridge.json`):
 
 - `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.claude_dashboard.bridge`
   (Chrome, Brave, Arc)
@@ -91,7 +95,8 @@ browser reads:
 `allowed_origins` lists the extension's fixed id
 (`chrome-extension://cadpjcfajhlgdaipepkdojcehfmkkedh/`), which is fixed by the
 `key` field in the extension manifest. `apps/windows/scripts/register-dev-host.ps1`
-does this for local development.
+is for dev builds only: it writes a manifest with an absolute `path` and the same
+registry keys.
 
 ## extension-sources.json
 
@@ -233,6 +238,111 @@ Git Bash `-l -i -c "<command>\nexec bash -l -i"`.
 matched exactly against each account's email. A match shows the green dot
 (Claude Code badge). It adds a sort tier after pinned accounts and before burn
 rate, applied only when no account is pinned; the badge shows regardless.
+
+## Installer
+
+`apps/windows/scripts/build-msi.ps1` builds the release workspace, then runs
+`cargo wix` (WiX 3.14, `apps/windows/app/wix/main.wxs`) to produce
+`apps/windows/target/wix/ClaudeDashboard-x64.msi`. The version comes from the
+Cargo workspace version, which `scripts/sync-version.sh` keeps equal to `/VERSION`.
+
+- **Scope:** per user, x64 (`InstallScope="perUser"`, `InstallPrivileges="limited"`);
+  no admin prompt. Everything lives under the user's profile and HKCU.
+- **Install dir:** `%LOCALAPPDATA%\Programs\ClaudeDashboard\`, holding
+  `claude-dashboard.exe`, `claude-dashboard-bridge.exe` and
+  `com.claude_dashboard.bridge.json`.
+- **Registry:** the two native-messaging keys from "Registration", plus the
+  marker values `HKCU\Software\ClaudeDashboard` `Installed` and `StartMenuShortcut`.
+- **Start Menu:** a per-user shortcut "Claude Dashboard" targeting the installed exe.
+- **UpgradeCode** `173B2BBC-0CBB-472C-B3BF-E88EE21C4D58`, fixed forever. The two
+  component GUIDs (`AppFiles`, `NativeMessagingHost`) are fixed too and must
+  never change, or upgrades orphan files and keys.
+- **Upgrade:** `MajorUpgrade` (scheduled after `InstallInitialize`) replaces the
+  old version in place. A downgrade is refused with "A newer version of Claude
+  Dashboard is already installed."
+- **Uninstall:** removes the files, the install and Programs directories (when
+  empty), the Start Menu shortcut, both native-messaging keys and the
+  `ClaudeDashboard` value under `HKCU\...\CurrentVersion\Run` (the app's Launch at
+  startup). The `Run` value is dropped by a deferred `reg.exe delete` custom
+  action, conditioned on `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE` so an upgrade
+  keeps the setting, and `Return="ignore"` because the value may be absent.
+- **User data is never touched:** the installer does not reference
+  `%APPDATA%\claude-dashboard` or `%LOCALAPPDATA%\claude-dashboard`, so accounts,
+  settings and logs survive both upgrade and uninstall.
+- **Artifacts:** `ClaudeDashboard-x64.msi` and `claude-dashboard-extension.zip`.
+  The zip is built by `apps/windows/scripts/pack-extension.ps1` with .NET
+  `ZipArchive`, using `/` entry names and an allowlist of seven files
+  (`manifest.json`, `background.js`, `popup.html`, `popup.js`, `lib/extension-id.js`,
+  `lib/status.js`, `lib/sync.js`), so a local `extension-private.pem` can never be
+  packed. `test-pack-extension.ps1` checks it.
+
+## Updates
+
+Release checks and decisions live in `core::update` (shared with Linux); the
+download and install live in the app (`apps/windows/app/src/updater.rs`).
+
+- **Endpoint:** `GET https://api.github.com/repos/haiz/claude-dashboard/releases/latest`
+  with `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`
+  and `User-Agent: claude-dashboard/<version>`; 20 s timeout. A non-200 or
+  transport failure is an error.
+- **Version:** the tag is `vX.Y.Z`; one leading `v` is stripped. `is_newer`
+  compares dot-separated components numerically (missing component = 0,
+  non-numeric components dropped), so `1.18.10 > 1.18.9` and an equal or lower
+  version is never offered.
+- **Ignored:** a `draft` or `prerelease` release yields no update.
+- **Asset:** the release must carry `ClaudeDashboard-x64.msi`; a newer release
+  without it is an error ("The release has no Windows installer.").
+- **Schedule:** the background loop wakes hourly and checks when the last check
+  is at least 24 h old (`CHECK_INTERVAL_S` = 86400), never checked, or the clock
+  moved backwards. The stamp is written before the request.
+- **Settings:** `settings.json` keys `autoUpdate` (bool, default `true`) and
+  `lastAutoUpdateCheck` (Unix seconds, omitted until the first check).
+- **Installed copy only:** auto-update runs only when the exe is
+  `%LOCALAPPDATA%\Programs\ClaudeDashboard\claude-dashboard.exe` (compared
+  case-insensitively, `/` read as `\`). A dev build may check but shows
+  "Development build — install the MSI to update" and never downloads or runs
+  `msiexec`. Auto-update also requires `autoUpdate` on and `DISABLE_AUTOUPDATER`
+  not equal to `1`. The loop does not run under `CLAUDE_DASHBOARD_SMOKE` or
+  `CLAUDE_DASHBOARD_FAKE_ROWS`.
+- **Auto vs manual:** when the daily check finds a newer release the app
+  downloads it, starts the relauncher and quits. Settings > General > Updates
+  "Check for Updates" only reports the result and offers an Install button.
+- **Download checks:** the version in the release must match `[0-9A-Za-z.-]+`
+  (it names a temp file). The MSI is streamed to
+  `%TEMP%\ClaudeDashboard-update-<version>-<uuid>.msi` with a 300 s timeout and
+  must be at most 200 MiB and start with the OLE compound-file magic
+  `D0 CF 11 E0 A1 B1 1A E1`. Otherwise the file is deleted and the update fails
+  ("The update is too large." / "The downloaded update is not a Windows
+  installer.").
+- **Relauncher:** a hidden, detached `powershell.exe` (`-NoProfile
+  -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden`, `CREATE_NO_WINDOW |
+  DETACHED_PROCESS`). Its script waits for the app's PID to exit (up to 30 s),
+  runs `msiexec /i "<msi>" /passive /norestart` and waits for it, then starts the
+  installed exe. Waiting first means Windows Installer never meets a locked exe
+  and the single-instance mutex is free on relaunch. Each path is a PowerShell
+  single-quoted literal with `'` doubled, and also U+2018, U+2019, U+201A and
+  U+201B, which PowerShell treats as single quotes. The script carries no secrets.
+
+## Release
+
+`.github/workflows/release-windows.yml` runs on `windows-latest` after
+`scripts/release.sh` publishes a release (`release: types: [published]`), or by
+`workflow_dispatch` with an existing `tag` as the retry path. It checks out the
+resolved tag, installs the pinned toolchain, runs clippy and tests with
+`--locked`, installs WiX 3.14 from the pinned zip (SHA-256 verified) and
+`cargo-wix` 0.3.9 (`--locked --version`), builds the MSI, packs the extension and
+runs `gh release upload ... --clobber` for `ClaudeDashboard-x64.msi` and
+`claude-dashboard-extension.zip`.
+
+Guardrails, the same five as `release-linux.yml`: published-release trigger only
+(never a tag push); upload only (exactly one `gh release` line, which is `upload`;
+no `gh api`; the only `uses:` is `actions/checkout`); never name the macOS
+artifacts `ClaudeDashboard.app.zip` or `claude-dashboard-cli.tar.gz`; never write
+release notes (`release.sh` does); never commit or push. Windows-specific: the
+exact MSI and zip upload paths, the WiX SHA-256 and the `cargo-wix` pin must
+appear, and checkout must be pinned to the resolved tag.
+`scripts/test-release-workflow.sh` enforces all of this on both workflows against
+a comment-stripped copy of each file.
 
 ## Manual smoke test
 
