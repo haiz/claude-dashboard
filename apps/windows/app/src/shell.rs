@@ -171,8 +171,12 @@ pub fn run_invocation(spec: &ShellSpec, command: &str) -> Invocation {
     }
 }
 
-/// One level of alias/function expansion for an already validated token.
+/// One level of alias/function expansion. The token must already be validated
+/// by `command_classifier::resolvable_token`.
 pub fn resolve_invocation(spec: &ShellSpec, token: &str) -> Invocation {
+    debug_assert!(
+        claude_dashboard_core::command_classifier::resolvable_token(token) == Some(token)
+    );
     match spec.kind {
         ShellKind::Pwsh | ShellKind::WindowsPowerShell => {
             let mut args = strs(&["-NoLogo", "-NonInteractive", "-Command"]);

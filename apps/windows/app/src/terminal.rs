@@ -22,17 +22,37 @@ pub fn terminal_invocation(
     system_root: &Path,
 ) -> Invocation {
     let exe = spec.exe.to_string_lossy().into_owned();
+    // cmd.exe parses its own command line, so its `/k "<command>"` tail must
+    // bypass Rust's argv quoting and travel as raw_args.
+    if spec.kind == ShellKind::Cmd {
+        let raw = format!("/k \"{command}\"");
+        return match wt {
+            Some(p) => {
+                let mut args: Vec<String> = ["new-tab", "--title", "Claude Dashboard", "--"]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
+                args.push(wt_escape(&exe));
+                Invocation { program: p.to_path_buf(), args, raw_args: Some(wt_escape(&raw)) }
+            }
+            None => Invocation {
+                program: system_root.join("System32").join("conhost.exe"),
+                args: vec![exe],
+                raw_args: Some(raw),
+            },
+        };
+    }
     let tail: Vec<String> = match spec.kind {
         ShellKind::Pwsh | ShellKind::WindowsPowerShell => {
             vec![exe, "-NoLogo".into(), "-NoExit".into(), "-Command".into(), command.into()]
         }
-        ShellKind::Cmd => vec![exe, "/k".into(), command.into()],
+        ShellKind::Cmd => unreachable!("handled above"),
         ShellKind::GitBash => vec![
             exe,
             "-l".into(),
             "-i".into(),
             "-c".into(),
-            format!("{command}; exec bash -l -i"),
+            format!("{command}\nexec bash -l -i"),
         ],
     };
     match wt {
@@ -94,13 +114,25 @@ mod tests {
     fn conhost_fallback_without_wt() {
         let i = terminal_invocation(&spec(ShellKind::Cmd, "C:\\cmd.exe"), "dir", None, Path::new(ROOT));
         assert_eq!(i.program, PathBuf::from("C:\\Windows\\System32\\conhost.exe"));
-        assert_eq!(i.args, ["C:\\cmd.exe", "/k", "dir"]);
+        assert_eq!(i.args, ["C:\\cmd.exe"]);
+        assert_eq!(i.raw_args.as_deref(), Some("/k \"dir\""));
+    }
+
+    #[test]
+    fn cmd_tail_is_raw_with_quotes_and_ampersand_intact() {
+        let c = "git commit -m \"x\" & echo y";
+        let i = terminal_invocation(&spec(ShellKind::Cmd, "C:\\cmd.exe"), c, None, Path::new(ROOT));
+        assert_eq!(i.raw_args.as_deref(), Some("/k \"git commit -m \"x\" & echo y\""));
+        let wt = PathBuf::from("C:\\wt.exe");
+        let i = terminal_invocation(&spec(ShellKind::Cmd, "C:\\cmd.exe"), "a; b", Some(&wt), Path::new(ROOT));
+        assert_eq!(i.args, ["new-tab", "--title", "Claude Dashboard", "--", "C:\\cmd.exe"]);
+        assert_eq!(i.raw_args.as_deref(), Some("/k \"a\\; b\""));
     }
 
     #[test]
     fn git_bash_keeps_an_interactive_shell_after_the_command() {
         let i = terminal_invocation(&spec(ShellKind::GitBash, "C:\\bash.exe"), "htop", None, Path::new(ROOT));
-        assert_eq!(i.args, ["C:\\bash.exe", "-l", "-i", "-c", "htop; exec bash -l -i"]);
+        assert_eq!(i.args, ["C:\\bash.exe", "-l", "-i", "-c", "htop\nexec bash -l -i"]);
     }
 
     #[test]
