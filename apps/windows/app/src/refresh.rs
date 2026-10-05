@@ -156,13 +156,14 @@ pub fn refresh_once(now_unix_s: f64) -> Result<RefreshOutput, String> {
     }
 
     let ext = extension_account_ids();
+    let active_email = claude_dashboard_core::claude_code::active_email();
     let rows = build_rows(BuildInput {
         accounts: &accounts,
         usage_by_account: &usage_by_account,
         errors: &errors,
         extension_install_account_ids: &ext,
         now_unix_s,
-        active_claude_code_email: None,
+        active_claude_code_email: active_email.as_deref(),
     });
     let peak = peak_utilization(&rows);
     Ok(RefreshOutput { rows, peak })

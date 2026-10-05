@@ -168,12 +168,20 @@ export component AccountCard inherits Rectangle {
             Avatar { initial: root.data.initial; tint: root.data.avatar-color; }
             VerticalLayout {
                 alignment: center;
-                Text {
-                    text: root.data.name;
-                    color: Theme.text-primary;
-                    font-size: 15px;
-                    font-weight: 600;
-                    overflow: elide;
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: root.data.name;
+                        color: Theme.text-primary;
+                        font-size: 15px;
+                        font-weight: 600;
+                        overflow: elide;
+                    }
+                    if root.data.claude-code: Rectangle {
+                        width: 8px; height: 8px; y: (parent.height - self.height) / 2;
+                        border-radius: 4px;
+                        background: Theme.ok;
+                    }
                 }
                 Text {
                     text: root.data.email != "" ? root.data.email : root.data.plan;
@@ -328,12 +336,20 @@ export component AccountPane inherits VerticalLayout {
         Avatar { size: 48px; initial: root.data.initial; tint: root.data.avatar-color; }
         VerticalLayout {
             alignment: center;
-            Text {
-                text: root.data.name;
-                color: Theme.text-primary;
-                font-size: 20px;
-                font-weight: 600;
-                overflow: elide;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.data.name;
+                    color: Theme.text-primary;
+                    font-size: 20px;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+                if root.data.claude-code: Rectangle {
+                    width: 8px; height: 8px; y: (parent.height - self.height) / 2;
+                    border-radius: 4px;
+                    background: Theme.ok;
+                }
             }
             Text {
                 text: root.data.email != "" ? root.data.email : root.data.staleness;

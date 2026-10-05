@@ -5,6 +5,8 @@ import { SetupWizardWindow, ScanItem } from "wizard.slint";
 import { ChartPanel, OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem } from "chart.slint";
 import { CommandLogPane, UiLogEntry } from "command_log.slint";
 import { RunCommandPanel } from "run_command.slint";
+export struct UiShell { key: string, label: string }
+
 export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, UiLogEntry, ChartState, ChartTick, ChartLine, ChartLegendItem }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
@@ -172,6 +174,9 @@ component GeneralSettingsPane inherits Flickable {
     in property <bool> launch-at-startup;
     callback set-auto-refresh(int);
     callback set-launch-at-startup(bool);
+    in property <[UiShell]> shells;
+    in property <string> shell-key;
+    callback set-shell(string);
     content-height: col.preferred-height;
     col := VerticalLayout {
         spacing: 12px;
@@ -207,6 +212,30 @@ component GeneralSettingsPane inherits Flickable {
                         active: root.auto-refresh-seconds == p.s;
                         clicked => { root.set-auto-refresh(p.s); }
                     }
+                }
+            }
+        }
+
+        GroupHeader { text: "Commands"; }
+        SettingsCard {
+            height: 96px;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                Text { text: "Run commands in"; color: Theme.text-primary; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    for s in root.shells: IntervalChip {
+                        label: s.label;
+                        active: root.shell-key == s.key;
+                        clicked => { root.set-shell(s.key); }
+                    }
+                }
+                Text {
+                    text: "Started with your profile, so functions and aliases resolve.";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
                 }
             }
         }
@@ -315,6 +344,9 @@ export component AppWindow inherits Window {
     in-out property <bool> launch-at-startup;
     callback set-auto-refresh(int);
     callback set-launch-at-startup(bool);
+    in property <[UiShell]> shells;
+    in-out property <string> shell-key;
+    callback set-shell(string);
 
     property <string> pane-title: root.selection == Pane.dashboard ? "Dashboard"
         : root.selection == Pane.overview ? "Overview"
@@ -483,6 +515,9 @@ export component AppWindow inherits Window {
                 launch-at-startup: root.launch-at-startup;
                 set-auto-refresh(s) => { root.set-auto-refresh(s); }
                 set-launch-at-startup(on) => { root.set-launch-at-startup(on); }
+                shells: root.shells;
+                shell-key: root.shell-key;
+                set-shell(k) => { root.set-shell(k); }
             }
             if root.selection == Pane.command-log: CommandLogPane {
                 vertical-stretch: 1;

@@ -84,6 +84,32 @@ fn apply_output(
     }
 }
 
+/// Starts one hidden run per due account, each on its own thread so the
+/// refresh loop never waits on a command (Ruling 2: auto runs are always hidden).
+fn dispatch_auto_runs(
+    due: Vec<String>,
+    commands: &std::collections::HashMap<String, claude_dashboard_core::run_commands::RunCommand>,
+    weak: slint::Weak<AppWindow>,
+) {
+    use claude_dashboard_core::command_log::CommandTrigger;
+    for id in due {
+        let Some(cmd) = commands.get(&id).map(|c| c.command.clone()) else { continue };
+        let weak = weak.clone();
+        std::thread::spawn(move || {
+            let shell = shell::detect(claude_dashboard_core::settings::load().shell.as_deref());
+            let _ = commands::execute(
+                &cmd,
+                Some(&id),
+                CommandTrigger::AutoReset,
+                shell.as_ref(),
+                &runner::CancelToken::new(),
+                &|_| {},
+            );
+            log_view::reload(&weak);
+        });
+    }
+}
+
 /// Background loop: refresh now, then every Auto Refresh interval (re-read each
 /// cycle, so a settings change applies without restart) or whenever nudged.
 fn spawn_refresh_loop(
@@ -93,6 +119,7 @@ fn spawn_refresh_loop(
 ) {
     std::thread::spawn(move || {
         let mut prev: Vec<claude_dashboard_core::rows::DisplayRow> = Vec::new();
+        let mut latch = claude_dashboard_core::auto_run::AutoRunLatch::new();
         loop {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -100,6 +127,11 @@ fn spawn_refresh_loop(
                 .unwrap_or(0.0);
             let out = refresh::merge_errors(&prev, refresh::refresh_once(now));
             prev = out.rows.clone();
+            let saved = claude_dashboard_core::run_commands::load();
+            let due = latch.due(&out.rows, |id| {
+                saved.get(id).is_some_and(|c| !c.command.trim().is_empty())
+            });
+            dispatch_auto_runs(due, &saved, weak.clone());
             let (weak, pop_weak) = (weak.clone(), pop_weak.clone());
             let _ = slint::invoke_from_event_loop(move || apply_output(&weak, &pop_weak, &out, now));
             match rx.recv_timeout(refresh::loop_timeout(&claude_dashboard_core::settings::load())) {
@@ -116,6 +148,7 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
     use claude_dashboard_core::model::{AccountPlan, AccountStatus};
     use claude_dashboard_core::rows::{DisplayRow, WindowView};
     let mk = |id: &str, name: &str, plan, u5: f64, u7: f64, burn: Option<f64>| DisplayRow {
+        is_active_claude_code: name == "bob",
         account_id: id.into(),
         name: name.into(),
         email: Some(format!("{name}@example.com")),
@@ -129,7 +162,6 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         is_extension_sourced: false,
         error: None,
         last_synced_unix: Some(now),
-        is_active_claude_code: false,
     };
     let rows = vec![
         mk("f1", "alice", AccountPlan::Pro, 12.0, 30.0, None),
@@ -273,11 +305,34 @@ fn main() -> Result<(), slint::PlatformError> {
         std::thread::spawn(move || {
             let secs = settings_general::current_auto_refresh() as i32;
             let launch = settings_general::launch_is_enabled();
+            let shells = settings_general::shells();
+            let shell_key = settings_general::current_shell_key();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(a) = w.upgrade() {
                     a.set_auto_refresh_seconds(secs);
                     a.set_launch_at_startup(launch);
+                    let model: Vec<UiShell> = shells
+                        .into_iter()
+                        .map(|(k, l)| UiShell { key: k.into(), label: l.into() })
+                        .collect();
+                    a.set_shells(slint::ModelRc::new(slint::VecModel::from(model)));
+                    a.set_shell_key(shell_key.into());
                 }
+            });
+        });
+        let w = app.as_weak();
+        app.on_set_shell(move |key| {
+            let (w, key) = (w.clone(), key.to_string());
+            std::thread::spawn(move || {
+                if let Err(e) = settings_general::set_shell(&key) {
+                    eprintln!("set shell failed: {e}");
+                }
+                let actual = settings_general::current_shell_key();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(a) = w.upgrade() {
+                        a.set_shell_key(actual.into());
+                    }
+                });
             });
         });
         let tx = nudge_tx.clone();

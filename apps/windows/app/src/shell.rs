@@ -12,7 +12,6 @@ pub enum ShellKind {
 }
 
 impl ShellKind {
-    #[allow(dead_code)] // used by the shell picker (Task 11)
     pub const ALL: [ShellKind; 4] = [
         ShellKind::Pwsh,
         ShellKind::WindowsPowerShell,
@@ -20,7 +19,6 @@ impl ShellKind {
         ShellKind::GitBash,
     ];
 
-    #[allow(dead_code)] // used by the shell picker (Task 11)
     pub fn setting_key(self) -> &'static str {
         match self {
             ShellKind::Pwsh => "pwsh",
@@ -34,7 +32,6 @@ impl ShellKind {
         Self::ALL.into_iter().find(|k| k.setting_key() == s)
     }
 
-    #[allow(dead_code)] // used by the shell picker (Task 11)
     pub fn label(self) -> &'static str {
         match self {
             ShellKind::Pwsh => "PowerShell 7",
@@ -142,7 +139,6 @@ pub fn detect(setting: Option<&str>) -> Option<ShellSpec> {
     resolve(setting, &Probe { env: &real_env, exists: &real_exists })
 }
 
-#[allow(dead_code)] // used by the shell picker in settings_general.rs (Task 11)
 pub fn detect_available() -> Vec<ShellSpec> {
     available(&Probe { env: &real_env, exists: &real_exists })
 }

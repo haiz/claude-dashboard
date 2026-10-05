@@ -161,12 +161,21 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
         staleness: staleness(row.last_synced_unix, now_unix_s).into(),
         error: row.error.clone().unwrap_or_default().into(),
         extension_sourced: row.is_extension_sourced,
+        claude_code: row.is_active_claude_code,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claude_code_flag_maps_to_ui() {
+        let mut r = row();
+        assert!(!to_ui_row(&r, 1e9).claude_code);
+        r.is_active_claude_code = true;
+        assert!(to_ui_row(&r, 1e9).claude_code);
+    }
 
     fn row() -> DisplayRow {
         DisplayRow {
