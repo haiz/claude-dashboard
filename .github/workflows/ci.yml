@@ -22,6 +22,16 @@ jobs:
           cargo test --workspace
           cargo clippy --workspace --all-targets -- -D warnings
 
+  # release.sh runs on a Mac, so sync-version.sh must work with BSD sed
+  # (the linux job above only proves GNU sed). The Swift test suites are not
+  # run here; release.sh runs them locally before publishing.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version sync under BSD sed
+        run: bash scripts/test-sync-version.sh
+
   windows:
     runs-on: windows-latest
     steps:
