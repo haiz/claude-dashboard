@@ -48,9 +48,24 @@ pub fn looks_like_msi(head: &[u8]) -> bool {
     head.len() >= MSI_MAGIC.len() && head[..MSI_MAGIC.len()] == MSI_MAGIC
 }
 
-/// PowerShell single-quoted literal, with embedded `'` doubled.
+/// PowerShell single-quoted literal. PowerShell treats U+2018/2019/201A/201B
+/// as single quotes too, so every one of them is doubled.
 pub fn ps_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "''"))
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for c in s.chars() {
+        out.push(c);
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            out.push(c);
+        }
+    }
+    out.push('\'');
+    out
+}
+
+/// The release tag is remote input; only allow `[0-9A-Za-z.-]+`.
+pub fn valid_version(v: &str) -> bool {
+    !v.is_empty() && v.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
 }
 
 pub fn relaunch_script(pid: u32, msi: &Path, exe: &Path) -> String {
@@ -71,37 +86,55 @@ pub fn relaunch_script(pid: u32, msi: &Path, exe: &Path) -> String {
 
 #[allow(dead_code)] // used by main.rs (Task 4)
 pub fn download(info: &UpdateInfo, current_version: &str) -> Result<PathBuf, String> {
+    if !valid_version(&info.version) {
+        return Err("The release version is not valid.".into());
+    }
     let path = std::env::temp_dir().join(format!(
         "ClaudeDashboard-update-{}-{}.msi",
         info.version,
         uuid::Uuid::new_v4()
     ));
-    let result = download_to(info, current_version, &path);
-    if result.is_err() {
-        let _ = std::fs::remove_file(&path);
-    }
-    result.map(|()| path)
-}
-
-fn download_to(info: &UpdateInfo, current_version: &str, path: &Path) -> Result<(), String> {
     let resp = ureq::get(&info.download_url)
         .set("User-Agent", &format!("claude-dashboard/{current_version}"))
         .timeout(std::time::Duration::from_secs(300))
         .call()
         .map_err(|e| format!("Download failed: {e}"))?;
-    let mut file = std::fs::File::create(path).map_err(|e| format!("Download failed: {e}"))?;
-    let copied = std::io::copy(&mut resp.into_reader().take(MAX_MSI_BYTES + 1), &mut file)
-        .map_err(|e| format!("Download failed: {e}"))?;
-    file.flush().map_err(|e| format!("Download failed: {e}"))?;
+    write_capped(resp.into_reader(), &path)?;
+    Ok(path)
+}
+
+/// Streams `reader` into `path` with the size cap and MSI magic check;
+/// the file is deleted on any failure.
+fn write_capped(reader: impl Read, path: &Path) -> Result<(), String> {
+    write_capped_with(reader, path, MAX_MSI_BYTES)
+}
+
+fn write_capped_with(reader: impl Read, path: &Path, max: u64) -> Result<(), String> {
+    let result = write_capped_inner(reader, path, max);
+    if result.is_err() {
+        let _ = std::fs::remove_file(path);
+    }
+    result
+}
+
+fn write_capped_inner(reader: impl Read, path: &Path, max: u64) -> Result<(), String> {
+    let io_err = |e: std::io::Error| format!("Download failed: {e}");
+    let mut file = std::fs::File::create(path).map_err(io_err)?;
+    let copied = std::io::copy(&mut reader.take(max + 1), &mut file).map_err(io_err)?;
+    file.flush().map_err(io_err)?;
     drop(file);
-    if copied > MAX_MSI_BYTES {
+    if copied > max {
         return Err("The update is too large.".into());
     }
     let mut head = [0u8; 8];
-    let n = std::fs::File::open(path)
-        .and_then(|mut f| f.read(&mut head))
-        .map_err(|e| format!("Download failed: {e}"))?;
-    if !looks_like_msi(&head[..n]) {
+    let magic = std::fs::File::open(path)
+        .map_err(io_err)
+        .and_then(|mut f| match f.read_exact(&mut head) {
+            Ok(()) => Ok(looks_like_msi(&head)),
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(false),
+            Err(e) => Err(io_err(e)),
+        })?;
+    if !magic {
         return Err("The downloaded update is not a Windows installer.".into());
     }
     Ok(())
@@ -205,6 +238,71 @@ mod tests {
         assert_eq!(ps_quote("plain"), "'plain'");
         assert_eq!(ps_quote("O'Brien"), "'O''Brien'");
         assert_eq!(ps_quote(""), "''");
+        assert_eq!(ps_quote("O\u{2019}Brien"), "'O\u{2019}\u{2019}Brien'");
+        for q in ['\u{2018}', '\u{201A}', '\u{201B}'] {
+            assert_eq!(ps_quote(&format!("a{q}b")), format!("'a{q}{q}b'"));
+        }
+    }
+
+    #[test]
+    fn relaunch_script_doubles_unicode_quotes() {
+        let s = relaunch_script(
+            1,
+            Path::new("C:\\Users\\O\u{2019}B\\x.msi"),
+            Path::new("C:\\Users\\O\u{2019}B\\claude-dashboard.exe"),
+        );
+        assert!(s.contains("'C:\\Users\\O\u{2019}\u{2019}B\\claude-dashboard.exe'"), "{s}");
+        assert!(s.contains("\"C:\\Users\\O\u{2019}\u{2019}B\\x.msi\""), "{s}");
+    }
+
+    #[test]
+    fn version_validation() {
+        assert!(valid_version("1.19.0"));
+        assert!(valid_version("1.19.0-rc1"));
+        for bad in ["", "1.0\u{2019};calc", "1/../x", "1 0"] {
+            assert!(!valid_version(bad), "{bad}");
+        }
+    }
+
+    fn tmp() -> (tempfile::TempDir, PathBuf) {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("u.msi");
+        (d, p)
+    }
+
+    #[test]
+    fn write_capped_rejects_oversize_and_deletes() {
+        let (_d, p) = tmp();
+        let mut body = MSI_MAGIC.to_vec();
+        body.extend_from_slice(&[0u8; 20]);
+        let r = write_capped_with(std::io::Cursor::new(body), &p, 16);
+        assert_eq!(r, Err("The update is too large.".to_string()));
+        assert!(!p.exists());
+        let r = write_capped_with(std::io::repeat(0xD0), &p, 16);
+        assert!(r.is_err());
+        assert!(!p.exists());
+    }
+
+    #[test]
+    fn write_capped_rejects_html_and_short_and_deletes() {
+        let (_d, p) = tmp();
+        let want = Err("The downloaded update is not a Windows installer.".to_string());
+        assert_eq!(write_capped_with(std::io::Cursor::new(b"<!DOCTYPE html><html>".to_vec()), &p, 1024), want);
+        assert!(!p.exists());
+        assert_eq!(write_capped_with(std::io::Cursor::new(MSI_MAGIC[..4].to_vec()), &p, 1024), want);
+        assert!(!p.exists());
+    }
+
+    #[test]
+    fn write_capped_accepts_msi_within_and_at_cap() {
+        let (_d, p) = tmp();
+        let mut body = MSI_MAGIC.to_vec();
+        body.extend_from_slice(&[7u8; 4]);
+        assert_eq!(write_capped_with(std::io::Cursor::new(body.clone()), &p, 1024), Ok(()));
+        assert!(p.exists());
+        let _ = std::fs::remove_file(&p);
+        assert_eq!(write_capped_with(std::io::Cursor::new(body), &p, 12), Ok(()), "exactly at cap");
+        assert_eq!(std::fs::metadata(&p).unwrap().len(), 12);
     }
 
     #[test]
