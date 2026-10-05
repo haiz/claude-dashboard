@@ -293,7 +293,7 @@ export component AppWindow inherits Window {
     in-out property <bool> run-open: false;
     in property <string> run-account-name;
     in-out property <string> run-command-text;
-    in property <bool> run-in-terminal;
+    in-out property <bool> run-in-terminal;
     in property <bool> run-running;
     in property <[string]> run-lines;
     callback open-run-command(string);
@@ -513,7 +513,7 @@ export component AppWindow inherits Window {
         width: parent.width; height: parent.height;
         account-name: root.run-account-name;
         command <=> root.run-command-text;
-        open-in-terminal: root.run-in-terminal;
+        open-in-terminal <=> root.run-in-terminal;
         running: root.run-running;
         lines: root.run-lines;
         edited(t) => { root.run-command-edited(t); }

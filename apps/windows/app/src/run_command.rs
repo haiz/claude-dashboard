@@ -26,7 +26,20 @@ struct State {
     user_touched: bool,
     generation: u64,
     cancel: Option<CancelToken>,
+    run_seq: u64,
+    /// Id of the run the panel is showing; None after cancel or completion.
+    current_run: Option<u64>,
     debounce: slint::Timer,
+}
+
+/// Does a run's output/completion still belong to the panel?
+fn is_current(current: Option<u64>, run: u64) -> bool {
+    current == Some(run)
+}
+
+/// May a classify result be applied to the toggle?
+fn classify_applies(gen: u64, cur_gen: u64, user_touched: bool, text: &str, cur_text: &str) -> bool {
+    gen == cur_gen && !user_touched && text == cur_text
 }
 
 thread_local! {
@@ -79,11 +92,12 @@ fn schedule_classify(weak: slint::Weak<AppWindow>) {
                 let kind = commands::classify(&text, shell.as_ref());
                 let _ = slint::invoke_from_event_loop(move || {
                     let Some(app) = weak.upgrade() else { return };
-                    let current = STATE.with(|s| {
+                    let cur_text = app.get_run_command_text();
+                    let ok = STATE.with(|s| {
                         let s = s.borrow();
-                        gen == s.generation && !s.user_touched
+                        classify_applies(gen, s.generation, s.user_touched, &text, &cur_text)
                     });
-                    if current && app.get_run_command_text() == text {
+                    if ok {
                         app.set_run_in_terminal(kind == CommandKind::Interactive);
                     }
                 });
@@ -113,6 +127,10 @@ fn open(weak: slint::Weak<AppWindow>, id: String) {
             app.set_run_command_text(saved.command.into());
             app.set_run_in_terminal(saved.open_in_terminal);
             set_lines(&app, Vec::new());
+            // A cancelled run's worker may still be alive; its state is not ours.
+            if STATE.with(|s| s.borrow().current_run.is_none()) {
+                app.set_run_running(false);
+            }
             app.set_run_open(true);
             if has_text {
                 schedule_classify(weak.clone());
@@ -149,7 +167,13 @@ fn start(weak: slint::Weak<AppWindow>, nudge: Sender<()>) {
     app.set_run_running(true);
     set_lines(&app, Vec::new());
     let token = CancelToken::new();
-    STATE.with(|s| s.borrow_mut().cancel = Some(token.clone()));
+    let run = STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        s.run_seq += 1;
+        s.cancel = Some(token.clone());
+        s.current_run = Some(s.run_seq);
+        s.run_seq
+    });
     std::thread::spawn(move || {
         save(&id, &command, false);
         let shell = shell::detect(settings::load().shell.as_deref());
@@ -162,6 +186,9 @@ fn start(weak: slint::Weak<AppWindow>, nudge: Sender<()>) {
             let w = sink.lock().map(|g| g.clone()).ok();
             let Some(w) = w else { return };
             let _ = slint::invoke_from_event_loop(move || {
+                if !STATE.with(|s| is_current(s.borrow().current_run, run)) {
+                    return;
+                }
                 if let Some(app) = w.upgrade() {
                     let cur: Vec<String> =
                         app.get_run_lines().iter().map(|s| s.to_string()).collect();
@@ -171,14 +198,18 @@ fn start(weak: slint::Weak<AppWindow>, nudge: Sender<()>) {
         };
         commands::execute(&command, Some(&id), CommandTrigger::Manual, shell.as_ref(), &token, &on_output);
         let _ = slint::invoke_from_event_loop(move || {
-            if let Some(app) = weak.upgrade() {
-                app.set_run_running(false);
-                // A cancel already dismissed the panel; don't close one reopened since.
-                if !token.is_cancelled() {
+            // A cancelled (superseded) run already reset the UI; touch it only if current.
+            if STATE.with(|s| is_current(s.borrow().current_run, run)) {
+                if let Some(app) = weak.upgrade() {
+                    app.set_run_running(false);
                     close(&app);
                 }
+                STATE.with(|s| {
+                    let mut s = s.borrow_mut();
+                    s.current_run = None;
+                    s.cancel = None;
+                });
             }
-            STATE.with(|s| s.borrow_mut().cancel = None);
             let _ = nudge.send(());
             log_view::reload(&weak);
         });
@@ -216,11 +247,14 @@ pub fn install(app: &AppWindow, nudge: Sender<()>) {
     let w = app.as_weak();
     app.on_run_command_cancel(move || {
         STATE.with(|s| {
-            if let Some(t) = s.borrow().cancel.as_ref() {
+            let mut s = s.borrow_mut();
+            if let Some(t) = s.cancel.take() {
                 t.cancel();
             }
+            s.current_run = None;
         });
         if let Some(app) = w.upgrade() {
+            app.set_run_running(false);
             close(&app);
         }
     });
@@ -234,6 +268,21 @@ mod tests {
     fn chunks_split_on_newlines_and_carriage_returns() {
         assert_eq!(split_lines("a\r\nb\n\nc\r"), vec!["a", "b", "c"]);
         assert!(split_lines("\r\n").is_empty());
+    }
+
+    #[test]
+    fn run_currency() {
+        assert!(is_current(Some(3), 3));
+        assert!(!is_current(Some(4), 3));
+        assert!(!is_current(None, 3));
+    }
+
+    #[test]
+    fn classify_apply_rules() {
+        assert!(classify_applies(2, 2, false, "ls", "ls"));
+        assert!(!classify_applies(1, 2, false, "ls", "ls"));
+        assert!(!classify_applies(2, 2, true, "ls", "ls"));
+        assert!(!classify_applies(2, 2, false, "ls", "ls -l"));
     }
 
     #[test]

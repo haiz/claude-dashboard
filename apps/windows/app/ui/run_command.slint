@@ -27,7 +27,7 @@ component RunButton inherits Rectangle {
 export component RunCommandPanel inherits Rectangle {
     in property <string> account-name;
     in-out property <string> command;
-    in property <bool> open-in-terminal;
+    in-out property <bool> open-in-terminal;
     in property <bool> running;
     in property <[string]> lines;
     callback edited(string);
@@ -62,7 +62,7 @@ export component RunCommandPanel inherits Rectangle {
             }
             CheckBox {
                 text: "Open in Terminal";
-                checked: root.open-in-terminal;
+                checked <=> root.open-in-terminal;
                 toggled => { root.toggle-terminal(self.checked); }
             }
             for line in root.lines: Text {
