@@ -178,6 +178,13 @@ component GeneralSettingsPane inherits Flickable {
     in property <[UiShell]> shells;
     in property <string> shell-key;
     callback set-shell(string);
+    in property <string> update-status;
+    in property <bool> update-can-install;
+    in property <bool> update-busy;
+    in property <bool> auto-update;
+    callback check-updates();
+    callback install-update();
+    callback set-auto-update(bool);
     content-height: col.preferred-height;
     col := VerticalLayout {
         spacing: 12px;
@@ -263,12 +270,29 @@ component GeneralSettingsPane inherits Flickable {
 
         GroupHeader { text: "Updates"; }
         SettingsCard {
-            height: 52px;
-            HorizontalLayout {
+            height: upd.preferred-height + 24px;
+            upd := VerticalLayout {
                 padding: 12px;
                 spacing: 10px;
-                Text { text: "Check for updates"; color: Theme.text-secondary; vertical-alignment: center; }
-                Text { text: "Coming soon"; color: Theme.text-secondary; font-size: 11px; vertical-alignment: center; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    Text { text: root.update-status; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; wrap: word-wrap; }
+                    if root.update-can-install: IntervalChip { label: "Install"; active: true; clicked => { root.install-update(); } }
+                    IntervalChip { label: root.update-busy ? "Working…" : "Check for Updates"; active: false;
+                                   clicked => { if !root.update-busy { root.check-updates(); } } }
+                }
+                HorizontalLayout {
+                    Text { text: "Install updates automatically"; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; }
+                    Rectangle {
+                        width: 40px; height: 22px;
+                        border-radius: 11px;
+                        background: root.auto-update ? Theme.accent : Theme.card-border;
+                        Rectangle { width: 16px; height: 16px; border-radius: 8px; background: #ffffff; y: 3px;
+                                    x: root.auto-update ? parent.width - self.width - 3px : 3px; }
+                        TouchArea { clicked => { root.set-auto-update(!root.auto-update); } }
+                    }
+                }
+                Text { text: "Checks GitHub once a day and installs new releases."; color: Theme.text-secondary; font-size: 11px; }
             }
         }
     }
@@ -348,6 +372,13 @@ export component AppWindow inherits Window {
     in property <[UiShell]> shells;
     in-out property <string> shell-key;
     callback set-shell(string);
+    in property <string> update-status;
+    in property <bool> update-can-install;
+    in property <bool> update-busy;
+    in-out property <bool> auto-update: true;
+    callback check-updates();
+    callback install-update();
+    callback set-auto-update(bool);
 
     property <string> pane-title: root.selection == Pane.dashboard ? "Dashboard"
         : root.selection == Pane.overview ? "Overview"
@@ -517,6 +548,13 @@ export component AppWindow inherits Window {
                 shells: root.shells;
                 shell-key: root.shell-key;
                 set-shell(k) => { root.set-shell(k); }
+                update-status: root.update-status;
+                update-can-install: root.update-can-install;
+                update-busy: root.update-busy;
+                auto-update: root.auto-update;
+                check-updates => { root.check-updates(); }
+                install-update => { root.install-update(); }
+                set-auto-update(on) => { root.set-auto-update(on); }
             }
             if root.selection == Pane.command-log: CommandLogPane {
                 vertical-stretch: 1;

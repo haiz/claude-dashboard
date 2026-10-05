@@ -32,6 +32,14 @@ pub fn set_launch_at_startup(on: bool) -> Result<(), String> {
     settings::update(|s| s.launch_at_startup = on)
 }
 
+pub fn auto_update_enabled() -> bool {
+    settings::load().auto_update
+}
+
+pub fn set_auto_update(on: bool) -> Result<(), String> {
+    settings::update(|s| s.auto_update = on)
+}
+
 /// (key, label) for each shell installed on this machine.
 pub fn shells() -> Vec<(String, String)> {
     crate::shell::detect_available()
@@ -71,6 +79,18 @@ mod tests {
         assert_eq!(current_auto_refresh(), 300);
         set_auto_refresh(5).unwrap();
         assert_eq!(current_auto_refresh(), 30);
+    }
+
+    #[test]
+    fn auto_update_toggle_persists() {
+        let _env = crate::testenv::lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("APPDATA", dir.path());
+        std::env::set_var("LOCALAPPDATA", dir.path());
+        assert!(auto_update_enabled(), "default on");
+        set_auto_update(false).unwrap();
+        assert!(!auto_update_enabled());
+        assert!(!settings::load().auto_update);
     }
 
     #[test]

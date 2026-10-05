@@ -11,7 +11,6 @@ use std::path::{Path, PathBuf};
 pub const MSI_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
 pub const MAX_MSI_BYTES: u64 = 200 * 1024 * 1024;
 
-#[allow(dead_code)] // used by main.rs (Task 4)
 #[derive(Debug, Clone, PartialEq)]
 pub enum UpdateState {
     Idle,
@@ -24,7 +23,6 @@ pub enum UpdateState {
     Failed(String),
 }
 
-#[allow(dead_code)] // used by main.rs (Task 4)
 pub fn install_dir(local_appdata: &Path) -> PathBuf {
     local_appdata.join("Programs").join("ClaudeDashboard")
 }
@@ -33,13 +31,11 @@ fn norm(p: &Path) -> String {
     p.to_string_lossy().replace('/', "\\").to_lowercase()
 }
 
-#[allow(dead_code)] // used by main.rs (Task 4)
 pub fn is_installed_copy(exe: &Path, local_appdata: &Path) -> bool {
     let want = install_dir(local_appdata).join("claude-dashboard.exe");
     norm(exe) == norm(&want)
 }
 
-#[allow(dead_code)] // used by main.rs (Task 4)
 pub fn auto_update_allowed(enabled: bool, installed: bool, disable_env: Option<&str>) -> bool {
     enabled && installed && disable_env != Some("1")
 }
@@ -84,7 +80,6 @@ pub fn relaunch_script(pid: u32, msi: &Path, exe: &Path) -> String {
     .join("; ")
 }
 
-#[allow(dead_code)] // used by main.rs (Task 4)
 pub fn download(info: &UpdateInfo, current_version: &str) -> Result<PathBuf, String> {
     if !valid_version(&info.version) {
         return Err("The release version is not valid.".into());
@@ -141,7 +136,6 @@ fn write_capped_inner(reader: impl Read, path: &Path, max: u64) -> Result<(), St
 }
 
 /// Spawns the relauncher detached and hidden; the caller then quits.
-#[allow(dead_code)] // used by main.rs (Task 4)
 pub fn apply(msi: &Path, exe: &Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
@@ -174,13 +168,11 @@ pub fn apply(msi: &Path, exe: &Path) -> Result<(), String> {
         .map_err(|e| format!("Could not start the installer: {e}"))
 }
 
-#[allow(dead_code)] // used by main.rs (Task 4)
 pub fn check(current_version: &str) -> Result<Option<UpdateInfo>, String> {
     let json = fetch_latest_release(current_version).map_err(|e| e.to_string())?;
     parse_release(&json, current_version, MSI_ASSET).map_err(|e| e.to_string())
 }
 
-#[allow(dead_code)] // used by main.rs (Task 4)
 pub fn status_text(state: &UpdateState, current: &str) -> String {
     match state {
         UpdateState::Idle => format!("Version {current}"),

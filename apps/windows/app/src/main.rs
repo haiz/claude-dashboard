@@ -230,6 +230,143 @@ fn show_main(app: &AppWindow) {
     app.window().set_minimized(false);
 }
 
+thread_local! {
+    static UPDATE_STATE: std::cell::RefCell<updater::UpdateState> =
+        const { std::cell::RefCell::new(updater::UpdateState::Idle) };
+}
+
+/// UI thread only: stores `state` and mirrors it into the Updates card.
+fn show_update_state(app: &AppWindow, state: updater::UpdateState) {
+    use updater::UpdateState as S;
+    app.set_update_status(updater::status_text(&state, settings_general::APP_VERSION).into());
+    app.set_update_can_install(matches!(state, S::Available(_)));
+    app.set_update_busy(matches!(state, S::Checking | S::Downloading | S::Installing));
+    UPDATE_STATE.with(|s| *s.borrow_mut() = state);
+}
+
+/// Any thread: schedule `show_update_state` on the UI thread.
+fn post_update_state(weak: &slint::Weak<AppWindow>, state: updater::UpdateState) {
+    let weak = weak.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(a) = weak.upgrade() {
+            show_update_state(&a, state);
+        }
+    });
+}
+
+/// Worker: download, hand off to the relauncher, then quit. Any failure is shown.
+fn download_and_apply(weak: &slint::Weak<AppWindow>, info: &claude_dashboard_core::update::UpdateInfo, exe: &std::path::Path) {
+    use updater::UpdateState as S;
+    post_update_state(weak, S::Downloading);
+    let result = updater::download(info, settings_general::APP_VERSION).and_then(|msi| {
+        post_update_state(weak, S::Installing);
+        updater::apply(&msi, exe)
+    });
+    match result {
+        Ok(()) => {
+            let _ = slint::invoke_from_event_loop(|| {
+                let _ = slint::quit_event_loop();
+            });
+        }
+        Err(m) => post_update_state(weak, S::Failed(m)),
+    }
+}
+
+/// Settings > General > Updates plus the daily background auto-update.
+fn install_updates(app: &AppWindow) {
+    use updater::UpdateState as S;
+    let exe = std::env::current_exe().unwrap_or_default();
+    let local_appdata = std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default());
+    let installed = updater::is_installed_copy(&exe, &local_appdata);
+
+    show_update_state(app, if installed { S::Idle } else { S::DevBuild(None) });
+    let w = app.as_weak();
+    std::thread::spawn(move || {
+        let on = settings_general::auto_update_enabled();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(a) = w.upgrade() {
+                a.set_auto_update(on);
+            }
+        });
+    });
+
+    let w = app.as_weak();
+    app.on_check_updates(move || {
+        if let Some(a) = w.upgrade() {
+            show_update_state(&a, S::Checking);
+        }
+        let w = w.clone();
+        std::thread::spawn(move || {
+            let state = match updater::check(settings_general::APP_VERSION) {
+                Ok(Some(i)) if installed => S::Available(i),
+                Ok(Some(i)) => S::DevBuild(Some(i)),
+                Ok(None) if installed => S::UpToDate,
+                Ok(None) => S::DevBuild(None),
+                Err(m) => S::Failed(m),
+            };
+            post_update_state(&w, state);
+        });
+    });
+
+    let (w, exe_i) = (app.as_weak(), exe.clone());
+    app.on_install_update(move || {
+        let state = UPDATE_STATE.with(|s| s.borrow().clone());
+        let S::Available(info) = state else { return };
+        if !installed {
+            return;
+        }
+        let (w, exe) = (w.clone(), exe_i.clone());
+        std::thread::spawn(move || download_and_apply(&w, &info, &exe));
+    });
+
+    let w = app.as_weak();
+    app.on_set_auto_update(move |on| {
+        if let Some(a) = w.upgrade() {
+            a.set_auto_update(on);
+        }
+        std::thread::spawn(move || {
+            if let Err(e) = settings_general::set_auto_update(on) {
+                eprintln!("save auto update failed: {e}");
+            }
+        });
+    });
+
+    // Daily background check; never under smoke/fake runs (no network, no msiexec).
+    if std::env::var_os("CLAUDE_DASHBOARD_SMOKE").is_some()
+        || std::env::var_os("CLAUDE_DASHBOARD_FAKE_ROWS").is_some()
+    {
+        return;
+    }
+    let w = app.as_weak();
+    std::thread::spawn(move || loop {
+        let settings = claude_dashboard_core::settings::load();
+        let disable = std::env::var("DISABLE_AUTOUPDATER").ok();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        if updater::auto_update_allowed(settings.auto_update, installed, disable.as_deref())
+            && claude_dashboard_core::update::is_due(
+                settings.last_auto_update_check_unix,
+                now,
+                claude_dashboard_core::update::CHECK_INTERVAL_S,
+            )
+        {
+            if let Err(e) = claude_dashboard_core::settings::update(|s| {
+                s.last_auto_update_check_unix = Some(now)
+            }) {
+                eprintln!("stamp update check failed: {e}");
+            }
+            match updater::check(settings_general::APP_VERSION) {
+                Ok(Some(i)) => download_and_apply(&w, &i, &exe),
+                Ok(None) => post_update_state(&w, S::UpToDate),
+                Err(e) => eprintln!("auto update check failed: {e}"),
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_secs(3600));
+    });
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     let Some(_instance) = instance::acquire_single_instance() else {
         // Already running: ask that instance to refresh/show, then leave.
@@ -371,6 +508,7 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
     // Re-sync button: same nudge the reload pipe sends (refreshes all accounts).
+    install_updates(&app);
     chart::install(&app);
     log_view::install(&app);
     overview::install(&app);
