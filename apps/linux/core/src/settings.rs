@@ -25,6 +25,8 @@ pub struct Settings {
     pub preferred_scan_browser: Option<String>,
     #[serde(rename = "launchAtStartup", default)]
     pub launch_at_startup: bool,
+    #[serde(rename = "shell", skip_serializing_if = "Option::is_none", default)]
+    pub shell: Option<String>,
 }
 
 impl Default for Settings {
@@ -33,6 +35,7 @@ impl Default for Settings {
             auto_refresh_seconds: DEFAULT_REFRESH_SECONDS,
             preferred_scan_browser: None,
             launch_at_startup: false,
+            shell: None,
         }
     }
 }
@@ -71,11 +74,16 @@ pub fn save(s: &Settings) -> Result<(), String> {
 }
 
 fn save_to(path: &Path, s: &Settings) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(s).map_err(|e| e.to_string())?;
+    write_atomic(path, json.as_bytes())
+}
 
+/// Temp file + `rename` into place (creating parent dirs); shared with the
+/// other small JSON stores.
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let json = serde_json::to_string_pretty(s).map_err(|e| e.to_string())?;
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.subsec_nanos())
@@ -83,7 +91,7 @@ fn save_to(path: &Path, s: &Settings) -> Result<(), String> {
     let tmp = path.with_extension(format!("json.{}.{unique}.tmp", std::process::id()));
     let result = (|| -> std::io::Result<()> {
         let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
-        f.write_all(json.as_bytes())?;
+        f.write_all(bytes)?;
         f.sync_all()?;
         drop(f);
         fs::rename(&tmp, path)
@@ -126,10 +134,19 @@ mod tests {
             auto_refresh_seconds: 120,
             preferred_scan_browser: Some("edge".into()),
             launch_at_startup: true,
+            shell: Some("pwsh".into()),
         };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s);
         assert_eq!(fs::read_dir(p.parent().unwrap()).unwrap().count(), 1, "no temp litter");
+    }
+
+    #[test]
+    fn missing_shell_key_loads_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        fs::write(&p, r#"{"autoRefreshSeconds":60}"#).unwrap();
+        assert_eq!(load_from(&p).shell, None);
     }
 
     #[test]
