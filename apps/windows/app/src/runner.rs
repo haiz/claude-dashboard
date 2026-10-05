@@ -53,9 +53,6 @@ pub struct RunOutcome {
 
 struct Job(HANDLE);
 
-// SAFETY: a job handle is a kernel object handle, usable from any thread.
-unsafe impl Send for Job {}
-
 impl Job {
     fn new() -> Result<Job, String> {
         // SAFETY: null attributes and name are valid arguments.

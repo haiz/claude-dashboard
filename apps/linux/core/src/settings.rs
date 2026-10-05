@@ -5,6 +5,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -76,6 +77,21 @@ pub fn save(s: &Settings) -> Result<(), String> {
 fn save_to(path: &Path, s: &Settings) -> Result<(), String> {
     let json = serde_json::to_string_pretty(s).map_err(|e| e.to_string())?;
     write_atomic(path, json.as_bytes())
+}
+
+static RMW: Mutex<()> = Mutex::new(());
+
+/// Load, modify and save under one process-wide lock, so concurrent setters
+/// (separate worker threads) cannot drop each other's write.
+pub fn update(f: impl FnOnce(&mut Settings)) -> Result<(), String> {
+    update_at(&settings_path(), f)
+}
+
+fn update_at(path: &Path, f: impl FnOnce(&mut Settings)) -> Result<(), String> {
+    let _guard = RMW.lock().unwrap_or_else(|e| e.into_inner());
+    let mut s = load_from(path);
+    f(&mut s);
+    save_to(path, &s)
 }
 
 /// Temp file + `rename` into place (creating parent dirs); shared with the
@@ -155,6 +171,17 @@ mod tests {
         assert_eq!(with(5).effective_refresh_seconds(), 30);
         assert_eq!(with(99999).effective_refresh_seconds(), 3600);
         assert_eq!(with(120).effective_refresh_seconds(), 120);
+    }
+
+    #[test]
+    fn update_at_persists_and_preserves_other_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        update_at(&p, |s| s.shell = Some("cmd".into())).unwrap();
+        update_at(&p, |s| s.auto_refresh_seconds = 300).unwrap();
+        let s = load_from(&p);
+        assert_eq!(s.shell.as_deref(), Some("cmd"));
+        assert_eq!(s.auto_refresh_seconds, 300);
     }
 
     #[test]

@@ -115,7 +115,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
     the Command Log pane (Tools), the per-account Run Command panel (saved command, Open in
     Terminal toggle, classifier-driven default), auto-run on reset (hidden, once per episode), the
     shell picker (Settings > General > Commands), the green Claude Code badge, and the Help pane
-    (`log_view.rs`, `run_command.rs`); the "Coming soon" placeholder is gone. See
+    (`log_view.rs`, `run_command.rs`); the sidebar "Coming soon" placeholder is gone. See
     `contract/windows.md`, "Command Log".
   - **apps/windows/bridge/** — `claude-dashboard-bridge.exe`, a native-messaging host for the
     browser extension. `handler.rs` runs the key intake over an injected `Environment` trait

@@ -149,12 +149,19 @@ fn start(weak: slint::Weak<AppWindow>, nudge: Sender<()>) {
     let id = STATE.with(|s| s.borrow().account_id.clone());
 
     if open_in_terminal {
+        // Guards double-click / Enter+click; a terminal handoff has no current_run
+        // and cannot be cancelled, so open() also clears this flag.
+        app.set_run_running(true);
         std::thread::spawn(move || {
             save(&id, &command, true);
             let shell = shell::detect(settings::load().shell.as_deref());
             commands::launch_in_terminal(&command, Some(&id), CommandTrigger::Manual, shell.as_ref());
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(app) = weak.upgrade() {
+                    // Don't clobber a hidden run started after the panel was reopened.
+                    if STATE.with(|s| s.borrow().current_run.is_none()) {
+                        app.set_run_running(false);
+                    }
                     close(&app);
                 }
                 let _ = nudge.send(());

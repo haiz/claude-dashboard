@@ -9,9 +9,7 @@ pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Persists the Auto Refresh interval. The refresh loop re-reads settings each
 /// cycle, so the new value applies from the next wait.
 pub fn set_auto_refresh(seconds: u64) -> Result<(), String> {
-    let mut s = settings::load();
-    s.auto_refresh_seconds = seconds;
-    settings::save(&s)
+    settings::update(|s| s.auto_refresh_seconds = seconds)
 }
 
 /// The interval to show in the UI (clamped, never 0).
@@ -31,9 +29,7 @@ pub fn set_launch_at_startup(on: bool) -> Result<(), String> {
     } else {
         startup::disable()?;
     }
-    let mut s = settings::load();
-    s.launch_at_startup = on;
-    settings::save(&s)
+    settings::update(|s| s.launch_at_startup = on)
 }
 
 /// (key, label) for each shell installed on this machine.
@@ -56,9 +52,7 @@ pub fn set_shell(key: &str) -> Result<(), String> {
     if crate::shell::ShellKind::from_setting(key).is_none() {
         return Err(format!("unknown shell: {key}"));
     }
-    let mut s = settings::load();
-    s.shell = Some(key.to_string());
-    settings::save(&s)
+    settings::update(|s| s.shell = Some(key.to_string()))
 }
 
 #[cfg(test)]

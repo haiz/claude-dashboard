@@ -160,6 +160,13 @@ export component AccountCard inherits Rectangle {
     border-color: touch.has-hover ? Theme.accent : Theme.card-border;
     animate border-color { duration: 120ms; }
 
+    // Declared first so it sits below the content; the glyph's own TouchArea (inside
+    // the layout, declared later) is on top and wins its clicks.
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
     VerticalLayout {
         padding: 14px;
         spacing: 10px;
@@ -210,6 +217,27 @@ export component AccountCard inherits Rectangle {
                     vertical-alignment: center;
                 }
             }
+            // Terminal glyph: a layout item after the plan pill (no overlap); its own
+            // TouchArea is a child, so it wins the click over the card's touch area.
+            Rectangle {
+                width: 26px;
+                height: 26px;
+                y: 0px;
+                border-radius: 6px;
+                background: run-touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent;
+                Text {
+                    text: "\u{E756}";
+                    font-family: "Segoe Fluent Icons";
+                    font-size: 14px;
+                    color: Theme.accent;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                run-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.run-command(); }
+                }
+            }
         }
         if root.data.error != "": Text {
             text: root.data.error;
@@ -227,33 +255,6 @@ export component AccountCard inherits Rectangle {
             text: root.data.staleness;
             color: Theme.text-secondary;
             font-size: 11px;
-        }
-    }
-
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-
-    // Terminal glyph, top-right; declared after the card's TouchArea so it wins the click.
-    Rectangle {
-        x: parent.width - self.width - 8px;
-        y: 8px;
-        width: 26px;
-        height: 26px;
-        border-radius: 6px;
-        background: run-touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent;
-        Text {
-            text: "\u{E756}";
-            font-family: "Segoe Fluent Icons";
-            font-size: 14px;
-            color: Theme.accent;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-        }
-        run-touch := TouchArea {
-            mouse-cursor: pointer;
-            clicked => { root.run-command(); }
         }
     }
 }

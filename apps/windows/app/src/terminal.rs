@@ -41,18 +41,11 @@ pub fn terminal_invocation(
             },
         };
     }
-    let tail: Vec<String> = match spec.kind {
-        ShellKind::Pwsh | ShellKind::WindowsPowerShell => {
-            vec![exe, "-NoLogo".into(), "-NoExit".into(), "-Command".into(), command.into()]
-        }
-        ShellKind::Cmd => unreachable!("handled above"),
-        ShellKind::GitBash => vec![
-            exe,
-            "-l".into(),
-            "-i".into(),
-            "-c".into(),
-            format!("{command}\nexec bash -l -i"),
-        ],
+    let tail: Vec<String> = if spec.kind == ShellKind::GitBash {
+        vec![exe, "-l".into(), "-i".into(), "-c".into(), format!("{command}\nexec bash -l -i")]
+    } else {
+        // PowerShell (pwsh / Windows PowerShell); cmd returned above.
+        vec![exe, "-NoLogo".into(), "-NoExit".into(), "-Command".into(), command.into()]
     };
     match wt {
         Some(p) => {
