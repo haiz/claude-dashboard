@@ -17,6 +17,7 @@ pub mod extension_sources;
 pub mod scan;
 pub mod startup;
 pub mod command_log;
+pub mod command_classifier;
 
 #[cfg(windows)]
 pub mod userprotect;
