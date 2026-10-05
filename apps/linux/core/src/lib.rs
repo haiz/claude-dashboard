@@ -18,6 +18,7 @@ pub mod scan;
 pub mod startup;
 pub mod command_log;
 pub mod command_classifier;
+pub mod claude_code;
 
 #[cfg(windows)]
 pub mod userprotect;

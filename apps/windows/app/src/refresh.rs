@@ -162,6 +162,7 @@ pub fn refresh_once(now_unix_s: f64) -> Result<RefreshOutput, String> {
         errors: &errors,
         extension_install_account_ids: &ext,
         now_unix_s,
+        active_claude_code_email: None,
     });
     let peak = peak_utilization(&rows);
     Ok(RefreshOutput { rows, peak })
@@ -223,6 +224,7 @@ mod tests {
             errors: &e,
             extension_install_account_ids: &HashSet::new(),
             now_unix_s: NOW,
+            active_claude_code_email: None,
         })
     }
 

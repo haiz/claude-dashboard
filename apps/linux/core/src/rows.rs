@@ -38,6 +38,7 @@ pub struct DisplayRow {
     pub is_extension_sourced: bool,
     pub error: Option<String>,
     pub last_synced_unix: Option<f64>,
+    pub is_active_claude_code: bool,
 }
 
 pub struct BuildInput<'a> {
@@ -46,6 +47,7 @@ pub struct BuildInput<'a> {
     pub errors: &'a HashMap<String, String>,
     pub extension_install_account_ids: &'a HashSet<String>,
     pub now_unix_s: f64,
+    pub active_claude_code_email: Option<&'a str>,
 }
 
 fn view(l: &UsageLimit) -> WindowView {
@@ -98,13 +100,25 @@ pub fn build_rows(input: BuildInput<'_>) -> Vec<DisplayRow> {
                 is_extension_sourced: input.extension_install_account_ids.contains(&a.id),
                 error: input.errors.get(&a.id).cloned(),
                 last_synced_unix: a.last_synced_unix(),
+                is_active_claude_code: input
+                    .active_claude_code_email
+                    .is_some_and(|e| a.email.as_deref() == Some(e)),
             };
             (a.is_pinned, key, row)
         })
         .collect();
-    // Tier 2 (active Claude Code) is absent here. Stable sort, like JS.
+    let any_pinned = keyed.iter().any(|k| k.0);
+    // 1 pinned, 2 active Claude Code (only when nothing is pinned), 3 burn key. Stable.
     keyed.sort_by(|a, b| {
-        b.0.cmp(&a.0).then(b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal))
+        b.0.cmp(&a.0)
+            .then_with(|| {
+                if any_pinned {
+                    std::cmp::Ordering::Equal
+                } else {
+                    b.2.is_active_claude_code.cmp(&a.2.is_active_claude_code)
+                }
+            })
+            .then(b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal))
     });
     keyed.into_iter().map(|(_, _, r)| r).collect()
 }
@@ -156,7 +170,61 @@ mod tests {
             errors: &e,
             extension_install_account_ids: &x,
             now_unix_s: NOW,
+            active_claude_code_email: None,
         })
+    }
+
+    fn run_with_active(accounts: &[Account], usage: &[(&str, UsageData)], active: Option<&str>) -> Vec<DisplayRow> {
+        let u: HashMap<String, UsageData> =
+            usage.iter().map(|(k, v)| (k.to_string(), v.clone())).collect();
+        build_rows(BuildInput {
+            accounts,
+            usage_by_account: &u,
+            errors: &HashMap::new(),
+            extension_install_account_ids: &HashSet::new(),
+            now_unix_s: NOW,
+            active_claude_code_email: active,
+        })
+    }
+
+    fn with_email(mut a: Account, email: &str) -> Account {
+        a.email = Some(email.into());
+        a
+    }
+
+    #[test]
+    fn active_claude_code_account_sorts_after_pins_before_burn() {
+        // b burns hardest, but c is the active Claude Code account and nothing is pinned.
+        let accts = [
+            with_email(acct("a", false, AccountStatus::Active), "a@x"),
+            with_email(acct("b", false, AccountStatus::Active), "b@x"),
+            with_email(acct("c", false, AccountStatus::Active), "c@x"),
+        ];
+        let usage = [("a", usage(10.0, Some(3600))), ("b", usage(90.0, Some(3600))), ("c", usage(5.0, Some(3600)))];
+        let rows = run_with_active(&accts, &usage, Some("c@x"));
+        assert_eq!(ids(&rows), vec!["c", "b", "a"]);
+        assert!(rows[0].is_active_claude_code);
+        assert!(!rows[1].is_active_claude_code);
+    }
+
+    #[test]
+    fn any_pin_disables_the_claude_code_tier() {
+        let accts = [
+            with_email(acct("a", true, AccountStatus::Active), "a@x"),
+            with_email(acct("b", false, AccountStatus::Active), "b@x"),
+            with_email(acct("c", false, AccountStatus::Active), "c@x"),
+        ];
+        let usage = [("a", usage(1.0, Some(3600))), ("b", usage(90.0, Some(3600))), ("c", usage(5.0, Some(3600)))];
+        let rows = run_with_active(&accts, &usage, Some("c@x"));
+        assert_eq!(ids(&rows), vec!["a", "b", "c"]);
+        assert!(rows[2].is_active_claude_code, "badge still set");
+    }
+
+    #[test]
+    fn no_active_email_means_no_badge() {
+        let accts = [with_email(acct("a", false, AccountStatus::Active), "a@x")];
+        let rows = run_with_active(&accts, &[("a", usage(1.0, Some(3600)))], None);
+        assert!(!rows[0].is_active_claude_code);
     }
 
     fn ids(rows: &[DisplayRow]) -> Vec<&str> {

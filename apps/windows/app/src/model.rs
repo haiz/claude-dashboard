@@ -183,6 +183,7 @@ mod tests {
             is_extension_sourced: false,
             error: None,
             last_synced_unix: None,
+            is_active_claude_code: false,
         }
     }
 
