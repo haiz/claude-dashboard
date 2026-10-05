@@ -1,0 +1,7 @@
+{
+  "name": "com.claude_dashboard.bridge",
+  "description": "Claude Dashboard native messaging host",
+  "path": "claude-dashboard-bridge.exe",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://cadpjcfajhlgdaipepkdojcehfmkkedh/"]
+}
