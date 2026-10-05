@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
@@ -230,6 +232,20 @@ fn show_main(app: &AppWindow) {
     app.window().set_minimized(false);
 }
 
+/// Best-effort: bring the window to the foreground (needs the second instance's
+/// `AllowSetForegroundWindow`, or we are already foreground-eligible).
+fn raise_to_foreground(window: &slint::Window) {
+    let binding = window.window_handle();
+    let Ok(handle) = binding.window_handle() else {
+        return;
+    };
+    if let RawWindowHandle::Win32(h) = handle.as_raw() {
+        unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(h.hwnd.get() as *mut std::ffi::c_void);
+        }
+    }
+}
+
 thread_local! {
     static UPDATE_STATE: std::cell::RefCell<updater::UpdateState> =
         const { std::cell::RefCell::new(updater::UpdateState::Idle) };
@@ -407,14 +423,16 @@ fn install_updates(app: &AppWindow) {
 fn main() -> Result<(), slint::PlatformError> {
     let Some(_instance) = instance::acquire_single_instance() else {
         // Already running: ask that instance to refresh/show, then leave.
+        // Let the running instance take focus when it shows its window.
+        unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(
+                windows_sys::Win32::UI::WindowsAndMessaging::ASFW_ANY,
+            );
+        }
         pipe::send("show");
         return Ok(());
     };
     let (nudge_tx, nudge_rx) = std::sync::mpsc::channel::<()>();
-    let pipe_tx = nudge_tx.clone();
-    pipe::serve_reload(move || {
-        let _ = pipe_tx.send(());
-    });
     let tray_nudge = nudge_tx.clone();
     let pop_nudge = nudge_tx.clone();
 
@@ -422,6 +440,22 @@ fn main() -> Result<(), slint::PlatformError> {
     // Add Account wizard (hidden until opened); its poll timer stops on close.
     let open_wizard = wizard::install(dark, nudge_tx.clone())?;
     let app = AppWindow::new()?;
+    {
+        let pipe_tx = nudge_tx.clone();
+        let pipe_weak = app.as_weak();
+        pipe::serve(move |msg| {
+            let _ = pipe_tx.send(());
+            if msg == pipe::PipeMsg::Show {
+                let w = pipe_weak.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(a) = w.upgrade() {
+                        show_main(&a);
+                        raise_to_foreground(a.window());
+                    }
+                });
+            }
+        });
+    }
     {
         let open = open_wizard.clone();
         app.on_add_account(move || open());

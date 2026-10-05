@@ -3,9 +3,19 @@
 
 pub const PIPE_NAME: &str = r"\\.\pipe\claude-dashboard";
 
-/// True for a message that asks for an immediate refresh.
-pub fn is_reload(msg: &str) -> bool {
-    matches!(msg.trim(), "reload" | "show")
+/// A message on the pipe: `reload` refreshes, `show` also raises the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PipeMsg {
+    Reload,
+    Show,
+}
+
+pub fn parse(msg: &str) -> Option<PipeMsg> {
+    match msg.trim() {
+        "reload" => Some(PipeMsg::Reload),
+        "show" => Some(PipeMsg::Show),
+        _ => None,
+    }
 }
 
 /// Best-effort: send one message to the running instance's pipe.
@@ -24,9 +34,9 @@ pub fn send(_msg: &str) -> bool {
     false
 }
 
-/// Spawns a daemon thread serving the pipe; calls `on_reload` per reload message.
+/// Spawns a daemon thread serving the pipe; calls `on_msg` per recognised message.
 #[cfg(windows)]
-pub fn serve_reload<F: Fn() + Send + 'static>(on_reload: F) {
+pub fn serve<F: Fn(PipeMsg) + Send + 'static>(on_msg: F) {
     use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::Storage::FileSystem::{ReadFile, PIPE_ACCESS_INBOUND};
     use windows_sys::Win32::System::Pipes::{
@@ -60,8 +70,10 @@ pub fn serve_reload<F: Fn() + Send + 'static>(on_reload: F) {
             let ok = unsafe {
                 ReadFile(h, buf.as_mut_ptr().cast(), buf.len() as u32, &mut n, std::ptr::null_mut())
             };
-            if ok != 0 && is_reload(&String::from_utf8_lossy(&buf[..n as usize])) {
-                on_reload();
+            if ok != 0 {
+                if let Some(m) = parse(&String::from_utf8_lossy(&buf[..n as usize])) {
+                    on_msg(m);
+                }
             }
             unsafe {
                 DisconnectNamedPipe(h);
@@ -72,18 +84,19 @@ pub fn serve_reload<F: Fn() + Send + 'static>(on_reload: F) {
 }
 
 #[cfg(not(windows))]
-pub fn serve_reload<F: Fn() + Send + 'static>(_on_reload: F) {}
+pub fn serve<F: Fn(PipeMsg) + Send + 'static>(_on_msg: F) {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn recognises_reload_messages() {
-        assert!(is_reload("reload"));
-        assert!(is_reload("reload\n"));
-        assert!(is_reload(" show "));
-        assert!(!is_reload("quit"));
-        assert!(!is_reload(""));
+    fn parses_messages() {
+        assert_eq!(parse("reload"), Some(PipeMsg::Reload));
+        assert_eq!(parse("reload\n"), Some(PipeMsg::Reload));
+        assert_eq!(parse("show"), Some(PipeMsg::Show));
+        assert_eq!(parse(" show "), Some(PipeMsg::Show));
+        assert_eq!(parse("quit"), None);
+        assert_eq!(parse(""), None);
     }
 }

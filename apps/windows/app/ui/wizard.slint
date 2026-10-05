@@ -229,6 +229,7 @@ export component SetupWizardWindow inherits Window {
                         vertical-alignment: center;
                         color: Theme.text-primary;
                         single-line: true;
+                        input-type: password;
                         enabled: !root.pasting;
                         accepted => { root.paste-add(self.text); }
                     }
