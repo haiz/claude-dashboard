@@ -1,0 +1,402 @@
+import { Theme } from "theme.slint";
+
+// A tick on one axis: `pos` is the pixel coordinate inside the chart
+// (x for the time axis, y for the value axis); all of it is computed in Rust
+// from core::chart.
+export struct ChartTick {
+    pos: float,
+    label: string,
+}
+
+// One extra line on a multi-series plot (Overview), plus its hover dot.
+export struct ChartLine {
+    path: string,
+    color: color,
+    dot-visible: bool,
+    dot-x: float,
+    dot-y: float,
+}
+
+export struct ChartLegendItem {
+    id: string,
+    name: string,
+    color: color,
+    on: bool,
+    has-data: bool,
+}
+
+export struct ChartState {
+    // Overview only: one line per selected account, the account legend and
+    // the window selector value ("5h" / "7d" / "fable").
+    lines: [ChartLine],
+    legend: [ChartLegendItem],
+    window: string,
+    // Slint Path commands for the usage line (breaks at resets).
+    line-path: string,
+    x-ticks: [ChartTick],
+    y-ticks: [ChartTick],
+    cross-visible: bool,
+    cross-x: float,
+    cross-y: float,
+    tooltip: string,
+    empty: bool,
+    loading: bool,
+    preset: string,
+    // Plot rectangle (px) so the frame matches core::chart's scale.
+    plot-left: float,
+    plot-top: float,
+    plot-width: float,
+    plot-height: float,
+}
+
+component PresetChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    height: 28px;
+    width: t.preferred-width + 24px;
+    border-radius: 6px;
+    background: root.active ? Theme.accent : (touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent);
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : Theme.card-border;
+    t := Text {
+        text: root.label;
+        color: root.active ? #ffffff : Theme.text-primary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// The plot. Pointer x/y are forwarded in px; Rust decides what they mean.
+export component InteractiveChart inherits Rectangle {
+    in property <ChartState> state;
+    in property <color> line-color: Theme.accent;
+    callback size-changed(float, float);
+    callback hover(float, float);
+    callback select(float, float);
+    callback reset();
+
+    // UI-only drag bookkeeping (pixels).
+    property <length> drag-x0;
+    property <bool> dragging;
+
+    changed width => { root.size-changed(self.width / 1px, self.height / 1px); }
+    changed height => { root.size-changed(self.width / 1px, self.height / 1px); }
+
+    // Plot frame.
+    Rectangle {
+        x: root.state.plot-left * 1px;
+        y: root.state.plot-top * 1px;
+        width: root.state.plot-width * 1px;
+        height: root.state.plot-height * 1px;
+        border-width: 1px;
+        border-color: Theme.card-border;
+    }
+
+    // Y gridlines + labels.
+    for t in root.state.y-ticks: Rectangle {
+        x: root.state.plot-left * 1px;
+        y: t.pos * 1px;
+        width: root.state.plot-width * 1px;
+        height: 1px;
+        background: Theme.card-border;
+        Text {
+            x: -34px;
+            y: -8px;
+            width: 30px;
+            height: 16px;
+            text: t.label;
+            color: Theme.text-secondary;
+            font-size: 10px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+
+    // X labels.
+    for t in root.state.x-ticks: Text {
+        x: t.pos * 1px - 36px;
+        y: (root.state.plot-top + root.state.plot-height) * 1px + 6px;
+        width: 72px;
+        text: t.label;
+        color: Theme.text-secondary;
+        font-size: 10px;
+        horizontal-alignment: center;
+    }
+
+    // The line (clipped to the plot frame).
+    Rectangle {
+        x: root.state.plot-left * 1px;
+        y: root.state.plot-top * 1px;
+        width: root.state.plot-width * 1px;
+        height: root.state.plot-height * 1px;
+        clip: true;
+        Path {
+            x: -root.state.plot-left * 1px;
+            y: -root.state.plot-top * 1px;
+            width: root.width;
+            height: root.height;
+            viewbox-width: root.width / 1px;
+            viewbox-height: root.height / 1px;
+            commands: root.state.line-path;
+            stroke: root.line-color;
+            stroke-width: 2px;
+            stroke-line-join: round;
+            stroke-line-cap: round;
+            fill: transparent;
+        }
+        for ln in root.state.lines: Path {
+            x: -root.state.plot-left * 1px;
+            y: -root.state.plot-top * 1px;
+            width: root.width;
+            height: root.height;
+            viewbox-width: root.width / 1px;
+            viewbox-height: root.height / 1px;
+            commands: ln.path;
+            stroke: ln.color;
+            stroke-width: 2px;
+            stroke-line-join: round;
+            stroke-line-cap: round;
+            fill: transparent;
+        }
+    }
+
+    // Drag selection.
+    if root.dragging: Rectangle {
+        x: min(root.drag-x0, touch.mouse-x);
+        y: root.state.plot-top * 1px;
+        width: abs(touch.mouse-x - root.drag-x0);
+        height: root.state.plot-height * 1px;
+        background: Theme.accent.with-alpha(0.18);
+    }
+
+    // Crosshair + tooltip (hidden when the pointer is off the plot).
+    if root.state.cross-visible && !root.dragging: Rectangle {
+        x: root.state.cross-x * 1px;
+        y: root.state.plot-top * 1px;
+        width: 1px;
+        height: root.state.plot-height * 1px;
+        background: Theme.text-secondary;
+    }
+    if root.state.cross-visible && !root.dragging: Rectangle {
+        x: root.state.cross-x * 1px - 4px;
+        y: root.state.cross-y * 1px - 4px;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: root.line-color;
+        border-width: 1px;
+        border-color: Theme.card-bg;
+    }
+    for ln in root.state.lines: Rectangle {
+        visible: ln.dot-visible && !root.dragging;
+        x: ln.dot-x * 1px - 4px;
+        y: ln.dot-y * 1px - 4px;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: ln.color;
+        border-width: 1px;
+        border-color: Theme.card-bg;
+    }
+    if root.state.cross-visible && !root.dragging: Rectangle {
+        width: tip.preferred-width + 16px;
+        height: tip.preferred-height + 8px;
+        x: min(root.state.cross-x * 1px + 10px, root.width - self.width - 4px);
+        y: max(root.state.plot-top * 1px + 4px, min(root.state.cross-y * 1px - 34px, root.height - self.height - 4px));
+        border-radius: 4px;
+        background: Theme.card-bg;
+        border-width: 1px;
+        border-color: Theme.card-border;
+        tip := Text {
+            text: root.state.tooltip;
+            color: Theme.text-primary;
+            font-size: 12px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    if root.state.empty && !root.state.loading: Text {
+        x: root.state.plot-left * 1px;
+        y: root.state.plot-top * 1px;
+        width: root.state.plot-width * 1px;
+        height: root.state.plot-height * 1px;
+        text: "No data yet";
+        color: Theme.text-secondary;
+        font-size: 14px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                root.drag-x0 = self.mouse-x;
+                root.dragging = true;
+            } else if e.kind == PointerEventKind.up && root.dragging {
+                root.dragging = false;
+                if abs(self.mouse-x - root.drag-x0) > 6px {
+                    root.select(root.drag-x0 / 1px, self.mouse-x / 1px);
+                }
+            } else if e.kind == PointerEventKind.cancel {
+                root.dragging = false;
+            } else if e.kind == PointerEventKind.move && !root.dragging {
+                root.hover(self.mouse-x / 1px, self.mouse-y / 1px);
+            }
+        }
+        changed has-hover => {
+            if !self.has-hover { root.hover(-1, -1); }
+        }
+        double-clicked => { root.dragging = false; root.reset(); }
+    }
+}
+
+// Header (title, range presets, close) + the chart, as an overlay panel.
+export component ChartPanel inherits Rectangle {
+    in property <string> title;
+    in property <ChartState> state;
+    in property <color> line-color: Theme.accent;
+    callback preset(string);
+    callback close();
+    callback size-changed(float, float);
+    callback hover(float, float);
+    callback select(float, float);
+    callback reset();
+    background: Theme.dark ? #202020 : #f3f3f3;
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root.title + " \u{b7} Usage history";
+                color: Theme.text-primary;
+                font-size: 20px;
+                font-weight: 600;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            for p in ["5h", "24h", "3d", "7d", "30d"]: PresetChip {
+                label: p;
+                active: root.state.preset == p;
+                clicked => { root.preset(p); }
+            }
+            PresetChip { label: "Close"; clicked => { root.close(); } }
+        }
+        Rectangle {
+            background: Theme.card-bg;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            vertical-stretch: 1;
+            InteractiveChart {
+                x: 6px;
+                y: 6px;
+                width: parent.width - 12px;
+                height: parent.height - 12px;
+                state: root.state;
+                line-color: root.line-color;
+                size-changed(w, h) => { root.size-changed(w, h); }
+                hover(x, y) => { root.hover(x, y); }
+                select(a, b) => { root.select(a, b); }
+                reset => { root.reset(); }
+            }
+        }
+        Text {
+            text: "Drag to zoom \u{b7} double-click to reset";
+            color: Theme.text-secondary;
+            font-size: 11px;
+        }
+    }
+}
+
+// Overview (macOS OverviewChartView): window selector, range presets, account
+// toggles and one line per selected account on shared axes.
+export component OverviewPane inherits VerticalLayout {
+    in property <ChartState> state;
+    callback window(string);
+    callback preset(string);
+    callback toggle(string);
+    callback size-changed(float, float);
+    callback hover(float, float);
+    callback select(float, float);
+    callback reset();
+    spacing: 12px;
+
+    HorizontalLayout {
+        spacing: 8px;
+        for w[i] in ["5h", "7d", "fable"]: PresetChip {
+            label: i == 2 ? "Fable" : w;
+            active: root.state.window == w;
+            clicked => { root.window(w); }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        for p in ["5h", "24h", "3d", "7d", "30d"]: PresetChip {
+            label: p;
+            active: root.state.preset == p;
+            clicked => { root.preset(p); }
+        }
+    }
+    Flickable {
+        height: 30px;
+        content-width: legend-row.preferred-width;
+        legend-row := HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            for item in root.state.legend: Rectangle {
+                height: 28px;
+                width: lt.preferred-width + 38px;
+                border-radius: 6px;
+                border-width: 1px;
+                border-color: item.on ? item.color : Theme.card-border;
+                background: lt-touch.has-hover ? item.color.with-alpha(0.15) : transparent;
+                opacity: item.on && item.has-data ? 1.0 : 0.5;
+                Rectangle {
+                    x: 10px;
+                    y: (parent.height - self.height) / 2;
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: item.on ? item.color : transparent;
+                    border-width: 2px;
+                    border-color: item.color;
+                }
+                lt := Text {
+                    x: 28px;
+                    y: (parent.height - self.height) / 2;
+                    text: item.has-data ? item.name : item.name + " (no data)";
+                    color: Theme.text-primary;
+                    font-size: 12px;
+                }
+                lt-touch := TouchArea { clicked => { root.toggle(item.id); } }
+            }
+        }
+    }
+    Rectangle {
+        background: Theme.card-bg;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.card-border;
+        vertical-stretch: 1;
+        InteractiveChart {
+            x: 6px;
+            y: 6px;
+            width: parent.width - 12px;
+            height: parent.height - 12px;
+            state: root.state;
+            size-changed(w, h) => { root.size-changed(w, h); }
+            hover(x, y) => { root.hover(x, y); }
+            select(a, b) => { root.select(a, b); }
+            reset => { root.reset(); }
+        }
+    }
+    Text {
+        text: "Click an account to show or hide its line \u{b7} drag to zoom \u{b7} double-click to reset";
+        color: Theme.text-secondary;
+        font-size: 11px;
+    }
+}

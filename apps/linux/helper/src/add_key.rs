@@ -12,15 +12,11 @@ use std::io::Read;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use claude_dashboard_core::api::{fetch_account, fetch_organizations, parse_account};
-use claude_dashboard_core::identity::{duplicate_index, StoredIdentity};
-use claude_dashboard_core::manual_key::{
-    manual_key_decision, trimmed_key, ManualKeyDecision, StoredManualTarget,
-};
-use claude_dashboard_core::model::{Account, AccountSource, AccountStatus, Browser};
+use claude_dashboard_core::key_intake::{apply_session_key, IntakeOutcome};
+use claude_dashboard_core::manual_key::trimmed_key;
+use claude_dashboard_core::plan::{parse_orgs, plan_wire_value};
 use claude_dashboard_core::store;
 use uuid::Uuid;
-
-use crate::sync::{parse_orgs, plan_for, plan_wire_value, refreshed_plan_for};
 
 /// 2001-01-01 -> 1970-01-01 offset, so `lastSynced` round-trips to the macOS
 /// `Date` reference-date encoding. Same constant `sync` uses.
@@ -63,63 +59,30 @@ pub fn run_add_key() -> i32 {
             kept.display()
         );
     }
-    let stored: Vec<StoredIdentity> = accounts
-        .iter()
-        .map(|a| StoredIdentity {
-            account_uuid: a.account_uuid.clone(),
-            email: a.email.clone(),
-        })
-        .collect();
-    let index = duplicate_index(&identity.uuid, identity.email.as_deref(), &stored);
-
     // A failed fetch parses to an empty slice, which reduces to "no hint" in
-    // both `plan_for` (Pro fallback, add path) and `refreshed_plan_for`
-    // (leave the stored tier alone, repair path).
+    // both the add path (Pro fallback) and the repair path (leave the stored
+    // tier alone).
     let orgs = fetch_organizations(session_key)
         .ok()
         .map(|body| parse_orgs(&body))
         .unwrap_or_default();
 
-    let target = index.map(|i| StoredManualTarget {
-        org_id: accounts[i].org_id.clone(),
-        account_uuid: accounts[i].account_uuid.clone(),
-        email: accounts[i].email.clone(),
-    });
+    let outcome = apply_session_key(
+        &mut accounts,
+        session_key,
+        &identity,
+        &orgs,
+        || Uuid::new_v4().to_string().to_uppercase(),
+        now_reference_seconds(),
+    );
 
-    match manual_key_decision(
-        target.as_ref(),
-        &identity.uuid,
-        identity.email.as_deref(),
-        &identity.memberships,
-    ) {
-        ManualKeyDecision::RejectNoChatOrg => {
+    match outcome {
+        IntakeOutcome::RejectNoChatOrg => {
             eprintln!("No organization with chat access.");
             1
         }
 
-        ManualKeyDecision::Add { org_id } => {
-            let name = identity.email.clone().unwrap_or_else(|| {
-                // Chars, not bytes: a multi-byte character crossing byte 8 would
-                // panic a byte slice, and Swift's `.prefix(8)` does not.
-                format!("Account {}", identity.uuid.chars().take(8).collect::<String>())
-            });
-            let plan = plan_for(&orgs, &org_id);
-            accounts.push(Account {
-                id: Uuid::new_v4().to_string().to_uppercase(),
-                name: name.clone(),
-                email: identity.email.clone(),
-                chrome_profile_path: String::new(),
-                chrome_profile_name: None,
-                org_id: Some(org_id),
-                account_uuid: Some(identity.uuid.clone()),
-                session_key: Some(store::encrypt_session_key(session_key)),
-                browser: Browser::Chrome,
-                plan: plan.clone(),
-                last_synced: Some(now_reference_seconds()),
-                status: AccountStatus::Active,
-                is_pinned: false,
-                source: AccountSource::Manual,
-            });
+        IntakeOutcome::Added { name, plan, .. } => {
             if store::save_accounts(&accounts).is_err() {
                 eprintln!("Could not write the account store.");
                 return 1;
@@ -128,44 +91,23 @@ pub fn run_add_key() -> i32 {
             0
         }
 
-        ManualKeyDecision::Repair {
-            writes,
+        IntakeOutcome::Updated {
+            name,
+            old_plan,
+            new_plan,
             warn_no_chat_org,
+            ..
         } => {
-            let Some(i) = index else { return 1 };
-            let old_plan = accounts[i].plan.clone();
-            accounts[i].session_key = Some(store::encrypt_session_key(session_key));
-            accounts[i].status = AccountStatus::Active;
-            accounts[i].last_synced = Some(now_reference_seconds());
-            if let Some(org_id) = writes.org_id {
-                accounts[i].org_id = Some(org_id);
-            }
-            if let Some(uuid) = writes.account_uuid {
-                accounts[i].account_uuid = Some(uuid);
-            }
-            if let Some(email) = writes.email {
-                accounts[i].email = Some(email);
-            }
-            // `refreshed_plan_for` matches the org against `account.org_id` as
-            // it stands, so a `None` just filled in above is what gets matched.
-            if let Some(plan) = refreshed_plan_for(&accounts[i], &orgs) {
-                accounts[i].plan = plan;
-            }
             if store::save_accounts(&accounts).is_err() {
                 eprintln!("Could not write the account store.");
                 return 1;
             }
-
-            let name = accounts[i]
-                .email
-                .clone()
-                .unwrap_or_else(|| accounts[i].name.clone());
             eprintln!("Updated key: {name}");
-            if accounts[i].plan != old_plan {
+            if new_plan != old_plan {
                 eprintln!(
                     "Updated plan: {name} ({} -> {})",
                     plan_wire_value(&old_plan),
-                    plan_wire_value(&accounts[i].plan)
+                    plan_wire_value(&new_plan)
                 );
             }
             // The resolve result, not the stored value: an account that kept a

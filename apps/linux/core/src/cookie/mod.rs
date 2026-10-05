@@ -32,6 +32,8 @@ use hmac::Hmac;
 use sha2::{Digest, Sha256};
 use std::process::Command;
 
+pub mod win;
+
 const SALT: &[u8] = b"saltysalt";
 const IV: [u8; 16] = [0x20; 16];
 
@@ -81,6 +83,10 @@ pub enum CookieError {
     DecryptFailed,
     /// Decrypted plaintext was not valid UTF-8.
     BadUtf8,
+    /// A Windows Chrome-127+ cookie (tag `v20`): app-bound encryption, whose
+    /// key is bound to the browser through a SYSTEM service. Deliberately not
+    /// opened here; the app routes the user to the extension instead.
+    AppBoundEncrypted,
 }
 
 /// PBKDF2-HMAC-SHA1(password, "saltysalt", 1 iteration, 16-byte key) — the
@@ -137,6 +143,23 @@ fn decrypt_v12(
     host_key: &str,
     db_schema_version: i64,
 ) -> Result<String, CookieError> {
+    let mut key = [0u8; 32];
+    hkdf::Hkdf::<Sha256>::new(Some(b"fdo_portal_secret_salt"), portal_secret)
+        .expand(b"HKDF-SHA-256 AES-256-GCM", &mut key)
+        .expect("32 bytes is a valid HKDF-SHA256 output length");
+    gcm_open(&key, body, host_key, db_schema_version)
+}
+
+/// AES-256-GCM over `nonce(12) || ciphertext || tag`, then the schema >= 24
+/// domain-hash strip. Shared by Linux `v12` (secret-portal) and the Windows
+/// reader ([`win::decode_value`]), which use the same body layout under
+/// different key material.
+pub(crate) fn gcm_open(
+    key: &[u8; 32],
+    body: &[u8],
+    host_key: &str,
+    db_schema_version: i64,
+) -> Result<String, CookieError> {
     use aes_gcm::aead::Aead;
     use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 
@@ -144,11 +167,7 @@ fn decrypt_v12(
     if body.len() < 12 + 16 {
         return Err(CookieError::DecryptFailed);
     }
-    let mut key = [0u8; 32];
-    hkdf::Hkdf::<Sha256>::new(Some(b"fdo_portal_secret_salt"), portal_secret)
-        .expand(b"HKDF-SHA-256 AES-256-GCM", &mut key)
-        .expect("32 bytes is a valid HKDF-SHA256 output length");
-    let mut pt = Aes256Gcm::new(&key.into())
+    let mut pt = Aes256Gcm::new(key.into())
         .decrypt(Nonce::from_slice(&body[..12]), &body[12..])
         .map_err(|_| CookieError::DecryptFailed)?;
     strip_domain_hash(&mut pt, host_key, db_schema_version);

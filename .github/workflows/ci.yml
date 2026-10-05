@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release script checks
+        run: |
+          bash scripts/test-sync-version.sh
+          bash scripts/test-release-workflow.sh
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: clippy
+      - name: Test and lint apps/linux (core + helper)
+        working-directory: apps/linux
+        run: |
+          cargo test --workspace
+          cargo clippy --workspace --all-targets -- -D warnings
+
+  # release.sh runs on a Mac, so sync-version.sh must work with BSD sed
+  # (the linux job above only proves GNU sed). The Swift test suites are not
+  # run here; release.sh runs them locally before publishing.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version sync under BSD sed
+        run: bash scripts/test-sync-version.sh
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Test core on Windows
+        working-directory: apps/linux
+        run: cargo test -p claude-dashboard-core
+      - name: Test and lint the Windows bridge workspace
+        working-directory: apps/windows
+        run: |
+          cargo test --workspace
+          cargo clippy --all-targets -- -D warnings
+      # GUI rendering is not covered by CI (no display); it is verified by the
+      # run-checks. These steps prove the Slint app compiles and its non-UI
+      # helper tests (merge_errors, single-instance, popover_origin,
+      # render_tray_icon) pass.
+      - name: Build the Windows app
+        working-directory: apps/windows
+        run: cargo build -p claude-dashboard
+      - name: Test the Windows app
+        working-directory: apps/windows
+        run: cargo test -p claude-dashboard
+      - name: Test the browser extension
+        working-directory: apps/windows/extension
+        run: node --test

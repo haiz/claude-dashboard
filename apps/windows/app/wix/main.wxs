@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Per-user MSI for Claude Dashboard (contract/windows.md "Installer").
+     Built by apps/windows/scripts/build-msi.ps1 via cargo-wix, which defines
+     $(var.Version) and $(var.CargoTargetBinDir). No admin: everything lives in
+     the user's profile and HKCU. User data (%APPDATA% / %LOCALAPPDATA%
+     \claude-dashboard) is never referenced here, so upgrade and uninstall keep it. -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Claude Dashboard" Language="1033" Version="$(var.Version)"
+           Manufacturer="Claude Dashboard" UpgradeCode="173B2BBC-0CBB-472C-B3BF-E88EE21C4D58">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser"
+             InstallPrivileges="limited" Platform="x64" Description="Claude Dashboard" />
+    <MajorUpgrade Schedule="afterInstallInitialize"
+                  DowngradeErrorMessage="A newer version of Claude Dashboard is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="ProgramsDir" Name="Programs">
+          <Directory Id="INSTALLDIR" Name="ClaudeDashboard" />
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder" />
+    </Directory>
+
+    <DirectoryRef Id="INSTALLDIR">
+      <!-- Fixed GUID — never change it, and never add/remove resources in this component; ship a new file in a NEW component with its own GUID (MSI component rules). -->
+      <Component Id="AppFiles" Guid="6E1A2C54-9B3D-4F0A-8C71-2D5E7A9B1C03" Win64="yes">
+        <File Id="AppExe" Source="$(var.CargoTargetBinDir)\claude-dashboard.exe" />
+        <File Id="BridgeExe" Source="$(var.CargoTargetBinDir)\claude-dashboard-bridge.exe" />
+        <File Id="HostManifest" Name="com.claude_dashboard.bridge.json"
+              Source="$(sys.SOURCEFILEDIR)com.claude_dashboard.bridge.json" />
+        <RegistryValue Root="HKCU" Key="Software\ClaudeDashboard" Name="Installed"
+                       Type="integer" Value="1" KeyPath="yes" />
+        <RemoveFolder Id="RemoveInstallDir" Directory="INSTALLDIR" On="uninstall" />
+        <RemoveFolder Id="RemoveProgramsDir" Directory="ProgramsDir" On="uninstall" />
+      </Component>
+      <!-- Fixed GUID — never change it, and never add/remove resources in this component; ship a new file in a NEW component with its own GUID (MSI component rules). -->
+      <Component Id="NativeMessagingHost" Guid="A47D90E2-5C18-4B6F-9E3A-7F1B2D4C8E65" Win64="yes">
+        <RegistryValue Root="HKCU" Key="Software\Google\Chrome\NativeMessagingHosts\com.claude_dashboard.bridge"
+                       Type="string" Value="[INSTALLDIR]com.claude_dashboard.bridge.json" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\Microsoft\Edge\NativeMessagingHosts\com.claude_dashboard.bridge"
+                       Type="string" Value="[INSTALLDIR]com.claude_dashboard.bridge.json" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut" Guid="*">
+        <Shortcut Id="AppShortcut" Name="Claude Dashboard" Target="[INSTALLDIR]claude-dashboard.exe"
+                  WorkingDirectory="INSTALLDIR" />
+        <RegistryValue Root="HKCU" Key="Software\ClaudeDashboard" Name="StartMenuShortcut"
+                       Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- Ruling 7: drop the app's Launch-at-startup value on a real uninstall
+         (not on the uninstall half of an upgrade). The value may be absent. -->
+    <CustomAction Id="RemoveRunValue" Directory="INSTALLDIR" Execute="deferred" Impersonate="yes" Return="ignore"
+                  ExeCommand="&quot;[System64Folder]reg.exe&quot; delete &quot;HKCU\Software\Microsoft\Windows\CurrentVersion\Run&quot; /v ClaudeDashboard /f" />
+    <InstallExecuteSequence>
+      <Custom Action="RemoveRunValue" Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+    </InstallExecuteSequence>
+
+    <Feature Id="Main" Title="Claude Dashboard" Level="1">
+      <ComponentRef Id="AppFiles" />
+      <ComponentRef Id="NativeMessagingHost" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+  </Product>
+</Wix>

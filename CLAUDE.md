@@ -29,6 +29,19 @@ xcodebuild test -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDash
 
 # Run the GNOME Shell extension's test suite (apps/linux/)
 cd apps/linux && CLAUDE_DASHBOARD_REPO="$(git rev-parse --show-toplevel)" gjs -m tests/run.js
+
+# Windows: core on Windows (paths, DPAPI, v10 cookies)
+cd apps/linux && cargo test -p claude-dashboard-core
+# Windows: the bridge workspace (framing, sources, handler, roundtrip)
+cd apps/windows && cargo test --workspace
+# Windows: the browser extension
+cd apps/windows/extension && node --test
+# Windows: run the Slint app (CLAUDE_DASHBOARD_FAKE_ROWS=1 seeds sample cards, no network)
+cd apps/windows && cargo run -p claude-dashboard
+# Windows: build the per-user MSI (needs WiX 3.14 + cargo-wix 0.3.9; output apps/windows/target/wix/)
+powershell -File apps/windows/scripts/build-msi.ps1
+# Windows: check the extension zip packer
+powershell -File apps/windows/scripts/test-pack-extension.ps1
 ```
 
 No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Security, CommonCrypto, SQLite3).
@@ -89,6 +102,67 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 - **apps/linux/gnome-extension/** — a GNOME Shell panel indicator driving the same
   `claude-dashboard-helper` binary the CLI uses.
 
+### Windows
+- **apps/windows/** — a separate Cargo workspace (Rust) for the Windows port. It reuses
+  `apps/linux/core` by path dependency (no crate move), so the Linux CI and release flow are
+  untouched. Sub-project 1 delivers the bridge and extension; sub-project 2 the Slint app:
+  - **apps/windows/app/** — `claude-dashboard`, the Slint UI binary: main window with Mica and
+    system light/dark theme, sidebar, Dashboard card grid with core-driven ring gauges,
+    per-account page, tray ring icon (peak usage) with a Mica flyout popover, a background
+    refresh loop, a single-instance mutex, and the consumer of the `\\.\pipe\claude-dashboard`
+    reload pipe. Closing the window hides it; the app lives in the tray. GUI rendering is
+    verified by run-checks, not CI. Sub-project 3 adds the Add Account wizard (extension / scan /
+    paste tabs) and the Settings Accounts (delete + mute, re-sync) and General (auto refresh,
+    launch at startup) panes. Sub-project 4 adds charts: the per-account interactive usage chart
+    (`ui/chart.slint`, `src/chart.rs`, pure helpers in `chart_model.rs`), opened by the "View
+    chart" button, and the Overview multi-account chart opened from the sidebar "Overview" item. Sub-project 5 adds
+    the Command Log pane (Tools), the per-account Run Command panel (saved command, Open in
+    Terminal toggle, classifier-driven default), auto-run on reset (hidden, once per episode), the
+    shell picker (Settings > General > Commands), the green Claude Code badge, and the Help pane
+    (`log_view.rs`, `run_command.rs`); the sidebar "Coming soon" placeholder is gone. See
+    `contract/windows.md`, "Command Log". Sub-project 6 adds release: a per-user MSI
+    (`app/wix/main.wxs`, built by `scripts/build-msi.ps1`; relative-path host manifest, fixed
+    UpgradeCode and component GUIDs, uninstall keeps user data), the extension zip
+    (`scripts/pack-extension.ps1`), auto-update (`app/src/updater.rs` for guards, MSI download
+    checks and the detached relauncher, over `core::update` and the `autoUpdate` /
+    `lastAutoUpdateCheck` settings; installed copy only, `DISABLE_AUTOUPDATER=1` disables) and
+    the `release-windows.yml` workflow. See `contract/windows.md`, "Installer", "Updates", "Release".
+  - **apps/windows/bridge/** — `claude-dashboard-bridge.exe`, a native-messaging host for the
+    browser extension. `handler.rs` runs the key intake over an injected `Environment` trait
+    (so tests touch no network/store/pipe); `real_env.rs` is the production wiring; `framing.rs`
+    speaks the Chrome native-messaging length-prefix framing; `sources.rs` owns
+    `extension-sources.json` (install→account bindings and muted installs); `notify.rs` pokes
+    the app's named pipe. See `contract/windows.md`.
+  - **apps/windows/extension/** — an MV3 browser extension (ES modules) that reads the claude.ai
+    `sessionKey` cookie via `chrome.cookies` and forwards it to the bridge. Logic lives in
+    `lib/` and is tested with `node --test`; the extension id is fixed by the manifest `key`.
+- **Windows-specific `core` modules:** `store.rs` resolves `%APPDATA%`/`%LOCALAPPDATA%` and seals
+  session keys with DPAPI (`cfg(windows)`); `userprotect.rs` wraps `CryptProtectData`;
+  `cookie/win.rs` decodes `v10` cookies and refuses `v20` app-bound ones; `browser.rs` gains
+  `discover_windows_profiles_under`. The add/repair logic shared by the helper's `add-key` and
+  the bridge lives in `core::key_intake`. The cross-process store lock is `store::lock_store`.
+- **Presentation `core` modules** (ported from `apps/linux/lib/`, same values, tested): `colors`
+  (usage color interpolation), `geometry` (ring-gauge geometry), `format` (percent/reset text),
+  `rows` (`DisplayRow` view models and burn-rate ordering).
+- **Setup & Settings `core` modules:** `settings.rs` (`settings.json`: auto refresh, preferred scan
+  browser, launch at startup; non-critical, missing/corrupt -> defaults); `scan.rs` (scans Windows
+  profiles and classifies each as `ScannedSession` / `AppBound` / `NoSession`); `startup.rs`
+  (launch-at-startup via the HKCU `Run` key).
+- **Chart `core` modules:** `chart` (chart math ported from `apps/linux/lib/chart.js`: scale, ticks,
+  zoom, reset-split segments) and the `UsageLogStore::series`/`series_all` read of the usage log
+  that feeds it. See `contract/usage-log.md`.
+- **Command `core` modules:** `command_log` (SQLite `command_logs.db`: trigger/status vocabulary
+  with fixed raw values, newest 500 rows by id, 4096-byte output tail), `command_classifier`
+  (Open-in-Terminal default from the leading token, claude print mode, TUI list, ssh walk),
+  `auto_run` (`should_run_saved_command` plus the once-per-episode latch, armed only for accounts
+  with a saved command), `claude_code` (active email from `%USERPROFILE%\.claude.json`) and
+  `run_commands` (`run-commands.json`, keyed by account id, dropped on account delete).
+- **App process control:** `shell.rs` (shell discovery, the `settings.json` `shell` choice, hidden-run
+  and resolver invocations per shell), `terminal.rs` (interactive launch via `wt.exe new-tab`, else
+  `conhost.exe`; cmd's `/k` tail passed raw, `;` escaped under wt), `runner.rs` (Job Object runner:
+  spawn suspended, assign to a `KILL_ON_JOB_CLOSE` job, resume; 60 s timeout, cancel, background
+  leftovers ended when the shell exits) and `commands.rs` (glues resolve, classify, run and log).
+
 ## Key Technical Details
 
 - **LSUIElement: true** in Info.plist — app runs as menu bar only (no Dock icon)
@@ -138,5 +212,7 @@ If no `--notes` flag is passed, the script falls back to GitHub's auto-generated
    - `claude-dashboard-cli.tar.gz` (must contain both `claude-dashboard-cli` AND `claude-dashboard-helper`)
 4. Update `sha256` in `Formula/claude-dashboard-cli.rb` and `Casks/claude-dashboard.rb`.
 5. Commit, tag, push, `gh release create` with both artifacts.
+
+After `release.sh` publishes, `.github/workflows/release-windows.yml` builds and attaches `ClaudeDashboard-x64.msi` and `claude-dashboard-extension.zip`; if it fails, re-run it by hand with `workflow_dispatch` and the tag. `scripts/test-release-workflow.sh` enforces its upload-only guardrails.
 
 Validate version sync at any time with `./scripts/test-sync-version.sh`.

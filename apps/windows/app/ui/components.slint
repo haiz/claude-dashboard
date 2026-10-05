@@ -1,0 +1,426 @@
+import { Theme, UiRow, UiWindow } from "theme.slint";
+
+// Sidebar row: coloured tile + Segoe Fluent glyph + label. Hover/selected highlight.
+export component SidebarRow inherits Rectangle {
+    in property <string> label;
+    in property <string> glyph;
+    in property <color> tile: #808080;
+    in property <string> initial; // when set, the tile is a round avatar showing this letter
+    in property <bool> selected: false;
+    in property <bool> enabled: true;
+    in property <color> text-color: #1a1a1a;
+    in property <color> hover-color: #00000010;
+    in property <color> selected-color: #00000020;
+    callback clicked();
+
+    height: 32px;
+    border-radius: 6px;
+    background: root.selected ? root.selected-color : (touch.has-hover && root.enabled ? root.hover-color : transparent);
+    opacity: root.enabled ? 1.0 : 0.45;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 10px;
+        alignment: start;
+        Rectangle {
+            width: 22px;
+            height: 22px;
+            y: (parent.height - self.height) / 2;
+            border-radius: root.initial != "" ? 11px : 5px;
+            background: root.tile;
+            Text {
+                text: root.initial != "" ? root.initial : root.glyph;
+                font-family: root.initial != "" ? "Segoe UI Variable" : "Segoe Fluent Icons";
+                font-size: 12px;
+                font-weight: root.initial != "" ? 600 : 400;
+                color: white;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        Text {
+            text: root.label;
+            color: root.text-color;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Ring gauge: track + Rust-built progress arc (core::geometry) + centered percent.
+export component UsageGauge inherits Rectangle {
+    in property <UiWindow> win;
+    in property <float> zoom: 1.0;
+    width: root.win.diameter * root.zoom * 1px;
+    height: root.win.diameter * root.zoom * 1px;
+    // Track: full circle at the same radius/stroke as the arc.
+    Rectangle {
+        width: parent.width - root.win.line-width * root.zoom * 1px;
+        height: self.width;
+        x: root.win.line-width * root.zoom * 0.5px;
+        y: self.x;
+        border-radius: self.width / 2;
+        border-width: root.win.line-width * root.zoom * 1px;
+        border-color: Theme.dark ? #ffffff22 : #00000014;
+    }
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: root.win.diameter;
+        viewbox-height: root.win.diameter;
+        commands: root.win.gauge-path;
+        stroke: root.win.color;
+        stroke-width: root.win.line-width * root.zoom * 1px;
+        stroke-line-cap: round;
+        fill: transparent;
+        animate stroke { duration: 300ms; easing: ease-out; }
+    }
+    Text {
+        text: round(root.win.percent) + "%";
+        color: Theme.text-primary;
+        font-size: root.win.diameter * root.zoom * 0.24px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// Usage bar: fill width animates; colour comes from core::colors via the row.
+export component UsageBar inherits Rectangle {
+    in property <float> fraction;
+    in property <color> fill-color;
+    height: 6px;
+    border-radius: 3px;
+    background: Theme.dark ? #ffffff22 : #00000014;
+    Rectangle {
+        x: 0px;
+        width: parent.width * clamp(root.fraction, 0.0, 1.0);
+        height: parent.height;
+        border-radius: 3px;
+        background: root.fill-color;
+        animate width { duration: 300ms; easing: ease-out; }
+    }
+}
+
+export component Avatar inherits Rectangle {
+    in property <string> initial;
+    in property <color> tint;
+    in property <length> size: 32px;
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 2;
+    background: root.tint;
+    Text {
+        text: root.initial;
+        color: white;
+        font-size: root.size * 0.45;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component WindowColumn inherits VerticalLayout {
+    in property <string> label;
+    in property <UiWindow> win;
+    spacing: 4px;
+    alignment: start;
+    Text {
+        text: root.label;
+        color: Theme.text-secondary;
+        font-size: 12px;
+        horizontal-alignment: center;
+    }
+    HorizontalLayout {
+        alignment: center;
+        UsageGauge { win: root.win; }
+    }
+    Text {
+        text: root.win.countdown;
+        color: root.win.countdown-color;
+        font-size: 11px;
+        horizontal-alignment: center;
+    }
+    UsageBar { fraction: root.win.fraction; fill-color: root.win.color; }
+}
+
+export component AccountCard inherits Rectangle {
+    in property <UiRow> data;
+    callback clicked();
+    callback run-command();
+    background: Theme.card-bg;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.accent : Theme.card-border;
+    animate border-color { duration: 120ms; }
+
+    // Declared first so it sits below the content; the glyph's own TouchArea (inside
+    // the layout, declared later) is on top and wins its clicks.
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 10px;
+            Avatar { initial: root.data.initial; tint: root.data.avatar-color; }
+            VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: root.data.name;
+                        color: Theme.text-primary;
+                        font-size: 15px;
+                        font-weight: 600;
+                        overflow: elide;
+                    }
+                    if root.data.claude-code: Rectangle {
+                        width: 8px; height: 8px; y: (parent.height - self.height) / 2;
+                        border-radius: 4px;
+                        background: Theme.ok;
+                    }
+                }
+                Text {
+                    text: root.data.email != "" ? root.data.email : root.data.plan;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    overflow: elide;
+                }
+            }
+            Text {
+                text: root.data.animal;
+                font-size: 18px;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                width: plan.preferred-width + 12px;
+                height: 20px;
+                y: 6px;
+                border-radius: 10px;
+                background: Theme.accent.with-alpha(0.15);
+                plan := Text {
+                    text: root.data.plan;
+                    color: Theme.accent;
+                    font-size: 11px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            // Terminal glyph: a layout item after the plan pill (no overlap); its own
+            // TouchArea is a child, so it wins the click over the card's touch area.
+            Rectangle {
+                width: 26px;
+                height: 26px;
+                y: 0px;
+                border-radius: 6px;
+                background: run-touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent;
+                Text {
+                    text: "\u{E756}";
+                    font-family: "Segoe Fluent Icons";
+                    font-size: 14px;
+                    color: Theme.accent;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                run-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.run-command(); }
+                }
+            }
+        }
+        if root.data.error != "": Text {
+            text: root.data.error;
+            color: Theme.danger;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: 14px;
+            alignment: center;
+            if root.data.five-hour.present: WindowColumn { label: "5h"; win: root.data.five-hour; }
+            if root.data.seven-day.present: WindowColumn { label: "7d"; win: root.data.seven-day; }
+        }
+        Text {
+            text: root.data.staleness;
+            color: Theme.text-secondary;
+            font-size: 11px;
+        }
+    }
+}
+
+component BigGauge inherits VerticalLayout {
+    in property <string> label;
+    in property <UiWindow> win;
+    spacing: 6px;
+    alignment: center;
+    Text {
+        text: root.label;
+        color: Theme.text-secondary;
+        font-size: 13px;
+        font-weight: 600;
+        horizontal-alignment: center;
+    }
+    HorizontalLayout {
+        alignment: center;
+        UsageGauge { win: root.win; zoom: 1.8; }
+    }
+    Text {
+        text: root.win.countdown;
+        color: root.win.countdown-color;
+        font-size: 13px;
+        horizontal-alignment: center;
+    }
+    Text {
+        text: root.win.reset-label;
+        color: Theme.text-secondary;
+        font-size: 11px;
+        horizontal-alignment: center;
+    }
+}
+
+// Larger 5h / 7d / Fable gauge row (macOS UsageGaugeRow). Fable only when present.
+export component UsageGaugeRow inherits HorizontalLayout {
+    in property <UiRow> data;
+    spacing: 32px;
+    alignment: center;
+    if root.data.five-hour.present: BigGauge { label: "5h"; win: root.data.five-hour; }
+    if root.data.seven-day.present: BigGauge { label: "7d"; win: root.data.seven-day; }
+    if root.data.fable.present: BigGauge { label: "Fable"; win: root.data.fable; }
+}
+
+component ActionButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 32px;
+    width: t.preferred-width + 28px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    background: root.enabled ? (touch.has-hover ? Theme.accent.with-alpha(0.15) : Theme.card-bg) : transparent;
+    opacity: root.enabled ? 1.0 : 0.45;
+    t := Text {
+        text: root.label;
+        color: root.enabled ? Theme.accent : Theme.text-secondary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Per-account page (macOS AccountPane): header, gauge row, actions.
+export component AccountPane inherits VerticalLayout {
+    in property <UiRow> data;
+    // Re-sync refreshes all accounts (one shared refresh nudge).
+    callback resync();
+    callback view-chart();
+    callback run-command();
+    spacing: 18px;
+    alignment: start;
+
+    HorizontalLayout {
+        spacing: 14px;
+        Avatar { size: 48px; initial: root.data.initial; tint: root.data.avatar-color; }
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.data.name;
+                    color: Theme.text-primary;
+                    font-size: 20px;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+                if root.data.claude-code: Rectangle {
+                    width: 8px; height: 8px; y: (parent.height - self.height) / 2;
+                    border-radius: 4px;
+                    background: Theme.ok;
+                }
+            }
+            Text {
+                text: root.data.email != "" ? root.data.email : root.data.staleness;
+                color: Theme.text-secondary;
+                font-size: 12px;
+                overflow: elide;
+            }
+        }
+        Rectangle {
+            width: plan.preferred-width + 16px;
+            height: 22px;
+            y: 13px;
+            border-radius: 11px;
+            background: Theme.accent.with-alpha(0.15);
+            plan := Text {
+                text: root.data.plan;
+                color: Theme.accent;
+                font-size: 12px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        Rectangle {
+            width: status.preferred-width + 16px;
+            height: 22px;
+            y: 13px;
+            border-radius: 11px;
+            background: (root.data.status == "Active" ? Theme.ok : Theme.danger).with-alpha(0.15);
+            status := Text {
+                text: root.data.status;
+                color: root.data.status == "Active" ? Theme.ok : Theme.danger;
+                font-size: 12px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    if root.data.error != "": Text {
+        text: root.data.error;
+        color: Theme.danger;
+        font-size: 12px;
+        wrap: word-wrap;
+    }
+
+    Rectangle {
+        background: Theme.card-bg;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.card-border;
+        height: 300px;
+        UsageGaugeRow {
+            data: root.data;
+            width: parent.width;
+            height: parent.height;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+        ActionButton { label: "Re-sync"; clicked => { root.resync(); } }
+        ActionButton { label: "View chart"; clicked => { root.view-chart(); } }
+        ActionButton { label: "Run Command"; clicked => { root.run-command(); } }
+    }
+    Text {
+        text: root.data.staleness;
+        color: Theme.text-secondary;
+        font-size: 11px;
+    }
+}

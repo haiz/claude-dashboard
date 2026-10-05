@@ -14,7 +14,10 @@ FAIL=0
 make_fixture() {
     local tmp
     tmp="$(mktemp -d)"
-    mkdir -p "$tmp/apps/macos/ClaudeDashboard" "$tmp/apps/linux/gnome-extension" "$tmp/cli" "$tmp/Formula" "$tmp/Casks" "$tmp/scripts"
+    mkdir -p "$tmp/apps/macos/ClaudeDashboard" "$tmp/apps/linux/gnome-extension" "$tmp/cli" "$tmp/Formula" "$tmp/Casks" "$tmp/scripts" "$tmp/apps/windows/extension"
+    cp "$REPO_ROOT/apps/windows/Cargo.toml" "$tmp/apps/windows/Cargo.toml"
+    cp "$REPO_ROOT/apps/windows/Cargo.lock" "$tmp/apps/windows/Cargo.lock"
+    cp "$REPO_ROOT/apps/windows/extension/manifest.json" "$tmp/apps/windows/extension/manifest.json"
     cp "$REPO_ROOT/apps/macos/ClaudeDashboard/Info.plist" "$tmp/apps/macos/ClaudeDashboard/Info.plist"
     cp "$REPO_ROOT/apps/linux/Cargo.toml" "$tmp/apps/linux/Cargo.toml"
     cp "$REPO_ROOT/apps/linux/Cargo.lock" "$tmp/apps/linux/Cargo.lock"
@@ -53,6 +56,14 @@ for member in claude-dashboard-core claude-dashboard-helper; do
     [[ "$got" == 'version = "9.9.9"' ]] \
         && ok "Cargo.lock bumped ($member)" || ko "Cargo.lock bumped ($member)"
 done
+grep -q '^version = "9.9.9"' "$T1/apps/windows/Cargo.toml" && ok "windows Cargo.toml bumped" || ko "windows Cargo.toml bumped"
+grep -q '"version": "9.9.9"' "$T1/apps/windows/extension/manifest.json" && ok "extension manifest bumped" || ko "extension manifest bumped"
+for member in claude-dashboard claude-dashboard-bridge claude-dashboard-core; do
+    got="$(awk -v m="$member" '$0 == "name = \"" m "\"" { getline; print; exit }' "$T1/apps/windows/Cargo.lock")"
+    [[ "$got" == 'version = "9.9.9"' ]] && ok "windows Cargo.lock bumped ($member)" || ko "windows Cargo.lock bumped ($member)"
+done
+# Third-party crates (slint etc.) sit at the old version; only the three members may move.
+grep -c '^version = "9.9.9"' "$T1/apps/windows/Cargo.lock" | { read -r n; [[ "$n" -eq 3 ]]; } && ok "only 3 lock entries changed" || ko "only 3 lock entries changed"
 rm -rf "$T1"
 
 # --- Test 2: idempotency — running twice with same VERSION produces zero diff. ---
@@ -68,6 +79,8 @@ cp "$T2/Casks/claude-dashboard.rb" "$SNAPSHOT/"
 cp "$T2/apps/linux/Cargo.toml" "$SNAPSHOT/"
 cp "$T2/apps/linux/Cargo.lock" "$SNAPSHOT/"
 cp "$T2/apps/linux/gnome-extension/metadata.json" "$SNAPSHOT/"
+mkdir -p "$SNAPSHOT/win"
+cp "$T2/apps/windows/Cargo.toml" "$T2/apps/windows/Cargo.lock" "$T2/apps/windows/extension/manifest.json" "$SNAPSHOT/win/"
 "$T2/scripts/sync-version.sh" >/dev/null
 diff -q "$SNAPSHOT/Info.plist" "$T2/apps/macos/ClaudeDashboard/Info.plist" >/dev/null && ok "Info.plist idempotent" || ko "Info.plist idempotent"
 diff -q "$SNAPSHOT/claude-dashboard-cli" "$T2/cli/claude-dashboard-cli" >/dev/null && ok "CLI idempotent" || ko "CLI idempotent"
@@ -77,6 +90,9 @@ diff -q "$SNAPSHOT/Cargo.toml" "$T2/apps/linux/Cargo.toml" >/dev/null && ok "Car
 diff -q "$SNAPSHOT/Cargo.lock" "$T2/apps/linux/Cargo.lock" >/dev/null && ok "Cargo.lock idempotent" || ko "Cargo.lock idempotent"
 diff -q "$SNAPSHOT/metadata.json" "$T2/apps/linux/gnome-extension/metadata.json" >/dev/null \
     && ok "extension metadata idempotent" || ko "extension metadata idempotent"
+diff -q "$SNAPSHOT/win/Cargo.toml" "$T2/apps/windows/Cargo.toml" >/dev/null && ok "windows Cargo.toml idempotent" || ko "windows Cargo.toml idempotent"
+diff -q "$SNAPSHOT/win/Cargo.lock" "$T2/apps/windows/Cargo.lock" >/dev/null && ok "windows Cargo.lock idempotent" || ko "windows Cargo.lock idempotent"
+diff -q "$SNAPSHOT/win/manifest.json" "$T2/apps/windows/extension/manifest.json" >/dev/null && ok "extension manifest idempotent" || ko "extension manifest idempotent"
 rm -rf "$T2" "$SNAPSHOT"
 
 # --- Test 3: malformed VERSION is rejected. ---
@@ -111,6 +127,18 @@ else
     ok "missing VERSION rejected"
 fi
 rm -rf "$T5"
+
+# --- Test 6: no .bak litter left by the in-place edits. ---
+echo "Test 6: no .bak litter"
+T6="$(make_fixture)"
+echo "3.4.5" > "$T6/VERSION"
+"$T6/scripts/sync-version.sh" >/dev/null
+if [[ -z "$(find "$T6" -name '*.bak')" ]]; then
+    ok "no .bak files left"
+else
+    ko "no .bak files left"
+fi
+rm -rf "$T6"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

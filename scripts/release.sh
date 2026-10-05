@@ -10,6 +10,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
+# In-place edit that works on BSD sed (macOS) and GNU sed: both accept -i with
+# an attached suffix; the backup is removed straight away.
+sedi() {
+    local file="${*: -1}"
+    sed -i.bak "$@" && rm -f "${file}.bak"
+}
+
 # ── Args ──────────────────────────────────────────────────────────────────────
 NEW_VERSION="${1:-}"
 RELEASE_NOTES_ARG=""
@@ -146,8 +153,8 @@ echo "==> Step 6: Update Homebrew sha256"
 CLI_SHA="$(shasum -a 256 "$STAGING/claude-dashboard-cli.tar.gz" | awk '{print $1}')"
 APP_SHA="$(shasum -a 256 "$STAGING/ClaudeDashboard.app.zip" | awk '{print $1}')"
 
-sed -i '' "s/sha256 \"[a-f0-9]*\"/sha256 \"${CLI_SHA}\"/" Formula/claude-dashboard-cli.rb
-sed -i '' "s/sha256 \"[a-f0-9]*\"/sha256 \"${APP_SHA}\"/" Casks/claude-dashboard.rb
+sedi "s/sha256 \"[a-f0-9]*\"/sha256 \"${CLI_SHA}\"/" Formula/claude-dashboard-cli.rb
+sedi "s/sha256 \"[a-f0-9]*\"/sha256 \"${APP_SHA}\"/" Casks/claude-dashboard.rb
 
 echo "  Formula sha256: $CLI_SHA"
 echo "  Cask    sha256: $APP_SHA"
@@ -160,7 +167,9 @@ echo "==> Step 7: Commit, tag, push"
 git add VERSION apps/macos/ClaudeDashboard/Info.plist cli/claude-dashboard-cli \
     Formula/claude-dashboard-cli.rb Casks/claude-dashboard.rb \
     apps/linux/Cargo.toml apps/linux/Cargo.lock \
-    apps/linux/gnome-extension/metadata.json
+    apps/linux/gnome-extension/metadata.json \
+    apps/windows/Cargo.toml apps/windows/Cargo.lock \
+    apps/windows/extension/manifest.json
 git commit -m "chore: release v${NEW_VERSION}"
 git tag "v${NEW_VERSION}"
 git push
@@ -198,8 +207,8 @@ rm -rf "$VERIFY_DIR"
 
 if [[ "$DL_CLI_SHA" != "$CLI_SHA" ]] || [[ "$DL_APP_SHA" != "$APP_SHA" ]]; then
     echo "  ✗ Checksum mismatch detected — fixing..."
-    sed -i '' "s/sha256 \"[a-f0-9]*\"/sha256 \"${DL_CLI_SHA}\"/" Formula/claude-dashboard-cli.rb
-    sed -i '' "s/sha256 \"[a-f0-9]*\"/sha256 \"${DL_APP_SHA}\"/" Casks/claude-dashboard.rb
+    sedi "s/sha256 \"[a-f0-9]*\"/sha256 \"${DL_CLI_SHA}\"/" Formula/claude-dashboard-cli.rb
+    sedi "s/sha256 \"[a-f0-9]*\"/sha256 \"${DL_APP_SHA}\"/" Casks/claude-dashboard.rb
     git add Formula/claude-dashboard-cli.rb Casks/claude-dashboard.rb
     git commit -m "fix: update SHA-256 checksums for v${NEW_VERSION} release artifacts"
     git push

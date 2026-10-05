@@ -18,16 +18,21 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(unix)]
 use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
+#[cfg(unix)]
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
+#[cfg(unix)]
 use hkdf::Hkdf;
 use rusqlite::{params, Connection, OptionalExtension};
+#[cfg(unix)]
 use sha2::Sha256;
 
 use crate::model::Account;
@@ -74,10 +79,12 @@ impl From<rusqlite::Error> for StoreError {
 // Accounts JSON
 // ---------------------------------------------------------------------
 
+#[cfg(unix)]
 fn home_dir() -> PathBuf {
     env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("."))
 }
 
+#[cfg(unix)]
 fn xdg_dir(var: &str, fallback: &[&str]) -> PathBuf {
     match env::var(var) {
         Ok(v) if !v.is_empty() => PathBuf::from(v),
@@ -91,14 +98,54 @@ fn xdg_dir(var: &str, fallback: &[&str]) -> PathBuf {
     }
 }
 
-/// `$XDG_CONFIG_HOME` (or `~/.config`) + `/claude-dashboard/accounts.json`.
-pub fn accounts_path() -> PathBuf {
-    xdg_dir("XDG_CONFIG_HOME", &[".config"]).join("claude-dashboard").join("accounts.json")
+/// Roaming per-user config dir: `$XDG_CONFIG_HOME` (or `~/.config`) on Unix,
+/// `%APPDATA%` on Windows.
+#[cfg(unix)]
+fn config_dir() -> PathBuf {
+    xdg_dir("XDG_CONFIG_HOME", &[".config"])
 }
 
-/// `$XDG_DATA_HOME` (or `~/.local/share`) + `/claude-dashboard/usage_logs.db`.
+/// Machine-local per-user data dir: `$XDG_DATA_HOME` (or `~/.local/share`) on
+/// Unix, `%LOCALAPPDATA%` on Windows.
+#[cfg(unix)]
+fn data_dir() -> PathBuf {
+    xdg_dir("XDG_DATA_HOME", &[".local", "share"])
+}
+
+#[cfg(windows)]
+fn config_dir() -> PathBuf {
+    known_dir("APPDATA")
+}
+
+#[cfg(windows)]
+fn data_dir() -> PathBuf {
+    known_dir("LOCALAPPDATA")
+}
+
+/// Windows always sets both variables for an interactive user; the `.`
+/// fallback only keeps a broken environment from panicking.
+#[cfg(windows)]
+fn known_dir(var: &str) -> PathBuf {
+    match env::var(var) {
+        Ok(v) if !v.is_empty() => PathBuf::from(v),
+        _ => PathBuf::from("."),
+    }
+}
+
+/// `<config dir>/claude-dashboard/accounts.json`.
+pub fn accounts_path() -> PathBuf {
+    config_dir().join("claude-dashboard").join("accounts.json")
+}
+
+/// `<data dir>/claude-dashboard/usage_logs.db`.
 pub fn usage_log_path() -> PathBuf {
-    xdg_dir("XDG_DATA_HOME", &[".local", "share"]).join("claude-dashboard").join("usage_logs.db")
+    data_dir().join("claude-dashboard").join("usage_logs.db")
+}
+
+/// `<data dir>/claude-dashboard/command_logs.db` — the run log, a separate
+/// file from the usage log (no shared schema, as on macOS).
+pub fn command_log_path() -> PathBuf {
+    data_dir().join("claude-dashboard").join("command_logs.db")
 }
 
 /// Loads the accounts array. A missing file is not an error — it means no
@@ -190,7 +237,9 @@ pub fn save_accounts(accounts: &[Account]) -> Result<(), StoreError> {
         // The leaf `claude-dashboard` directory only. `create_dir_all` goes
         // by the umask (0755 under the usual 022), while `$XDG_CONFIG_HOME`
         // itself holds the user's wider configuration and is not ours to
-        // narrow.
+        // narrow. On Windows the file mode has no meaning and `%APPDATA%` is
+        // already per-user by ACL, so this step is Unix-only.
+        #[cfg(unix)]
         fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
     }
     let json = Account::to_json_array(accounts)?;
@@ -223,11 +272,15 @@ fn write_and_publish(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), StoreE
     // even for the moment between the write and a chmod. `rename` carries
     // this mode onto the destination, which is also what repairs a `0644`
     // store left by a version predating the rule — no separate chmod step.
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(tmp)?;
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    // Mode at creation on Unix, so the new store never exists world-readable,
+    // not even between the write and a chmod; `rename` then carries this mode
+    // onto the destination. Windows has no file mode and `%APPDATA%` is
+    // per-user by ACL.
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options.open(tmp)?;
     #[cfg(test)]
     {
         fail_if_fault_injected("after_open")?;
@@ -238,12 +291,45 @@ fn write_and_publish(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), StoreE
     // "lost every account" outcome by another route. The directory is
     // deliberately left unsynced; see the contract section for why.
     file.sync_all()?;
+    // Close the handle before the rename: Windows will not reliably rename a
+    // file this process still holds open. On Unix the drop is harmless.
+    drop(file);
     #[cfg(test)]
     {
         fail_if_fault_injected("after_write")?;
     }
     fs::rename(tmp, path)?;
     Ok(())
+}
+
+/// Held for the whole read-modify-write of `accounts.json`. Two processes
+/// write the store on Windows (the app and its native-messaging bridge);
+/// without this, each can load, change and save, and the second save drops
+/// the first's change. Released when dropped. On Unix it is equally valid and
+/// used wherever two writers might race.
+pub struct StoreLock {
+    _file: fs::File,
+}
+
+/// Blocks until this process holds the exclusive lock on
+/// `accounts.json.lock`, a sibling of the store. A separate lock file, because
+/// the store itself is replaced by `rename` on every save, which would drop a
+/// lock held on the store inode.
+pub fn lock_store() -> Result<StoreLock, StoreError> {
+    let path = accounts_path().with_extension("json.lock");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)?;
+    // `File::lock` is an advisory exclusive lock: `flock` on Unix,
+    // `LockFileEx` on Windows. Blocks until granted; released on drop/close.
+    file.lock()?;
+    Ok(StoreLock { _file: file })
 }
 
 // ---------------------------------------------------------------------
@@ -270,8 +356,10 @@ fn write_and_publish(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), StoreE
 //   intentional: `sessionKey` was never a portable value (see the contract
 //   note above) and this port does not need to make it one.
 
+#[cfg(unix)]
 const HKDF_SALT: &[u8] = b"com.claude-dashboard.v1";
 
+#[cfg(unix)]
 fn machine_id_bytes() -> Vec<u8> {
     for path in ["/etc/machine-id", "/var/lib/dbus/machine-id"] {
         if let Ok(s) = fs::read_to_string(path) {
@@ -286,6 +374,7 @@ fn machine_id_bytes() -> Vec<u8> {
     b"claude-dashboard-linux-fallback-machine-id".to_vec()
 }
 
+#[cfg(unix)]
 fn derive_key() -> [u8; 32] {
     let ikm = machine_id_bytes();
     let hk = Hkdf::<Sha256>::new(Some(HKDF_SALT), &ikm);
@@ -297,6 +386,7 @@ fn derive_key() -> [u8; 32] {
 
 /// Seals `plain` with AES-256-GCM, keyed by [`derive_key`], and returns
 /// `base64(nonce || ciphertext || tag)`.
+#[cfg(unix)]
 pub fn encrypt_session_key(plain: &str) -> String {
     let key_bytes = derive_key();
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
@@ -315,6 +405,7 @@ pub fn encrypt_session_key(plain: &str) -> String {
 /// Reverses [`encrypt_session_key`]. Returns `None` on any malformed input
 /// or decryption failure (wrong host, corrupted value, truncated data) —
 /// there is no partial result to salvage.
+#[cfg(unix)]
 pub fn decrypt_session_key(cipher_b64: &str) -> Option<String> {
     let combined = BASE64.decode(cipher_b64).ok()?;
     if combined.len() < 12 {
@@ -329,6 +420,30 @@ pub fn decrypt_session_key(cipher_b64: &str) -> Option<String> {
 
     let plaintext = cipher.decrypt(nonce, ciphertext).ok()?;
     String::from_utf8(plaintext).ok()
+}
+
+// ---------------------------------------------------------------------
+// At-rest session-key encryption — Windows scheme (DPAPI)
+// ---------------------------------------------------------------------
+//
+// DPAPI, current-user scope: only this Windows user on this machine can open
+// the value. Same wire shape as the Unix scheme (one base64 string), not the
+// same bytes — `sessionKey` was never portable between machines or platforms.
+
+/// Seals `plain` with DPAPI (current user) and returns `base64(blob)`.
+#[cfg(windows)]
+pub fn encrypt_session_key(plain: &str) -> String {
+    let sealed = crate::userprotect::protect(plain.as_bytes())
+        .expect("DPAPI CryptProtectData does not fail for the logged-in user");
+    BASE64.encode(sealed)
+}
+
+/// Reverses [`encrypt_session_key`]. `None` on malformed base64 or any DPAPI
+/// failure (another user's blob, corrupted or truncated data).
+#[cfg(windows)]
+pub fn decrypt_session_key(cipher_b64: &str) -> Option<String> {
+    let sealed = BASE64.decode(cipher_b64).ok()?;
+    String::from_utf8(crate::userprotect::unprotect(&sealed)?).ok()
 }
 
 // ---------------------------------------------------------------------
@@ -362,6 +477,14 @@ pub struct UsageLogStore {
     /// `record_at` call for the common case of repeatedly logging the same
     /// account.
     aid_cache: HashMap<String, i64>,
+}
+
+/// One chart sample: Unix-seconds time and utilization in percent
+/// (`u / 100`, the inverse of the `round(utilization * 100)` stored form).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SeriesPoint {
+    pub t_unix: f64,
+    pub utilization: f64,
 }
 
 impl UsageLogStore {
@@ -528,6 +651,49 @@ impl UsageLogStore {
             )
             .unwrap_or(0)
     }
+
+    /// Points for one account + window within `[from_unix, to_unix]`
+    /// (inclusive, truncated toward zero like `record_at`'s `t`), ascending
+    /// by `t`. Read-only; any query error yields an empty vec.
+    pub fn series(&self, account_id: &str, window: i64, from_unix: f64, to_unix: f64) -> Vec<SeriesPoint> {
+        let run = || -> rusqlite::Result<Vec<SeriesPoint>> {
+            let mut stmt = self.conn.prepare(
+                "SELECT l.t, l.u FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
+                 WHERE m.account_id = ?1 AND l.w = ?2 AND l.t BETWEEN ?3 AND ?4 \
+                 ORDER BY l.t ASC, l.id ASC",
+            )?;
+            let rows = stmt.query_map(params![account_id, window, from_unix as i64, to_unix as i64], |row| {
+                Ok(SeriesPoint { t_unix: row.get::<_, i64>(0)? as f64, utilization: row.get::<_, i64>(1)? as f64 / 100.0 })
+            })?;
+            rows.collect()
+        };
+        run().unwrap_or_default()
+    }
+
+    /// Like [`Self::series`] but for every account, grouped by `account_id`
+    /// (for the Overview chart).
+    pub fn series_all(&self, window: i64, from_unix: f64, to_unix: f64) -> HashMap<String, Vec<SeriesPoint>> {
+        let run = || -> rusqlite::Result<HashMap<String, Vec<SeriesPoint>>> {
+            let mut stmt = self.conn.prepare(
+                "SELECT m.account_id, l.t, l.u FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
+                 WHERE l.w = ?1 AND l.t BETWEEN ?2 AND ?3 \
+                 ORDER BY m.account_id, l.t ASC, l.id ASC",
+            )?;
+            let rows = stmt.query_map(params![window, from_unix as i64, to_unix as i64], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    SeriesPoint { t_unix: row.get::<_, i64>(1)? as f64, utilization: row.get::<_, i64>(2)? as f64 / 100.0 },
+                ))
+            })?;
+            let mut map: HashMap<String, Vec<SeriesPoint>> = HashMap::new();
+            for r in rows {
+                let (id, p) = r?;
+                map.entry(id).or_default().push(p);
+            }
+            Ok(map)
+        };
+        run().unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
@@ -548,6 +714,31 @@ mod tests {
 
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         ENV_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Points every store path at `dir`, whichever platform's variables the
+    /// path functions read (XDG on Unix, APPDATA/LOCALAPPDATA on Windows).
+    /// Callers hold `env_lock()`.
+    fn point_store_at(dir: &Path) {
+        for var in ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"] {
+            env::set_var(var, dir);
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_store_lives_under_appdata_and_localappdata() {
+        let _guard = env_lock();
+        env::set_var("APPDATA", r"C:\Users\u\AppData\Roaming");
+        env::set_var("LOCALAPPDATA", r"C:\Users\u\AppData\Local");
+        assert_eq!(
+            accounts_path(),
+            PathBuf::from(r"C:\Users\u\AppData\Roaming\claude-dashboard\accounts.json")
+        );
+        assert_eq!(
+            usage_log_path(),
+            PathBuf::from(r"C:\Users\u\AppData\Local\claude-dashboard\usage_logs.db")
+        );
     }
 
     #[test]
@@ -602,6 +793,61 @@ mod tests {
     }
 
     #[test]
+    fn series_returns_points_ascending_with_rounded_utilization() {
+        let mut s = mem_store();
+        s.record_at("ACC", 0, 1000.0, 42.0, false, 10.0);
+        s.record_at("ACC", 0, 1000.0, 45.005, false, 20.0);
+        s.record_at("ACC", 0, 1000.0, 10.0, false, 30.0);
+        let pts = s.series("ACC", 0, 0.0, 1e12);
+        assert_eq!(
+            pts,
+            vec![
+                SeriesPoint { t_unix: 10.0, utilization: 42.0 },
+                SeriesPoint { t_unix: 20.0, utilization: 45.01 },
+                SeriesPoint { t_unix: 30.0, utilization: 10.0 },
+            ]
+        );
+    }
+
+    #[test]
+    fn series_range_is_inclusive() {
+        let mut s = mem_store();
+        s.record_at("ACC", 0, 1000.0, 42.0, false, 20.0);
+        assert_eq!(s.series("ACC", 0, 20.0, 20.0).len(), 1);
+        assert!(s.series("ACC", 0, 0.0, 19.0).is_empty());
+    }
+
+    #[test]
+    fn series_filters_by_window_and_account() {
+        let mut s = mem_store();
+        s.record_at("ACC", 0, 1000.0, 1.0, false, 10.0);
+        s.record_at("ACC", 1, 1000.0, 2.0, false, 10.0);
+        s.record_at("OTHER", 0, 1000.0, 3.0, false, 10.0);
+        let pts = s.series("ACC", 0, 0.0, 1e12);
+        assert_eq!(pts, vec![SeriesPoint { t_unix: 10.0, utilization: 1.0 }]);
+    }
+
+    #[test]
+    fn series_unknown_account_is_empty() {
+        let s = mem_store();
+        assert!(s.series("NOPE", 0, 0.0, 1e12).is_empty());
+    }
+
+    #[test]
+    fn series_all_groups_by_account() {
+        let mut s = mem_store();
+        s.record_at("A", 0, 1000.0, 1.0, false, 10.0);
+        s.record_at("A", 0, 1000.0, 2.0, false, 20.0);
+        s.record_at("B", 0, 1000.0, 3.0, false, 10.0);
+        s.record_at("B", 1, 1000.0, 4.0, false, 10.0);
+        let all = s.series_all(0, 0.0, 1e12);
+        assert_eq!(all.len(), 2);
+        assert_eq!(all["A"].len(), 2);
+        assert_eq!(all["B"].len(), 1);
+        assert_eq!(all["A"][0].t_unix, 10.0);
+    }
+
+    #[test]
     fn u_is_rounded_not_truncated() {
         let mut s = mem_store();
         s.record_at("ACC", 0, 1000.0, 45.005, false, 10.0);
@@ -646,16 +892,50 @@ mod tests {
     fn missing_accounts_file_loads_empty() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         let accounts = load_accounts().unwrap();
         assert!(accounts.is_empty());
+    }
+
+    #[test]
+    fn lock_store_serialises_writers() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        point_store_at(dir.path());
+
+        let first = lock_store().unwrap();
+        let released = Arc::new(AtomicBool::new(false));
+        let seen = Arc::clone(&released);
+        let second = std::thread::spawn(move || {
+            // Blocks until `first` is dropped; must observe `released` set.
+            let _lock = lock_store().unwrap();
+            seen.load(Ordering::SeqCst)
+        });
+
+        std::thread::sleep(Duration::from_millis(200));
+        released.store(true, Ordering::SeqCst);
+        drop(first);
+
+        assert!(
+            second.join().unwrap(),
+            "the second lock was granted while the first was still held"
+        );
+        assert!(dir
+            .path()
+            .join("claude-dashboard")
+            .join("accounts.json.lock")
+            .is_file());
     }
 
     #[test]
     fn accounts_roundtrip_reference_epoch_and_uuid() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         let a: Vec<Account> = serde_json::from_str(
             r#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"x",
                  "chromeProfilePath":"/p","plan":"Pro","status":"active","lastSynced":0.0}]"#,
@@ -673,7 +953,7 @@ mod tests {
         // (deferred from Task 2) with more than one account.
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         let a: Vec<Account> = serde_json::from_str(
             r#"[
                 {"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"one",
@@ -715,6 +995,7 @@ mod tests {
     // mode is the only thing separating two local users.
     // -----------------------------------------------------------------
 
+    #[cfg(unix)]
     fn mode_of(p: &std::path::Path) -> u32 {
         fs::metadata(p).unwrap().permissions().mode() & 0o777
     }
@@ -728,20 +1009,24 @@ mod tests {
         .unwrap()
     }
 
+    // Unix-only: asserts the store's permission bits (PermissionsExt).
+    #[cfg(unix)]
     #[test]
     fn save_accounts_writes_the_store_mode_600() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         save_accounts(&one_account()).unwrap();
         assert_eq!(mode_of(&accounts_path()), 0o600);
     }
 
+    // Unix-only: asserts the leaf directory's permission bits.
+    #[cfg(unix)]
     #[test]
     fn save_accounts_creates_the_leaf_dir_mode_700() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         save_accounts(&one_account()).unwrap();
         let leaf = accounts_path().parent().unwrap().to_path_buf();
         assert_eq!(mode_of(&leaf), 0o700);
@@ -753,11 +1038,14 @@ mod tests {
     /// store written before this rule is `644`. Nothing chmods it back —
     /// `rename` carries the temp file's own `0600` onto the destination, and
     /// this is the test that holds that property down.
+    // Unix-only: creates a 0644 store and asserts it is repaired to 0600
+    // (PermissionsExt / from_mode).
+    #[cfg(unix)]
     #[test]
     fn save_accounts_repairs_a_pre_existing_644_store() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         let path = accounts_path();
         let leaf = path.parent().unwrap().to_path_buf();
         fs::create_dir_all(&leaf).unwrap();
@@ -778,6 +1066,7 @@ mod tests {
     // in place"
     // -----------------------------------------------------------------
 
+    #[cfg(unix)]
     fn inode_of(p: &std::path::Path) -> u64 {
         use std::os::unix::fs::MetadataExt;
         fs::metadata(p).unwrap().ino()
@@ -821,11 +1110,15 @@ mod tests {
     /// guarantee, not something a test inside one process can watch. So this
     /// pairs with `a_failed_save_leaves_the_previous_store_intact`, which is
     /// what stops unlink-then-create from passing here as well.
+    // Unix-only: identifies the store by inode (MetadataExt::ino) to prove
+    // replacement. The "replace, not rewrite" property is also covered on all
+    // platforms by the fault tests below.
+    #[cfg(unix)]
     #[test]
     fn the_store_is_replaced_not_rewritten_in_place() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         save_accounts(&one_account()).unwrap();
         let first = inode_of(&accounts_path());
 
@@ -840,7 +1133,7 @@ mod tests {
     fn the_store_survives_a_fault_at(point: &str) {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         save_accounts(&one_account()).unwrap();
         let before = fs::read_to_string(accounts_path()).unwrap();
 
@@ -873,7 +1166,7 @@ mod tests {
     fn a_successful_save_leaves_no_temp_file_behind() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
 
         save_accounts(&one_account()).unwrap();
 
@@ -903,7 +1196,7 @@ mod tests {
     fn an_absent_store_is_no_accounts_and_quarantines_nothing() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
 
         let (accounts, kept) = load_accounts_for_write().unwrap();
 
@@ -915,7 +1208,7 @@ mod tests {
     fn a_readable_store_is_returned_untouched() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         save_accounts(&two_accounts()).unwrap();
 
         let (accounts, kept) = load_accounts_for_write().unwrap();
@@ -931,7 +1224,7 @@ mod tests {
     fn an_unparseable_store_is_moved_aside_and_reported() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         let path = accounts_path();
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         let garbage = r#"[{"id":"3B8C3678-3A00-425C-8D22-22BCA37AE65B","name":"tru"#;
@@ -953,7 +1246,7 @@ mod tests {
     fn an_unreadable_store_is_an_error_and_is_not_quarantined() {
         let _guard = env_lock();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        point_store_at(dir.path());
         fs::create_dir_all(accounts_path()).unwrap();
 
         let result = load_accounts_for_write();

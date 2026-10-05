@@ -37,10 +37,11 @@ use claude_dashboard_core::api::{fetch_account, fetch_organizations, parse_accou
 use claude_dashboard_core::browser::{self, DiscoveredProfile};
 use claude_dashboard_core::cookie::{self, CookieError, KeySources};
 use claude_dashboard_core::identity::{duplicate_index, resolve_org_id, StoredIdentity};
-use claude_dashboard_core::model::{Account, AccountPlan, AccountSource, AccountStatus, Browser};
-use claude_dashboard_core::plan::{detect_plan_tier, refreshed_plan};
+use claude_dashboard_core::model::{Account, AccountSource, AccountStatus, Browser};
+use claude_dashboard_core::plan::{
+    parse_orgs, plan_for, plan_wire_value, refreshed_plan_for, ParsedOrg,
+};
 use claude_dashboard_core::store;
-use serde_json::Value;
 use uuid::Uuid;
 
 /// 2001-01-01 -> 1970-01-01 offset, so `lastSynced` round-trips to the
@@ -389,26 +390,6 @@ fn apply_refreshed_plan(
     }
 }
 
-/// The plan to persist for `account` given a freshly fetched
-/// `/api/organizations` result — `None` to leave the stored plan alone.
-///
-/// Mirrors `UsageAPIService.refreshedPlan(for:orgs:)`. The org is matched on
-/// the account's **stored** `org_id`: an account with no `org_id` is not
-/// pollable and is never touched, and an `orgs` slice with no matching entry
-/// (an empty one included, which is what a failed fetch produces) reduces to
-/// rule 1 of [`refreshed_plan`].
-///
-/// Deliberately no `unwrap_or(Pro)` here: unlike the add path
-/// ([`plan_for`]), an unresolved tier must leave the stored one as it is.
-pub(crate) fn refreshed_plan_for(account: &Account, orgs: &[ParsedOrg]) -> Option<AccountPlan> {
-    let org_id = account.org_id.as_deref()?;
-    let hint = orgs
-        .iter()
-        .find(|o| o.uuid == org_id)
-        .and_then(|o| detect_plan_tier(&o.raw, &o.capabilities));
-    refreshed_plan(&account.plan, hint)
-}
-
 /// Decrypts a profile's Claude cookies into a [`ProfileScan`]. A `v12`
 /// cookie short-circuits the whole profile; any other per-cookie decrypt
 /// error skips just that cookie (matching the Swift `guard let decrypted`
@@ -439,64 +420,6 @@ fn scan_profile(profile: &DiscoveredProfile, sources: &KeySources) -> ProfileSca
     }
 }
 
-/// One parsed `/api/organizations` entry (only orgs carrying both `uuid`
-/// and `name` survive, matching the Swift `compactMap`). `sync` reads this
-/// solely for the plan tier — e-mail comes from `/api/account`.
-pub(crate) struct ParsedOrg {
-    pub(crate) uuid: String,
-    pub(crate) capabilities: Vec<String>,
-    /// The org's full JSON, handed to [`detect_plan_tier`] (steps 1-2 there
-    /// scan the whole object, not just `capabilities`).
-    pub(crate) raw: Value,
-}
-
-/// Parses the raw `/api/organizations` body into the orgs `sync` cares
-/// about. Returns an empty vec when the body is not a JSON array, is empty,
-/// or contains no org with both `uuid` and `name`.
-pub(crate) fn parse_orgs(orgs_json: &str) -> Vec<ParsedOrg> {
-    let Ok(Value::Array(arr)) = serde_json::from_str::<Value>(orgs_json) else {
-        return Vec::new();
-    };
-    arr.into_iter()
-        .filter_map(|v| {
-            let uuid = v.get("uuid")?.as_str()?.to_string();
-            // Presence check only: a name-less org is filtered out, matching
-            // the Swift `compactMap`. The name itself is never inspected.
-            v.get("name")?.as_str()?;
-            let capabilities = v
-                .get("capabilities")
-                .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
-                .unwrap_or_default();
-            Some(ParsedOrg {
-                uuid,
-                capabilities,
-                raw: v,
-            })
-        })
-        .collect()
-}
-
-/// Plan tier for the chosen org. Unchanged behaviour: `detect_plan_tier` on
-/// that org's raw JSON, defaulting to Pro when the org is absent or yields
-/// nothing. The e-mail half of the old `email_and_plan` is gone — e-mail now
-/// comes from `/api/account`, not from parsing an org name.
-pub(crate) fn plan_for(orgs: &[ParsedOrg], org_id: &str) -> AccountPlan {
-    orgs.iter()
-        .find(|o| o.uuid == org_id)
-        .and_then(|o| detect_plan_tier(&o.raw, &o.capabilities))
-        .unwrap_or(AccountPlan::Pro)
-}
-
-/// The plan's on-the-wire string (`"Pro"`, `"Max 5x"`, `"Max 20x"`,
-/// `"Max"`) — what the Swift `plan.rawValue` prints in the "Added:" line.
-pub(crate) fn plan_wire_value(plan: &AccountPlan) -> String {
-    match serde_json::to_value(plan) {
-        Ok(Value::String(s)) => s,
-        _ => String::new(),
-    }
-}
-
 /// A fresh uppercase, hyphenated UUID — the account-id wire form
 /// (`crate::model` round-trips it verbatim).
 fn new_account_id() -> String {
@@ -524,6 +447,7 @@ fn now_reference_seconds() -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use claude_dashboard_core::model::AccountPlan;
     use std::cell::RefCell;
     use std::path::PathBuf;
 

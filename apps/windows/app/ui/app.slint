@@ -1,0 +1,708 @@
+import { AboutSlint } from "std-widgets.slint";
+import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "components.slint";
+import { Theme, UiRow, UiWindow } from "theme.slint";
+import { SetupWizardWindow, ScanItem } from "wizard.slint";
+import { ChartPanel, OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem } from "chart.slint";
+import { CommandLogPane, UiLogEntry } from "command_log.slint";
+import { RunCommandPanel } from "run_command.slint";
+import { HelpPane } from "help.slint";
+export struct UiShell { key: string, label: string }
+
+export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, UiLogEntry, ChartState, ChartTick, ChartLine, ChartLegendItem }
+
+// Pane selection. `account` is the per-account page (see selected-account-id).
+export enum Pane { dashboard, overview, account, command-log, help, settings-accounts, general }
+
+component GroupHeader inherits Text {
+    color: Theme.text-secondary;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+// Shown in the Dashboard pane and the flyout when no accounts exist. The
+// button opens the Add Account wizard.
+component EmptyState inherits VerticalLayout {
+    callback add-account();
+    alignment: center;
+    spacing: 10px;
+    Text { text: "No accounts yet"; color: Theme.text-primary; font-size: 16px; font-weight: 600; horizontal-alignment: center; }
+    Text { text: "Add an account to start tracking usage."; color: Theme.text-secondary; horizontal-alignment: center; wrap: word-wrap; }
+    HorizontalLayout {
+        alignment: center;
+        Rectangle {
+            height: 32px;
+            width: add-text.preferred-width + 28px;
+            border-radius: 6px;
+            background: add-touch.has-hover ? Theme.accent.with-alpha(0.15) : Theme.card-bg;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            add-text := Text { text: "Add Account"; color: Theme.accent; horizontal-alignment: center; vertical-alignment: center; }
+            add-touch := TouchArea { clicked => { root.add-account(); } }
+        }
+    }
+}
+
+component PaneButton inherits Rectangle {
+    in property <string> label;
+    in property <color> tint: Theme.accent;
+    callback clicked();
+    height: 32px;
+    width: t.preferred-width + 28px;
+    border-radius: 6px;
+    background: touch.has-hover ? root.tint.with-alpha(0.15) : Theme.card-bg;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    t := Text { text: root.label; color: root.tint; horizontal-alignment: center; vertical-alignment: center; }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Settings > Accounts (macOS AccountsSettingsPane): list, delete (inline
+// confirm), Add Account, Re-sync All, and the muted extension sources.
+component AccountsSettingsPane inherits VerticalLayout {
+    in property <[UiRow]> rows;
+    in property <[string]> muted;
+    callback add-account();
+    callback resync();
+    callback delete-account(string);
+    callback unmute(string);
+    property <string> confirming-id;
+    spacing: 12px;
+
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        PaneButton { label: "Add Account"; clicked => { root.add-account(); } }
+        PaneButton { label: "Re-sync All"; clicked => { root.resync(); } }
+    }
+    Flickable {
+        content-height: list.preferred-height;
+        list := VerticalLayout {
+            spacing: 8px;
+            alignment: start;
+            if root.rows.length == 0: Text { text: "No accounts."; color: Theme.text-secondary; }
+            for acct in root.rows: Rectangle {
+                height: 56px;
+                background: Theme.card-bg;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.card-border;
+                HorizontalLayout {
+                    padding: 8px;
+                    spacing: 10px;
+                    Avatar { size: 32px; initial: acct.initial; tint: acct.avatar-color; y: (parent.height - self.height) / 2; }
+                    VerticalLayout {
+                        alignment: center;
+                        Text { text: acct.name; color: Theme.text-primary; font-weight: 600; overflow: elide; }
+                        Text {
+                            text: (acct.email != "" ? acct.email + "  \u{b7}  " : "") + acct.plan;
+                            color: Theme.text-secondary;
+                            font-size: 11px;
+                            overflow: elide;
+                        }
+                    }
+                    if root.confirming-id != acct.id: PaneButton {
+                        label: "Delete"; tint: Theme.danger;
+                        y: (parent.height - self.height) / 2;
+                        clicked => { root.confirming-id = acct.id; }
+                    }
+                    if root.confirming-id == acct.id: PaneButton {
+                        label: "Confirm delete"; tint: Theme.danger;
+                        y: (parent.height - self.height) / 2;
+                        clicked => { root.confirming-id = ""; root.delete-account(acct.id); }
+                    }
+                    if root.confirming-id == acct.id: PaneButton {
+                        label: "Cancel"; tint: Theme.text-secondary;
+                        y: (parent.height - self.height) / 2;
+                        clicked => { root.confirming-id = ""; }
+                    }
+                }
+            }
+            if root.muted.length > 0: GroupHeader { text: "Muted sources"; }
+            if root.muted.length > 0: Text {
+                text: "Browser-extension installs whose account was deleted. Unmute to let them add accounts again.";
+                color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
+            }
+            for inst in root.muted: Rectangle {
+                height: 44px;
+                background: Theme.card-bg;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.card-border;
+                HorizontalLayout {
+                    padding: 8px;
+                    spacing: 10px;
+                    Text { text: inst; color: Theme.text-primary; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                    PaneButton { label: "Unmute"; y: (parent.height - self.height) / 2; clicked => { root.unmute(inst); } }
+                }
+            }
+        }
+    }
+}
+
+component SettingsCard inherits Rectangle {
+    background: Theme.card-bg;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+}
+
+// A preset chip for the Auto Refresh interval.
+component IntervalChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    height: 28px;
+    width: t.preferred-width + 24px;
+    border-radius: 6px;
+    background: root.active ? Theme.accent : (touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent);
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : Theme.card-border;
+    t := Text {
+        text: root.label;
+        color: root.active ? #ffffff : Theme.text-primary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Settings > General (macOS GeneralSettingsPane): About, Auto Refresh,
+// Launch at startup, Updates.
+component GeneralSettingsPane inherits Flickable {
+    in property <string> app-name;
+    in property <string> app-version;
+    in property <int> auto-refresh-seconds;
+    in property <bool> launch-at-startup;
+    callback set-auto-refresh(int);
+    callback set-launch-at-startup(bool);
+    in property <[UiShell]> shells;
+    in property <string> shell-key;
+    callback set-shell(string);
+    in property <string> update-status;
+    in property <bool> update-can-install;
+    in property <bool> update-busy;
+    in property <bool> auto-update;
+    callback check-updates();
+    callback install-update();
+    callback set-auto-update(bool);
+    content-height: col.preferred-height;
+    col := VerticalLayout {
+        spacing: 12px;
+        alignment: start;
+
+        GroupHeader { text: "About"; }
+        SettingsCard {
+            height: about-col.preferred-height + 24px;
+            about-col := VerticalLayout {
+                padding: 12px;
+                spacing: 4px;
+                Text { text: root.app-name + "  v" + root.app-version; color: Theme.text-primary; font-weight: 600; }
+                Text {
+                    text: "Monitors Claude.ai token usage across your accounts from the system tray.";
+                    color: Theme.text-secondary; font-size: 12px; wrap: word-wrap;
+                }
+                AboutSlint { height: 120px; }
+            }
+        }
+
+        GroupHeader { text: "Auto Refresh"; }
+        SettingsCard {
+            height: 76px;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                Text { text: "Refresh usage every"; color: Theme.text-primary; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    for p[i] in [{l: "30s", s: 30}, {l: "1 min", s: 60}, {l: "2 min", s: 120}, {l: "5 min", s: 300}, {l: "15 min", s: 900}]: IntervalChip {
+                        label: p.l;
+                        active: root.auto-refresh-seconds == p.s;
+                        clicked => { root.set-auto-refresh(p.s); }
+                    }
+                }
+            }
+        }
+
+        GroupHeader { text: "Commands"; }
+        SettingsCard {
+            height: 96px;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                Text { text: "Run commands in"; color: Theme.text-primary; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    for s in root.shells: IntervalChip {
+                        label: s.label;
+                        active: root.shell-key == s.key;
+                        clicked => { root.set-shell(s.key); }
+                    }
+                }
+                Text {
+                    text: "Started with your profile, so functions and aliases resolve.";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                }
+            }
+        }
+
+        GroupHeader { text: "Startup"; }
+        SettingsCard {
+            height: 52px;
+            HorizontalLayout {
+                padding: 12px;
+                Text { text: "Launch at startup"; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; }
+                Rectangle {
+                    width: 40px; height: 22px; y: (parent.height - self.height) / 2;
+                    border-radius: 11px;
+                    background: root.launch-at-startup ? Theme.accent : Theme.card-border;
+                    Rectangle {
+                        width: 16px; height: 16px; border-radius: 8px; background: #ffffff;
+                        y: 3px;
+                        x: root.launch-at-startup ? parent.width - self.width - 3px : 3px;
+                    }
+                    TouchArea { clicked => { root.set-launch-at-startup(!root.launch-at-startup); } }
+                }
+            }
+        }
+
+        GroupHeader { text: "Updates"; }
+        SettingsCard {
+            height: upd.preferred-height + 24px;
+            upd := VerticalLayout {
+                padding: 12px;
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    Text { text: root.update-status; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; wrap: word-wrap; }
+                    if root.update-can-install: IntervalChip { label: "Install"; active: true; clicked => { root.install-update(); } }
+                    IntervalChip { label: root.update-busy ? "Working…" : "Check for Updates"; active: false;
+                                   clicked => { if !root.update-busy { root.check-updates(); } } }
+                }
+                HorizontalLayout {
+                    Text { text: "Install updates automatically"; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; }
+                    Rectangle {
+                        width: 40px; height: 22px;
+                        border-radius: 11px;
+                        background: root.auto-update ? Theme.accent : Theme.card-border;
+                        Rectangle { width: 16px; height: 16px; border-radius: 8px; background: #ffffff; y: 3px;
+                                    x: root.auto-update ? parent.width - self.width - 3px : 3px; }
+                        TouchArea { clicked => { root.set-auto-update(!root.auto-update); } }
+                    }
+                }
+                Text { text: "Checks GitHub once a day and installs new releases."; color: Theme.text-secondary; font-size: 11px; }
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Claude Dashboard";
+    min-width: 640px;
+    min-height: 400px;
+    preferred-width: 960px;
+    preferred-height: 660px;
+    default-font-family: Theme.font-family;
+    default-font-size: 14px;
+    // Transparent so Mica shows through; the solid fill below is used only
+    // when Mica is unavailable (Windows 10).
+    background: transparent;
+    in property <bool> use-solid-background: false;
+    in property <[UiRow]> account-rows;
+    in-out property <Pane> selection: Pane.dashboard;
+    in-out property <string> selected-account-id;
+    callback resync();
+    in property <[string]> muted-sources;
+    callback delete-account(string);
+    callback unmute(string);
+    callback add-account();
+
+    // Per-account usage chart overlay (state is computed in Rust, chart.rs).
+    in property <ChartState> chart;
+    in-out property <bool> chart-open: false;
+    in-out property <string> chart-title;
+    in-out property <color> chart-color: Theme.accent;
+    callback view-chart(string);
+    callback chart-preset(string);
+    callback chart-close();
+    callback chart-size(float, float);
+    callback chart-hover(float, float);
+    callback chart-select(float, float);
+    callback chart-reset();
+    in-out property <ChartState> overview;
+    callback overview-open();
+    callback overview-close();
+    callback overview-window(string);
+    callback overview-preset(string);
+    callback overview-toggle(string);
+    callback overview-size(float, float);
+    callback overview-hover(float, float);
+    callback overview-select(float, float);
+    callback overview-reset();
+    in property <[UiLogEntry]> command-log;
+    callback command-log-open();
+    callback command-log-clear();
+    in-out property <bool> run-open: false;
+    in property <string> run-account-name;
+    in-out property <string> run-command-text;
+    in-out property <bool> run-in-terminal;
+    in property <bool> run-running;
+    in property <[string]> run-lines;
+    callback open-run-command(string);
+    callback run-command-edited(string);
+    callback run-terminal-toggled(bool);
+    callback run-command-start();
+    callback run-command-cancel();
+    changed selection => {
+        root.chart-open = false;
+        root.chart-close();
+        if root.selection == Pane.overview { root.overview-open(); } else { root.overview-close(); }
+        if root.selection == Pane.command-log { root.command-log-open(); }
+    }
+    changed selected-account-id => { root.chart-open = false; root.chart-close(); }
+
+    in property <string> app-name;
+    in property <string> app-version;
+    in-out property <int> auto-refresh-seconds: 60;
+    in-out property <bool> launch-at-startup;
+    callback set-auto-refresh(int);
+    callback set-launch-at-startup(bool);
+    in property <[UiShell]> shells;
+    in-out property <string> shell-key;
+    callback set-shell(string);
+    in property <string> update-status;
+    in property <bool> update-can-install;
+    in property <bool> update-busy;
+    in-out property <bool> auto-update: true;
+    callback check-updates();
+    callback install-update();
+    callback set-auto-update(bool);
+
+    property <string> pane-title: root.selection == Pane.dashboard ? "Dashboard"
+        : root.selection == Pane.overview ? "Overview"
+        : root.selection == Pane.command-log ? "Command Log"
+        : root.selection == Pane.help ? "Help"
+        : root.selection == Pane.settings-accounts ? "Accounts"
+        : root.selection == Pane.general ? "General"
+        : "Account";
+
+    Rectangle {
+        background: root.use-solid-background ? Theme.window-bg : transparent;
+    }
+
+    HorizontalLayout {
+        // Sidebar
+        Rectangle {
+            width: 240px;
+            background: Theme.dark ? #ffffff08 : #ffffff80;
+            Rectangle {
+                x: parent.width - 1px;
+                width: 1px;
+                background: Theme.card-border;
+            }
+            Flickable {
+                content-height: side.preferred-height;
+                side := VerticalLayout {
+                    padding: 12px;
+                    spacing: 2px;
+                    alignment: start;
+
+                    GroupHeader { text: "Usage"; }
+                    SidebarRow {
+                        label: "Dashboard"; glyph: "\u{E80A}"; tile: #0a84ff;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.dashboard;
+                        clicked => { root.selection = Pane.dashboard; }
+                    }
+                    SidebarRow {
+                        label: "Overview"; glyph: "\u{E9D2}"; tile: #ff9f0a;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.overview;
+                        clicked => { root.selection = Pane.overview; }
+                    }
+
+                    GroupHeader { text: "Accounts"; }
+                    for acct in root.account-rows: SidebarRow {
+                        label: acct.name; initial: acct.initial; tile: acct.avatar-color;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.account && root.selected-account-id == acct.id;
+                        clicked => {
+                            root.selected-account-id = acct.id;
+                            root.selection = Pane.account;
+                        }
+                    }
+
+                    GroupHeader { text: "Tools"; }
+                    SidebarRow {
+                        label: "Command Log"; glyph: "\u{E756}"; tile: #5e5ce6;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.command-log;
+                        clicked => { root.selection = Pane.command-log; }
+                    }
+                    SidebarRow {
+                        label: "Help"; glyph: "\u{E897}"; tile: #30d158;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.help;
+                        clicked => { root.selection = Pane.help; }
+                    }
+
+                    GroupHeader { text: "Settings"; }
+                    SidebarRow {
+                        label: "Accounts"; glyph: "\u{E77B}"; tile: #40c8e0;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.settings-accounts;
+                        clicked => { root.selection = Pane.settings-accounts; }
+                    }
+                    SidebarRow {
+                        label: "General"; glyph: "\u{E713}"; tile: #8e8e93;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.general;
+                        clicked => { root.selection = Pane.general; }
+                    }
+                }
+            }
+        }
+
+        // Content
+        VerticalLayout {
+            padding: 24px;
+            spacing: 12px;
+            Text {
+                text: root.pane-title;
+                color: Theme.text-primary;
+                font-size: 24px;
+                font-weight: 600;
+            }
+            if root.selection == Pane.account: Rectangle {
+                // Non-layout container: one pane per row, only the selected one visible.
+                for acct in root.account-rows: AccountPane {
+                    visible: root.selected-account-id == acct.id;
+                    data: acct;
+                    width: parent.width;
+                    height: parent.height;
+                    resync => { root.resync(); }
+                    view-chart => {
+                        root.chart-title = acct.name;
+                        root.chart-color = acct.avatar-color;
+                        root.chart-open = true;
+                        root.view-chart(acct.id);
+                    }
+                    run-command => { root.open-run-command(acct.id); }
+                }
+            }
+            if root.selection == Pane.dashboard && root.account-rows.length == 0: EmptyState {
+                vertical-stretch: 1;
+                add-account => { root.add-account(); }
+            }
+            if root.selection == Pane.dashboard: Flickable {
+                // Responsive wrap: as many fixed-width cards per row as fit.
+                property <length> card-w: 300px;
+                property <length> card-h: 280px;
+                property <length> gap: 14px;
+                property <int> cols: max(1, floor((self.width + self.gap) / (self.card-w + self.gap)));
+                property <int> nrows: ceil(root.account-rows.length / self.cols);
+                content-height: self.nrows * (self.card-h + self.gap);
+                for acct[i] in root.account-rows: AccountCard {
+                    data: acct;
+                    x: mod(i, parent.cols) * (parent.card-w + parent.gap);
+                    y: floor(i / parent.cols) * (parent.card-h + parent.gap);
+                    width: parent.card-w;
+                    height: parent.card-h;
+                    clicked => {
+                        root.selected-account-id = acct.id;
+                        root.selection = Pane.account;
+                    }
+                    run-command => { root.open-run-command(acct.id); }
+                }
+            }
+            if root.selection == Pane.overview: OverviewPane {
+                vertical-stretch: 1;
+                state: root.overview;
+                window(w) => { root.overview-window(w); }
+                preset(p) => { root.overview-preset(p); }
+                toggle(id) => { root.overview-toggle(id); }
+                size-changed(w, h) => { root.overview-size(w, h); }
+                hover(x, y) => { root.overview-hover(x, y); }
+                select(a, b) => { root.overview-select(a, b); }
+                reset => { root.overview-reset(); }
+            }
+            if root.selection == Pane.settings-accounts: AccountsSettingsPane {
+                vertical-stretch: 1;
+                rows: root.account-rows;
+                muted: root.muted-sources;
+                add-account => { root.add-account(); }
+                resync => { root.resync(); }
+                delete-account(id) => { root.delete-account(id); }
+                unmute(id) => { root.unmute(id); }
+            }
+            if root.selection == Pane.general: GeneralSettingsPane {
+                vertical-stretch: 1;
+                app-name: root.app-name;
+                app-version: root.app-version;
+                auto-refresh-seconds: root.auto-refresh-seconds;
+                launch-at-startup: root.launch-at-startup;
+                set-auto-refresh(s) => { root.set-auto-refresh(s); }
+                set-launch-at-startup(on) => { root.set-launch-at-startup(on); }
+                shells: root.shells;
+                shell-key: root.shell-key;
+                set-shell(k) => { root.set-shell(k); }
+                update-status: root.update-status;
+                update-can-install: root.update-can-install;
+                update-busy: root.update-busy;
+                auto-update: root.auto-update;
+                check-updates => { root.check-updates(); }
+                install-update => { root.install-update(); }
+                set-auto-update(on) => { root.set-auto-update(on); }
+            }
+            if root.selection == Pane.command-log: CommandLogPane {
+                vertical-stretch: 1;
+                entries: root.command-log;
+                reload => { root.command-log-open(); }
+                clear => { root.command-log-clear(); }
+            }
+            if root.selection == Pane.help: HelpPane { vertical-stretch: 1; }
+            if root.selection != Pane.dashboard: Rectangle { }
+        }
+    }
+
+    if root.chart-open && root.selection == Pane.account: ChartPanel {
+        x: 240px;
+        width: parent.width - 240px;
+        height: parent.height;
+        title: root.chart-title;
+        state: root.chart;
+        line-color: root.chart-color;
+        preset(p) => { root.chart-preset(p); }
+        close => { root.chart-open = false; root.chart-close(); }
+        size-changed(w, h) => { root.chart-size(w, h); }
+        hover(x, y) => { root.chart-hover(x, y); }
+        select(a, b) => { root.chart-select(a, b); }
+        reset => { root.chart-reset(); }
+    }
+
+    if root.run-open: RunCommandPanel {
+        width: parent.width; height: parent.height;
+        account-name: root.run-account-name;
+        command <=> root.run-command-text;
+        open-in-terminal <=> root.run-in-terminal;
+        running: root.run-running;
+        lines: root.run-lines;
+        edited(t) => { root.run-command-edited(t); }
+        toggle-terminal(on) => { root.run-terminal-toggled(on); }
+        run => { root.run-command-start(); }
+        cancel => { root.run-command-cancel(); }
+    }
+}
+
+
+component FlyoutIconButton inherits Rectangle {
+    in property <string> glyph;
+    callback clicked();
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent;
+    Text {
+        text: root.glyph;
+        font-family: "Segoe Fluent Icons";
+        font-size: 14px;
+        color: Theme.text-primary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Tray flyout (macOS MenuBarPopover): header, compact account rows, footer.
+// Borderless; Rust applies Mica + rounded corners and places it at the tray.
+export component PopoverWindow inherits Window {
+    no-frame: true;
+    width: 340px;
+    height: 420px;
+    default-font-family: Theme.font-family;
+    default-font-size: 14px;
+    background: transparent;
+    in property <bool> use-solid-background: false;
+    in property <[UiRow]> account-rows;
+    callback expand();
+    callback refresh();
+    callback quit();
+    callback add-account();
+
+    Rectangle {
+        background: root.use-solid-background ? Theme.window-bg : (Theme.dark ? #20202080 : #f3f3f380);
+    }
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 4px;
+            Text {
+                text: "Claude Dashboard";
+                color: Theme.text-primary;
+                font-size: 15px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            Rectangle { }
+            FlyoutIconButton { glyph: "\u{E72C}"; clicked => { root.refresh(); } }
+            FlyoutIconButton { glyph: "\u{E740}"; clicked => { root.expand(); } }
+        }
+        if root.account-rows.length == 0: EmptyState { vertical-stretch: 1; add-account => { root.add-account(); } }
+        Flickable {
+            content-height: list.preferred-height;
+            list := VerticalLayout {
+                spacing: 6px;
+                alignment: start;
+                for acct in root.account-rows: Rectangle {
+                    height: 60px;
+                    background: Theme.card-bg;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: Theme.card-border;
+                    HorizontalLayout {
+                        padding: 8px;
+                        spacing: 10px;
+                        Avatar { size: 32px; initial: acct.initial; tint: acct.avatar-color; y: (parent.height - self.height) / 2; }
+                        VerticalLayout {
+                            alignment: center;
+                            Text { text: acct.name; color: Theme.text-primary; font-weight: 600; overflow: elide; }
+                            Text {
+                                text: acct.error != "" ? acct.error : acct.plan;
+                                color: acct.error != "" ? Theme.danger : Theme.text-secondary;
+                                font-size: 11px;
+                                overflow: elide;
+                            }
+                        }
+                        if acct.five-hour.present: UsageGauge { win: acct.five-hour; zoom: 0.55; y: (parent.height - self.height) / 2; }
+                        if acct.seven-day.present: UsageGauge { win: acct.seven-day; zoom: 0.55; y: (parent.height - self.height) / 2; }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: space-between;
+            Rectangle {
+                height: 32px;
+                width: expand-text.preferred-width + 28px;
+                border-radius: 6px;
+                background: expand-touch.has-hover ? Theme.accent.with-alpha(0.15) : Theme.card-bg;
+                border-width: 1px;
+                border-color: Theme.card-border;
+                expand-text := Text { text: "Expand"; color: Theme.accent; horizontal-alignment: center; vertical-alignment: center; }
+                expand-touch := TouchArea { clicked => { root.expand(); } }
+            }
+            Rectangle {
+                height: 32px;
+                width: quit-text.preferred-width + 28px;
+                border-radius: 6px;
+                background: quit-touch.has-hover ? Theme.danger.with-alpha(0.15) : transparent;
+                quit-text := Text { text: "Quit"; color: Theme.text-secondary; horizontal-alignment: center; vertical-alignment: center; }
+                quit-touch := TouchArea { clicked => { root.quit(); } }
+            }
+        }
+    }
+}

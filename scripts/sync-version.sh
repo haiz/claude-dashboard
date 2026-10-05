@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Sync the version in VERSION to Info.plist, CLI, Formula, and Cask.
+# Sync the version in VERSION to Info.plist, CLI, Formula, Cask, the Linux and
+# Windows Cargo workspaces (Cargo.toml + Cargo.lock), the GNOME extension
+# metadata, and the Windows browser extension manifest.
 # Usage: ./scripts/sync-version.sh
 set -euo pipefail
 
@@ -39,40 +41,47 @@ report() {
     fi
 }
 
+# In-place edit that works on BSD sed (macOS) and GNU sed (Linux, Git Bash):
+# both accept -i with an attached suffix; the backup is removed straight away.
+sedi() {
+    local file="${*: -1}"
+    sed -i.bak "$@" && rm -f "${file}.bak"
+}
+
 echo "Syncing version $VERSION..."
 
 # 1. Info.plist — replace the <string> on the line AFTER <key>CFBundleShortVersionString</key>.
 INFO_PLIST="apps/macos/ClaudeDashboard/Info.plist"
-sed -i '' "/<key>CFBundleShortVersionString<\/key>/{n;s|<string>[^<]*</string>|<string>${VERSION}</string>|;}" "$INFO_PLIST"
+sedi "/<key>CFBundleShortVersionString<\/key>/{n;s|<string>[^<]*</string>|<string>${VERSION}</string>|;}" "$INFO_PLIST"
 report "$INFO_PLIST" "<string>${VERSION}</string>"
 
 # 2. CLI — replace the VERSION="..." line.
 CLI="cli/claude-dashboard-cli"
-sed -i '' "s|^VERSION=\"[^\"]*\"|VERSION=\"${VERSION}\"|" "$CLI"
+sedi "s|^VERSION=\"[^\"]*\"|VERSION=\"${VERSION}\"|" "$CLI"
 report "$CLI" "^VERSION=\"${VERSION}\""
 
 # 3. Formula — replace version "..." line AND the /vX.Y.Z/ segment in the url.
 FORMULA="Formula/claude-dashboard-cli.rb"
-sed -i '' "s|^  version \"[^\"]*\"|  version \"${VERSION}\"|" "$FORMULA"
-sed -i '' "s|/v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/|/v${VERSION}/|" "$FORMULA"
+sedi "s|^  version \"[^\"]*\"|  version \"${VERSION}\"|" "$FORMULA"
+sedi "s|/v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/|/v${VERSION}/|" "$FORMULA"
 report "$FORMULA" "^  version \"${VERSION}\""
 report "$FORMULA" "/v${VERSION}/"
 
 # 4. Cask — replace version "..." line. url uses #{version} interpolation, no edit needed.
 CASK="Casks/claude-dashboard.rb"
-sed -i '' "s|^  version \"[^\"]*\"|  version \"${VERSION}\"|" "$CASK"
+sedi "s|^  version \"[^\"]*\"|  version \"${VERSION}\"|" "$CASK"
 report "$CASK" "^  version \"${VERSION}\""
 
 # 5. Rust workspace — the [workspace.package] version, plus the copy the lock
 # file keeps for each member. Leaving the lock behind makes `cargo --locked`
 # fail on the next build, so both files move together or neither does.
 CARGO_TOML="apps/linux/Cargo.toml"
-sed -i '' "s|^version = \"[^\"]*\"|version = \"${VERSION}\"|" "$CARGO_TOML"
+sedi "s|^version = \"[^\"]*\"|version = \"${VERSION}\"|" "$CARGO_TOML"
 report "$CARGO_TOML" "^version = \"${VERSION}\""
 
 CARGO_LOCK="apps/linux/Cargo.lock"
 for member in claude-dashboard-core claude-dashboard-helper; do
-    sed -i '' "/^name = \"${member}\"$/{n;s|^version = \"[^\"]*\"|version = \"${VERSION}\"|;}" "$CARGO_LOCK"
+    sedi "/^name = \"${member}\"$/{n;s|^version = \"[^\"]*\"|version = \"${VERSION}\"|;}" "$CARGO_LOCK"
 done
 # Checked per member rather than by counting matches: a third-party dep may
 # legitimately sit at the same version, which would make a count lie.
@@ -91,7 +100,32 @@ done
 # prints in its footer. ("version" is e.g.o's own revision counter and is
 # deliberately not touched here.)
 EXT_METADATA="apps/linux/gnome-extension/metadata.json"
-sed -i '' "s|\"version-name\": \"[^\"]*\"|\"version-name\": \"${VERSION}\"|" "$EXT_METADATA"
+sedi "s|\"version-name\": \"[^\"]*\"|\"version-name\": \"${VERSION}\"|" "$EXT_METADATA"
 report "$EXT_METADATA" "\"version-name\": \"${VERSION}\""
+
+# 7. Windows Cargo workspace — [workspace.package] version (trailing comment kept).
+WIN_CARGO_TOML="apps/windows/Cargo.toml"
+sedi "s|^version = \"[^\"]*\"|version = \"${VERSION}\"|" "$WIN_CARGO_TOML"
+report "$WIN_CARGO_TOML" "^version = \"${VERSION}\""
+
+# 8. Windows lock — the app, the bridge, and the path-dep core all carry the version.
+WIN_CARGO_LOCK="apps/windows/Cargo.lock"
+for member in claude-dashboard claude-dashboard-bridge claude-dashboard-core; do
+    sedi "/^name = \"${member}\"$/{n;s|^version = \"[^\"]*\"|version = \"${VERSION}\"|;}" "$WIN_CARGO_LOCK"
+done
+for member in claude-dashboard claude-dashboard-bridge claude-dashboard-core; do
+    got="$(awk -v m="$member" '$0 == "name = \"" m "\"" { getline; print; exit }' "$WIN_CARGO_LOCK")"
+    if [[ "$got" == "version = \"${VERSION}\"" ]]; then
+        echo "  $WIN_CARGO_LOCK ($member) — OK"
+    else
+        echo "  $WIN_CARGO_LOCK ($member) — FAILED to apply" >&2
+        exit 1
+    fi
+done
+
+# 9. Browser extension manifest — Chrome requires 1-4 dot-separated integers.
+EXT_MANIFEST="apps/windows/extension/manifest.json"
+sedi "s|\"version\": \"[^\"]*\"|\"version\": \"${VERSION}\"|" "$EXT_MANIFEST"
+report "$EXT_MANIFEST" "\"version\": \"${VERSION}\""
 
 echo "Done."

@@ -1,0 +1,91 @@
+import { Theme } from "theme.slint";
+
+export struct UiLogEntry {
+    id: int, time: string, trigger: string, trigger-color: color, account: string,
+    command: string, status: string, status-color: color, duration: string, output: string,
+}
+
+component LogButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> danger: false;
+    callback clicked();
+    height: 28px;
+    width: t.preferred-width + 24px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    background: touch.has-hover && root.enabled ? Theme.accent.with-alpha(0.15) : Theme.card-bg;
+    opacity: root.enabled ? 1.0 : 0.45;
+    t := Text { text: root.label; color: root.danger ? Theme.danger : Theme.accent;
+                horizontal-alignment: center; vertical-alignment: center; }
+    touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+component LogRow inherits Rectangle {
+    in property <UiLogEntry> e;
+    property <bool> expanded: false;
+    height: col.preferred-height;
+    background: touch.has-hover ? Theme.accent.with-alpha(0.06) : transparent;
+    touch := TouchArea { clicked => { root.expanded = !root.expanded; } }
+    col := VerticalLayout {
+        padding-left: 16px; padding-right: 16px; padding-top: 10px; padding-bottom: 10px;
+        spacing: 4px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: root.e.time; color: Theme.text-secondary; font-size: 11px; vertical-alignment: center; }
+            Rectangle {
+                width: trig.preferred-width + 12px; height: 18px; border-radius: 9px;
+                background: root.e.trigger-color.with-alpha(0.18);
+                trig := Text { text: root.e.trigger; color: root.e.trigger-color; font-size: 10px;
+                               font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            Text { text: root.e.account; color: Theme.text-primary; font-size: 11px; font-weight: 500;
+                   vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+            Text { text: root.e.status; color: root.e.status-color; font-size: 11px; font-weight: 600;
+                   vertical-alignment: center; }
+            Text { text: root.e.duration; color: Theme.text-secondary; font-size: 10px; vertical-alignment: center; }
+        }
+        Text { text: root.e.command; color: Theme.text-primary; font-family: "Cascadia Mono, Consolas";
+               font-size: 13px; overflow: elide; }
+        if root.expanded: Text { text: root.e.output; color: Theme.text-secondary;
+               font-family: "Cascadia Mono, Consolas"; font-size: 11px; wrap: word-wrap; }
+        Rectangle { height: 1px; background: Theme.card-border; }
+    }
+}
+
+export component CommandLogPane inherits VerticalLayout {
+    in property <[UiLogEntry]> entries;
+    callback reload();
+    callback clear();
+    property <bool> confirming: false;
+    spacing: 10px;
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: end;
+        if !root.confirming: LogButton { label: "Refresh"; clicked => { root.reload(); } }
+        if !root.confirming: LogButton { label: "Clear All"; danger: true; enabled: root.entries.length > 0;
+                                         clicked => { root.confirming = true; } }
+        if root.confirming: Text { text: "Clear all command logs?"; color: Theme.text-primary; vertical-alignment: center; }
+        if root.confirming: LogButton { label: "Clear"; danger: true;
+                                        clicked => { root.confirming = false; root.clear(); } }
+        if root.confirming: LogButton { label: "Cancel"; clicked => { root.confirming = false; } }
+    }
+    if root.entries.length == 0: Rectangle {
+        vertical-stretch: 1;
+        Text { text: "No commands have run yet."; color: Theme.text-secondary;
+               horizontal-alignment: center; vertical-alignment: center; }
+    }
+    if root.entries.length > 0: Rectangle {
+        vertical-stretch: 1;
+        background: Theme.card-bg; border-radius: 8px; border-width: 1px; border-color: Theme.card-border;
+        clip: true;
+        Flickable {
+            content-height: list.preferred-height;
+            list := VerticalLayout {
+                alignment: start;
+                for e in root.entries: LogRow { e: e; }
+            }
+        }
+    }
+}

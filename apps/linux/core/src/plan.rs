@@ -1,4 +1,4 @@
-use crate::model::AccountPlan;
+use crate::model::{Account, AccountPlan};
 use serde_json::Value;
 
 /// Derives the account's plan tier from one `GET /api/organizations` entry.
@@ -60,6 +60,84 @@ pub fn refreshed_plan(stored: &AccountPlan, hint: Option<AccountPlan>) -> Option
     match hint {
         Some(hint) if hint != *stored => Some(hint),
         _ => None,
+    }
+}
+
+/// The plan to persist for `account` given a freshly fetched
+/// `/api/organizations` result — `None` to leave the stored plan alone.
+///
+/// Mirrors `UsageAPIService.refreshedPlan(for:orgs:)`. The org is matched on
+/// the account's **stored** `org_id`: an account with no `org_id` is not
+/// pollable and is never touched, and an `orgs` slice with no matching entry
+/// (an empty one included, which is what a failed fetch produces) reduces to
+/// rule 1 of [`refreshed_plan`].
+///
+/// Deliberately no `unwrap_or(Pro)` here: unlike the add path
+/// ([`plan_for`]), an unresolved tier must leave the stored one as it is.
+pub fn refreshed_plan_for(account: &Account, orgs: &[ParsedOrg]) -> Option<AccountPlan> {
+    let org_id = account.org_id.as_deref()?;
+    let hint = orgs
+        .iter()
+        .find(|o| o.uuid == org_id)
+        .and_then(|o| detect_plan_tier(&o.raw, &o.capabilities));
+    refreshed_plan(&account.plan, hint)
+}
+
+/// One parsed `/api/organizations` entry (only orgs carrying both `uuid`
+/// and `name` survive, matching the Swift `compactMap`). Read solely for the
+/// plan tier — e-mail comes from `/api/account`.
+pub struct ParsedOrg {
+    pub uuid: String,
+    pub capabilities: Vec<String>,
+    /// The org's full JSON, handed to [`detect_plan_tier`] (steps 1-2 there
+    /// scan the whole object, not just `capabilities`).
+    pub raw: Value,
+}
+
+/// Parses the raw `/api/organizations` body into the orgs the dashboard cares
+/// about. Returns an empty vec when the body is not a JSON array, is empty,
+/// or contains no org with both `uuid` and `name`.
+pub fn parse_orgs(orgs_json: &str) -> Vec<ParsedOrg> {
+    let Ok(Value::Array(arr)) = serde_json::from_str::<Value>(orgs_json) else {
+        return Vec::new();
+    };
+    arr.into_iter()
+        .filter_map(|v| {
+            let uuid = v.get("uuid")?.as_str()?.to_string();
+            // Presence check only: a name-less org is filtered out, matching
+            // the Swift `compactMap`. The name itself is never inspected.
+            v.get("name")?.as_str()?;
+            let capabilities = v
+                .get("capabilities")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            Some(ParsedOrg {
+                uuid,
+                capabilities,
+                raw: v,
+            })
+        })
+        .collect()
+}
+
+/// Plan tier for the chosen org: `detect_plan_tier` on that org's raw JSON,
+/// defaulting to Pro when the org is absent or yields nothing. The add path's
+/// counterpart to [`refreshed_plan_for`] (which leaves an unresolved tier
+/// alone instead of defaulting).
+pub fn plan_for(orgs: &[ParsedOrg], org_id: &str) -> AccountPlan {
+    orgs.iter()
+        .find(|o| o.uuid == org_id)
+        .and_then(|o| detect_plan_tier(&o.raw, &o.capabilities))
+        .unwrap_or(AccountPlan::Pro)
+}
+
+/// The plan's on-the-wire string (`"Pro"`, `"Max 5x"`, `"Max 20x"`,
+/// `"Max"`) — what the Swift `plan.rawValue` prints in the "Added:" line.
+pub fn plan_wire_value(plan: &AccountPlan) -> String {
+    match serde_json::to_value(plan) {
+        Ok(Value::String(s)) => s,
+        _ => String::new(),
     }
 }
 
