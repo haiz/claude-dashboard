@@ -18,6 +18,10 @@ fn default_refresh() -> u64 {
     DEFAULT_REFRESH_SECONDS
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(rename = "autoRefreshSeconds", default = "default_refresh")]
@@ -28,6 +32,10 @@ pub struct Settings {
     pub launch_at_startup: bool,
     #[serde(rename = "shell", skip_serializing_if = "Option::is_none", default)]
     pub shell: Option<String>,
+    #[serde(rename = "autoUpdate", default = "default_true")]
+    pub auto_update: bool,
+    #[serde(rename = "lastAutoUpdateCheck", skip_serializing_if = "Option::is_none", default)]
+    pub last_auto_update_check_unix: Option<f64>,
 }
 
 impl Default for Settings {
@@ -37,6 +45,8 @@ impl Default for Settings {
             preferred_scan_browser: None,
             launch_at_startup: false,
             shell: None,
+            auto_update: true,
+            last_auto_update_check_unix: None,
         }
     }
 }
@@ -151,6 +161,8 @@ mod tests {
             preferred_scan_browser: Some("edge".into()),
             launch_at_startup: true,
             shell: Some("pwsh".into()),
+            auto_update: true,
+            last_auto_update_check_unix: None,
         };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s);
@@ -163,6 +175,19 @@ mod tests {
         let p = dir.path().join("settings.json");
         fs::write(&p, r#"{"autoRefreshSeconds":60}"#).unwrap();
         assert_eq!(load_from(&p).shell, None);
+    }
+
+    #[test]
+    fn auto_update_defaults_on_and_roundtrips() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        fs::write(&p, r#"{"autoRefreshSeconds":60}"#).unwrap();
+        let s = load_from(&p);
+        assert!(s.auto_update, "missing key -> on (macOS default)");
+        assert_eq!(s.last_auto_update_check_unix, None);
+        let s2 = Settings { auto_update: false, last_auto_update_check_unix: Some(123.0), ..Settings::default() };
+        save_to(&p, &s2).unwrap();
+        assert_eq!(load_from(&p), s2);
     }
 
     #[test]
