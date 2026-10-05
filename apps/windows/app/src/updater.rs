@@ -142,7 +142,6 @@ pub fn apply(msi: &Path, exe: &Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    const DETACHED_PROCESS: u32 = 0x0000_0008;
     let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
     let ps = Path::new(&root)
         .join("System32")
@@ -161,7 +160,8 @@ pub fn apply(msi: &Path, exe: &Path) -> Result<(), String> {
             "-Command",
         ])
         .arg(script)
-        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+        // No DETACHED_PROCESS: powershell.exe started detached exits without running -Command. The child is not in any job, so it outlives the app.
+        .creation_flags(CREATE_NO_WINDOW)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

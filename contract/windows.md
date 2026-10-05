@@ -315,8 +315,9 @@ download and install live in the app (`apps/windows/app/src/updater.rs`).
   ("The update is too large." / "The downloaded update is not a Windows
   installer.").
 - **Relauncher:** a hidden, detached `powershell.exe` (`-NoProfile
-  -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden`, `CREATE_NO_WINDOW |
-  DETACHED_PROCESS`). Its script waits for the app's PID to exit (up to 30 s),
+  -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden`, `CREATE_NO_WINDOW`
+  only — not `DETACHED_PROCESS`: a detached `powershell.exe` exits without running
+  `-Command`; the child is in no job, so it outlives the app). Its script waits for the app's PID to exit (up to 30 s),
   runs `msiexec /i "<msi>" /passive /norestart` and waits for it, then starts the
   installed exe. Waiting first means Windows Installer never meets a locked exe
   and the single-instance mutex is free on relaunch. Each path is a PowerShell
