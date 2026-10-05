@@ -12,6 +12,7 @@ mod refresh;
 mod settings_accounts;
 mod settings_general;
 mod setup;
+mod runner;
 mod shell;
 #[cfg(test)]
 mod testenv;
