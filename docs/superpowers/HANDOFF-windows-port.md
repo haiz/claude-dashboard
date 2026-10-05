@@ -23,7 +23,7 @@ Goal: a Windows 11 port of the macOS "Claude Dashboard", at feature parity, in R
 Every sub-project's final review returned no merge-blockers.
 
 ### NOT done / caveats (tell the user, don't paper over)
-- **CI on SP5.** The branch was pushed once after SP4, and SP5 is being pushed now. `gh` is **not installed** on this machine, so the controller cannot read CI results. Ask the user to check https://github.com/haiz/claude-dashboard/actions, both the `linux` and the `windows` job. The Linux side of SP1 and the core modules SP5 added have only been tested on Windows.
+- **CI is green for SP1–SP5.** The user confirmed both the `linux` and `windows` jobs passed on `9e94ca6`. `gh` is **not installed** on this machine, so the controller cannot read CI results itself; ask the user to check https://github.com/haiz/claude-dashboard/actions after each push.
 - **GUI click-through run-checks are still owed** (they need clicking; screenshots only covered the Dashboard grid, the Claude Code dot, the enabled sidebar rows, and the card glyph no longer overlapping the plan pill).
   - **SP3–SP4:** the Settings panes, the wizard, and the charts.
   - **SP5:**
@@ -132,7 +132,7 @@ Targets:
 
 ## 6. First actions for the next session
 
-1. Reply in Vietnamese. Ask the user for the CI result of the SP5 push (no `gh` here). If anything is red, fix that first.
+1. Reply in Vietnamese. CI was green on `9e94ca6`; if new commits have been pushed since, ask the user for their CI result (no `gh` here).
 2. Offer the owed GUI run-checks (§1), since the user has to click through them.
 3. Invoke `superpowers:writing-plans`, write the SP6 plan, present it for approval, and commit it with `git add -f`.
 4. On approval, run `superpowers:subagent-driven-development` per §2, reusing the SP5 contract files.
