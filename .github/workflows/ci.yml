@@ -9,6 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Release script checks
+        run: |
+          bash scripts/test-sync-version.sh
+          bash scripts/test-release-workflow.sh
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
           components: clippy
