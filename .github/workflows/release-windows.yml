@@ -1,0 +1,78 @@
+name: release-windows
+
+# Same five guardrails as release-linux.yml (scripts/test-release-workflow.sh
+# enforces them on both): published-release trigger only; upload only — never
+# create or replace a release; never touch the macOS artifacts; never write
+# notes; never commit. --clobber is safe while no Windows asset checksum is
+# pinned in any manifest (same caveat as release-linux.yml).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build from and upload to (e.g. v1.19.0). Retry path only."
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    concurrency:
+      group: release-windows-${{ github.event.release.tag_name || inputs.tag }}
+      cancel-in-progress: false
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Resolve tag
+        id: resolve
+        env:
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+        run: |
+          $tag = if ($env:GITHUB_EVENT_NAME -eq 'release') { $env:EVENT_TAG } else { $env:DISPATCH_TAG }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.tag }}
+          persist-credentials: false
+
+      - name: Install pinned toolchain
+        run: cd apps/windows; rustup toolchain install --no-self-update
+
+      - name: Clippy
+        run: cd apps/windows; cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cd apps/windows; cargo test --workspace --locked
+
+      - name: Install WiX 3.14 (pinned)
+        run: |
+          $zip = "$env:RUNNER_TEMP\wix314-binaries.zip"
+          Invoke-WebRequest -Uri 'https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip' -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
+          if ($hash -ne '6AC824E1642D6F7277D0ED7EA09411A508F6116BA6FAE0AA5F2C7DAA2FF43D31') { throw "WiX zip hash mismatch: $hash" }
+          $wix = "$env:RUNNER_TEMP\wix314"
+          Expand-Archive -Path $zip -DestinationPath "$wix\bin" -Force
+          "WIX=$wix\" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Install cargo-wix
+        run: cd apps/windows; cargo install cargo-wix --locked --version 0.3.9
+
+      - name: Build MSI
+        run: ./apps/windows/scripts/build-msi.ps1
+
+      - name: Pack extension
+        run: |
+          New-Item -ItemType Directory -Force .build | Out-Null
+          ./apps/windows/scripts/pack-extension.ps1 -Out .build/claude-dashboard-extension.zip
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: gh release upload "$env:TAG" apps/windows/target/wix/ClaudeDashboard-x64.msi .build/claude-dashboard-extension.zip --clobber
