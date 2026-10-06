@@ -63,3 +63,6 @@ jobs:
       - name: Test the browser extension
         working-directory: apps/windows/extension
         run: node --test
+      - name: Test the one-liner installer
+        shell: powershell
+        run: ./apps/windows/scripts/test-install-ps1.ps1

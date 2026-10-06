@@ -269,6 +269,16 @@ Cargo workspace version, which `scripts/sync-version.sh` keeps equal to `/VERSIO
 - **User data is never touched:** the installer does not reference
   `%APPDATA%\claude-dashboard` or `%LOCALAPPDATA%\claude-dashboard`, so accounts,
   settings and logs survive both upgrade and uninstall.
+- **One-liner:** `/install.ps1` (published URL, must stay at the repo root;
+  `irm .../install.ps1 | iex`) resolves the latest release's assets by exact
+  name, stops a running `claude-dashboard.exe`, runs `msiexec /i <msi> /passive
+  /norestart` (exit 0 or 3010 is success), unpacks the extension zip to
+  `%LOCALAPPDATA%\claude-dashboard\extension` (replacing that folder only) and
+  starts the app. A release without the MSI is an error; one without the zip
+  only skips the extension. It never calls `exit` (under `iex` that closes the
+  user's shell), stays ASCII-only for Windows PowerShell 5.1, and loads
+  definitions only when `CLAUDE_DASHBOARD_INSTALL_TEST` is set.
+  `apps/windows/scripts/test-install-ps1.ps1` checks it.
 - **Artifacts:** `ClaudeDashboard-x64.msi` and `claude-dashboard-extension.zip`.
   The zip is built by `apps/windows/scripts/pack-extension.ps1` with .NET
   `ZipArchive`, using `/` entry names and an allowlist of seven files

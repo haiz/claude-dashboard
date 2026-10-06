@@ -108,7 +108,7 @@ export component SetupWizardWindow inherits Window {
             }
             Text { text: "How to install"; color: Theme.text-primary; font-weight: 600; }
             Text {
-                text: "1. In your browser, open the extensions page (chrome://extensions or edge://extensions) and turn on Developer mode.\n2. Choose Load unpacked and select apps\\windows\\extension in this repository.\n3. Run apps\\windows\\scripts\\register-dev-host.ps1 once to register the native host.\n4. Open claude.ai in that browser while signed in. The extension sends the key automatically.\n\n(A store link will replace these steps once the extension is published.)";
+                text: "1. In your browser, open the extensions page (chrome://extensions or edge://extensions) and turn on Developer mode.\n2. Choose Load unpacked and select %LOCALAPPDATA%\\claude-dashboard\\extension (the install.ps1 one-liner puts it there; if you installed the MSI by hand, unzip claude-dashboard-extension.zip from the release into any folder and select that).\n3. Open claude.ai in that browser while signed in. The extension sends the key automatically.\n\n(Dev builds: load apps\\windows\\extension from the repository and run apps\\windows\\scripts\\register-dev-host.ps1 once. A store link will replace these steps once the extension is published.)";
                 color: Theme.text-secondary; wrap: word-wrap;
             }
             Rectangle {

@@ -38,6 +38,7 @@ scripts/          release, version sync
 .github/workflows/ release-linux.yml — builds and uploads the Linux tarballs
 Formula/ Casks/   Homebrew tap (must stay at the repo root)
 install.sh        one-liner installer (published URL, must stay at the repo root)
+install.ps1       Windows one-liner installer (published URL, must stay at the repo root)
 ```
 
 ## Installation
@@ -115,6 +116,22 @@ Known limitations on Linux:
   reachable through `secret-tool` — a profile is skipped only when none of the
   tried app-id candidates yield a usable portal secret.
 
+### Windows
+
+In PowerShell (no admin needed):
+
+```powershell
+irm https://raw.githubusercontent.com/haiz/claude-dashboard/main/install.ps1 | iex
+```
+
+This installs the latest per-user `ClaudeDashboard-x64.msi` into
+`%LOCALAPPDATA%\Programs\ClaudeDashboard`, starts the app in the system tray,
+and unpacks the browser extension to `%LOCALAPPDATA%\claude-dashboard\extension`.
+Re-run it to upgrade (the app also updates itself). To use the extension, open
+`chrome://extensions` (or `edge://extensions`), turn on **Developer mode**,
+click **Load unpacked** and pick that folder. Uninstall from **Settings > Apps**;
+your accounts and settings are kept.
+
 ### Manual Download
 
 1. Go to the [latest release](https://github.com/haiz/claude-dashboard/releases/latest)
@@ -179,6 +196,8 @@ The `resets` column shows when each window resets (local time). Progress bars tr
 - **Linux** x86_64 or aarch64, for the CLI — the binaries are statically
   linked, so there is no distribution or glibc floor. The GNOME panel
   extension additionally requires GNOME Shell 45 or later.
+- **Windows** 10 or 11, x64 (ARM64 runs the x64 build under emulation), for
+  the tray app
 - One of Google Chrome, Arc, Brave, or Microsoft Edge (for automatic session key
   extraction)
 

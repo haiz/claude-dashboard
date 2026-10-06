@@ -42,6 +42,8 @@ cd apps/windows && cargo run -p claude-dashboard
 powershell -File apps/windows/scripts/build-msi.ps1
 # Windows: check the extension zip packer
 powershell -File apps/windows/scripts/test-pack-extension.ps1
+# Windows: check the one-liner installer (install.ps1), offline
+powershell -File apps/windows/scripts/test-install-ps1.ps1
 ```
 
 No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Security, CommonCrypto, SQLite3).
