@@ -17,8 +17,9 @@ enum KeychainError: Error, Equatable {
 ///
 /// Claude Code's entry trusts `security` in its access list, so going through it reads
 /// and updates `Claude Code-credentials` without an access prompt; a `SecItem` call from
-/// this app would prompt. Writes go to `security -i` on stdin with hex data (`-X`), so no
-/// secret ever appears in a process argument list.
+/// this app would prompt. Writes go to `security -i` on stdin with hex data (`-X`), so the
+/// secret stays out of the process argument list, but only when the command line fits
+/// `interactiveLineLimit`; longer payloads go in argv, exactly as Claude Code does.
 ///
 ///     let kc = SecurityCLIKeychain()
 ///     try kc.write(data, service: "ClaudeDashboard.cc-vault", account: id.uuidString)
@@ -29,6 +30,12 @@ struct SecurityCLIKeychain: KeychainStoring {
 
     /// `security` exits with this when the item does not exist.
     static let itemNotFoundStatus: Int32 = 44
+
+    /// `security -i` truncates input lines near 4096 bytes and then replaces the item with
+    /// the truncated prefix. Claude Code 2.1.294 uses this same cut-off: command lines up to
+    /// this many characters (excluding the trailing newline) go through `-i`, longer ones
+    /// are passed as arguments.
+    static let interactiveLineLimit = 4032
 
     private let run: Runner
 
@@ -44,10 +51,13 @@ struct SecurityCLIKeychain: KeychainStoring {
     }
 
     func write(_ data: Data, service: String, account: String) throws {
-        let line = "add-generic-password -U -a \(Self.quote(account)) -s \(Self.quote(service)) -X \(Self.hex(data))\n"
-        let result = try run(["-i"], Data(line.utf8))
+        let hex = Self.hex(data)
+        let line = "add-generic-password -U -a \(Self.quote(account)) -s \(Self.quote(service)) -X \(hex)"
+        let result = line.count <= Self.interactiveLineLimit
+            ? try run(["-i"], Data((line + "\n").utf8))
+            : try run(["add-generic-password", "-U", "-a", account, "-s", service, "-X", hex], nil)
         guard result.status == 0 else { throw KeychainError.commandFailed(status: result.status) }
-        // `security -i` can report success for a command it rejected; read back to be sure.
+        // Read back to guard against a write that did not persist as sent.
         guard try read(service: service, account: account) == data else {
             throw KeychainError.writeNotPersisted
         }

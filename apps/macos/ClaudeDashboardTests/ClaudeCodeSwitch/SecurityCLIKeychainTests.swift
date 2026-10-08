@@ -55,6 +55,54 @@ final class SecurityCLIKeychainTests: XCTestCase {
         }
     }
 
+    /// `n` bytes starting with `{`, so `decodePasswordOutput` never mistakes it for hex.
+    private static func jsonLike(bytes n: Int) -> Data {
+        Data("{".utf8) + Data(repeating: 0x41, count: n - 1)
+    }
+
+    /// Length of `add-generic-password -U -a "<account>" -s "<service>" -X ` for plain names.
+    private func linePrefixLength(account: String, service: String) -> Int {
+        "add-generic-password -U -a \"\(account)\" -s \"\(service)\" -X ".count
+    }
+
+    func testWriteOverLineLimitUsesArgvNotInteractive() throws {
+        let prefix = linePrefixLength(account: "ab", service: "s")
+        let payload = Self.jsonLike(bytes: (SecurityCLIKeychain.interactiveLineLimit - prefix) / 2 + 1)
+        var calls: [(args: [String], stdin: Data?)] = []
+        let kc = SecurityCLIKeychain { args, stdin in
+            calls.append((args, stdin))
+            return args.first == "find-generic-password" ? (0, payload + Data("\n".utf8)) : (0, Data())
+        }
+        try kc.write(payload, service: "s", account: "ab")
+        let write = try XCTUnwrap(calls.first)
+        XCTAssertEqual(Array(write.args.prefix(7)), ["add-generic-password", "-U", "-a", "ab", "-s", "s", "-X"])
+        XCTAssertEqual(write.args.count, 8)
+        XCTAssertEqual(write.args[7], payload.map { String(format: "%02x", $0) }.joined())
+        XCTAssertNil(write.stdin)
+        XCTAssertFalse(calls.contains { $0.args == ["-i"] })
+    }
+
+    func testWriteAtLineLimitUsesInteractive() throws {
+        let prefix = linePrefixLength(account: "ab", service: "s")
+        XCTAssertEqual((SecurityCLIKeychain.interactiveLineLimit - prefix) % 2, 0)
+        let payload = Self.jsonLike(bytes: (SecurityCLIKeychain.interactiveLineLimit - prefix) / 2)
+        var stdinLine = ""
+        let kc = SecurityCLIKeychain { args, stdin in
+            if args == ["-i"] { stdinLine = String(decoding: stdin ?? Data(), as: UTF8.self); return (0, Data()) }
+            return (0, payload + Data("\n".utf8))
+        }
+        try kc.write(payload, service: "s", account: "ab")
+        XCTAssertEqual(stdinLine.count, SecurityCLIKeychain.interactiveLineLimit + 1)
+        XCTAssertTrue(stdinLine.hasSuffix("\n"))
+    }
+
+    func testWriteThrowsOnWriteCommandFailure() {
+        let kc = SecurityCLIKeychain { _, _ in (1, Data()) }
+        XCTAssertThrowsError(try kc.write(Data("x".utf8), service: "s", account: "a")) {
+            XCTAssertEqual($0 as? KeychainError, .commandFailed(status: 1))
+        }
+    }
+
     /// Opt-in: touches the real login Keychain with a throwaway item.
     /// Run with CLAUDE_DASHBOARD_KEYCHAIN_IT=1.
     func testRealKeychainRoundTrip() throws {
@@ -67,5 +115,10 @@ final class SecurityCLIKeychainTests: XCTestCase {
         let payload = Data(#"{"name":"Việt"}"#.utf8)
         try kc.write(payload, service: service, account: account)
         XCTAssertEqual(try kc.read(service: service, account: account), payload)
+        // Over interactiveLineLimit: exercises the argv path with a ~4.6 KB payload.
+        let big = Data((#"{"name":"Việt","pad":""#
+            + String(repeating: "x", count: 4600) + #""}"#).utf8)
+        try kc.write(big, service: service, account: account)
+        XCTAssertEqual(try kc.read(service: service, account: account), big)
     }
 }
