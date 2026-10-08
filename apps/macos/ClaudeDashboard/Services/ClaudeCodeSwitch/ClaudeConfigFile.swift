@@ -18,6 +18,10 @@ enum ClaudeConfigFileError: Error, Equatable {
 
 /// `~/.claude.json`. Running Claude Code processes also write this file; the
 /// read-modify-rename below keeps that window short (see the spec's error handling).
+/// A symlinked path is resolved once and the real file is replaced, so the link
+/// survives. The replacement is created with the original mode (0600 when unknown)
+/// in the same directory, then renamed over the target, so it is never briefly
+/// more readable than the file it replaces.
 ///
 ///     let file = ClaudeConfigFile(fileURL: ClaudeConfigFile.defaultURL)
 ///     try file.writeOAuthAccount(entry.oauthAccount)
@@ -29,7 +33,7 @@ struct ClaudeConfigFile: ClaudeConfigAccountFile {
     private let fileURL: URL
 
     init(fileURL: URL) {
-        self.fileURL = fileURL
+        self.fileURL = fileURL.resolvingSymlinksInPath()
     }
 
     func readOAuthAccount() throws -> Data? {
@@ -43,12 +47,22 @@ struct ClaudeConfigFile: ClaudeConfigAccountFile {
         guard let account = OAuthAccountJSON.object(json) else { throw ClaudeConfigFileError.notAnObject }
         guard let data = try? Data(contentsOf: fileURL),
               var root = OAuthAccountJSON.object(data) else { throw ClaudeConfigFileError.unreadable }
-        let mode = try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.posixPermissions]
+        let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+        let mode = (attrs?[.posixPermissions] as? NSNumber)?.intValue ?? 0o600
         root["oauthAccount"] = account
         let out = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .withoutEscapingSlashes])
-        try out.write(to: fileURL, options: .atomic)
-        if let mode {
-            try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: fileURL.path)
+
+        let tmp = fileURL.deletingLastPathComponent()
+            .appendingPathComponent(".\(fileURL.lastPathComponent).\(UUID().uuidString).tmp")
+        guard FileManager.default.createFile(atPath: tmp.path, contents: out,
+                                             attributes: [.posixPermissions: mode]) else {
+            try? FileManager.default.removeItem(at: tmp)
+            throw CocoaError(.fileWriteUnknown)
+        }
+        if rename(tmp.path, fileURL.path) != 0 {
+            let code = errno
+            try? FileManager.default.removeItem(at: tmp)
+            throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
         }
     }
 }
