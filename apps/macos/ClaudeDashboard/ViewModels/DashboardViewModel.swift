@@ -72,6 +72,11 @@ final class DashboardViewModel: ObservableObject {
     @Published var accountStates: [AccountUsageState] = []
     @Published var isRefreshing = false
     @Published var activeClaudeCodeEmail: String?
+    /// Per account: what the Claude Code Switch button can do. Empty when the switcher
+    /// is disabled (under XCTest).
+    @Published private(set) var switchAvailability: [UUID: SwitchAvailability] = [:]
+    /// Outcome of the last Switch, shown once as an alert.
+    @Published var switchMessage: String?
 
     @Published var autoRefreshEnabled: Bool {
         didSet { AppDefaults.shared.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
@@ -92,6 +97,7 @@ final class DashboardViewModel: ObservableObject {
     let accountStore: AccountStore
     private let apiService: UsageAPIService
     private let ccDetector: ClaudeCodeAccountDetector
+    private let ccSwitcher: ClaudeCodeSwitcher?
     /// Reads the browser cookies for one stored account. Injected so `resyncAccount`
     /// can be driven in tests without a real Chromium cookie DB on disk.
     private let cookieProvider: (String, Browser) -> ChromeCookieResult
@@ -114,7 +120,8 @@ final class DashboardViewModel: ObservableObject {
         commandLogStore: CommandLogStore? = nil,
         ccDetector: ClaudeCodeAccountDetector = ClaudeCodeAccountDetector(),
         cookieProvider: @escaping (String, Browser) -> ChromeCookieResult
-            = BrowserCookieService.extractCookies(for:browser:)
+            = BrowserCookieService.extractCookies(for:browser:),
+        ccSwitcher: ClaudeCodeSwitcher? = ClaudeCodeSwitcher.live(isRunningTests: AppDefaults.isRunningTests())
     ) {
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.autoRefreshMinutes = {
@@ -125,6 +132,7 @@ final class DashboardViewModel: ObservableObject {
         self.apiService = apiService
         self.ccDetector = ccDetector
         self.cookieProvider = cookieProvider
+        self.ccSwitcher = ccSwitcher
         let store = logStore ?? UsageLogStore()
         self.logStore = store
         self.burnRateTracker = BurnRateTracker(logStore: store)
@@ -224,6 +232,7 @@ final class DashboardViewModel: ObservableObject {
         // and be filtered out, a freshly added one would be missing entirely.
         syncStates(with: accountStore.accounts)
         activeClaudeCodeEmail = ccDetector.activeEmail()
+        await refreshClaudeCodeSwitchState()
 
         // Saved commands to run for accounts whose refresh produced no 5h/7d usage.
         var autoCommands: [(accountId: UUID, command: String)] = []
@@ -559,6 +568,62 @@ final class DashboardViewModel: ObservableObject {
     func isActiveClaudeCodeAccount(_ state: AccountUsageState) -> Bool {
         guard let active = activeClaudeCodeEmail else { return false }
         return state.account.email == active
+    }
+
+    // MARK: - Claude Code Switch
+
+    /// Copies the active Claude Code login into the vault, then recomputes what each
+    /// account's Switch button can do. Off the main actor: each step spawns `security`.
+    private func refreshClaudeCodeSwitchState() async {
+        guard let ccSwitcher else { return }
+        let accounts = accountStore.accounts
+        switchAvailability = await Task.detached {
+            do { try ccSwitcher.capture(accounts: accounts) }
+            catch { print("[ClaudeCodeSwitcher] capture failed: \(error)") }
+            return ccSwitcher.availability(for: accounts)
+        }.value
+    }
+
+    func switchClaudeCode(to accountId: UUID) async {
+        guard let ccSwitcher,
+              let target = accountStore.accounts.first(where: { $0.id == accountId }) else { return }
+        let accounts = accountStore.accounts
+        do {
+            try await Task.detached { try await ccSwitcher.switchTo(target, accounts: accounts) }.value
+            switchMessage = "Claude Code now uses \(target.email ?? target.name). "
+                + "Running sessions pick it up within about 30 seconds."
+        } catch let error as SwitchError {
+            switchMessage = Self.message(for: error, target: target)
+        } catch {
+            switchMessage = "Switch failed: \(error.localizedDescription)"
+        }
+        activeClaudeCodeEmail = ccDetector.activeEmail()
+        switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
+    }
+
+    static func message(for error: SwitchError, target: Account) -> String {
+        let name = target.email ?? target.name
+        switch error {
+        case .notCaptured:
+            return "Run /login once in Claude Code with \(name) so the dashboard can keep its login."
+        case .loginExpired:
+            return "The saved Claude Code login for \(name) has expired. Run /login once with it."
+        case .activeAccountNotInDashboard(let email):
+            return "Claude Code is signed in as \(email), which is not in the dashboard. "
+                + "Add it first, or its login would be lost."
+        case .keychain:
+            return "Could not update Claude Code's Keychain entry. Nothing was changed."
+        case .config:
+            return "Could not update ~/.claude.json. The previous account was restored."
+        case .verifyFailed:
+            return "The switch could not be confirmed. Check /status in Claude Code."
+        case .activeAccountUnknown:
+            return "Claude Code is signed in to an account that ~/.claude.json does not name. "
+                + "Run /login in Claude Code with that account first, or its login would be lost."
+        case .rollbackFailed:
+            return "Claude Code's Keychain now holds \(name)'s login, but ~/.claude.json still names the previous account. "
+                + "Run /login in Claude Code to fix it."
+        }
     }
 
     // MARK: - Pin
