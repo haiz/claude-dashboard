@@ -69,8 +69,8 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   since Claude Code rotates refresh tokens; Switch saves the active account, writes the target's
   credential (keeping `mcpOAuth`) and its `oauthAccount` in `~/.claude.json`. Capture and switch
   are serialized by a lock. Switch refuses when Claude Code's active login is not a dashboard
-  account or `~/.claude.json` names no account. All Keychain access goes through
-  `/usr/bin/security` (no access prompt); writes send hex on stdin of `security -i` when the
+  account or `~/.claude.json` names no account, while it holds a live login. All Keychain access
+  goes through `/usr/bin/security` (no access prompt); writes send hex on stdin of `security -i` when the
   command line is at most 4032 characters (it truncates longer lines), otherwise hex in argv,
   matching Claude Code's own rule. Disabled under XCTest (`ClaudeCodeSwitcher.live(isRunningTests:)`
   returns nil). Do not also use the same account through another `CLAUDE_CONFIG_DIR`: two copies

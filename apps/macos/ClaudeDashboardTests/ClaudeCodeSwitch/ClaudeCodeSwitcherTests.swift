@@ -483,5 +483,7 @@ final class ClaudeCodeSwitcherTests: XCTestCase {
 
     func testLiveIsNilUnderTests() {
         XCTAssertNil(ClaudeCodeSwitcher.live(isRunningTests: true))
+        // The value DashboardViewModel's default argument actually passes in this test host.
+        XCTAssertNil(ClaudeCodeSwitcher.live(isRunningTests: AppDefaults.isRunningTests()))
     }
 }
