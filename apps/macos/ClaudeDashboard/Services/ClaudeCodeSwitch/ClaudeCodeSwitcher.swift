@@ -14,6 +14,7 @@ enum SwitchAvailability: Equatable {
 }
 
 enum SwitchError: Error, Equatable {
+    /// The vault has no copy of the target, or its copy names another email.
     case notCaptured
     case loginExpired
     /// Claude Code is signed in as an account the dashboard does not know; switching
@@ -50,6 +51,9 @@ enum CaptureResult: Equatable {
     case blanked(UUID)
     case unchanged(UUID)
     case saved(UUID)
+    /// The entry holds another dashboard account's credential while `~/.claude.json` names
+    /// this account (after `verifyFailed` or `rollbackFailed`); nothing was saved.
+    case mismatch(UUID)
 }
 
 /// Keeps every account's Claude Code login alive and swaps it into `~/.claude`.
@@ -116,6 +120,10 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
               let email = OAuthAccountJSON.email(accountJSON),
               let account = Self.match(email, in: accounts) else { return .noActiveAccount }
         guard let oauth = try slot.readOAuth(), !oauth.isBlank else { return .blanked(account.id) }
+        if let owner = try otherOwner(of: oauth, activeId: account.id, accounts: accounts) {
+            Self.logMismatch(owner: owner.account.id, activeId: account.id)
+            return .mismatch(account.id)
+        }
         let entry = VaultEntry(oauth: oauth, oauthAccount: accountJSON)
         if try vault.load(account.id) == entry { return .unchanged(account.id) }
         try vault.save(entry, for: account.id)
@@ -177,6 +185,11 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
         if let activeEmail, Self.match(activeEmail, in: [target]) != nil { return false }
 
         guard let entry = try? vault.load(target.id) else { throw SwitchError.notCaptured }
+        guard let vaultEmail = OAuthAccountJSON.email(entry.oauthAccount),
+              Self.match(vaultEmail, in: [target]) != nil else {
+            print("[ClaudeCodeSwitcher] switch refused: vault copy of \(target.id) names another email")
+            throw SwitchError.notCaptured
+        }
         guard !isExpired(entry) else { throw SwitchError.loginExpired }
 
         // One read of the slot: it is both the credential to save and the rollback copy.
@@ -190,10 +203,19 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
 
         do {
             if let live, let activeAccount, let activeJSON {
-                let current = VaultEntry(oauth: live, oauthAccount: activeJSON)
-                if try vault.load(activeAccount.id) != current { try vault.save(current, for: activeAccount.id) }
+                if let owner = try otherOwner(of: live, activeId: activeAccount.id, accounts: accounts) {
+                    // Not the active account's credential: never file it under that account.
+                    // Overwriting it is safe only if its owner's vault already holds it.
+                    Self.logMismatch(owner: owner.account.id, activeId: activeAccount.id)
+                    guard owner.entry.oauth == live else { throw SwitchError.activeAccountUnknown }
+                } else {
+                    let current = VaultEntry(oauth: live, oauthAccount: activeJSON)
+                    if try vault.load(activeAccount.id) != current { try vault.save(current, for: activeAccount.id) }
+                }
             }
             try slot.writeOAuth(entry.oauth)
+        } catch let error as SwitchError {
+            throw error
         } catch {
             throw SwitchError.keychain
         }
@@ -228,6 +250,24 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
             await sleep(Self.pollInterval)
             if (try? slot.readOAuth())?.expiresAt != expiresAt { return }
         }
+    }
+
+    /// The dashboard account, other than `activeId`, whose vault copy has the same
+    /// `refreshTokenExpiresAt` as `credential`. That deadline is fixed per grant (spec fact 4),
+    /// so a match means `credential` is that account's login, whatever `~/.claude.json` says.
+    private func otherOwner(of credential: OAuthCredential, activeId: UUID,
+                            accounts: [Account]) throws -> (account: Account, entry: VaultEntry)? {
+        guard let deadline = credential.refreshTokenExpiresAt else { return nil }
+        for account in accounts where account.id != activeId {
+            if let entry = try vault.load(account.id), entry.oauth.refreshTokenExpiresAt == deadline {
+                return (account, entry)
+            }
+        }
+        return nil
+    }
+
+    private static func logMismatch(owner: UUID, activeId: UUID) {
+        print("[ClaudeCodeSwitcher] capture skipped: credential belongs to \(owner), config names \(activeId)")
     }
 
     private func isExpired(_ entry: VaultEntry) -> Bool {

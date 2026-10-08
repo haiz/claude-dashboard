@@ -45,11 +45,15 @@ final class ClaudeCodeSwitcherTests: XCTestCase {
             sleep: { [unowned self] seconds in self.sleeps.append(seconds); self.onSleep?() })
     }
 
+    /// `refreshTokenExpiresAt` is fixed per grant (spec fact 4), so by default it is derived
+    /// from the token's first letter: "f1" and its rotation "f2" share one deadline, "b1"
+    /// has another, and the identity guard can tell the accounts apart.
     private func cred(_ refresh: String, expiresIn: TimeInterval = 8 * 3600,
-                      refreshExpiresIn: TimeInterval = 20 * 86400) -> OAuthCredential {
+                      refreshExpiresIn: TimeInterval? = nil) -> OAuthCredential {
         let ms = { (t: TimeInterval) in Int((self.now.timeIntervalSince1970 + t) * 1000) }
+        let grant = refreshExpiresIn ?? 20 * 86400 + TimeInterval(refresh.unicodeScalars.first?.value ?? 0)
         return OAuthCredential(object: ["accessToken": "a-\(refresh)", "refreshToken": refresh,
-                                        "expiresAt": ms(expiresIn), "refreshTokenExpiresAt": ms(refreshExpiresIn)])!
+                                        "expiresAt": ms(expiresIn), "refreshTokenExpiresAt": ms(grant)])!
     }
 
     private func accountJSON(_ email: String) -> Data {
@@ -190,11 +194,6 @@ final class ClaudeCodeSwitcherTests: XCTestCase {
     }
 
     func testSwitchRollsBackCredentialWhenConfigWriteFails() async throws {
-        struct FailingConfig: ClaudeConfigAccountFile {
-            let inner: ClaudeConfigFile
-            func readOAuthAccount() throws -> Data? { try inner.readOAuthAccount() }
-            func writeOAuthAccount(_ json: Data) throws { throw ClaudeConfigFileError.unreadable }
-        }
         try signIn("frontend@gotitapp.co", cred("f1"))
         try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
         let switcher = makeSwitcher(config: FailingConfig(inner: ClaudeConfigFile(fileURL: configURL)))
@@ -233,11 +232,6 @@ final class ClaudeCodeSwitcherTests: XCTestCase {
     }
 
     func testSwitchReportsRollbackFailedWhenCredentialCannotBeRestored() async throws {
-        struct FailingConfig: ClaudeConfigAccountFile {
-            let inner: ClaudeConfigFile
-            func readOAuthAccount() throws -> Data? { try inner.readOAuthAccount() }
-            func writeOAuthAccount(_ json: Data) throws { throw ClaudeConfigFileError.unreadable }
-        }
         try signIn("frontend@gotitapp.co", cred("f1"))
         try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
         kc.failWritesAfter = 2   // vault save of frontend, slot write of backend; the rollback write fails
@@ -246,6 +240,99 @@ final class ClaudeCodeSwitcherTests: XCTestCase {
         do { try await switcher.switchTo(backend, accounts: [frontend, backend]); XCTFail() }
         catch { XCTAssertEqual(error as? SwitchError, .rollbackFailed) }
         XCTAssertEqual(try slot.readOAuth()?.refreshToken, "b1")
+    }
+
+    // MARK: identity guard
+
+    /// Writes the target's `oauthAccount` and then sees it undone, as when a running Claude
+    /// Code process rewrites `~/.claude.json` from its own memory: the switch ends in
+    /// `verifyFailed` with the entry holding the target and the config naming the previous account.
+    private struct UndoneConfig: ClaudeConfigAccountFile {
+        let inner: ClaudeConfigFile
+        func readOAuthAccount() throws -> Data? { try inner.readOAuthAccount() }
+        func writeOAuthAccount(_ json: Data) throws {
+            let before = try inner.readOAuthAccount()
+            try inner.writeOAuthAccount(json)
+            if let before { try inner.writeOAuthAccount(before) }
+        }
+    }
+
+    private struct FailingConfig: ClaudeConfigAccountFile {
+        let inner: ClaudeConfigFile
+        func readOAuthAccount() throws -> Data? { try inner.readOAuthAccount() }
+        func writeOAuthAccount(_ json: Data) throws { throw ClaudeConfigFileError.unreadable }
+    }
+
+    func testCaptureAfterVerifyFailedKeepsActiveAccountsVaultCopy() async throws {
+        try signIn("frontend@gotitapp.co", cred("f1"))
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        let undone = makeSwitcher(config: UndoneConfig(inner: ClaudeConfigFile(fileURL: configURL)))
+        do { try await undone.switchTo(backend, accounts: [frontend, backend]); XCTFail() }
+        catch { XCTAssertEqual(error as? SwitchError, .verifyFailed) }
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "b1")
+
+        XCTAssertEqual(try makeSwitcher().capture(accounts: [frontend, backend]), .mismatch(frontend.id))
+
+        XCTAssertEqual(try vault.load(frontend.id)?.oauth.refreshToken, "f1")
+        XCTAssertEqual(try vault.load(backend.id)?.oauth.refreshToken, "b1")
+    }
+
+    /// After `verifyFailed` the entry holds backend's credential, already in backend's vault:
+    /// switching away overwrites nothing unsaved, so it proceeds without filing it under frontend.
+    func testSwitchAfterVerifyFailedProceedsWhenEntryIsItsOwnersSavedCopy() async throws {
+        let other = Self.account("other@gotitapp.co")
+        let accounts = [frontend, backend, other]
+        try signIn("frontend@gotitapp.co", cred("f1"))
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        try vault.save(VaultEntry(oauth: cred("o1"), oauthAccount: accountJSON("other@gotitapp.co")), for: other.id)
+        let undone = makeSwitcher(config: UndoneConfig(inner: ClaudeConfigFile(fileURL: configURL)))
+        do { try await undone.switchTo(backend, accounts: accounts); XCTFail() }
+        catch { XCTAssertEqual(error as? SwitchError, .verifyFailed) }
+
+        try await makeSwitcher().switchTo(other, accounts: accounts)
+
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "o1")
+        XCTAssertEqual(try vault.load(frontend.id)?.oauth.refreshToken, "f1")
+        XCTAssertEqual(try vault.load(backend.id)?.oauth.refreshToken, "b1")
+    }
+
+    /// The entry holds a rotated backend token the vault never saw while the config names
+    /// frontend: it is nobody's saved copy, so overwriting it would lose backend's login.
+    func testSwitchRefusesWhenEntryHoldsAnotherAccountsUnsavedToken() async throws {
+        let other = Self.account("other@gotitapp.co")
+        let accounts = [frontend, backend, other]
+        try signIn("frontend@gotitapp.co", cred("b2"))
+        try vault.save(VaultEntry(oauth: cred("f1"), oauthAccount: accountJSON("frontend@gotitapp.co")), for: frontend.id)
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        try vault.save(VaultEntry(oauth: cred("o1"), oauthAccount: accountJSON("other@gotitapp.co")), for: other.id)
+
+        do { try await makeSwitcher().switchTo(other, accounts: accounts); XCTFail() }
+        catch { XCTAssertEqual(error as? SwitchError, .activeAccountUnknown) }
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "b2")
+        XCTAssertEqual(try vault.load(frontend.id)?.oauth.refreshToken, "f1")
+    }
+
+    func testCaptureAfterRollbackFailedKeepsActiveAccountsVaultCopy() async throws {
+        try signIn("frontend@gotitapp.co", cred("f1"))
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        kc.failWritesAfter = 2   // vault save of frontend, slot write of backend; the rollback write fails
+        let failing = makeSwitcher(config: FailingConfig(inner: ClaudeConfigFile(fileURL: configURL)))
+        do { try await failing.switchTo(backend, accounts: [frontend, backend]); XCTFail() }
+        catch { XCTAssertEqual(error as? SwitchError, .rollbackFailed) }
+        kc.failWritesAfter = nil
+
+        XCTAssertEqual(try makeSwitcher().capture(accounts: [frontend, backend]), .mismatch(frontend.id))
+
+        XCTAssertEqual(try vault.load(frontend.id)?.oauth.refreshToken, "f1")
+    }
+
+    func testSwitchRefusesTargetWhoseVaultCopyNamesAnotherEmail() async throws {
+        try signIn("frontend@gotitapp.co", cred("f1"))
+        try vault.save(VaultEntry(oauth: cred("o1"), oauthAccount: accountJSON("other@gotitapp.co")), for: backend.id)
+        do { try await makeSwitcher().switchTo(backend, accounts: [frontend, backend]); XCTFail() }
+        catch { XCTAssertEqual(error as? SwitchError, .notCaptured) }
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "f1")
+        XCTAssertEqual(OAuthAccountJSON.email(try XCTUnwrap(ClaudeConfigFile(fileURL: configURL).readOAuthAccount())), "frontend@gotitapp.co")
     }
 
     // MARK: refresh window boundaries

@@ -36,10 +36,12 @@ final class DashboardViewModelSwitchTests: XCTestCase {
         store.addAccount(backend)
         let soon = Int((Date().timeIntervalSince1970 + 8 * 3600) * 1000)
         let later = Int((Date().timeIntervalSince1970 + 20 * 86400) * 1000)
+        // Each grant has its own fixed deadline (spec fact 4); the switcher tells accounts apart by it.
+        let backendLater = later + 1000
         try JSONSerialization.data(withJSONObject: ["oauthAccount": ["emailAddress": "frontend@gotitapp.co"]]).write(to: configURL)
         try slot.writeOAuth(OAuthCredential(object: ["refreshToken": "f1", "expiresAt": soon, "refreshTokenExpiresAt": later])!)
         try vault.save(VaultEntry(
-            oauth: OAuthCredential(object: ["refreshToken": "b1", "expiresAt": soon, "refreshTokenExpiresAt": later])!,
+            oauth: OAuthCredential(object: ["refreshToken": "b1", "expiresAt": soon, "refreshTokenExpiresAt": backendLater])!,
             oauthAccount: OAuthAccountJSON.canonical(["emailAddress": "backend@gotitapp.co"])!), for: backend.id)
 
         let vm = DashboardViewModel(accountStore: store,
