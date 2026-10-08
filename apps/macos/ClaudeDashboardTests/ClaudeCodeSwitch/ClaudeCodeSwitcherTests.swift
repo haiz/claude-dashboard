@@ -64,7 +64,7 @@ final class ClaudeCodeSwitcherTests: XCTestCase {
     private func signIn(_ email: String, _ credential: OAuthCredential) throws {
         try JSONSerialization.data(withJSONObject: ["oauthAccount": OAuthAccountJSON.object(accountJSON(email))!, "projects": [:]])
             .write(to: configURL)
-        try slot.writeOAuth(credential)
+        try slot.overwrite(credential)
     }
 
     // MARK: capture
@@ -89,7 +89,7 @@ final class ClaudeCodeSwitcherTests: XCTestCase {
     func testCaptureNeverOverwritesVaultWithBlankedCredential() throws {
         try signIn("frontend@gotitapp.co", cred("f1"))
         _ = try makeSwitcher().capture(accounts: [frontend])
-        try slot.writeOAuth(OAuthCredential(object: ["accessToken": "", "refreshToken": "", "expiresAt": 0])!)
+        try slot.overwrite(OAuthCredential(object: ["accessToken": "", "refreshToken": "", "expiresAt": 0])!)
 
         XCTAssertEqual(try makeSwitcher().capture(accounts: [frontend]), .blanked(frontend.id))
         XCTAssertEqual(try vault.load(frontend.id)?.oauth.refreshToken, "f1")
@@ -124,7 +124,7 @@ final class ClaudeCodeSwitcherTests: XCTestCase {
         kc.items["Claude Code-credentials|me"] = try JSONSerialization.data(withJSONObject: withMcp)
         try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
         // Claude Code rotated frontend's token after the last capture: the switch must save f2, not f1.
-        try slot.writeOAuth(cred("f2"))
+        try slot.overwrite(cred("f2"))
 
         try await makeSwitcher().switchTo(backend, accounts: [frontend, backend])
 
@@ -167,7 +167,7 @@ final class ClaudeCodeSwitcherTests: XCTestCase {
         var polls = 0
         onSleep = { [unowned self] in
             polls += 1
-            if polls == 2 { try? self.slot.writeOAuth(self.cred("f2")) }   // a session refreshed
+            if polls == 2 { try? self.slot.overwrite(self.cred("f2")) }   // a session refreshed
         }
 
         try await makeSwitcher().switchTo(backend, accounts: [frontend, backend])
@@ -333,6 +333,101 @@ final class ClaudeCodeSwitcherTests: XCTestCase {
         catch { XCTAssertEqual(error as? SwitchError, .notCaptured) }
         XCTAssertEqual(try slot.readOAuth()?.refreshToken, "f1")
         XCTAssertEqual(OAuthAccountJSON.email(try XCTUnwrap(ClaudeConfigFile(fileURL: configURL).readOAuthAccount())), "frontend@gotitapp.co")
+    }
+
+    // MARK: compare-and-swap
+
+    /// Wraps the real slot. `beforeWrite(n)` runs before the n-th `writeOAuth` (1-based)
+    /// reaches the Keychain, e.g. to land a Claude Code refresh between the switch's read
+    /// and its write; `afterWrite(n)` runs after it, e.g. to fail a write that did land.
+    private final class HookedSlot: ClaudeCodeCredentialSlot {
+        let inner: ClaudeCodeCredentialSlot
+        var beforeWrite: ((Int) throws -> Void)?
+        var afterWrite: ((Int) throws -> Void)?
+        private(set) var writes = 0
+        init(_ inner: ClaudeCodeCredentialSlot) { self.inner = inner }
+        func readOAuth() throws -> OAuthCredential? { try inner.readOAuth() }
+        func writeOAuth(_ credential: OAuthCredential, expecting: OAuthCredential?) throws {
+            writes += 1
+            try beforeWrite?(writes)
+            try inner.writeOAuth(credential, expecting: expecting)
+            try afterWrite?(writes)
+        }
+    }
+
+    private func makeSwitcher(slot hooked: HookedSlot) -> ClaudeCodeSwitcher {
+        ClaudeCodeSwitcher(slot: hooked, vault: vault, config: ClaudeConfigFile(fileURL: configURL),
+                           now: { [unowned self] in self.now }, sleep: { _ in })
+    }
+
+    func testSwitchRetriesWhenRefreshLandsBetweenReadAndWrite() async throws {
+        try signIn("frontend@gotitapp.co", cred("f1"))
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        let hooked = HookedSlot(slot)
+        hooked.beforeWrite = { [unowned self] n in if n == 1 { try self.slot.overwrite(self.cred("f2")) } }
+
+        try await makeSwitcher(slot: hooked).switchTo(backend, accounts: [frontend, backend])
+
+        XCTAssertEqual(hooked.writes, 2)
+        XCTAssertEqual(try vault.load(frontend.id)?.oauth.refreshToken, "f2")
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "b1")
+        XCTAssertEqual(OAuthAccountJSON.email(try XCTUnwrap(ClaudeConfigFile(fileURL: configURL).readOAuthAccount())), "backend@gotitapp.co")
+    }
+
+    func testSwitchGivesUpWithKeychainErrorWhenEntryKeepsChanging() async throws {
+        try signIn("frontend@gotitapp.co", cred("f1"))
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        let hooked = HookedSlot(slot)
+        hooked.beforeWrite = { [unowned self] n in try self.slot.overwrite(self.cred("f\(n + 1)")) }
+
+        do { try await makeSwitcher(slot: hooked).switchTo(backend, accounts: [frontend, backend]); XCTFail() }
+        catch { XCTAssertEqual(error as? SwitchError, .keychain) }
+
+        XCTAssertEqual(hooked.writes, ClaudeCodeSwitcher.maxWriteAttempts)
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "f4")
+        XCTAssertEqual(OAuthAccountJSON.email(try XCTUnwrap(ClaudeConfigFile(fileURL: configURL).readOAuthAccount())), "frontend@gotitapp.co")
+    }
+
+    /// Rollback after a config failure writes over the credential the switch wrote only:
+    /// a session that refreshed the target in between keeps its newer token.
+    func testConfigRollbackNeverOverwritesANewerTargetToken() async throws {
+        try signIn("frontend@gotitapp.co", cred("f1"))
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        let hooked = HookedSlot(slot)
+        hooked.beforeWrite = { [unowned self] n in if n == 2 { try self.slot.overwrite(self.cred("b2")) } }
+        let switcher = ClaudeCodeSwitcher(slot: hooked, vault: vault,
+                                          config: FailingConfig(inner: ClaudeConfigFile(fileURL: configURL)),
+                                          now: { [unowned self] in self.now }, sleep: { _ in })
+
+        do { try await switcher.switchTo(backend, accounts: [frontend, backend]); XCTFail() }
+        catch { XCTAssertEqual(error as? SwitchError, .rollbackFailed) }
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "b2")
+    }
+
+    /// The slot write lands but reports failure (e.g. `writeNotPersisted`): the switch
+    /// restores the previous credential and only then reports `.keychain` ("nothing changed").
+    func testSwitchRestoresEntryWhenSlotWriteFailsAfterLanding() async throws {
+        try signIn("frontend@gotitapp.co", cred("f1"))
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        let hooked = HookedSlot(slot)
+        hooked.afterWrite = { n in if n == 1 { throw KeychainError.writeNotPersisted } }
+
+        do { try await makeSwitcher(slot: hooked).switchTo(backend, accounts: [frontend, backend]); XCTFail() }
+        catch { XCTAssertEqual(error as? SwitchError, .keychain) }
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "f1")
+        XCTAssertEqual(OAuthAccountJSON.email(try XCTUnwrap(ClaudeConfigFile(fileURL: configURL).readOAuthAccount())), "frontend@gotitapp.co")
+    }
+
+    func testSwitchReportsRollbackFailedWhenLandedSlotWriteCannotBeUndone() async throws {
+        try signIn("frontend@gotitapp.co", cred("f1"))
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        let hooked = HookedSlot(slot)
+        hooked.afterWrite = { _ in throw KeychainError.writeNotPersisted }
+        hooked.beforeWrite = { n in if n == 2 { throw KeychainError.commandFailed(status: 1) } }
+
+        do { try await makeSwitcher(slot: hooked).switchTo(backend, accounts: [frontend, backend]); XCTFail() }
+        catch { XCTAssertEqual(error as? SwitchError, .rollbackFailed) }
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "b1")
     }
 
     // MARK: refresh window boundaries

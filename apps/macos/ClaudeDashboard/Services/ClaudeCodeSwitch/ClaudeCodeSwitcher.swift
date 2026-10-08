@@ -23,11 +23,15 @@ enum SwitchError: Error, Equatable {
     /// Claude Code holds a live login but `~/.claude.json` names no account; switching
     /// would discard it.
     case activeAccountUnknown
+    /// Claude Code's Keychain entry could not be read or updated, or kept changing during
+    /// the switch. The entry is left as the switch found it: when a failed write may have
+    /// landed, it was undone and a re-read confirmed the previous credential.
     case keychain
     /// `~/.claude.json` could not be written; the previous credential was restored.
     case config
-    /// The target's credential is in the Keychain but `~/.claude.json` still names the
-    /// previous account, and the previous credential could not be restored: run `/login`.
+    /// The Keychain entry may hold the target's credential (or no longer the previous one)
+    /// while `~/.claude.json` still names the previous account, and the previous credential
+    /// could not be restored: run `/login`.
     case rollbackFailed
     case verifyFailed
 
@@ -75,6 +79,8 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
     static let refreshGrace: TimeInterval = 60
     static let pollInterval: TimeInterval = 3
     static let maxPolls = 10
+    /// Switch attempts when a refresh keeps landing between the slot read and its write.
+    static let maxWriteAttempts = 3
 
     private let slot: ClaudeCodeCredentialSlot
     private let vault: CredentialVaulting
@@ -192,7 +198,35 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
         }
         guard !isExpired(entry) else { throw SwitchError.loginExpired }
 
-        // One read of the slot: it is both the credential to save and the rollback copy.
+        // A session refreshing the active account between our read and write would lose
+        // its newest token: the write is compare-and-swap, and a lost race starts over.
+        var attempt = 1
+        while true {
+            do {
+                let previous = try installTarget(entry, accounts: accounts, activeJSON: activeJSON,
+                                                 activeAccount: activeAccount, activeEmail: activeEmail)
+                try writeConfig(entry, previous: previous)
+                break
+            } catch ClaudeCodeSlotError.changedSinceRead {
+                guard attempt < Self.maxWriteAttempts else { throw SwitchError.keychain }
+                attempt += 1
+                print("[ClaudeCodeSwitcher] entry changed during switch, retrying (attempt \(attempt))")
+            }
+        }
+
+        guard (try? slot.readOAuth())?.json == entry.oauth.json,
+              (try? config.readOAuthAccount()) == entry.oauthAccount else {
+            throw SwitchError.verifyFailed
+        }
+        return true
+    }
+
+    /// One read of the slot: saves it to the active account (unless it belongs to another
+    /// account) and writes the target's credential over exactly that value. Returns the
+    /// credential it replaced, the rollback copy. Throws `ClaudeCodeSlotError.changedSinceRead`
+    /// (nothing written) when a refresh landed after the read; every other failure is a `SwitchError`.
+    private func installTarget(_ entry: VaultEntry, accounts: [Account], activeJSON: Data?,
+                               activeAccount: Account?, activeEmail: String?) throws -> OAuthCredential? {
         let previous: OAuthCredential?
         do { previous = try slot.readOAuth() } catch { throw SwitchError.keychain }
         let live = previous.flatMap { $0.isBlank ? nil : $0 }
@@ -213,7 +247,6 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
                     if try vault.load(activeAccount.id) != current { try vault.save(current, for: activeAccount.id) }
                 }
             }
-            try slot.writeOAuth(entry.oauth)
         } catch let error as SwitchError {
             throw error
         } catch {
@@ -221,18 +254,39 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
         }
 
         do {
+            try slot.writeOAuth(entry.oauth, expecting: previous)
+        } catch ClaudeCodeSlotError.changedSinceRead {
+            throw ClaudeCodeSlotError.changedSinceRead
+        } catch ClaudeCodeSlotError.unreadableEntry {
+            throw SwitchError.keychain
+        } catch {
+            throw undoFailedWrite(of: entry.oauth, previous: previous)
+        }
+        return previous
+    }
+
+    /// A slot write that threw may still have changed the entry (e.g. `writeNotPersisted`).
+    /// Restores `previous` if the target's credential landed, and reports `.keychain`
+    /// ("nothing changed") only when a re-read shows the entry holds `previous`.
+    private func undoFailedWrite(of written: OAuthCredential, previous: OAuthCredential?) -> SwitchError {
+        let current: OAuthCredential?
+        do { current = try slot.readOAuth() } catch { return .rollbackFailed }
+        if current == previous { return .keychain }
+        guard current == written, let previous else { return .rollbackFailed }
+        _ = try? slot.writeOAuth(previous, expecting: written)
+        return (try? slot.readOAuth()) == previous ? .keychain : .rollbackFailed
+    }
+
+    /// Writes the target's `oauthAccount`; on failure puts `previous` back over the
+    /// credential the switch wrote (never over a newer one a session refreshed since).
+    private func writeConfig(_ entry: VaultEntry, previous: OAuthCredential?) throws {
+        do {
             try config.writeOAuthAccount(entry.oauthAccount)
         } catch {
             var restored = false
-            if let previous { restored = (try? slot.writeOAuth(previous)) != nil }
+            if let previous { restored = (try? slot.writeOAuth(previous, expecting: entry.oauth)) != nil }
             throw restored ? SwitchError.config : SwitchError.rollbackFailed
         }
-
-        guard (try? slot.readOAuth())?.json == entry.oauth.json,
-              (try? config.readOAuthAccount()) == entry.oauthAccount else {
-            throw SwitchError.verifyFailed
-        }
-        return true
     }
 
     // MARK: Helpers

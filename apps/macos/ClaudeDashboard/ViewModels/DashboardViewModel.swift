@@ -626,7 +626,7 @@ final class DashboardViewModel: ObservableObject {
             return "Claude Code is signed in to an account that ~/.claude.json does not name. "
                 + "Run /login in Claude Code with that account first, or its login would be lost."
         case .rollbackFailed:
-            return "Claude Code's Keychain now holds \(name)'s login, but ~/.claude.json still names the previous account. "
+            return "Claude Code's Keychain may now hold \(name)'s login, but ~/.claude.json still names the previous account. "
                 + "Run /login in Claude Code to fix it."
         }
     }

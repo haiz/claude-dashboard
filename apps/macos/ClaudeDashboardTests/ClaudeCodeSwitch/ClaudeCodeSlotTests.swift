@@ -16,7 +16,7 @@ final class ClaudeCodeSlotTests: XCTestCase {
         let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
         let new = try XCTUnwrap(OAuthCredential(json: Data(#"{"refreshToken":"new","expiresAt":5}"#.utf8)))
 
-        try slot.writeOAuth(new)
+        try slot.writeOAuth(new, expecting: try slot.readOAuth())
 
         let root = try XCTUnwrap(OAuthAccountJSON.object(try XCTUnwrap(kc.items[entryKey])))
         XCTAssertEqual((root["mcpOAuth"] as? [String: Any])?.keys.sorted(), ["figma"])
@@ -30,8 +30,37 @@ final class ClaudeCodeSlotTests: XCTestCase {
         let kc = InMemoryKeychain()
         let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
         let c = try XCTUnwrap(OAuthCredential(json: Data(#"{"refreshToken":"r"}"#.utf8)))
-        try slot.writeOAuth(c)
+        try slot.writeOAuth(c, expecting: nil)
         XCTAssertEqual(try slot.readOAuth(), c)
+    }
+
+    func testWriteThrowsChangedSinceReadAndKeepsBytesWhenEntryMovedOn() throws {
+        let kc = InMemoryKeychain()
+        let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
+        let seen = try XCTUnwrap(OAuthCredential(json: Data(#"{"refreshToken":"r1"}"#.utf8)))
+        let refreshed = try XCTUnwrap(OAuthCredential(json: Data(#"{"refreshToken":"r2"}"#.utf8)))
+        let target = try XCTUnwrap(OAuthCredential(json: Data(#"{"refreshToken":"t"}"#.utf8)))
+        try slot.writeOAuth(refreshed, expecting: nil)
+        let bytes = kc.items[entryKey]
+
+        for expecting in [seen, nil] {
+            XCTAssertThrowsError(try slot.writeOAuth(target, expecting: expecting)) {
+                XCTAssertEqual($0 as? ClaudeCodeSlotError, .changedSinceRead)
+            }
+            XCTAssertEqual(kc.items[entryKey], bytes)
+        }
+        try slot.writeOAuth(target, expecting: refreshed)
+        XCTAssertEqual(try slot.readOAuth(), target)
+    }
+
+    func testWriteExpectingACredentialThrowsWhenEntryMissing() throws {
+        let kc = InMemoryKeychain()
+        let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
+        let c = try XCTUnwrap(OAuthCredential(json: Data(#"{"refreshToken":"r"}"#.utf8)))
+        XCTAssertThrowsError(try slot.writeOAuth(c, expecting: c)) {
+            XCTAssertEqual($0 as? ClaudeCodeSlotError, .changedSinceRead)
+        }
+        XCTAssertNil(kc.items[entryKey])
     }
 
     func testVaultRoundTripKeyedByAccountId() throws {
@@ -56,7 +85,7 @@ final class ClaudeCodeSlotTests: XCTestCase {
             let kc = InMemoryKeychain()
             kc.items[entryKey] = Data(bytes.utf8)
             let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
-            XCTAssertThrowsError(try slot.writeOAuth(c)) {
+            XCTAssertThrowsError(try slot.writeOAuth(c, expecting: nil)) {
                 XCTAssertEqual($0 as? ClaudeCodeSlotError, .unreadableEntry)
             }
             XCTAssertEqual(kc.items[entryKey], Data(bytes.utf8))
@@ -70,5 +99,12 @@ final class ClaudeCodeSlotTests: XCTestCase {
         XCTAssertThrowsError(try slot.readOAuth()) {
             XCTAssertEqual($0 as? ClaudeCodeSlotError, .unreadableEntry)
         }
+    }
+}
+
+extension ClaudeCodeCredentialSlot {
+    /// Test setup and simulated Claude Code refreshes: replace whatever the entry holds.
+    func overwrite(_ credential: OAuthCredential) throws {
+        try writeOAuth(credential, expecting: try readOAuth())
     }
 }
