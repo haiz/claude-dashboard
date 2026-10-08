@@ -63,6 +63,19 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   "Account identity" and "Org selection" sections.
 - **CryptoService** — AES-GCM encryption of session keys at rest, with the key derived via HKDF from the machine's `IOPlatformUUID`. Session keys live inside the `Account` JSON in UserDefaults, not in the Keychain.
 - **AccountStore** — CRUD over UserDefaults JSON persistence. Publishes changes via Combine `@Published`.
+- **ClaudeCodeSwitcher** (`Services/ClaudeCodeSwitch/`) — one-click switch of the account Claude
+  Code uses in `~/.claude`. Each refresh copies the active `claudeAiOauth` from the
+  `Claude Code-credentials` Keychain entry into a per-account vault (`ClaudeDashboard.cc-vault`),
+  since Claude Code rotates refresh tokens; Switch saves the active account, writes the target's
+  credential (keeping `mcpOAuth`) and its `oauthAccount` in `~/.claude.json`. Capture and switch
+  are serialized by a lock. Switch refuses when Claude Code's active login is not a dashboard
+  account or `~/.claude.json` names no account. All Keychain access goes through
+  `/usr/bin/security` (no access prompt); writes send hex on stdin of `security -i` when the
+  command line is at most 4032 characters (it truncates longer lines), otherwise hex in argv,
+  matching Claude Code's own rule. Disabled under XCTest (`ClaudeCodeSwitcher.live(isRunningTests:)`
+  returns nil). Do not also use the same account through another `CLAUDE_CONFIG_DIR`: two copies
+  of one refresh-token chain kill each other.
+  Spec: `docs/superpowers/specs/2026-10-08-claude-code-account-switch-design.md`.
 
 ### ViewModel
 - **DashboardViewModel** — `@MainActor` observable. Parallel refresh via `TaskGroup`. Sorts accounts by burn rate (utilization / time-remaining). Computes menu bar label from highest utilization.
