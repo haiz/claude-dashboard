@@ -67,6 +67,12 @@ its next request after the cache window uses the swapped token.
 
 All four are protocols with a real implementation and an in-memory fake.
 
+All Keychain access goes through `/usr/bin/security`, the tool Claude Code itself uses:
+the entry's access list trusts it, so the app reads and updates the entry without an
+access prompt (a `SecItem` call from the app would prompt). Writes pass hex data
+(`-X`) on the stdin of `security -i`, so no secret appears in a process argument list.
+`security -w` prints non-ASCII data as hex; reads decode it.
+
 1. **`ClaudeCodeKeychain`**: read and write the `Claude Code-credentials` entry.
    Writing replaces only the `claudeAiOauth` key and preserves every other key
    (`mcpOAuth` must survive a switch).
@@ -98,9 +104,15 @@ A user therefore runs `/login` once per account; the next refresh captures it.
 
 1. Refuse if the vault has no copy of B, or B's `refreshTokenExpiresAt` has passed.
    Message: "Run /login once for B".
-2. If A's access token expires in under 5 minutes (a refresh is imminent), wait: poll
-   every 3 seconds, up to 30 seconds, until `expiresAt` moves forward. Timeout: fail
-   with "Claude Code is refreshing, try again".
+2. If the email in `~/.claude.json` belongs to no dashboard account while the entry
+   holds a live credential, refuse: switching would discard that account's refresh
+   token. Message: "Claude Code is signed in as <email>, which is not in the
+   dashboard. Add it first, or its login would be lost."
+   If A's access token is inside the refresh window (from 1 minute past expiry to 5
+   minutes before it), a running session may be refreshing it: poll every 3 seconds,
+   up to 30 seconds, until `expiresAt` moves, then continue. On timeout continue too:
+   a token further past expiry has no session refreshing it (an idle account), and
+   failing would make such an account impossible to switch away from.
 3. Capture A (the capture steps above, run now).
 4. Write B's `claudeAiOauth` into the Keychain entry, preserving other keys.
 5. Write B's `oauthAccount` into `~/.claude.json`.
