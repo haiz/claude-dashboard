@@ -70,7 +70,10 @@ All four are protocols with a real implementation and an in-memory fake.
 All Keychain access goes through `/usr/bin/security`, the tool Claude Code itself uses:
 the entry's access list trusts it, so the app reads and updates the entry without an
 access prompt (a `SecItem` call from the app would prompt). Writes pass hex data
-(`-X`) on the stdin of `security -i`, so no secret appears in a process argument list.
+(`-X`) on the stdin of `security -i` when the command line fits in 4032 characters;
+longer payloads go in argv instead, because `security -i` truncates lines near 4096
+bytes and would overwrite the item with a prefix. This is Claude Code's own rule for the
+same entry (2.1.294), whose live payload already exceeds the limit.
 `security -w` prints non-ASCII data as hex; reads decode it.
 
 1. **`ClaudeCodeKeychain`**: read and write the `Claude Code-credentials` entry.

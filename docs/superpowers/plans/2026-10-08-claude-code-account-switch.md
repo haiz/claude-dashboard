@@ -16,7 +16,7 @@
 - Deployment target macOS 13.0, Swift 5.0, no external dependencies.
 - Claude Code's entry: service `Claude Code-credentials`, account `NSUserName()`. Only the `claudeAiOauth` key is replaced; every other key (`mcpOAuth`) is preserved.
 - Vault items: service `ClaudeDashboard.cc-vault`, account `Account.id.uuidString`, JSON `{"claudeAiOauth": {...}, "oauthAccount": {...}}`.
-- All Keychain access via `/usr/bin/security`; writes as hex (`-X`) on stdin of `security -i`, never a secret in argv. Exit status 44 means "item not found".
+- All Keychain access via `/usr/bin/security`; writes as hex (`-X`) on stdin of `security -i` when the command line is at most 4032 characters, otherwise as argv `add-generic-password -U -a <acct> -s <svc> -X <hex>` (Claude Code 2.1.294's own rule: `security -i` truncates lines near 4096 bytes and would overwrite the item with a prefix). Exit status 44 means "item not found".
 - In `~/.claude.json` only the `oauthAccount` key changes; other keys and the file's POSIX permissions are preserved; the write is atomic.
 - Refresh window for the pre-switch wait: from 60 s past `expiresAt` to 300 s before it; poll every 3 s, at most 10 polls, then continue.
 - Never log or display a token value. Diagnostics use `print("[ClaudeCodeSwitcher] ...")`.
