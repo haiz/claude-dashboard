@@ -12,7 +12,7 @@ final class ClaudeCodeSlotTests: XCTestCase {
 
     func testWriteReplacesOnlyClaudeAiOauthAndKeepsMcpOAuth() throws {
         let kc = InMemoryKeychain()
-        kc.items[entryKey] = Data(#"{"claudeAiOauth":{"refreshToken":"old"},"mcpOAuth":{"figma":{"accessToken":"f"}}}"#.utf8)
+        kc.items[entryKey] = Data(#"{"claudeAiOauth":{"refreshToken":"old"},"mcpOAuth":{"figma":{"accessToken":"f"}},"other":{"k":1}}"#.utf8)
         let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
         let new = try XCTUnwrap(OAuthCredential(json: Data(#"{"refreshToken":"new","expiresAt":5}"#.utf8)))
 
@@ -20,6 +20,9 @@ final class ClaudeCodeSlotTests: XCTestCase {
 
         let root = try XCTUnwrap(OAuthAccountJSON.object(try XCTUnwrap(kc.items[entryKey])))
         XCTAssertEqual((root["mcpOAuth"] as? [String: Any])?.keys.sorted(), ["figma"])
+        let figma = (root["mcpOAuth"] as? [String: Any])?["figma"] as? [String: Any]
+        XCTAssertEqual(figma?["accessToken"] as? String, "f")
+        XCTAssertEqual((root["other"] as? [String: Any])?["k"] as? Int, 1)
         XCTAssertEqual(try slot.readOAuth(), new)
     }
 
@@ -45,5 +48,27 @@ final class ClaudeCodeSlotTests: XCTestCase {
         XCTAssertNotNil(kc.items["ClaudeDashboard.cc-vault|\(id.uuidString)"])
         XCTAssertEqual(try vault.load(id), entry)
         XCTAssertNil(try vault.load(UUID()))
+    }
+
+    func testWriteThrowsAndKeepsBytesWhenEntryCorrupt() throws {
+        let c = try XCTUnwrap(OAuthCredential(json: Data(#"{"refreshToken":"r"}"#.utf8)))
+        for bytes in ["not json", "[1,2]"] {
+            let kc = InMemoryKeychain()
+            kc.items[entryKey] = Data(bytes.utf8)
+            let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
+            XCTAssertThrowsError(try slot.writeOAuth(c)) {
+                XCTAssertEqual($0 as? ClaudeCodeSlotError, .unreadableEntry)
+            }
+            XCTAssertEqual(kc.items[entryKey], Data(bytes.utf8))
+        }
+    }
+
+    func testReadThrowsWhenEntryCorrupt() {
+        let kc = InMemoryKeychain()
+        kc.items[entryKey] = Data("not json".utf8)
+        let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
+        XCTAssertThrowsError(try slot.readOAuth()) {
+            XCTAssertEqual($0 as? ClaudeCodeSlotError, .unreadableEntry)
+        }
     }
 }

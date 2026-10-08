@@ -1,10 +1,18 @@
 import Foundation
 
+/// Failure reading Claude Code's Keychain entry.
+enum ClaudeCodeSlotError: Error, Equatable {
+    /// The entry exists but is not a JSON object; nothing was written.
+    case unreadableEntry
+}
+
 /// The credential Claude Code is using right now.
 protocol ClaudeCodeCredentialSlot {
-    /// nil when the entry or its `claudeAiOauth` key is missing.
+    /// nil when the entry or its `claudeAiOauth` object is missing.
+    /// Throws `ClaudeCodeSlotError.unreadableEntry` when the entry is not a JSON object.
     func readOAuth() throws -> OAuthCredential?
-    /// Replaces `claudeAiOauth` and leaves every other key untouched.
+    /// Replaces `claudeAiOauth` and leaves every other key untouched. A missing entry is
+    /// created; a corrupt one throws `ClaudeCodeSlotError.unreadableEntry` and is not modified.
     func writeOAuth(_ credential: OAuthCredential) throws
 }
 
@@ -41,6 +49,7 @@ struct KeychainClaudeCodeSlot: ClaudeCodeCredentialSlot {
 
     private func readRoot() throws -> [String: Any]? {
         guard let data = try keychain.read(service: Self.service, account: account) else { return nil }
-        return OAuthAccountJSON.object(data)
+        guard let root = OAuthAccountJSON.object(data) else { throw ClaudeCodeSlotError.unreadableEntry }
+        return root
     }
 }
