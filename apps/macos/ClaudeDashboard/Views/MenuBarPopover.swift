@@ -117,6 +117,9 @@ struct MenuBarPopover: View {
                                     popover?.close()
                                 },
                                 isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
+                                switchAvailability: viewModel.switchAvailability[state.id],
+                                onSwitchClaudeCode: { Task { await viewModel.switchClaudeCode(to: state.id) } },
+                                isSwitchingClaudeCode: viewModel.isSwitchingClaudeCode,
                                 isCompact: true
                             )
                         }
@@ -169,6 +172,7 @@ struct MenuBarPopover: View {
                 }
             }
         }
+        .claudeCodeSwitchAlert(viewModel)
     }
 
     private var updateBanner: some View {

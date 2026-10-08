@@ -77,6 +77,8 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var switchAvailability: [UUID: SwitchAvailability] = [:]
     /// Outcome of the last Switch, shown once as an alert.
     @Published var switchMessage: String?
+    /// True while a Switch runs; the Switch controls are disabled meanwhile.
+    @Published private(set) var isSwitchingClaudeCode = false
 
     @Published var autoRefreshEnabled: Bool {
         didSet { AppDefaults.shared.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
@@ -587,6 +589,9 @@ final class DashboardViewModel: ObservableObject {
     func switchClaudeCode(to accountId: UUID) async {
         guard let ccSwitcher,
               let target = accountStore.accounts.first(where: { $0.id == accountId }) else { return }
+        guard !isSwitchingClaudeCode else { return }
+        isSwitchingClaudeCode = true
+        defer { isSwitchingClaudeCode = false }
         let accounts = accountStore.accounts
         do {
             try await Task.detached { try await ccSwitcher.switchTo(target, accounts: accounts) }.value

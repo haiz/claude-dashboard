@@ -57,6 +57,7 @@ final class DashboardViewModelSwitchTests: XCTestCase {
         XCTAssertEqual(vm.switchAvailability[backend.id], .active)
         XCTAssertEqual(vm.switchAvailability[frontend.id], .ready)
         XCTAssertEqual(vm.switchMessage?.contains("backend@gotitapp.co"), true)
+        XCTAssertFalse(vm.isSwitchingClaudeCode)
     }
 
     func testErrorMessagesNameTheFix() {
