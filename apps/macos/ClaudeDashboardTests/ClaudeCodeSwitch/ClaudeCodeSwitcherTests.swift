@@ -213,6 +213,72 @@ final class ClaudeCodeSwitcherTests: XCTestCase {
         do { try await makeSwitcher().switchTo(backend, accounts: [frontend, backend]); XCTFail() }
         catch { XCTAssertEqual(error as? SwitchError, .keychain) }
         XCTAssertEqual(OAuthAccountJSON.email(try XCTUnwrap(ClaudeConfigFile(fileURL: configURL).readOAuthAccount())), "frontend@gotitapp.co")
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "f1")
+    }
+
+    func testSwitchRefusesLiveCredentialWhenConfigNamesNoAccount() async throws {
+        try signIn("frontend@gotitapp.co", cred("f1"))
+        try Data("{}".utf8).write(to: configURL)
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        do { try await makeSwitcher().switchTo(backend, accounts: [frontend, backend]); XCTFail() }
+        catch { XCTAssertEqual(error as? SwitchError, .activeAccountUnknown) }
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "f1")
+    }
+
+    func testSwitchProceedsWhenSlotIsEmptyAndConfigNamesNoAccount() async throws {
+        try Data("{}".utf8).write(to: configURL)
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        try await makeSwitcher().switchTo(backend, accounts: [backend])
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "b1")
+    }
+
+    func testSwitchReportsRollbackFailedWhenCredentialCannotBeRestored() async throws {
+        struct FailingConfig: ClaudeConfigAccountFile {
+            let inner: ClaudeConfigFile
+            func readOAuthAccount() throws -> Data? { try inner.readOAuthAccount() }
+            func writeOAuthAccount(_ json: Data) throws { throw ClaudeConfigFileError.unreadable }
+        }
+        try signIn("frontend@gotitapp.co", cred("f1"))
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        kc.failWritesAfter = 2   // vault save of frontend, slot write of backend; the rollback write fails
+        let switcher = makeSwitcher(config: FailingConfig(inner: ClaudeConfigFile(fileURL: configURL)))
+
+        do { try await switcher.switchTo(backend, accounts: [frontend, backend]); XCTFail() }
+        catch { XCTAssertEqual(error as? SwitchError, .rollbackFailed) }
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "b1")
+    }
+
+    // MARK: refresh window boundaries
+
+    private func sleepCount(expiresIn: TimeInterval) async throws -> Int {
+        try signIn("frontend@gotitapp.co", cred("f1", expiresIn: expiresIn))
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        try await makeSwitcher().switchTo(backend, accounts: [frontend, backend])
+        return sleeps.count
+    }
+
+    func testWaitsExactly60SecondsPastExpiry() async throws { let n = try await sleepCount(expiresIn: -60); XCTAssertEqual(n, 10) }
+    func testWaitsExactly300SecondsBeforeExpiry() async throws { let n = try await sleepCount(expiresIn: 300); XCTAssertEqual(n, 10) }
+    func testDoesNotWait301SecondsBeforeExpiry() async throws { let n = try await sleepCount(expiresIn: 301); XCTAssertEqual(n, 0) }
+    func testDoesNotWait61SecondsPastExpiry() async throws { let n = try await sleepCount(expiresIn: -61); XCTAssertEqual(n, 0) }
+
+    // MARK: concurrency
+
+    func testConcurrentCaptureAndSwitchNeverSavesTargetCredentialIntoActiveAccount() async throws {
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        for _ in 0..<50 {
+            try signIn("frontend@gotitapp.co", cred("f1"))
+            let switcher = makeSwitcher()
+            let accounts = [frontend, backend]
+            let (f, b) = (frontend, backend)
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { _ = try? switcher.capture(accounts: accounts) }
+                group.addTask { try? await switcher.switchTo(b, accounts: accounts) }
+                group.addTask { _ = try? switcher.capture(accounts: accounts) }
+            }
+            XCTAssertNotEqual(try vault.load(f.id)?.oauth.refreshToken, "b1")
+            XCTAssertNotEqual(try vault.load(b.id)?.oauth.refreshToken, "f1")
+        }
     }
 
     func testLiveIsNilUnderTests() {

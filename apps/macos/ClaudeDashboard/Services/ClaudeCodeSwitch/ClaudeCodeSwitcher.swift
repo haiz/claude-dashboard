@@ -19,10 +19,30 @@ enum SwitchError: Error, Equatable {
     /// Claude Code is signed in as an account the dashboard does not know; switching
     /// would discard its refresh token.
     case activeAccountNotInDashboard(email: String)
+    /// Claude Code holds a live login but `~/.claude.json` names no account; switching
+    /// would discard it.
+    case activeAccountUnknown
     case keychain
     /// `~/.claude.json` could not be written; the previous credential was restored.
     case config
+    /// The target's credential is in the Keychain but `~/.claude.json` still names the
+    /// previous account, and the previous credential could not be restored: run `/login`.
+    case rollbackFailed
     case verifyFailed
+
+    /// Case name only, safe to log (no emails).
+    var logName: String {
+        switch self {
+        case .notCaptured: return "notCaptured"
+        case .loginExpired: return "loginExpired"
+        case .activeAccountNotInDashboard: return "activeAccountNotInDashboard"
+        case .activeAccountUnknown: return "activeAccountUnknown"
+        case .keychain: return "keychain"
+        case .config: return "config"
+        case .rollbackFailed: return "rollbackFailed"
+        case .verifyFailed: return "verifyFailed"
+        }
+    }
 }
 
 enum CaptureResult: Equatable {
@@ -33,6 +53,9 @@ enum CaptureResult: Equatable {
 }
 
 /// Keeps every account's Claude Code login alive and swaps it into `~/.claude`.
+///
+/// `capture` and `switchTo` are serialized by one lock, so a refresh-time capture can never
+/// read the config of one account and the credential of another.
 ///
 /// `capture` runs on every dashboard refresh and copies the active credential into the
 /// vault, because Claude Code rotates the refresh token on each refresh and an older copy
@@ -53,6 +76,8 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
     private let vault: CredentialVaulting
     private let config: ClaudeConfigAccountFile
     private let now: () -> Date
+    /// Serializes `capture` and the synchronous part of `switchTo`. Never held across an `await`.
+    private let lock = NSLock()
     private let sleep: (TimeInterval) async -> Void
 
     init(slot: ClaudeCodeCredentialSlot, vault: CredentialVaulting, config: ClaudeConfigAccountFile,
@@ -81,6 +106,12 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
 
     @discardableResult
     func capture(accounts: [Account]) throws -> CaptureResult {
+        lock.lock()
+        defer { lock.unlock() }
+        return try captureUnlocked(accounts: accounts)
+    }
+
+    private func captureUnlocked(accounts: [Account]) throws -> CaptureResult {
         guard let accountJSON = try config.readOAuthAccount(),
               let email = OAuthAccountJSON.email(accountJSON),
               let account = Self.match(email, in: accounts) else { return .noActiveAccount }
@@ -115,42 +146,71 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
     // MARK: Switch
 
     func switchTo(_ target: Account, accounts: [Account]) async throws {
-        let activeEmail = (try? config.readOAuthAccount()).flatMap { OAuthAccountJSON.email($0) }
-        if let activeEmail, Self.match(activeEmail, in: [target]) != nil { return }
+        // Outside the lock: a capture must stay possible while we wait for the refresh to land.
+        await waitForImminentRefresh()
+        try performSwitch(to: target, accounts: accounts)
+    }
+
+    /// Everything after the wait, synchronous and under the lock so no capture or second
+    /// switch interleaves between reading the active account and writing the target.
+    private func performSwitch(to target: Account, accounts: [Account]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let activeJSON = (try? config.readOAuthAccount()) ?? nil
+        let activeEmail = activeJSON.flatMap { OAuthAccountJSON.email($0) }
+        let activeAccount = activeEmail.flatMap { Self.match($0, in: accounts) }
+        let from = activeAccount.map { "\($0.id)" } ?? "unknown"
+        do {
+            let switched = try switchLocked(to: target, accounts: accounts, activeJSON: activeJSON,
+                                            activeEmail: activeEmail, activeAccount: activeAccount)
+            print("[ClaudeCodeSwitcher] switch \(from) -> \(target.id): \(switched ? "switched" : "no-op")")
+        } catch let error as SwitchError {
+            print("[ClaudeCodeSwitcher] switch \(from) -> \(target.id): \(error.logName)")
+            throw error
+        }
+    }
+
+    /// Returns false for the already-active no-op.
+    private func switchLocked(to target: Account, accounts: [Account], activeJSON: Data?,
+                              activeEmail: String?, activeAccount: Account?) throws -> Bool {
+        if let activeEmail, Self.match(activeEmail, in: [target]) != nil { return false }
 
         guard let entry = try? vault.load(target.id) else { throw SwitchError.notCaptured }
         guard !isExpired(entry) else { throw SwitchError.loginExpired }
 
-        if let activeEmail, Self.match(activeEmail, in: accounts) == nil,
-           let current = try? slot.readOAuth(), !current.isBlank {
-            throw SwitchError.activeAccountNotInDashboard(email: activeEmail)
+        // One read of the slot: it is both the credential to save and the rollback copy.
+        let previous: OAuthCredential?
+        do { previous = try slot.readOAuth() } catch { throw SwitchError.keychain }
+        let live = previous.flatMap { $0.isBlank ? nil : $0 }
+        if live != nil, activeAccount == nil {
+            if let activeEmail { throw SwitchError.activeAccountNotInDashboard(email: activeEmail) }
+            throw SwitchError.activeAccountUnknown
         }
 
-        await waitForImminentRefresh()
-
-        let previous: OAuthCredential?
         do {
-            try capture(accounts: accounts)
-            previous = try slot.readOAuth()
+            if let live, let activeAccount, let activeJSON {
+                let current = VaultEntry(oauth: live, oauthAccount: activeJSON)
+                if try vault.load(activeAccount.id) != current { try vault.save(current, for: activeAccount.id) }
+            }
             try slot.writeOAuth(entry.oauth)
         } catch {
-            print("[ClaudeCodeSwitcher] keychain step failed switching to \(target.id): \(error)")
             throw SwitchError.keychain
         }
 
         do {
             try config.writeOAuthAccount(entry.oauthAccount)
         } catch {
-            if let previous { try? slot.writeOAuth(previous) }
-            print("[ClaudeCodeSwitcher] config write failed, credential rolled back: \(error)")
-            throw SwitchError.config
+            var restored = false
+            if let previous { restored = (try? slot.writeOAuth(previous)) != nil }
+            throw restored ? SwitchError.config : SwitchError.rollbackFailed
         }
 
         guard (try? slot.readOAuth())?.json == entry.oauth.json,
               (try? config.readOAuthAccount()) == entry.oauthAccount else {
             throw SwitchError.verifyFailed
         }
-        print("[ClaudeCodeSwitcher] switched to \(target.id)")
+        return true
     }
 
     // MARK: Helpers
@@ -162,8 +222,8 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
     private func waitForImminentRefresh() async {
         guard let expiresAt = (try? slot.readOAuth())?.expiresAt else { return }
         let current = now()
-        guard expiresAt > current.addingTimeInterval(-Self.refreshGrace),
-              expiresAt < current.addingTimeInterval(Self.refreshLead) else { return }
+        guard expiresAt >= current.addingTimeInterval(-Self.refreshGrace),
+              expiresAt <= current.addingTimeInterval(Self.refreshLead) else { return }
         for _ in 0..<Self.maxPolls {
             await sleep(Self.pollInterval)
             if (try? slot.readOAuth())?.expiresAt != expiresAt { return }
