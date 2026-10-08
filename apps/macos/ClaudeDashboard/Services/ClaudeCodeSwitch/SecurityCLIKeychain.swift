@@ -5,6 +5,8 @@ protocol KeychainStoring {
     /// nil when the item does not exist.
     func read(service: String, account: String) throws -> Data?
     func write(_ data: Data, service: String, account: String) throws
+    /// Removes the item; a missing item is not an error.
+    func delete(service: String, account: String) throws
 }
 
 enum KeychainError: Error, Equatable {
@@ -60,6 +62,13 @@ struct SecurityCLIKeychain: KeychainStoring {
         // Read back to guard against a write that did not persist as sent.
         guard try read(service: service, account: account) == data else {
             throw KeychainError.writeNotPersisted
+        }
+    }
+
+    func delete(service: String, account: String) throws {
+        let result = try run(["delete-generic-password", "-a", account, "-s", service], nil)
+        guard result.status == 0 || result.status == Self.itemNotFoundStatus else {
+            throw KeychainError.commandFailed(status: result.status)
         }
     }
 

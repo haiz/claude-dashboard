@@ -586,6 +586,14 @@ final class DashboardViewModel: ObservableObject {
         }.value
     }
 
+    /// Every removal path (Settings, the account pane) goes through `AccountStore`, whose
+    /// publisher lands in `syncStates`; the vault copies of removed accounts are dropped
+    /// there. Off the main actor: each delete spawns `security`.
+    private func forgetClaudeCodeLogins(of removed: Set<UUID>) {
+        guard let ccSwitcher, !removed.isEmpty else { return }
+        Task.detached { for id in removed { ccSwitcher.forget(accountId: id) } }
+    }
+
     func switchClaudeCode(to accountId: UUID) async {
         guard let ccSwitcher,
               let target = accountStore.accounts.first(where: { $0.id == accountId }) else { return }
@@ -723,6 +731,7 @@ final class DashboardViewModel: ObservableObject {
 
     private func syncStates(with accounts: [Account]) {
         let existingMap = Dictionary(uniqueKeysWithValues: accountStates.map { ($0.id, $0) })
+        forgetClaudeCodeLogins(of: Set(existingMap.keys).subtracting(accounts.map(\.id)))
         accountStates = accounts.map { account in
             if let existing = existingMap[account.id] {
                 return AccountUsageState(

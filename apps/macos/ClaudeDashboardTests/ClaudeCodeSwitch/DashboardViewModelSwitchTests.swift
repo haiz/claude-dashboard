@@ -62,6 +62,40 @@ final class DashboardViewModelSwitchTests: XCTestCase {
         XCTAssertFalse(vm.isSwitchingClaudeCode)
     }
 
+    func testRemovingAnAccountDeletesItsVaultCopy() async throws {
+        let kc = InMemoryKeychain()
+        let vault = KeychainCredentialVault(keychain: kc)
+        let switcher = ClaudeCodeSwitcher(slot: KeychainClaudeCodeSlot(keychain: kc, account: "me"), vault: vault,
+                                          config: ClaudeConfigFile(fileURL: configURL), now: Date.init, sleep: { _ in })
+        let store = AccountStore(defaults: try XCTUnwrap(UserDefaults(suiteName: suite)))
+        let kept = Account(id: UUID(), name: "fe", email: "frontend@gotitapp.co", chromeProfilePath: "",
+                           plan: .max5x, status: .active, source: .manual)
+        let removed = Account(id: UUID(), name: "be", email: "backend@gotitapp.co", chromeProfilePath: "",
+                              plan: .max5x, status: .active, source: .manual)
+        store.addAccount(kept)
+        store.addAccount(removed)
+        for account in [kept, removed] {
+            try vault.save(VaultEntry(
+                oauth: OAuthCredential(object: ["refreshToken": "r-\(account.name)"])!,
+                oauthAccount: OAuthAccountJSON.canonical(["emailAddress": account.email!])!), for: account.id)
+        }
+        let vm = DashboardViewModel(accountStore: store,
+                                    ccDetector: ClaudeCodeAccountDetector(fileURL: configURL),
+                                    ccSwitcher: switcher)
+        // AccountStore.$accounts reaches the view model via .receive(on: .main).
+        await Task.yield()
+        XCTAssertEqual(vm.accountStates.count, 2)
+
+        store.removeAccount(id: removed.id)
+
+        // The delete runs on a detached task: poll, bounded.
+        for _ in 0..<200 where try vault.load(removed.id) != nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertNil(try vault.load(removed.id))
+        XCTAssertNotNil(try vault.load(kept.id))
+    }
+
     func testErrorMessagesNameTheFix() {
         let a = Account(id: UUID(), name: "be", email: "backend@gotitapp.co", chromeProfilePath: "",
                         plan: .max5x, status: .active, source: .manual)

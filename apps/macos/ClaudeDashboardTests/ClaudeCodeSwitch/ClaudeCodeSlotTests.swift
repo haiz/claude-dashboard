@@ -79,6 +79,24 @@ final class ClaudeCodeSlotTests: XCTestCase {
         XCTAssertNil(try vault.load(UUID()))
     }
 
+    func testVaultDeleteRemovesOnlyThatAccountsItem() throws {
+        let kc = InMemoryKeychain()
+        let vault = KeychainCredentialVault(keychain: kc)
+        let entry = VaultEntry(
+            oauth: try XCTUnwrap(OAuthCredential(json: Data(#"{"refreshToken":"r"}"#.utf8))),
+            oauthAccount: try XCTUnwrap(OAuthAccountJSON.canonical(["emailAddress": "a@b.co"])))
+        let (gone, kept) = (UUID(), UUID())
+        try vault.save(entry, for: gone)
+        try vault.save(entry, for: kept)
+
+        try vault.delete(gone)
+        try vault.delete(gone)   // already gone: not an error
+
+        XCTAssertNil(kc.items["ClaudeDashboard.cc-vault|\(gone.uuidString)"])
+        XCTAssertNil(try vault.load(gone))
+        XCTAssertEqual(try vault.load(kept), entry)
+    }
+
     func testWriteThrowsAndKeepsBytesWhenEntryCorrupt() throws {
         let c = try XCTUnwrap(OAuthCredential(json: Data(#"{"refreshToken":"r"}"#.utf8)))
         for bytes in ["not json", "[1,2]"] {

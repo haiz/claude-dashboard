@@ -37,4 +37,9 @@ final class InMemoryKeychain: KeychainStoring {
         }
         storage["\(service)|\(account)"] = data
     }
+
+    func delete(service: String, account: String) throws {
+        lock.lock(); defer { lock.unlock() }
+        storage.removeValue(forKey: "\(service)|\(account)")
+    }
 }

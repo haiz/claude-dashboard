@@ -103,6 +103,22 @@ final class SecurityCLIKeychainTests: XCTestCase {
         }
     }
 
+    func testDeletePassesServiceAndAccountAndTreats44AsSuccess() throws {
+        for status: Int32 in [0, 44] {
+            var seen: [[String]] = []
+            let kc = SecurityCLIKeychain { args, stdin in XCTAssertNil(stdin); seen.append(args); return (status, Data()) }
+            try kc.delete(service: "ClaudeDashboard.cc-vault", account: "id-1")
+            XCTAssertEqual(seen, [["delete-generic-password", "-a", "id-1", "-s", "ClaudeDashboard.cc-vault"]])
+        }
+    }
+
+    func testDeleteThrowsOnOtherFailure() {
+        let kc = SecurityCLIKeychain { _, _ in (51, Data()) }
+        XCTAssertThrowsError(try kc.delete(service: "s", account: "a")) {
+            XCTAssertEqual($0 as? KeychainError, .commandFailed(status: 51))
+        }
+    }
+
     /// Opt-in: touches the real login Keychain with a throwaway item.
     /// Run with CLAUDE_DASHBOARD_KEYCHAIN_IT=1.
     func testRealKeychainRoundTrip() throws {

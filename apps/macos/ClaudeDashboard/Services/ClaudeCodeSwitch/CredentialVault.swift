@@ -4,6 +4,8 @@ import Foundation
 protocol CredentialVaulting {
     func load(_ accountId: UUID) throws -> VaultEntry?
     func save(_ entry: VaultEntry, for accountId: UUID) throws
+    /// Removes the account's copy; a missing copy is not an error.
+    func delete(_ accountId: UUID) throws
 }
 
 /// One Keychain item per dashboard account, holding
@@ -11,6 +13,7 @@ protocol CredentialVaulting {
 ///
 ///     let vault = KeychainCredentialVault(keychain: SecurityCLIKeychain())
 ///     try vault.save(entry, for: account.id)
+///     try vault.delete(account.id)   // when the account is removed
 struct KeychainCredentialVault: CredentialVaulting {
     static let service = "ClaudeDashboard.cc-vault"
 
@@ -37,5 +40,9 @@ struct KeychainCredentialVault: CredentialVaulting {
         ]
         let data = try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys, .withoutEscapingSlashes])
         try keychain.write(data, service: Self.service, account: accountId.uuidString)
+    }
+
+    func delete(_ accountId: UUID) throws {
+        try keychain.delete(service: Self.service, account: accountId.uuidString)
     }
 }

@@ -73,6 +73,7 @@ enum CaptureResult: Equatable {
 ///     let switcher = ClaudeCodeSwitcher.live(isRunningTests: AppDefaults.isRunningTests())
 ///     try switcher?.capture(accounts: store.accounts)
 ///     try await switcher?.switchTo(backend, accounts: store.accounts)
+///     switcher?.forget(accountId: removed.id)
 final class ClaudeCodeSwitcher: @unchecked Sendable {
     /// A token this close to expiry, or this little past it, may be refreshing right now.
     static let refreshLead: TimeInterval = 300
@@ -134,6 +135,17 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
         if try vault.load(account.id) == entry { return .unchanged(account.id) }
         try vault.save(entry, for: account.id)
         return .saved(account.id)
+    }
+
+    // MARK: Forget
+
+    /// Drops a removed account's vault copy, so no refresh token outlives its account.
+    /// Never throws: a failure is logged and leaves an orphan item, nothing worse.
+    func forget(accountId: UUID) {
+        lock.lock()
+        defer { lock.unlock() }
+        do { try vault.delete(accountId) }
+        catch { print("[ClaudeCodeSwitcher] forget \(accountId) failed: \(error)") }
     }
 
     // MARK: Availability

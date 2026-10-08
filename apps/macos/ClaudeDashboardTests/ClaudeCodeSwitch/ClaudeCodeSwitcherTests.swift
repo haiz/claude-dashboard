@@ -463,6 +463,24 @@ final class ClaudeCodeSwitcherTests: XCTestCase {
         }
     }
 
+    // MARK: forget
+
+    func testForgetDeletesTheVaultCopyAndSurvivesFailure() throws {
+        try vault.save(VaultEntry(oauth: cred("b1"), oauthAccount: accountJSON("backend@gotitapp.co")), for: backend.id)
+        try vault.save(VaultEntry(oauth: cred("f1"), oauthAccount: accountJSON("frontend@gotitapp.co")), for: frontend.id)
+        makeSwitcher().forget(accountId: backend.id)
+        XCTAssertNil(try vault.load(backend.id))
+        XCTAssertEqual(try vault.load(frontend.id)?.oauth.refreshToken, "f1")
+
+        struct FailingVault: CredentialVaulting {
+            func load(_ accountId: UUID) throws -> VaultEntry? { nil }
+            func save(_ entry: VaultEntry, for accountId: UUID) throws {}
+            func delete(_ accountId: UUID) throws { throw KeychainError.commandFailed(status: 1) }
+        }
+        ClaudeCodeSwitcher(slot: slot, vault: FailingVault(), config: ClaudeConfigFile(fileURL: configURL),
+                           now: Date.init, sleep: { _ in }).forget(accountId: backend.id)   // logs, no throw
+    }
+
     func testLiveIsNilUnderTests() {
         XCTAssertNil(ClaudeCodeSwitcher.live(isRunningTests: true))
     }
