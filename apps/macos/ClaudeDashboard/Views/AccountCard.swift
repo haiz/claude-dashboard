@@ -6,6 +6,7 @@ struct AccountCard: View {
     let onTogglePin: () -> Void
     var onTap: (() -> Void)? = nil
     var onRefresh: (() -> Void)? = nil
+    /// nil hides the Run Command button.
     var onRunCommand: (() -> Void)? = nil
     var onOpenChart: ((UsageWindow) -> Void)? = nil
     var isActiveClaudeCodeAccount: Bool = false
@@ -64,21 +65,23 @@ struct AccountCard: View {
                             .accessibilityLabel("Switch Claude Code to this account")
                         }
 
-                        Button {
-                            onRunCommand?()
-                        } label: {
-                            Image(systemName: "terminal")
-                                .font(.callout)
-                                .foregroundStyle(isTerminalHovered ? .primary : .secondary)
-                                .padding(.leading, 4)
-                                .padding(.trailing, 2)
-                                .padding(.vertical, 2)
-                                .background(isTerminalHovered ? Color.primary.opacity(0.1) : Color.clear)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        if let onRunCommand {
+                            Button {
+                                onRunCommand()
+                            } label: {
+                                Image(systemName: "terminal")
+                                    .font(.callout)
+                                    .foregroundStyle(isTerminalHovered ? .primary : .secondary)
+                                    .padding(.leading, 4)
+                                    .padding(.trailing, 2)
+                                    .padding(.vertical, 2)
+                                    .background(isTerminalHovered ? Color.primary.opacity(0.1) : Color.clear)
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                            }
+                            .buttonStyle(.plain)
+                            .onHover { isTerminalHovered = $0 }
+                            .help("Run command")
                         }
-                        .buttonStyle(.plain)
-                        .onHover { isTerminalHovered = $0 }
-                        .help("Run command")
 
                         // Plan badge
                         Text(state.account.plan.rawValue)

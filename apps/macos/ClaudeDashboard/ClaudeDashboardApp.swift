@@ -73,16 +73,8 @@ struct ClaudeDashboardApp: App {
                 onOpenWindow: {
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
-                onOpenOverview: {
-                    viewModel.selection = .overview
-                    appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
-                },
                 onOpenSettings: {
                     viewModel.selection = .settingsAccounts
-                    appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
-                },
-                onOpenCommandLog: {
-                    viewModel.selection = .commandLog
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
                 onOpenHelp: {

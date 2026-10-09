@@ -2,13 +2,15 @@ import SwiftUI
 import AppKit
 
 /// Settings > General: app identity (icon, name, version), auto refresh
-/// (on/off plus a 1-60 minute interval), and updates (daily toggle plus the
-/// manual check).
+/// (on/off plus a 1-60 minute interval), the menu bar's Run Command button,
+/// and updates (daily toggle plus the manual check).
 ///
 ///     GeneralSettingsPane(viewModel: vm).environmentObject(updateViewModel)
 struct GeneralSettingsPane: View {
     @ObservedObject var viewModel: DashboardViewModel
     @EnvironmentObject var updateViewModel: UpdateViewModel
+    @AppStorage(MenuBarPopover.showRunCommandKey, store: AppDefaults.shared)
+    private var showRunCommandInMenuBar = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,6 +24,9 @@ struct GeneralSettingsPane: View {
                             Stepper("\(viewModel.autoRefreshMinutes) min", value: $viewModel.autoRefreshMinutes, in: 1...60)
                         }
                     }
+                }
+                Section("Menu Bar") {
+                    Toggle("Show Run Command button on cards", isOn: $showRunCommandInMenuBar)
                 }
                 Section {
                     Toggle("Auto-update daily", isOn: $updateViewModel.autoUpdateEnabled)

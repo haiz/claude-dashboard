@@ -29,14 +29,17 @@ struct MenuBarPopover: View {
     @ObservedObject var viewModel: DashboardViewModel
     @EnvironmentObject var updateViewModel: UpdateViewModel
     let onOpenWindow: () -> Void
-    let onOpenOverview: () -> Void
     let onOpenSettings: () -> Void
-    let onOpenCommandLog: () -> Void
     let onOpenHelp: () -> Void
     let onOpenAccountDetail: (UUID, UsageWindow) -> Void
 
     @State private var scrollAnchorId: UUID? = nil
     @State private var runCommandAccount: Account? = nil
+    /// Off by default: the card's Run Command button is easy to hit by mistake
+    /// and costs header space. Settings > General flips it.
+    @AppStorage(MenuBarPopover.showRunCommandKey, store: AppDefaults.shared)
+    private var showRunCommand = false
+    static let showRunCommandKey = "menuBarShowRunCommand"
     private static let scrollTopID = "cards-top"
 
     var body: some View {
@@ -68,25 +71,12 @@ struct MenuBarPopover: View {
                     popover?.close()
                 }
 
-                HeaderIconButton(systemName: "chart.xyaxis.line") {
-                    let popover = NSApp.keyWindow
-                    onOpenOverview()
-                    popover?.close()
-                }
-
                 HeaderIconButton(systemName: "questionmark.circle") {
                     let popover = NSApp.keyWindow
                     onOpenHelp()
                     popover?.close()
                 }
                 .help("Help")
-
-                HeaderIconButton(systemName: "list.bullet.rectangle") {
-                    let popover = NSApp.keyWindow
-                    onOpenCommandLog()
-                    popover?.close()
-                }
-                .help("Command Log")
 
                 HeaderIconButton(systemName: "gearshape") {
                     let popover = NSApp.keyWindow
@@ -112,7 +102,7 @@ struct MenuBarPopover: View {
                                     onResync: { Task { await viewModel.resyncAccount(state.id) } },
                                     onTogglePin: { viewModel.togglePin(for: state.id) },
                                     onRefresh: { Task { await viewModel.refreshAll() } },
-                                    onRunCommand: { runCommandAccount = state.account },
+                                    onRunCommand: showRunCommand ? { runCommandAccount = state.account } : nil,
                                     onOpenChart: { window in
                                         let popover = NSApp.keyWindow
                                         onOpenAccountDetail(state.id, window)
