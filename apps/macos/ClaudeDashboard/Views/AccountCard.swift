@@ -203,10 +203,59 @@ extension View {
         }
     }
 
+    /// Popover variant of `claudeCodeSwitchAlert`. In the `MenuBarExtra` panel an `.alert` is a
+    /// separate sheet window: clicking it while the app is not frontmost takes key from the
+    /// panel, which closes and swallows the click, so the alert returns on reopen. This draws
+    /// the same prompts inside the panel instead.
+    func claudeCodeSwitchOverlay(_ viewModel: DashboardViewModel) -> some View {
+        overlay {
+            if let message = viewModel.switchMessage {
+                InlinePrompt(title: "Claude Code", message: message, button: "OK") {
+                    viewModel.dismissSwitchMessage()
+                }
+            } else if viewModel.awaitingBrowserAccount != nil {
+                InlinePrompt(title: "Finish signing in",
+                             message: "Claude Dashboard opened your browser profile for this account. Sign in and "
+                                + "click Authorize to finish, then it switches automatically.",
+                             button: "Cancel") {
+                    viewModel.cancelClaudeCodeProvisioning()
+                }
+            }
+        }
+    }
+
     /// Scrolls `proxy` to the view tagged `id` whenever `viewModel.scrollToTopRequest` bumps.
     func scrollsToTopAfterSwitch(_ viewModel: DashboardViewModel, proxy: ScrollViewProxy, id: some Hashable) -> some View {
         onChange(of: viewModel.scrollToTopRequest) { _ in
             withAnimation { proxy.scrollTo(id, anchor: .top) }
+        }
+    }
+}
+
+/// An alert-style card drawn inside its parent, over a dimmed backdrop.
+private struct InlinePrompt: View {
+    let title: String
+    let message: String
+    let button: String
+    let action: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.35)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title).font(.headline)
+                Text(message).fixedSize(horizontal: false, vertical: true)
+                Button(action: action) {
+                    Text(button).frame(maxWidth: .infinity)
+                }
+                .keyboardShortcut(.defaultAction)
+                .controlSize(.large)
+                .padding(.top, 4)
+            }
+            .padding(16)
+            .frame(maxWidth: 260)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .shadow(radius: 12)
         }
     }
 }

@@ -177,7 +177,7 @@ struct MenuBarPopover: View {
                 }
             }
         }
-        .claudeCodeSwitchAlert(viewModel)
+        .claudeCodeSwitchOverlay(viewModel)
     }
 
     private var updateBanner: some View {
