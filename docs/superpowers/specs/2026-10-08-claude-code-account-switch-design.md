@@ -141,35 +141,40 @@ A user therefore runs `/login` once per account; the next refresh captures it.
 - `AccountCard` and `AccountPane` gain a **Switch** button. It is hidden on the account
   that is already active (the existing badge marks it).
 - When the vault has no copy or the copy is past `refreshTokenExpiresAt`, the button is
-  still enabled and a tap **provisions** a login first, then switches (see Provisioning).
-  It is disabled only while a switch is running. (An earlier build disabled it with a
-  "run /login" tooltip, but a disabled plain icon looked enabled and a tap did nothing.)
-- While a provision is waiting on the browser, a "Finish signing in" alert with Cancel is
-  shown; it clears automatically when the grant lands.
+  still enabled and a tap **provisions silently** then switches (see Provisioning). When
+  claude.ai wants a fresh sign-in, the tap shows "Sign in to claude.ai as <email> in
+  <browser>, then click Switch again" instead. It is disabled only while a switch runs.
+  (An earlier build disabled it with a "run /login" tooltip, but a disabled plain icon
+  looked enabled and a tap did nothing.)
 - The four intentional `AccountCard` gauge details stay unchanged.
 
 ## Provisioning (no `/login` needed)
 
 The dashboard mints a Claude Code login itself, using the account's claude.ai `sessionKey`
 and Claude Code's own OAuth client (constants read from the Claude Code 2.1.295 binary:
-`CLIENT_ID 9d1c250a-...`, authorize `claude.com/cai/oauth/authorize`, token
-`platform.claude.com/v1/oauth/token`, profile `api.anthropic.com/api/oauth/profile`).
+`CLIENT_ID 9d1c250a-...`, token `platform.claude.com/v1/oauth/token`, profile
+`api.anthropic.com/api/oauth/profile`).
 
-- **Silent path** (`ClaudeAIGrantClient` + `ClaudeCodeOAuthClient`): `GET` then `POST`
-  `claude.ai/v1/oauth/{org}/authorize` with the `sessionKey` cookie yields a code, which is
-  exchanged for the `claudeAiOauth` + `oauthAccount` pair `/login` would store.
-- **Stale gate.** claude.ai returns `session_stale_for_elevated_grant` (or a 403
-  `session_stale_relogin`) unless the browser signed in in roughly the last 24 h. Then the
-  silent path reports `.stale` and the dashboard **opens the account's browser profile**
-  (`BrowserProfileOpener`) on the consent page, with a loopback redirect
-  (`OAuthCallbackListener`); the user clicks Authorize once and the code comes back.
-- **On refresh**, uncaptured/expired accounts are captured **silently only** (never a
-  browser), at most once per hour each, so an account the user has signed into lights up
-  with no action.
+- **Silent path only** (`ClaudeAIGrantClient` + `ClaudeCodeOAuthClient`): `GET` then `POST`
+  `claude.ai/v1/oauth/{org}/authorize` with the `sessionKey` cookie yields a code, exchanged
+  for the `claudeAiOauth` + `oauthAccount` pair `/login` would store.
+- **Stale gate (hard limit).** claude.ai returns `session_stale_for_elevated_grant` (or a
+  403 `session_stale_relogin`) unless the browser signed in in roughly the last 24 h; the
+  grant then needs a full interactive re-login. For these accounts that login is a claude.ai
+  **email magic link** to a shared Google Group (no Google/Apple SSO on a group address) —
+  a poor thing to drop a user into mid-switch. So on `.stale` the provisioner returns nil
+  and the dashboard does **not** open a browser. The user signs in to claude.ai normally;
+  the next refresh captures the account silently. (An earlier build opened the browser
+  profile on the consent page via a loopback listener; it was removed — the consent page
+  just redirected to the magic-link login, which is the same manual cost with worse timing.
+  See git history for that `OAuthCallbackListener`/`BrowserProfileOpener` approach.)
+- **On refresh**, uncaptured/expired accounts are captured silently, at most once per hour
+  each, so an account the user has recently signed into lights up with no action — the one
+  way the "do nothing" ideal is reachable within Anthropic's gate.
 - The minted login's email must match the account (case-insensitive) or it is discarded
   (`ProvisionError.emailMismatch`): one account's Switch can never install another's token.
 - Under XCTest the provisioner is nil (the test host is the real app; its startup refresh
-  must make no network call or browser launch), exactly like the switcher.
+  must make no network call), exactly like the switcher.
 - `ClaudeCodeLoginProvisioner` orchestrates these; `ClaudeCodeSwitcher.store(_:for:)` saves
   the minted entry into the vault before the switch.
 

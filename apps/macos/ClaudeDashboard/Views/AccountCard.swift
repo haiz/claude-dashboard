@@ -181,8 +181,7 @@ extension SwitchAvailability {
 }
 
 extension View {
-    /// Shows `viewModel.switchMessage` once, then clears it, and — while a Switch is
-    /// waiting on a browser sign-in — a cancellable "finish in your browser" prompt.
+    /// Shows `viewModel.switchMessage` once, then clears it.
     func claudeCodeSwitchAlert(_ viewModel: DashboardViewModel) -> some View {
         alert("Claude Code", isPresented: Binding(
             get: { viewModel.switchMessage != nil },
@@ -191,15 +190,6 @@ extension View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.switchMessage ?? "")
-        }
-        .alert("Finish signing in", isPresented: Binding(
-            get: { viewModel.awaitingBrowserAccount != nil },
-            set: { if !$0 { viewModel.cancelClaudeCodeProvisioning() } }
-        )) {
-            Button("Cancel", role: .cancel) { viewModel.cancelClaudeCodeProvisioning() }
-        } message: {
-            Text("Claude Dashboard opened your browser. Sign in and click Authorize to "
-                + "finish, then it switches automatically.")
         }
     }
 }

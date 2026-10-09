@@ -79,16 +79,19 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   of one refresh-token chain kill each other.
   Spec: `docs/superpowers/specs/2026-10-08-claude-code-account-switch-design.md`.
 - **ClaudeCodeLoginProvisioner** (`Services/ClaudeCodeSwitch/`) — mints a Claude Code login so
-  Switch needs no `/login`. `ClaudeAIGrantClient` asks claude.ai (`/v1/oauth/{org}/authorize`,
-  undocumented) for a code with the account's `sessionKey`; `ClaudeCodeOAuthClient` exchanges it
-  at Claude Code's own token endpoint and builds the `claudeAiOauth`+`oauthAccount` pair (OAuth
-  constants read from the Claude Code binary). claude.ai requires a recent browser sign-in
-  (`session_stale_for_elevated_grant` / 403 `session_stale_relogin`); on that gate the silent
-  path returns `.stale` and the provisioner opens the account's browser profile
-  (`BrowserProfileOpener`) on the consent page with a loopback redirect (`OAuthCallbackListener`).
-  A Switch tap on an uncaptured/expired account provisions then switches; refresh provisions
-  silently only (never a browser), ≤1/hour/account. The minted email must match the account or
-  the entry is discarded. Nil under XCTest, like the switcher.
+  Switch needs no `/login`, **silently only**. `ClaudeAIGrantClient` asks claude.ai
+  (`/v1/oauth/{org}/authorize`, undocumented) for a code with the account's `sessionKey`;
+  `ClaudeCodeOAuthClient` exchanges it at Claude Code's own token endpoint and builds the
+  `claudeAiOauth`+`oauthAccount` pair (OAuth constants read from the Claude Code binary).
+  claude.ai grants only when the browser signed in recently (`session_stale_for_elevated_grant`
+  / 403 `session_stale_relogin`); on that gate `provisionSilently` returns nil and the dashboard
+  does NOT open a browser (the re-login for these group-email accounts is an email magic link —
+  a bad mid-switch interruption). A Switch tap on an uncaptured/expired account provisions then
+  switches, or shows "sign in to claude.ai … then Switch again" when stale; refresh provisions
+  silently ≤1/hour/account, so an account the user just signed into lights up on its own. The
+  minted email must match the account or the entry is discarded. Nil under XCTest, like the
+  switcher. (Git history has an earlier browser-popup approach with `OAuthCallbackListener` /
+  `BrowserProfileOpener`, removed because the consent page just bounced to the magic-link login.)
 
 ### ViewModel
 - **DashboardViewModel** — `@MainActor` observable. Parallel refresh via `TaskGroup`. Sorts accounts by burn rate (utilization / time-remaining). Computes menu bar label from highest utilization.

@@ -79,9 +79,6 @@ final class DashboardViewModel: ObservableObject {
     @Published var switchMessage: String?
     /// True while a Switch runs; the Switch controls are disabled meanwhile.
     @Published private(set) var isSwitchingClaudeCode = false
-    /// Non-nil while a Switch is waiting for the user to authorize in the browser; the UI
-    /// shows a cancellable "waiting" state for this account.
-    @Published private(set) var awaitingBrowserAccount: UUID?
 
     @Published var autoRefreshEnabled: Bool {
         didSet { AppDefaults.shared.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
@@ -107,8 +104,6 @@ final class DashboardViewModel: ObservableObject {
     /// under XCTest (the test host is the real app; its startup refresh must make no
     /// network calls or browser launches).
     private let ccProvisioner: ClaudeCodeLoginProvisioner?
-    /// The in-flight interactive provision, so Cancel can abort the browser wait.
-    private var provisionTask: Task<Result<VaultEntry, Error>, Never>?
     /// Last silent-mint attempt per account, to cap background attempts at one per hour.
     private var lastSilentMint: [UUID: Date] = [:]
     /// Reads the browser cookies for one stored account. Injected so `resyncAccount`
@@ -647,10 +642,10 @@ final class DashboardViewModel: ObservableObject {
         }
         guard !isSwitchingClaudeCode else { return }
         isSwitchingClaudeCode = true
-        defer { isSwitchingClaudeCode = false; awaitingBrowserAccount = nil }
+        defer { isSwitchingClaudeCode = false }
         let accounts = accountStore.accounts
 
-        // No usable vault copy: mint one (silently, else via the browser) before switching.
+        // No usable vault copy: mint one silently before switching (never opens a browser).
         let availability = switchAvailability[accountId]
         if availability == .notCaptured || availability == .loginExpired {
             guard await provisionLogin(for: target) else { return }
@@ -669,46 +664,31 @@ final class DashboardViewModel: ObservableObject {
         switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
     }
 
-    /// Cancels an in-flight browser authorization (the "waiting for browser" Cancel).
-    func cancelClaudeCodeProvisioning() {
-        provisionTask?.cancel()
-    }
-
     /// Mints and stores a Claude Code login for an account whose vault copy is missing or
-    /// expired. Returns false (and sets `switchMessage`, unless the user cancelled) when
-    /// it could not, so the caller skips the switch.
+    /// expired, using the silent path only. Returns false (and sets `switchMessage`) when it
+    /// could not, so the caller skips the switch. A stale claude.ai session is the common
+    /// "false": the user must sign in to claude.ai in the browser, then Switch again.
     private func provisionLogin(for target: Account) async -> Bool {
         guard let ccProvisioner, let ccSwitcher else { return false }
         guard let input = provisionInput(for: target) else {
             switchMessage = "Re-sync \(target.email ?? target.name) first so the dashboard has its browser session."
             return false
         }
-        let task = Task { () -> Result<VaultEntry, Error> in
-            do {
-                let entry = try await ccProvisioner.provision(input) {
-                    self.awaitingBrowserAccount = target.id
-                }
-                return .success(entry)
-            } catch {
-                return .failure(error)
-            }
-        }
-        provisionTask = task
-        let result = await task.value
-        provisionTask = nil
-        awaitingBrowserAccount = nil
-
-        switch result {
-        case .success(let entry):
-            do {
-                try ccSwitcher.store(entry, for: target.id)
-                return true
-            } catch {
-                switchMessage = "Could not save the new Claude Code login for \(target.email ?? target.name)."
+        do {
+            guard let entry = try await ccProvisioner.provisionSilently(input) else {
+                switchMessage = Self.signInPrompt(for: target)
                 return false
             }
-        case .failure(let error):
-            switchMessage = Self.provisionMessage(for: error, target: target)
+            try ccSwitcher.store(entry, for: target.id)
+            return true
+        } catch let error as ProvisionError {
+            if case .emailMismatch(_, let got) = error {
+                switchMessage = "The browser session is signed in as \(got), not "
+                    + "\(target.email ?? target.name). Nothing was changed."
+            }
+            return false
+        } catch {
+            switchMessage = Self.signInPrompt(for: target)
             return false
         }
     }
@@ -717,27 +697,16 @@ final class DashboardViewModel: ObservableObject {
     /// its browser session (no sessionKey/org, or a manually-added record).
     private func provisionInput(for account: Account) -> ProvisionInput? {
         guard let orgId = account.orgId, let email = account.email,
-              !account.chromeProfilePath.isEmpty,
               let sessionKey = accountStore.loadSessionKey(for: account.id) else { return nil }
-        return ProvisionInput(orgId: orgId, sessionKey: sessionKey, email: email,
-                              browser: account.browser, profilePath: account.chromeProfilePath)
+        return ProvisionInput(orgId: orgId, sessionKey: sessionKey, email: email)
     }
 
-    /// Alert text for a failed provision; nil when the user cancelled (no alert).
-    static func provisionMessage(for error: Error, target: Account) -> String? {
+    /// Shown when the silent path cannot mint: claude.ai wants a fresh browser sign-in.
+    static func signInPrompt(for target: Account) -> String {
         let name = target.email ?? target.name
-        if let callback = error as? OAuthCallbackError {
-            switch callback {
-            case .cancelled: return nil
-            case .timedOut: return "Timed out waiting for the browser. Try Switch again for \(name)."
-            case .listenerFailed: return "Could not open a local callback for \(name). Try again."
-            }
-        }
-        if case ProvisionError.emailMismatch(_, let got) = error {
-            return "The browser signed in as \(got), not \(name). Nothing was changed."
-        }
-        return "Could not sign \(name) in to Claude Code. Make sure that browser profile is "
-            + "logged in to claude.ai as \(name), then try Switch again."
+        let browser = target.chromeProfilePath.isEmpty ? "your browser" : target.browser.displayName
+        return "Sign in to claude.ai as \(name) in \(browser), then click Switch again. "
+            + "Claude needs a recent sign-in before it will hand a login to Claude Code."
     }
 
     static func message(for error: SwitchError, target: Account) -> String {

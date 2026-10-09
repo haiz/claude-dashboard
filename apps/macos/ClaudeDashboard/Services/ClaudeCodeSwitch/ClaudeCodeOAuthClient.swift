@@ -40,7 +40,6 @@ enum ClaudeCodeOAuthError: Error, Equatable {
 ///     let entry = try await ClaudeCodeOAuthClient().exchange(code: code, pkce: pkce, redirectURI: redirect)
 struct ClaudeCodeOAuthClient {
     static let clientId = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-    static let authorizeEndpoint = "https://claude.com/cai/oauth/authorize"
     static let tokenURL = URL(string: "https://platform.claude.com/v1/oauth/token")!
     static let profileURL = URL(string: "https://api.anthropic.com/api/oauth/profile")!
     /// Where a code goes when no local listener runs; also accepted by the token endpoint.
@@ -56,21 +55,6 @@ struct ClaudeCodeOAuthClient {
     init(session: URLSession = .shared, now: @escaping () -> Date = Date.init) {
         self.session = session
         self.now = now
-    }
-
-    static func authorizeURL(pkce: PKCE, redirectURI: String, loginHint: String?) -> URL {
-        var c = URLComponents(string: authorizeEndpoint)!
-        c.queryItems = [
-            URLQueryItem(name: "code", value: "true"),
-            URLQueryItem(name: "client_id", value: clientId),
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "redirect_uri", value: redirectURI),
-            URLQueryItem(name: "scope", value: scope),
-            URLQueryItem(name: "code_challenge", value: pkce.challenge),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
-            URLQueryItem(name: "state", value: pkce.state),
-        ] + (loginHint.map { [URLQueryItem(name: "login_hint", value: $0)] } ?? [])
-        return c.url!
     }
 
     /// Token exchange, then the profile call that supplies `subscriptionType`,

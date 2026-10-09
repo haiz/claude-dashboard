@@ -2,7 +2,7 @@ import XCTest
 @testable import ClaudeDashboard
 
 /// Drives the view model's Switch flow for accounts with no vault copy: silent capture on
-/// refresh, the browser fallback on a Switch tap, and the failure paths.
+/// refresh and on a Switch tap, plus the "sign in first" and mismatch failure paths.
 @MainActor
 final class DashboardViewModelProvisionTests: XCTestCase {
 
@@ -42,14 +42,6 @@ final class DashboardViewModelProvisionTests: XCTestCase {
         }
     }
 
-    private final class FakeListener: OAuthCallbackListening {
-        var code = "browser-code"
-        var onWait: (() -> Void)?
-        func start() throws -> Int { 4321 }
-        func waitForCode(timeout: TimeInterval) async throws -> String { onWait?(); return code }
-        func cancel() {}
-    }
-
     // MARK: Helpers
 
     private func makeStore() throws -> (AccountStore, Account, Account) {
@@ -78,21 +70,16 @@ final class DashboardViewModelProvisionTests: XCTestCase {
                                   config: ClaudeConfigFile(fileURL: configURL), now: Date.init, sleep: { _ in })
     }
 
-    private func makeProvisioner(grant: FakeGrant, exchange: FakeExchange,
-                                 listener: FakeListener, opened: @escaping (URL) -> Void = { _ in })
-        -> ClaudeCodeLoginProvisioner {
-        ClaudeCodeLoginProvisioner(
-            grantClient: grant, oauthClient: exchange,
-            makeListener: { _ in listener },
-            openBrowser: { _, _, url in opened(url) },
-            browserTimeout: 1)
-    }
-
     private func makeViewModel(store: AccountStore, switcher: ClaudeCodeSwitcher,
-                               provisioner: ClaudeCodeLoginProvisioner) -> DashboardViewModel {
+                               grant: FakeGrant, exchange: FakeExchange) -> DashboardViewModel {
         DashboardViewModel(accountStore: store,
                            ccDetector: ClaudeCodeAccountDetector(fileURL: configURL),
-                           ccSwitcher: switcher, ccProvisioner: provisioner)
+                           ccSwitcher: switcher,
+                           ccProvisioner: ClaudeCodeLoginProvisioner(grantClient: grant, oauthClient: exchange))
+    }
+
+    private func slot(_ kc: InMemoryKeychain) -> KeychainClaudeCodeSlot {
+        KeychainClaudeCodeSlot(keychain: kc, account: "me")
     }
 
     // MARK: Tests
@@ -101,44 +88,32 @@ final class DashboardViewModelProvisionTests: XCTestCase {
         let kc = InMemoryKeychain()
         let (store, frontend, backend) = try makeStore()
         let switcher = try makeSwitcher(kc, frontend: frontend)
-        var opened = false
-        let provisioner = makeProvisioner(grant: FakeGrant(.code("silent-be")),
-                                          exchange: FakeExchange(email: backend.email!),
-                                          listener: FakeListener(), opened: { _ in opened = true })
-        let vm = makeViewModel(store: store, switcher: switcher, provisioner: provisioner)
+        let vm = makeViewModel(store: store, switcher: switcher,
+                               grant: FakeGrant(.code("silent-be")), exchange: FakeExchange(email: backend.email!))
 
         await vm.refreshAll()
         XCTAssertEqual(vm.switchAvailability[backend.id], .ready, "a fresh session is captured silently")
-        XCTAssertFalse(opened, "silent capture never opens a browser")
 
         await vm.switchClaudeCode(to: backend.id)
-        XCTAssertEqual(try KeychainClaudeCodeSlot(keychain: kc, account: "me").readOAuth()?.refreshToken, "rt-silent-be")
+        XCTAssertEqual(try slot(kc).readOAuth()?.refreshToken, "rt-silent-be")
         XCTAssertEqual(vm.switchAvailability[backend.id], .active)
     }
 
-    func testSwitchOnStaleAccountGoesThroughTheBrowser() async throws {
+    func testSwitchOnStaleAccountAsksTheUserToSignIn() async throws {
         let kc = InMemoryKeychain()
         let (store, frontend, backend) = try makeStore()
         let switcher = try makeSwitcher(kc, frontend: frontend)
-        let listener = FakeListener(); listener.code = "browser-be"
-        var openedURL: URL?
-        let provisioner = makeProvisioner(grant: FakeGrant(.stale),
-                                          exchange: FakeExchange(email: backend.email!),
-                                          listener: listener, opened: { openedURL = $0 })
-        let vm = makeViewModel(store: store, switcher: switcher, provisioner: provisioner)
+        let vm = makeViewModel(store: store, switcher: switcher,
+                               grant: FakeGrant(.stale), exchange: FakeExchange(email: backend.email!))
 
         await vm.refreshAll()
-        XCTAssertEqual(vm.switchAvailability[backend.id], .notCaptured, "a stale session is not captured silently")
+        XCTAssertEqual(vm.switchAvailability[backend.id], .notCaptured, "a stale session is not captured")
 
-        var awaitingDuringWait: UUID?
-        listener.onWait = { awaitingDuringWait = vm.awaitingBrowserAccount }
         await vm.switchClaudeCode(to: backend.id)
-
-        XCTAssertNotNil(openedURL, "a stale Switch opens the browser")
-        XCTAssertEqual(awaitingDuringWait, backend.id, "the UI shows the waiting state while the browser is open")
-        XCTAssertNil(vm.awaitingBrowserAccount, "the waiting state clears when done")
-        XCTAssertEqual(try KeychainClaudeCodeSlot(keychain: kc, account: "me").readOAuth()?.refreshToken, "rt-browser-be")
-        XCTAssertEqual(vm.switchAvailability[backend.id], .active)
+        XCTAssertEqual(vm.switchMessage?.contains("Sign in to claude.ai"), true)
+        XCTAssertEqual(vm.switchMessage?.contains("backend@gotitapp.co"), true)
+        XCTAssertEqual(try slot(kc).readOAuth()?.refreshToken, "fe", "nothing switched")
+        XCTAssertEqual(vm.switchAvailability[backend.id], .notCaptured)
     }
 
     func testSwitchWithoutASessionKeyAsksForResync() async throws {
@@ -147,15 +122,13 @@ final class DashboardViewModelProvisionTests: XCTestCase {
         let frontend = Account(id: UUID(), name: "fe", email: "frontend@gotitapp.co", chromeProfilePath: "Default",
                                orgId: "org-fe", sessionKey: "sk-fe", browser: .chrome,
                                plan: .max5x, status: .active, source: .browser)
-        // No sessionKey, no org: a manual record the dashboard cannot provision.
         let manual = Account(id: UUID(), name: "manual", email: "manual@x.co", chromeProfilePath: "",
                              plan: .max5x, status: .active, source: .manual)
         store.addAccount(frontend)
         store.addAccount(manual)
         let switcher = try makeSwitcher(kc, frontend: frontend)
-        let provisioner = makeProvisioner(grant: FakeGrant(.code("x")),
-                                          exchange: FakeExchange(email: manual.email!), listener: FakeListener())
-        let vm = makeViewModel(store: store, switcher: switcher, provisioner: provisioner)
+        let vm = makeViewModel(store: store, switcher: switcher,
+                               grant: FakeGrant(.code("x")), exchange: FakeExchange(email: manual.email!))
 
         await vm.refreshAll()
         await vm.switchClaudeCode(to: manual.id)
@@ -163,22 +136,19 @@ final class DashboardViewModelProvisionTests: XCTestCase {
         XCTAssertNil(try KeychainCredentialVault(keychain: kc).load(manual.id), "nothing was provisioned")
     }
 
-    func testBrowserSignInAsWrongAccountIsRejected() async throws {
+    func testSilentCaptureAsAnotherAccountIsRejected() async throws {
         let kc = InMemoryKeychain()
         let (store, frontend, backend) = try makeStore()
         let switcher = try makeSwitcher(kc, frontend: frontend)
-        // Silent returns a code, but the minted login is someone else: refuse and switch nothing.
-        let provisioner = makeProvisioner(grant: FakeGrant(.code("c")),
-                                          exchange: FakeExchange(email: "intruder@x.co"), listener: FakeListener())
-        let vm = makeViewModel(store: store, switcher: switcher, provisioner: provisioner)
+        // Silent returns a code, but the minted login is someone else: refuse, capture nothing.
+        let vm = makeViewModel(store: store, switcher: switcher,
+                               grant: FakeGrant(.code("c")), exchange: FakeExchange(email: "intruder@x.co"))
 
         await vm.refreshAll()
-        // Silent capture on refresh rejected the mismatch, so the account stays uncaptured.
         XCTAssertEqual(vm.switchAvailability[backend.id], .notCaptured)
 
         await vm.switchClaudeCode(to: backend.id)
         XCTAssertEqual(vm.switchMessage?.contains("intruder@x.co"), true)
-        XCTAssertEqual(try KeychainClaudeCodeSlot(keychain: kc, account: "me").readOAuth()?.refreshToken, "fe",
-                       "Claude Code still signed in as frontend")
+        XCTAssertEqual(try slot(kc).readOAuth()?.refreshToken, "fe", "Claude Code still signed in as frontend")
     }
 }

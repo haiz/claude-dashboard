@@ -25,25 +25,6 @@ final class ClaudeCodeOAuthClientTests: XCTestCase {
         XCTAssertNotEqual(random.verifier, random.state)
     }
 
-    func testAuthorizeURLMatchesClaudeCode() throws {
-        let pkce = PKCE(verifier: "v", state: "st")
-        let url = ClaudeCodeOAuthClient.authorizeURL(
-            pkce: pkce, redirectURI: "http://localhost:4321/callback", loginHint: "be@x.co")
-        let c = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
-        XCTAssertEqual(c.host, "claude.com")
-        XCTAssertEqual(c.path, "/cai/oauth/authorize")
-        let q = Dictionary(uniqueKeysWithValues: (c.queryItems ?? []).map { ($0.name, $0.value ?? "") })
-        XCTAssertEqual(q["code"], "true")
-        XCTAssertEqual(q["client_id"], "9d1c250a-e61b-44d9-88ed-5944d1962f5e")
-        XCTAssertEqual(q["response_type"], "code")
-        XCTAssertEqual(q["redirect_uri"], "http://localhost:4321/callback")
-        XCTAssertEqual(q["scope"], ClaudeCodeOAuthClient.scope)
-        XCTAssertEqual(q["code_challenge"], pkce.challenge)
-        XCTAssertEqual(q["code_challenge_method"], "S256")
-        XCTAssertEqual(q["state"], "st")
-        XCTAssertEqual(q["login_hint"], "be@x.co")
-    }
-
     func testExchangeBuildsVaultEntryLikeClaudeCode() async throws {
         var tokenBody: [String: Any]?
         var profileAuth: String?
