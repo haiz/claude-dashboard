@@ -12,11 +12,19 @@ final class AccountCardLayoutTests: XCTestCase {
     private static let popoverCardWidth = MenuBarPopover.width - 2 * MenuBarPopover.cardListPadding
 
     func testCompactCardWithAllGaugesFitsThePopover() {
-        let resetsAt = Date().addingTimeInterval(3600)
+        // The reset labels are fixed-size monospaced text, so their width follows
+        // the wall clock. Pin both to their longest form ("12:49 AM", "Wed 12:50am")
+        // rather than deriving them from now, which passes or fails by time of day.
+        let cal = Calendar.current
+        let now = Date()
+        let fiveHourReset = cal.nextDate(after: now, matching: DateComponents(hour: 0, minute: 49),
+                                         matchingPolicy: .nextTime)!
+        let sevenDayReset = cal.nextDate(after: now.addingTimeInterval(86400), matching: DateComponents(hour: 0, minute: 50),
+                                         matchingPolicy: .nextTime)!
         let usage = UsageData(
-            fiveHour: UsageLimit(utilization: 38, resetsAt: resetsAt),
-            sevenDay: UsageLimit(utilization: 82, resetsAt: resetsAt.addingTimeInterval(86400 * 3)),
-            fable: UsageLimit(utilization: 4, resetsAt: resetsAt)
+            fiveHour: UsageLimit(utilization: 38, resetsAt: fiveHourReset),
+            sevenDay: UsageLimit(utilization: 82, resetsAt: sevenDayReset),
+            fable: UsageLimit(utilization: 4, resetsAt: sevenDayReset)
         )
         let account = Account(
             id: UUID(), name: "a@b.co", email: "a@b.co",

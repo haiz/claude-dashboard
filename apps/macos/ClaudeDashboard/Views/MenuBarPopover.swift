@@ -43,8 +43,9 @@ struct MenuBarPopover: View {
     private static let scrollTopID = "cards-top"
     /// Wide enough for a compact card's three gauge groups plus `cardListPadding`
     /// on each side; narrower and the card overflows the scroll view, which
-    /// then draws it flush left (`AccountCardLayoutTests` guards this).
-    static let width: CGFloat = 344
+    /// then draws it flush left (`AccountCardLayoutTests` guards this). Sized for
+    /// the longest reset labels ("12:49 AM", "Wed 12:50am").
+    static let width: CGFloat = 352
     static let cardListPadding: CGFloat = 12
 
     var body: some View {
