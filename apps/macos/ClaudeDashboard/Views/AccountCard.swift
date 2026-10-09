@@ -9,6 +9,10 @@ struct AccountCard: View {
     var onRunCommand: (() -> Void)? = nil
     var onOpenChart: ((UsageWindow) -> Void)? = nil
     var isActiveClaudeCodeAccount: Bool = false
+    /// nil hides the Switch button (switcher disabled).
+    var switchAvailability: SwitchAvailability? = nil
+    var onSwitchClaudeCode: (() -> Void)? = nil
+    var isSwitchingClaudeCode: Bool = false
     var isCompact: Bool = true
 
     @State private var isTerminalHovered = false
@@ -45,6 +49,21 @@ struct AccountCard: View {
                     Spacer(minLength: 0)
 
                     HStack(spacing: 2) {
+                        if let switchAvailability, let help = switchAvailability.switchHelp {
+                            Button {
+                                onSwitchClaudeCode?()
+                            } label: {
+                                Image(systemName: "arrow.left.arrow.right")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .padding(2)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(switchAvailability != .ready || isSwitchingClaudeCode)
+                            .help(help)
+                            .accessibilityLabel("Switch Claude Code to this account")
+                        }
+
                         Button {
                             onRunCommand?()
                         } label: {
@@ -144,6 +163,33 @@ struct AccountCard: View {
                 onResync()
             }
             .controlSize(.small)
+        }
+    }
+}
+
+extension SwitchAvailability {
+    /// Tooltip for the Switch control; nil when the control is hidden.
+    var switchHelp: String? {
+        switch self {
+        case .active: return nil
+        case .ready: return "Use this account in Claude Code"
+        case .notCaptured: return "Run /login once in Claude Code with this account to enable Switch"
+        case .loginExpired: return "Saved login expired. Run /login once in Claude Code with this account"
+        case .needsLogin: return "Claude Code lost this login. Run /login with this account"
+        }
+    }
+}
+
+extension View {
+    /// Shows `viewModel.switchMessage` once, then clears it.
+    func claudeCodeSwitchAlert(_ viewModel: DashboardViewModel) -> some View {
+        alert("Claude Code", isPresented: Binding(
+            get: { viewModel.switchMessage != nil },
+            set: { if !$0 { viewModel.switchMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.switchMessage ?? "")
         }
     }
 }

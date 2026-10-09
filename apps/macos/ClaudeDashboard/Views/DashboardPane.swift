@@ -44,6 +44,9 @@ struct DashboardPane: View {
                                 onRunCommand: { onRunCommand(state.account) },
                                 onOpenChart: { window in viewModel.openAccount(state.id, window: window) },
                                 isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
+                                switchAvailability: viewModel.switchAvailability[state.id],
+                                onSwitchClaudeCode: { Task { await viewModel.switchClaudeCode(to: state.id) } },
+                                isSwitchingClaudeCode: viewModel.isSwitchingClaudeCode,
                                 isCompact: false
                             )
                         }
@@ -53,6 +56,7 @@ struct DashboardPane: View {
                 }
             }
         }
+        .claudeCodeSwitchAlert(viewModel)
     }
 
     private var emptyStateView: some View {

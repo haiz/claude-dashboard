@@ -72,6 +72,7 @@ struct AccountPane: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .claudeCodeSwitchAlert(dashboardViewModel)
     }
 
     /// Identity and the usage gauges in one box: avatar, name and status on
@@ -158,6 +159,17 @@ struct AccountPane: View {
                 .controlSize(.small)
             }
             Divider()
+            if let availability = dashboardViewModel.switchAvailability[state.id],
+               let help = availability.switchHelp {
+                actionRow("Use this account in Claude Code") {
+                    Button("Switch") {
+                        Task { await dashboardViewModel.switchClaudeCode(to: state.id) }
+                    }
+                    .disabled(availability != .ready || dashboardViewModel.isSwitchingClaudeCode)
+                    .help(help)
+                }
+                Divider()
+            }
             actionRow("Run a command for this account") {
                 Button("Run Command\u{2026}", action: onRunCommand)
             }
