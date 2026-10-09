@@ -75,6 +75,7 @@ struct SetupView: View {
             if !isScanning {
                 Button("Paste a session key instead") { showingPasteKey = true }
                     .buttonStyle(.link)
+                    .help("Add an account by pasting its claude.ai sessionKey cookie")
             }
 
             HStack {
@@ -82,6 +83,7 @@ struct SetupView: View {
                     dismissSelf()
                 }
                 .keyboardShortcut(.cancelAction)
+                .help("Close without adding accounts")
 
                 Spacer()
 
@@ -94,6 +96,7 @@ struct SetupView: View {
                     }
                     .keyboardShortcut(.defaultAction)
                     .disabled(detectedAccounts.filter(\.isSelected).isEmpty)
+                    .help("Add the checked accounts to the dashboard")
                 }
             }
         }
@@ -173,13 +176,10 @@ struct SetupView: View {
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 14)
                         .frame(maxWidth: .infinity)
-                        .background(Color.primary.opacity(0.05))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HoverableButtonStyle(prominent: true, horizontalPadding: 14, verticalPadding: 10, cornerRadius: 8))
+                    .help("Scan \(browser.displayName) profiles for Claude sessions")
                 }
             }
             .frame(maxWidth: 320)
@@ -201,6 +201,7 @@ struct SetupView: View {
                 .foregroundStyle(.secondary)
 
             Button("Retry Scan") { scan() }
+                .help("Scan the browser profiles again")
                 .padding(.top, 8)
         }
     }

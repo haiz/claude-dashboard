@@ -72,11 +72,13 @@ struct RunCommandSheet: View {
                     isPresented = false
                 }
                 .keyboardShortcut(.escape, modifiers: [])
+                .help("Close without running; stops a running command")
 
                 Button(isRunning ? "Running..." : "Run") {
                     run()
                 }
                 .disabled(command.isEmpty || isRunning)
+                .help("Run the command for this account")
             }
         }
         .padding(20)

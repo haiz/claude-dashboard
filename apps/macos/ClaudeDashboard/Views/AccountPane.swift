@@ -139,6 +139,7 @@ struct AccountPane: View {
                 Task { await dashboardViewModel.resyncAccount(state.id) }
             }
             .controlSize(.small)
+            .help("Read a fresh session key from the browser")
         } else if let error = state.error {
             Text(error)
                 .font(.callout)
@@ -171,18 +172,21 @@ struct AccountPane: View {
             Divider()
             actionRow("Run a command for this account") {
                 Button("Run Command\u{2026}", action: onRunCommand)
+                    .help("Run a saved command for this account")
             }
             Divider()
             actionRow("Read a fresh session key from the browser") {
                 Button("Re-sync") {
                     Task { await dashboardViewModel.resyncAccount(state.id) }
                 }
+                .help("Read a fresh session key from the browser")
             }
             Divider()
             actionRow("Remove this account from the dashboard") {
                 Button("Remove Account\u{2026}", role: .destructive) {
                     confirmingRemove = true
                 }
+                .help("Remove this account from the dashboard")
             }
         }
     }

@@ -327,6 +327,7 @@ struct OverviewChartView: View {
                         .padding(.vertical, 4)
                     }
                     .buttonStyle(HoverableRowStyle(selected: isSelected))
+                    .help(isSelected ? "Hide this account on the chart" : "Show this account on the chart")
                 }
             }
         }

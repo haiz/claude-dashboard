@@ -82,6 +82,7 @@ struct GeneralSettingsPane: View {
             Task { await updateViewModel.checkNow(autoInstall: true) }
         }
         .disabled(updateViewModel.state.isWorking)
+        .help("Check GitHub for a newer version and install it")
         #endif
     }
 

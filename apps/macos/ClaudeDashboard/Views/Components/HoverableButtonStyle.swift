@@ -1,7 +1,13 @@
 import SwiftUI
 
+/// Plain button with a hover and pressed background. `isSelected` tints it with
+/// the accent color, for segmented-style choices such as chart range presets.
+///
+///     Button("24h") { apply(.day) }
+///         .buttonStyle(HoverableButtonStyle(isSelected: preset == .day))
 struct HoverableButtonStyle: ButtonStyle {
     var prominent: Bool = false
+    var isSelected: Bool = false
     var horizontalPadding: CGFloat = 10
     var verticalPadding: CGFloat = 5
     var cornerRadius: CGFloat = 6
@@ -10,6 +16,7 @@ struct HoverableButtonStyle: ButtonStyle {
         HoverableLabel(
             configuration: configuration,
             prominent: prominent,
+            isSelected: isSelected,
             horizontalPadding: horizontalPadding,
             verticalPadding: verticalPadding,
             cornerRadius: cornerRadius
@@ -19,6 +26,7 @@ struct HoverableButtonStyle: ButtonStyle {
     private struct HoverableLabel: View {
         let configuration: ButtonStyleConfiguration
         let prominent: Bool
+        let isSelected: Bool
         let horizontalPadding: CGFloat
         let verticalPadding: CGFloat
         let cornerRadius: CGFloat
@@ -52,6 +60,7 @@ struct HoverableButtonStyle: ButtonStyle {
         private var backgroundColor: Color {
             if !isEnabled { return Color.primary.opacity(prominent ? 0.05 : 0) }
             if configuration.isPressed { return Color.primary.opacity(0.18) }
+            if isSelected { return Color.accentColor.opacity(isHovered ? 0.28 : 0.2) }
             if isHovered { return Color.primary.opacity(prominent ? 0.16 : 0.10) }
             return Color.primary.opacity(prominent ? 0.07 : 0)
         }

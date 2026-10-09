@@ -38,12 +38,14 @@ struct PasteKeyView: View {
                 Button(outcome?.holdsSheetOpen == true ? "Done" : "Cancel", action: onClose)
                     .keyboardShortcut(.cancelAction)
                     .disabled(isWorking)
+                    .help(outcome?.holdsSheetOpen == true ? "Close this sheet" : "Close without adding the key")
                 Spacer()
                 Button(isWorking ? "Checking\u{2026}" : "Add") {
                     Task { await submit() }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(isWorking || key.isEmpty)
+                .help("Check the key with claude.ai and add its account")
             }
         }
         .padding(20)

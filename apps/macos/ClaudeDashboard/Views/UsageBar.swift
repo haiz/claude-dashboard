@@ -32,6 +32,14 @@ struct UsageBar: View {
     private var segmentCount: Int { totalSeconds <= 18000 ? 5 : 7 }
 
     var body: some View {
+        if onTap != nil {
+            gauges.help("Open the \(label == "F" ? "Fable" : label) usage chart")
+        } else {
+            gauges
+        }
+    }
+
+    private var gauges: some View {
         VStack(alignment: .center, spacing: 5) {
             Text(label)
                 .font(.system(size: labelFontSize, design: .monospaced))

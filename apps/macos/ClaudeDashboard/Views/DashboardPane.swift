@@ -23,6 +23,7 @@ struct DashboardPane: View {
                         Label("Refresh", systemImage: "arrow.clockwise")
                     }
                     .disabled(viewModel.isRefreshing)
+                    .help("Refresh usage for all accounts")
                 }
             }
             if viewModel.accountStates.isEmpty {
@@ -84,6 +85,7 @@ struct DashboardPane: View {
                     .font(.body.weight(.medium))
             }
             .buttonStyle(.borderedProminent)
+            .help("Add a Claude account from your browser or a pasted session key")
             Spacer()
         }
         .padding()

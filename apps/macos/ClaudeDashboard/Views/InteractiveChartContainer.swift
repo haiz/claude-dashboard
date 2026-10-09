@@ -132,7 +132,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
                     Image(systemName: mode == .pan ? "hand.raised" : "magnifyingglass")
                         .frame(width: 20, height: 20)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(HoverableButtonStyle(horizontalPadding: 0, verticalPadding: 0, cornerRadius: 4))
                 .help(mode == .pan ? "Switch to zoom mode" : "Switch to pan mode")
 
                 Divider().frame(height: 16)
@@ -150,8 +150,8 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
                         .padding(.horizontal, 4)
                 }
             }
+            // HoverableButtonStyle dims its own disabled buttons.
             .disabled(isInteractionDisabled)
-            .opacity(isInteractionDisabled ? 0.4 : 1)
 
             Spacer()
 
@@ -173,16 +173,9 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         } label: {
             Text(preset.rawValue)
                 .font(.caption.bold())
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(
-                    isSelected
-                        ? Color.accentColor.opacity(0.2)
-                        : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 4)
-                )
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(HoverableButtonStyle(isSelected: isSelected, horizontalPadding: 6, verticalPadding: 3, cornerRadius: 4))
+        .help("Show the last \(preset.rawValue)")
     }
 
     // MARK: - Chart Area

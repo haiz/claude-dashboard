@@ -68,6 +68,7 @@ struct MenuBarPopover: View {
                         Task { await viewModel.refreshAll() }
                     }
                     .disabled(viewModel.isRefreshing)
+                    .help("Refresh usage for all accounts")
                 }
 
                 HeaderIconButton(systemName: "rectangle.expand.vertical") {
@@ -75,6 +76,7 @@ struct MenuBarPopover: View {
                     onOpenWindow()
                     popover?.close()
                 }
+                .help("Open the main window")
 
                 HeaderIconButton(systemName: "questionmark.circle") {
                     let popover = NSApp.keyWindow
@@ -88,6 +90,7 @@ struct MenuBarPopover: View {
                     onOpenSettings()
                     popover?.close()
                 }
+                .help("Open Settings")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -144,6 +147,7 @@ struct MenuBarPopover: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(HoverableButtonStyle())
+                .help("Quit the app and stop monitoring usage")
 
                 Spacer()
             }
@@ -210,6 +214,7 @@ struct MenuBarPopover: View {
                     .font(.subheadline.weight(.medium))
             }
             .buttonStyle(.borderedProminent)
+            .help("Open the main window to add a Claude account")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)

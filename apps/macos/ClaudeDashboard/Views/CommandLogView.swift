@@ -37,10 +37,12 @@ struct CommandLogView: View {
             Button(action: { Task { await viewModel.load() } }) {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
+            .help("Reload the command log")
             Button(role: .destructive, action: { confirmingClear = true }) {
                 Label("Clear All", systemImage: "trash")
             }
             .disabled(viewModel.entries.isEmpty)
+            .help("Delete every command log entry")
         }
         .confirmationDialog("Clear all command logs?", isPresented: $confirmingClear, titleVisibility: .visible) {
             Button("Clear All", role: .destructive) { Task { await viewModel.clear() } }

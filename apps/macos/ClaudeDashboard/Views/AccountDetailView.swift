@@ -76,6 +76,7 @@ struct AccountDetailView: View {
                             }
                             .buttonStyle(HoverableButtonStyle(verticalPadding: 3))
                             .font(.caption)
+                            .help("Show every reset cycle on the chart")
                         }
 
                         Divider().frame(height: 16)
@@ -96,7 +97,7 @@ struct AccountDetailView: View {
                                 .frame(width: 20, height: 20)
                                 .foregroundStyle(measureToolActive ? Color.accentColor : .primary)
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(HoverableButtonStyle(horizontalPadding: 0, verticalPadding: 0, cornerRadius: 4))
                         .help(measureToolActive ? "Turn off measure tool" : "Measure tool: click 2 points to see Δ%")
                     }
                 )
@@ -518,6 +519,7 @@ struct AccountDetailView: View {
                 .padding(.vertical, 8)
             }
             .buttonStyle(HoverableRowStyle())
+            .help(cyclesExpanded ? "Hide the reset cycles" : "Show the reset cycles")
 
             // Collapsible content
             if cyclesExpanded {
@@ -545,6 +547,7 @@ struct AccountDetailView: View {
                                 .padding(.vertical, 6)
                             }
                             .buttonStyle(HoverableRowStyle(selected: viewModel.selectedCycle?.resetsAt == cycle.resetsAt))
+                            .help("Show only this cycle on the chart")
                         }
                     }
                 }

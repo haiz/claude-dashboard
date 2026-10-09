@@ -24,10 +24,12 @@ struct AccountsSettingsPane: View {
                     HStack {
                         Spacer()
                         Button("Add Account\u{2026}", action: onAddAccount)
+                            .help("Add a Claude account from your browser or a pasted session key")
                         Button(viewModel.resyncAllProgress.map { "Re-syncing\u{2026} (\($0.done)/\($0.total))" } ?? "Re-sync All") {
                             Task { await viewModel.resyncAll() }
                         }
                         .disabled(viewModel.resyncAllProgress != nil || viewModel.accountStore.accounts.isEmpty)
+                        .help("Read fresh session keys from the browser for every account")
                     }
                 }
             }

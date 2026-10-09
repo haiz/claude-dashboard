@@ -16,7 +16,8 @@ struct AccountCard: View {
     var isSwitchingClaudeCode: Bool = false
     var isCompact: Bool = true
 
-    @State private var isTerminalHovered = false
+    /// The header's icon buttons (Switch, Run Command): hover background, tight padding.
+    private static let iconButtonStyle = HoverableButtonStyle(horizontalPadding: 3, verticalPadding: 2, cornerRadius: 4)
 
     var body: some View {
         GroupBox {
@@ -57,9 +58,8 @@ struct AccountCard: View {
                                 Image(systemName: "arrow.left.arrow.right")
                                     .font(.callout)
                                     .foregroundStyle(.secondary)
-                                    .padding(2)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(Self.iconButtonStyle)
                             .disabled(isSwitchingClaudeCode)
                             .help(help)
                             .accessibilityLabel("Switch Claude Code to this account")
@@ -71,16 +71,10 @@ struct AccountCard: View {
                             } label: {
                                 Image(systemName: "terminal")
                                     .font(.callout)
-                                    .foregroundStyle(isTerminalHovered ? .primary : .secondary)
-                                    .padding(.leading, 4)
-                                    .padding(.trailing, 2)
-                                    .padding(.vertical, 2)
-                                    .background(isTerminalHovered ? Color.primary.opacity(0.1) : Color.clear)
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                    .foregroundStyle(.secondary)
                             }
-                            .buttonStyle(.plain)
-                            .onHover { isTerminalHovered = $0 }
-                            .help("Run command")
+                            .buttonStyle(Self.iconButtonStyle)
+                            .help("Run a saved command for this account")
                         }
 
                         // Plan badge
@@ -166,6 +160,7 @@ struct AccountCard: View {
                 onResync()
             }
             .controlSize(.small)
+            .help("Read a fresh session key from the browser")
         }
     }
 }
@@ -225,18 +220,21 @@ extension View {
         overlay {
             if let pending = viewModel.pendingSwitch {
                 InlinePrompt(title: "Switch Claude Code?", message: pending.message, button: "Switch",
+                             buttonHelp: "Switch Claude Code to this account",
                              onCancel: { viewModel.cancelPendingSwitch() }) {
                     Task { await viewModel.confirmSwitch(pending) }
                 }
             } else if let message = viewModel.switchMessage {
-                InlinePrompt(title: "Claude Code", message: message, button: "OK") {
+                InlinePrompt(title: "Claude Code", message: message, button: "OK",
+                             buttonHelp: "Dismiss this message") {
                     viewModel.dismissSwitchMessage()
                 }
             } else if viewModel.awaitingBrowserAccount != nil {
                 InlinePrompt(title: "Finish signing in",
                              message: "Claude Dashboard opened your browser profile for this account. Sign in and "
                                 + "click Authorize to finish, then it switches automatically.",
-                             button: "Cancel") {
+                             button: "Cancel",
+                             buttonHelp: "Stop waiting for the browser sign-in") {
                     viewModel.cancelClaudeCodeProvisioning()
                 }
             }
@@ -256,6 +254,8 @@ private struct InlinePrompt: View {
     let title: String
     let message: String
     let button: String
+    /// Tooltip for `button`.
+    let buttonHelp: String
     /// Non-nil adds a Cancel button beside `button`.
     var onCancel: (() -> Void)? = nil
     let action: () -> Void
@@ -272,11 +272,13 @@ private struct InlinePrompt: View {
                             Text("Cancel").frame(maxWidth: .infinity)
                         }
                         .keyboardShortcut(.cancelAction)
+                        .help("Close without continuing")
                     }
                     Button(action: action) {
                         Text(button).frame(maxWidth: .infinity)
                     }
                     .keyboardShortcut(.defaultAction)
+                    .help(buttonHelp)
                 }
                 .controlSize(.large)
                 .padding(.top, 4)
