@@ -78,6 +78,17 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   returns nil). Do not also use the same account through another `CLAUDE_CONFIG_DIR`: two copies
   of one refresh-token chain kill each other.
   Spec: `docs/superpowers/specs/2026-10-08-claude-code-account-switch-design.md`.
+- **ClaudeCodeLoginProvisioner** (`Services/ClaudeCodeSwitch/`) — mints a Claude Code login so
+  Switch needs no `/login`. `ClaudeAIGrantClient` asks claude.ai (`/v1/oauth/{org}/authorize`,
+  undocumented) for a code with the account's `sessionKey`; `ClaudeCodeOAuthClient` exchanges it
+  at Claude Code's own token endpoint and builds the `claudeAiOauth`+`oauthAccount` pair (OAuth
+  constants read from the Claude Code binary). claude.ai requires a recent browser sign-in
+  (`session_stale_for_elevated_grant` / 403 `session_stale_relogin`); on that gate the silent
+  path returns `.stale` and the provisioner opens the account's browser profile
+  (`BrowserProfileOpener`) on the consent page with a loopback redirect (`OAuthCallbackListener`).
+  A Switch tap on an uncaptured/expired account provisions then switches; refresh provisions
+  silently only (never a browser), ≤1/hour/account. The minted email must match the account or
+  the entry is discarded. Nil under XCTest, like the switcher.
 
 ### ViewModel
 - **DashboardViewModel** — `@MainActor` observable. Parallel refresh via `TaskGroup`. Sorts accounts by burn rate (utilization / time-remaining). Computes menu bar label from highest utilization.

@@ -137,6 +137,17 @@ final class ClaudeCodeSwitcher: @unchecked Sendable {
         return .saved(account.id)
     }
 
+    // MARK: Store a provisioned login
+
+    /// Saves a login the provisioner minted for an account (not the active one). Lets the
+    /// Switch flow capture an account without the user running `/login`. Serialized with
+    /// capture/switch so it never interleaves with a credential write.
+    func store(_ entry: VaultEntry, for accountId: UUID) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        try vault.save(entry, for: accountId)
+    }
+
     // MARK: Forget
 
     /// Drops a removed account's vault copy, so no refresh token outlives its account.

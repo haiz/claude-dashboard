@@ -96,8 +96,10 @@ final class DashboardViewModelSwitchTests: XCTestCase {
         XCTAssertNotNil(try vault.load(kept.id))
     }
 
-    /// The Switch control is never disabled for an unready account: a tap explains the fix.
-    func testSwitchToUnreadyAccountExplainsTheFix() async throws {
+    /// A Switch on the active account whose Claude Code credential was blanked (`.needsLogin`)
+    /// reports that it needs `/login`, never a false "now uses". (The `.notCaptured` and
+    /// `.loginExpired` provisioning paths are covered in `DashboardViewModelProvisionTests`.)
+    func testSwitchToNeedsLoginAccountAsksForLogin() async throws {
         let kc = InMemoryKeychain()
         let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
         let switcher = ClaudeCodeSwitcher(slot: slot, vault: KeychainCredentialVault(keychain: kc),
@@ -105,11 +107,8 @@ final class DashboardViewModelSwitchTests: XCTestCase {
         let store = AccountStore(defaults: try XCTUnwrap(UserDefaults(suiteName: suite)))
         let frontend = Account(id: UUID(), name: "fe", email: "frontend@gotitapp.co", chromeProfilePath: "",
                                plan: .max5x, status: .active, source: .manual)
-        let backend = Account(id: UUID(), name: "be", email: "backend@gotitapp.co", chromeProfilePath: "",
-                              plan: .max5x, status: .active, source: .manual)
         store.addAccount(frontend)
-        store.addAccount(backend)
-        // Claude Code names frontend but its credential is gone: frontend needs /login, backend was never captured.
+        // Claude Code names frontend but its credential is gone.
         try JSONSerialization.data(withJSONObject: ["oauthAccount": ["emailAddress": "frontend@gotitapp.co"]]).write(to: configURL)
 
         let vm = DashboardViewModel(accountStore: store,
@@ -117,12 +116,7 @@ final class DashboardViewModelSwitchTests: XCTestCase {
                                     ccSwitcher: switcher)
         await vm.refreshAll()
         XCTAssertEqual(vm.switchAvailability[frontend.id], .needsLogin)
-        XCTAssertEqual(vm.switchAvailability[backend.id], .notCaptured)
 
-        await vm.switchClaudeCode(to: backend.id)
-        XCTAssertEqual(vm.switchMessage, DashboardViewModel.message(for: .notCaptured, target: backend))
-
-        vm.switchMessage = nil
         await vm.switchClaudeCode(to: frontend.id)
         XCTAssertEqual(vm.switchMessage?.contains("/login"), true)
         XCTAssertEqual(vm.switchMessage?.contains("now uses"), false)
