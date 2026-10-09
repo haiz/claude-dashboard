@@ -60,6 +60,8 @@ final class DashboardViewModelSwitchTests: XCTestCase {
         XCTAssertEqual(vm.switchAvailability[frontend.id], .ready)
         XCTAssertEqual(vm.switchMessage?.contains("backend@gotitapp.co"), true)
         XCTAssertFalse(vm.isSwitchingClaudeCode)
+        // The newly-active account floats to the top immediately, without a refresh.
+        XCTAssertEqual(vm.accountStates.first?.id, backend.id)
     }
 
     func testRemovingAnAccountDeletesItsVaultCopy() async throws {

@@ -639,6 +639,8 @@ final class DashboardViewModel: ObservableObject {
             switchMessage = "Switch failed: \(error.localizedDescription)"
         }
         activeClaudeCodeEmail = ccDetector.activeEmail()
+        // Re-sort so the newly-active account floats to the top now, not only after a refresh.
+        sortStates()
         switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
     }
 
