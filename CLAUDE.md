@@ -78,20 +78,17 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   returns nil). Do not also use the same account through another `CLAUDE_CONFIG_DIR`: two copies
   of one refresh-token chain kill each other.
   Spec: `docs/superpowers/specs/2026-10-08-claude-code-account-switch-design.md`.
-- **ClaudeCodeLoginProvisioner** (`Services/ClaudeCodeSwitch/`) — mints a Claude Code login so
-  Switch needs no `/login`, **silently only**. `ClaudeAIGrantClient` asks claude.ai
-  (`/v1/oauth/{org}/authorize`, undocumented) for a code with the account's `sessionKey`;
-  `ClaudeCodeOAuthClient` exchanges it at Claude Code's own token endpoint and builds the
-  `claudeAiOauth`+`oauthAccount` pair (OAuth constants read from the Claude Code binary).
-  claude.ai grants only when the browser signed in recently (`session_stale_for_elevated_grant`
-  / 403 `session_stale_relogin`); on that gate `provisionSilently` returns nil and the dashboard
-  does NOT open a browser (the re-login for these group-email accounts is an email magic link —
-  a bad mid-switch interruption). A Switch tap on an uncaptured/expired account provisions then
-  switches, or shows "sign in to claude.ai … then Switch again" when stale; refresh provisions
-  silently ≤1/hour/account, so an account the user just signed into lights up on its own. The
-  minted email must match the account or the entry is discarded. Nil under XCTest, like the
-  switcher. (Git history has an earlier browser-popup approach with `OAuthCallbackListener` /
-  `BrowserProfileOpener`, removed because the consent page just bounced to the magic-link login.)
+- **Switch first-login handoff** — switching to a **captured** account swaps its stored refresh
+  token in: one click, no browser (the token endpoint renews without the elevated-auth gate, for
+  ~30 days until `refreshTokenExpiresAt`, which is fixed at grant time and does not extend on
+  refresh). An account with **no usable vault copy** (`notCaptured` / `loginExpired` / `needsLogin`)
+  cannot be minted silently — claude.ai gates the first grant behind a recent interactive sign-in
+  (`session_stale_for_elevated_grant`). So `DashboardViewModel.switchClaudeCode` hands off to Claude
+  Code's own `claude auth login --email <email>` in a terminal (`CommandRunner.launchInTerminal`);
+  that login signs in and makes the account active, and the next refresh captures it. (Git history
+  has removed silent-mint and browser-popup approaches — `ClaudeAIGrantClient`, `ClaudeCodeOAuthClient`,
+  `OAuthCallbackListener`, `BrowserProfileOpener` — dropped because claude.ai's gate forced an
+  interactive login anyway, which for group-email accounts is a magic link to a shared inbox.)
 
 ### ViewModel
 - **DashboardViewModel** — `@MainActor` observable. Parallel refresh via `TaskGroup`. Sorts accounts by burn rate (utilization / time-remaining). Computes menu bar label from highest utilization.

@@ -100,12 +100,6 @@ final class DashboardViewModel: ObservableObject {
     private let apiService: UsageAPIService
     private let ccDetector: ClaudeCodeAccountDetector
     private let ccSwitcher: ClaudeCodeSwitcher?
-    /// Mints Claude Code logins so Switch works without the user running `/login`. Nil
-    /// under XCTest (the test host is the real app; its startup refresh must make no
-    /// network calls or browser launches).
-    private let ccProvisioner: ClaudeCodeLoginProvisioner?
-    /// Last silent-mint attempt per account, to cap background attempts at one per hour.
-    private var lastSilentMint: [UUID: Date] = [:]
     /// Reads the browser cookies for one stored account. Injected so `resyncAccount`
     /// can be driven in tests without a real Chromium cookie DB on disk.
     private let cookieProvider: (String, Browser) -> ChromeCookieResult
@@ -130,8 +124,7 @@ final class DashboardViewModel: ObservableObject {
         cookieProvider: @escaping (String, Browser) -> ChromeCookieResult
             = BrowserCookieService.extractCookies(for:browser:),
         ccSwitcher: ClaudeCodeSwitcher? = ClaudeCodeSwitcher.live(isRunningTests: AppDefaults.isRunningTests()),
-        ccProvisioner: ClaudeCodeLoginProvisioner? =
-            AppDefaults.isRunningTests() ? nil : ClaudeCodeLoginProvisioner.live()
+        commandRunner: CommandRunner? = nil
     ) {
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.autoRefreshMinutes = {
@@ -143,13 +136,12 @@ final class DashboardViewModel: ObservableObject {
         self.ccDetector = ccDetector
         self.cookieProvider = cookieProvider
         self.ccSwitcher = ccSwitcher
-        self.ccProvisioner = ccProvisioner
         let store = logStore ?? UsageLogStore()
         self.logStore = store
         self.burnRateTracker = BurnRateTracker(logStore: store)
         let cmdStore = commandLogStore ?? CommandLogStore()
         self.commandLogStore = cmdStore
-        self.commandRunner = CommandRunner(store: cmdStore)
+        self.commandRunner = commandRunner ?? CommandRunner(store: cmdStore)
         self.activeClaudeCodeEmail = ccDetector.activeEmail()
 
         // Cleanup old logs on launch
@@ -244,7 +236,6 @@ final class DashboardViewModel: ObservableObject {
         syncStates(with: accountStore.accounts)
         activeClaudeCodeEmail = ccDetector.activeEmail()
         await refreshClaudeCodeSwitchState()
-        await silentlyCaptureUncaptured()
 
         // Saved commands to run for accounts whose refresh produced no 5h/7d usage.
         var autoCommands: [(accountId: UUID, command: String)] = []
@@ -596,34 +587,6 @@ final class DashboardViewModel: ObservableObject {
         }.value
     }
 
-    /// On refresh, silently mint a Claude Code login for any account the user has recently
-    /// signed into in the browser, so its Switch lights up with no action. Only the silent
-    /// path (never the browser), at most once per hour per account, and only for accounts
-    /// whose vault copy is missing or expired. No-op under XCTest (`ccProvisioner` nil).
-    private func silentlyCaptureUncaptured() async {
-        guard let ccProvisioner, let ccSwitcher else { return }
-        let now = Date()
-        var captured = false
-        for (id, availability) in switchAvailability
-        where availability == .notCaptured || availability == .loginExpired {
-            if let last = lastSilentMint[id], now.timeIntervalSince(last) < 3600 { continue }
-            guard let account = accountStore.accounts.first(where: { $0.id == id }),
-                  let input = provisionInput(for: account) else { continue }
-            lastSilentMint[id] = now
-            do {
-                if let entry = try await ccProvisioner.provisionSilently(input) {
-                    try ccSwitcher.store(entry, for: id)
-                    captured = true
-                }
-            } catch {
-                print("[ClaudeCodeSwitcher] silent capture \(id) failed: \(error)")
-            }
-        }
-        guard captured else { return }
-        let accounts = accountStore.accounts
-        switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
-    }
-
     /// Every removal path (Settings, the account pane) goes through `AccountStore`, whose
     /// publisher lands in `syncStates`; the vault copies of removed accounts are dropped
     /// there. Off the main actor: each delete spawns `security`.
@@ -635,21 +598,22 @@ final class DashboardViewModel: ObservableObject {
     func switchClaudeCode(to accountId: UUID) async {
         guard let ccSwitcher,
               let target = accountStore.accounts.first(where: { $0.id == accountId }) else { return }
-        // Already active, so the switcher would no-op; only a fresh /login restores it.
-        if switchAvailability[accountId] == .needsLogin {
-            switchMessage = "Claude Code lost the login for \(target.email ?? target.name). Run /login once with it."
+
+        // No usable vault copy (never captured, expired past its ~30-day deadline, or Claude
+        // Code blanked the active one): the account must be logged in to Claude Code once.
+        // Hand off to Claude Code's own `auth login` in a terminal. That login both signs the
+        // account in and makes it the active one, and the next refresh captures it for ~30
+        // days of one-click switching. Refreshing a captured token never needs this.
+        let availability = switchAvailability[accountId]
+        if availability == .notCaptured || availability == .loginExpired || availability == .needsLogin {
+            await startClaudeCodeLogin(for: target)
             return
         }
+
         guard !isSwitchingClaudeCode else { return }
         isSwitchingClaudeCode = true
         defer { isSwitchingClaudeCode = false }
         let accounts = accountStore.accounts
-
-        // No usable vault copy: mint one silently before switching (never opens a browser).
-        let availability = switchAvailability[accountId]
-        if availability == .notCaptured || availability == .loginExpired {
-            guard await provisionLogin(for: target) else { return }
-        }
 
         do {
             try await Task.detached { try await ccSwitcher.switchTo(target, accounts: accounts) }.value
@@ -664,49 +628,27 @@ final class DashboardViewModel: ObservableObject {
         switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
     }
 
-    /// Mints and stores a Claude Code login for an account whose vault copy is missing or
-    /// expired, using the silent path only. Returns false (and sets `switchMessage`) when it
-    /// could not, so the caller skips the switch. A stale claude.ai session is the common
-    /// "false": the user must sign in to claude.ai in the browser, then Switch again.
-    private func provisionLogin(for target: Account) async -> Bool {
-        guard let ccProvisioner, let ccSwitcher else { return false }
-        guard let input = provisionInput(for: target) else {
-            switchMessage = "Re-sync \(target.email ?? target.name) first so the dashboard has its browser session."
-            return false
-        }
-        do {
-            guard let entry = try await ccProvisioner.provisionSilently(input) else {
-                switchMessage = Self.signInPrompt(for: target)
-                return false
-            }
-            try ccSwitcher.store(entry, for: target.id)
-            return true
-        } catch let error as ProvisionError {
-            if case .emailMismatch(_, let got) = error {
-                switchMessage = "The browser session is signed in as \(got), not "
-                    + "\(target.email ?? target.name). Nothing was changed."
-            }
-            return false
-        } catch {
-            switchMessage = Self.signInPrompt(for: target)
-            return false
-        }
-    }
-
-    /// Everything the provisioner needs for one account, or nil when the dashboard lacks
-    /// its browser session (no sessionKey/org, or a manually-added record).
-    private func provisionInput(for account: Account) -> ProvisionInput? {
-        guard let orgId = account.orgId, let email = account.email,
-              let sessionKey = accountStore.loadSessionKey(for: account.id) else { return nil }
-        return ProvisionInput(orgId: orgId, sessionKey: sessionKey, email: email)
-    }
-
-    /// Shown when the silent path cannot mint: claude.ai wants a fresh browser sign-in.
-    static func signInPrompt(for target: Account) -> String {
+    /// Opens a terminal running Claude Code's own `auth login` for this account, pre-filling
+    /// the email. Used when the account has no usable vault copy; its login signs in and makes
+    /// it active, and the next dashboard refresh captures it for future one-click switches.
+    private func startClaudeCodeLogin(for target: Account) async {
         let name = target.email ?? target.name
-        let browser = target.chromeProfilePath.isEmpty ? "your browser" : target.browser.displayName
-        return "Sign in to claude.ai as \(name) in \(browser), then click Switch again. "
-            + "Claude needs a recent sign-in before it will hand a login to Claude Code."
+        let command = Self.loginCommand(for: target)
+        let result = await commandRunner.launchInTerminal(command: command, accountId: target.id, trigger: .manual)
+        if result.status == .launchFailed {
+            switchMessage = "Could not open a terminal. Run this yourself to sign \(name) in:\n\(command)"
+        } else {
+            switchMessage = "Opened a terminal to sign \(name) in to Claude Code. Finish the login "
+                + "there — Claude Code then uses this account, and the dashboard captures it so later "
+                + "switches are one click (for about 30 days, until the next sign-in)."
+        }
+    }
+
+    /// Claude Code's own login command, email pre-filled. The grant it creates is the only
+    /// step that needs an interactive sign-in; switching to a captured account never does.
+    static func loginCommand(for account: Account) -> String {
+        guard let email = account.email, !email.isEmpty else { return "claude auth login" }
+        return "claude auth login --email '\(email)'"
     }
 
     static func message(for error: SwitchError, target: Account) -> String {

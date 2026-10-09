@@ -173,9 +173,9 @@ extension SwitchAvailability {
         switch self {
         case .active: return nil
         case .ready: return "Use this account in Claude Code"
-        case .notCaptured: return "Set up and switch Claude Code to this account"
-        case .loginExpired: return "Saved login expired; sign in again and switch to this account"
-        case .needsLogin: return "Claude Code lost this login. Run /login with this account"
+        case .notCaptured: return "Sign this account in to Claude Code (one time), then it is one click"
+        case .loginExpired: return "Login expired (~30 days); sign in again to Claude Code"
+        case .needsLogin: return "Claude Code lost this login; sign in again"
         }
     }
 }

@@ -140,50 +140,50 @@ A user therefore runs `/login` once per account; the next refresh captures it.
 
 - `AccountCard` and `AccountPane` gain a **Switch** button. It is hidden on the account
   that is already active (the existing badge marks it).
-- When the vault has no copy or the copy is past `refreshTokenExpiresAt`, the button is
-  still enabled and a tap **provisions silently** then switches (see Provisioning). When
-  claude.ai wants a fresh sign-in, the tap shows "Sign in to claude.ai as <email> in
-  <browser>, then click Switch again" instead. It is disabled only while a switch runs.
-  (An earlier build disabled it with a "run /login" tooltip, but a disabled plain icon
-  looked enabled and a tap did nothing.)
+- When the vault has a usable copy, a tap swaps the credential in: one click, no login. It
+  is disabled only while a switch runs.
+- When the vault has no copy, the copy is past `refreshTokenExpiresAt` (~30 days), or Claude
+  Code blanked the active credential, a tap instead opens a terminal running Claude Code's
+  own `claude auth login --email <account>` (see First login). The next refresh captures the
+  result for one-click switching thereafter.
 - The four intentional `AccountCard` gauge details stay unchanged.
 
-## Provisioning (no `/login` needed)
+## First login (the once-per-~30-days cost)
 
-The dashboard mints a Claude Code login itself, using the account's claude.ai `sessionKey`
-and Claude Code's own OAuth client (constants read from the Claude Code 2.1.295 binary:
-`CLIENT_ID 9d1c250a-...`, token `platform.claude.com/v1/oauth/token`, profile
-`api.anthropic.com/api/oauth/profile`).
+Switching uses a stored **refresh token**, which the token endpoint renews without any
+browser — so a captured account switches with no login for ~30 days. The browser gate
+(`session_stale_for_elevated_grant` / 24 h freshness) applies **only to issuing the first
+grant**, never to refreshing an existing one. So the only login needed is the first per
+account per grant lifetime.
 
-- **Silent path only** (`ClaudeAIGrantClient` + `ClaudeCodeOAuthClient`): `GET` then `POST`
-  `claude.ai/v1/oauth/{org}/authorize` with the `sessionKey` cookie yields a code, exchanged
-  for the `claudeAiOauth` + `oauthAccount` pair `/login` would store.
-- **Stale gate (hard limit).** claude.ai returns `session_stale_for_elevated_grant` (or a
-  403 `session_stale_relogin`) unless the browser signed in in roughly the last 24 h; the
-  grant then needs a full interactive re-login. For these accounts that login is a claude.ai
-  **email magic link** to a shared Google Group (no Google/Apple SSO on a group address) —
-  a poor thing to drop a user into mid-switch. So on `.stale` the provisioner returns nil
-  and the dashboard does **not** open a browser. The user signs in to claude.ai normally;
-  the next refresh captures the account silently. (An earlier build opened the browser
-  profile on the consent page via a loopback listener; it was removed — the consent page
-  just redirected to the magic-link login, which is the same manual cost with worse timing.
-  See git history for that `OAuthCallbackListener`/`BrowserProfileOpener` approach.)
-- **On refresh**, uncaptured/expired accounts are captured silently, at most once per hour
-  each, so an account the user has recently signed into lights up with no action — the one
-  way the "do nothing" ideal is reachable within Anthropic's gate.
-- The minted login's email must match the account (case-insensitive) or it is discarded
-  (`ProvisionError.emailMismatch`): one account's Switch can never install another's token.
-- Under XCTest the provisioner is nil (the test host is the real app; its startup refresh
-  must make no network call), exactly like the switcher.
-- `ClaudeCodeLoginProvisioner` orchestrates these; `ClaudeCodeSwitcher.store(_:for:)` saves
-  the minted entry into the vault before the switch.
+- **How it is done.** The dashboard does not mint the grant itself. A Switch on an
+  uncaptured/expired/`needsLogin` account hands off to Claude Code's own
+  `claude auth login --email <email>` in a terminal (`CommandRunner.launchInTerminal`, the
+  same path the Run Command feature uses). That is Claude Code's battle-tested flow: it
+  handles the stale-session re-auth (magic link or SSO), writes the credential to `~/.claude`,
+  and makes the account active. The next dashboard refresh captures it into the vault.
+- **Why not mint it silently.** An earlier build asked claude.ai for the grant directly with
+  the account's `sessionKey` (`ClaudeAIGrantClient` + `ClaudeCodeOAuthClient`), and a later
+  one opened the consent page in the browser (`OAuthCallbackListener` + `BrowserProfileOpener`).
+  Both were removed: claude.ai gates the grant behind a recent interactive sign-in, so the
+  silent path only worked within ~24 h of a browser login, and the browser path just
+  redirected to the same login (an email magic link to a shared Google Group for these
+  accounts). Delegating to `claude auth login` is simpler, uses the official flow, and needs
+  no undocumented endpoints. See git history for those approaches.
+- **The ~30-day ceiling is Anthropic's.** `refreshTokenExpiresAt` is fixed at grant time and
+  does not move on refresh (fact 4), so no amount of refreshing extends it; after it passes,
+  one more `auth login`. `claude setup-token` exists but issues an API key (different billing),
+  not a subscription OAuth token, so it is not used.
 
 ## Testing
 
-- Unit tests in `ClaudeDashboardTests` drive all four components through fakes and a
+- Unit tests in `ClaudeDashboardTests` drive the switcher's components through fakes and a
   temp `~/.claude.json`: `mcpOAuth` preserved; no capture from a blanked entry; wait
   then proceed when the token is near expiry; rollback when the config write fails;
-  refusal for a missing or expired vault copy; case-insensitive email match.
+  refusal for a missing or expired vault copy; case-insensitive email match. The
+  first-login handoff is tested through a fake `TerminalScriptExecutor`: a Switch on an
+  uncaptured account records one `claude auth login --email <email>` launch and swaps
+  nothing.
 - The test host is the real app and runs `refreshAll` at startup. Under XCTest the
   real Keychain-backed components must be replaced by no-ops, the way `AppDefaults`
   diverts defaults. A test proves the real Keychain is not touched.
