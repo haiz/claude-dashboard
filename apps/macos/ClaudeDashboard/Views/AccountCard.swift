@@ -173,15 +173,16 @@ extension SwitchAvailability {
         switch self {
         case .active: return nil
         case .ready: return "Use this account in Claude Code"
-        case .notCaptured: return "Sign this account in to Claude Code (one time), then it is one click"
-        case .loginExpired: return "Login expired (~30 days); sign in again to Claude Code"
-        case .needsLogin: return "Claude Code lost this login; sign in again"
+        case .notCaptured: return "Sign this account in (opens its browser profile), then switch"
+        case .loginExpired: return "Login expired (~30 days); sign in again in the browser, then switch"
+        case .needsLogin: return "Claude Code lost this login. Run /login with this account"
         }
     }
 }
 
 extension View {
-    /// Shows `viewModel.switchMessage` once, then clears it.
+    /// Shows `viewModel.switchMessage` once, then clears it, and — while a Switch is
+    /// waiting on a browser sign-in — a cancellable "finish in your browser" prompt.
     func claudeCodeSwitchAlert(_ viewModel: DashboardViewModel) -> some View {
         alert("Claude Code", isPresented: Binding(
             get: { viewModel.switchMessage != nil },
@@ -190,6 +191,15 @@ extension View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.switchMessage ?? "")
+        }
+        .alert("Finish signing in", isPresented: Binding(
+            get: { viewModel.awaitingBrowserAccount != nil },
+            set: { if !$0 { viewModel.cancelClaudeCodeProvisioning() } }
+        )) {
+            Button("Cancel", role: .cancel) { viewModel.cancelClaudeCodeProvisioning() }
+        } message: {
+            Text("Claude Dashboard opened your browser profile for this account. Sign in and "
+                + "click Authorize to finish, then it switches automatically.")
         }
     }
 }

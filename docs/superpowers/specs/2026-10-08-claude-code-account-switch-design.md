@@ -142,10 +142,12 @@ A user therefore runs `/login` once per account; the next refresh captures it.
   that is already active (the existing badge marks it).
 - When the vault has a usable copy, a tap swaps the credential in: one click, no login. It
   is disabled only while a switch runs.
-- When the vault has no copy, the copy is past `refreshTokenExpiresAt` (~30 days), or Claude
-  Code blanked the active credential, a tap instead opens a terminal running Claude Code's
-  own `claude auth login --email <account>` (see First login). The next refresh captures the
-  result for one-click switching thereafter.
+- When the vault has no copy or the copy is past `refreshTokenExpiresAt` (~30 days), a tap
+  opens that account's **browser profile** on Claude's consent page (see First login), then
+  switches once the login lands. A "Finish signing in" alert with Cancel shows meanwhile.
+- `needsLogin` (active account whose credential Claude Code blanked) keeps the "Run /login"
+  message: the switcher's `store` writes the vault, not the active slot, so only a real
+  `/login` in Claude Code restores it.
 - The four intentional `AccountCard` gauge details stay unchanged.
 
 ## First login (the once-per-~30-days cost)
@@ -156,34 +158,37 @@ browser — so a captured account switches with no login for ~30 days. The brows
 grant**, never to refreshing an existing one. So the only login needed is the first per
 account per grant lifetime.
 
-- **How it is done.** The dashboard does not mint the grant itself. A Switch on an
-  uncaptured/expired/`needsLogin` account hands off to Claude Code's own
-  `claude auth login --email <email>` in a terminal (`CommandRunner.launchInTerminal`, the
-  same path the Run Command feature uses). That is Claude Code's battle-tested flow: it
-  handles the stale-session re-auth (magic link or SSO), writes the credential to `~/.claude`,
-  and makes the account active. The next dashboard refresh captures it into the vault.
+- **How it is done.** A Switch on an uncaptured/expired account opens the account's exact
+  browser profile (`BrowserProfileOpener`) on Claude's own OAuth consent page, with a
+  loopback redirect caught by `OAuthCallbackListener`. Opening the **specific profile** means
+  the consent runs under the right claude.ai session, so the minted login is unambiguously
+  that account's — unlike a shared default browser, which could grant the wrong account. The
+  user completes whatever sign-in Claude asks for (email magic link / SSO) in that tab; the
+  code returns to the listener, `ClaudeCodeOAuthClient` exchanges it for the credential, the
+  email is verified against the account, and `ClaudeCodeSwitcher.store` saves it to the vault
+  before the switch. `ClaudeCodeLoginProvisioner` orchestrates this.
 - **Why not mint it silently.** An earlier build asked claude.ai for the grant directly with
-  the account's `sessionKey` (`ClaudeAIGrantClient` + `ClaudeCodeOAuthClient`), and a later
-  one opened the consent page in the browser (`OAuthCallbackListener` + `BrowserProfileOpener`).
-  Both were removed: claude.ai gates the grant behind a recent interactive sign-in, so the
-  silent path only worked within ~24 h of a browser login, and the browser path just
-  redirected to the same login (an email magic link to a shared Google Group for these
-  accounts). Delegating to `claude auth login` is simpler, uses the official flow, and needs
-  no undocumented endpoints. See git history for those approaches.
-- **The ~30-day ceiling is Anthropic's.** `refreshTokenExpiresAt` is fixed at grant time and
-  does not move on refresh (fact 4), so no amount of refreshing extends it; after it passes,
-  one more `auth login`. `claude setup-token` exists but issues an API key (different billing),
-  not a subscription OAuth token, so it is not used.
+  the account's `sessionKey` (`ClaudeAIGrantClient`), and another handed off to
+  `claude auth login` in a terminal. The silent path was dropped (undocumented
+  `/v1/oauth/{org}/authorize`, and it only worked within ~24 h of a browser login anyway);
+  the terminal path was dropped because it uses the default browser, so it cannot target the
+  per-account profile. See git history for both.
+- **The ~30-day ceiling is Anthropic's, verified.** `refreshTokenExpiresAt` is a fixed
+  absolute deadline. A live refresh (2026-10-09) showed the token endpoint returns
+  `refresh_token_expires_in` as *seconds remaining to that fixed deadline*, so `now +
+  that` yields the same timestamp before and after — refreshing renews the access token and
+  rotates the refresh token but never extends the deadline. After it passes, one more browser
+  login. `claude setup-token` exists but issues an API key (different billing), not used.
 
 ## Testing
 
 - Unit tests in `ClaudeDashboardTests` drive the switcher's components through fakes and a
   temp `~/.claude.json`: `mcpOAuth` preserved; no capture from a blanked entry; wait
   then proceed when the token is near expiry; rollback when the config write fails;
-  refusal for a missing or expired vault copy; case-insensitive email match. The
-  first-login handoff is tested through a fake `TerminalScriptExecutor`: a Switch on an
-  uncaptured account records one `claude auth login --email <email>` launch and swaps
-  nothing.
+  refusal for a missing or expired vault copy; case-insensitive email match. The first-login
+  flow is tested through fakes: a fake `OAuthCallbackListening` + token exchanger prove a
+  Switch on an uncaptured account opens the right profile, exchanges the callback code, and
+  rejects a minted login whose email does not match.
 - The test host is the real app and runs `refreshAll` at startup. Under XCTest the
   real Keychain-backed components must be replaced by no-ops, the way `AppDefaults`
   diverts defaults. A test proves the real Keychain is not touched.

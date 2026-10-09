@@ -78,17 +78,21 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   returns nil). Do not also use the same account through another `CLAUDE_CONFIG_DIR`: two copies
   of one refresh-token chain kill each other.
   Spec: `docs/superpowers/specs/2026-10-08-claude-code-account-switch-design.md`.
-- **Switch first-login handoff** — switching to a **captured** account swaps its stored refresh
-  token in: one click, no browser (the token endpoint renews without the elevated-auth gate, for
-  ~30 days until `refreshTokenExpiresAt`, which is fixed at grant time and does not extend on
-  refresh). An account with **no usable vault copy** (`notCaptured` / `loginExpired` / `needsLogin`)
-  cannot be minted silently — claude.ai gates the first grant behind a recent interactive sign-in
-  (`session_stale_for_elevated_grant`). So `DashboardViewModel.switchClaudeCode` hands off to Claude
-  Code's own `claude auth login --email <email>` in a terminal (`CommandRunner.launchInTerminal`);
-  that login signs in and makes the account active, and the next refresh captures it. (Git history
-  has removed silent-mint and browser-popup approaches — `ClaudeAIGrantClient`, `ClaudeCodeOAuthClient`,
-  `OAuthCallbackListener`, `BrowserProfileOpener` — dropped because claude.ai's gate forced an
-  interactive login anyway, which for group-email accounts is a magic link to a shared inbox.)
+- **ClaudeCodeLoginProvisioner** (`Services/ClaudeCodeSwitch/`) — switching to a **captured**
+  account swaps its stored refresh token in: one click, no browser (the token endpoint renews
+  without the elevated-auth gate, for ~30 days until `refreshTokenExpiresAt`, a fixed absolute
+  deadline that does **not** extend on refresh — verified: the endpoint returns
+  `refresh_token_expires_in` as seconds-to-that-fixed-deadline). An account with **no usable
+  vault copy** (`notCaptured` / `loginExpired`) can't be minted silently — claude.ai gates the
+  first grant behind a recent interactive sign-in. So a Switch opens that account's **exact
+  browser profile** (`BrowserProfileOpener`) on Claude's OAuth consent page with a loopback
+  redirect (`OAuthCallbackListener`); the user signs in there, `ClaudeCodeOAuthClient` exchanges
+  the returned code, the email is verified, and `ClaudeCodeSwitcher.store` saves it to the vault
+  before the switch. The specific profile matters: the default browser could grant the wrong
+  account. `needsLogin` (active, credential blanked) keeps a "Run /login" message (`store` writes
+  the vault, not the active slot). Nil under XCTest, like the switcher. (Git history has removed
+  silent-mint `ClaudeAIGrantClient` and a terminal `claude auth login` handoff — the first used an
+  undocumented endpoint behind the 24h gate; the second couldn't target the per-account profile.)
 
 ### ViewModel
 - **DashboardViewModel** — `@MainActor` observable. Parallel refresh via `TaskGroup`. Sorts accounts by burn rate (utilization / time-remaining). Computes menu bar label from highest utilization.
