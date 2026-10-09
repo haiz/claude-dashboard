@@ -117,7 +117,9 @@ final class DashboardViewModelSwitchTests: XCTestCase {
         XCTAssertFalse(DashboardViewModel.hasQuotaLeft(usage(10, 99)))
     }
 
-    func testSwitchAsksFirstWhileTheActiveAccountHasQuotaLeft() async throws {
+    /// Claude Code on frontend (40% / 60%, so a switch asks first), backend captured in the vault.
+    private func makeQuotaLeftSwitch() async throws
+        -> (vm: DashboardViewModel, slot: KeychainClaudeCodeSlot, frontend: Account, backend: Account) {
         let kc = InMemoryKeychain()
         let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
         let vault = KeychainCredentialVault(keychain: kc)
@@ -144,6 +146,11 @@ final class DashboardViewModelSwitchTests: XCTestCase {
         let activeIndex = try XCTUnwrap(vm.accountStates.firstIndex { $0.id == frontend.id })
         vm.accountStates[activeIndex].usage = UsageData(fiveHour: UsageLimit(utilization: 40, resetsAt: nil),
                                                         sevenDay: UsageLimit(utilization: 60, resetsAt: nil))
+        return (vm, slot, frontend, backend)
+    }
+
+    func testSwitchAsksFirstWhileTheActiveAccountHasQuotaLeft() async throws {
+        let (vm, slot, frontend, backend) = try await makeQuotaLeftSwitch()
 
         // Cancel leaves Claude Code where it was.
         await vm.requestSwitchClaudeCode(to: backend.id)
@@ -156,7 +163,7 @@ final class DashboardViewModelSwitchTests: XCTestCase {
 
         // Confirm runs the switch.
         await vm.requestSwitchClaudeCode(to: backend.id)
-        await vm.confirmPendingSwitch()
+        await vm.confirmSwitch(try XCTUnwrap(vm.pendingSwitch))
         XCTAssertNil(vm.pendingSwitch)
         XCTAssertEqual(try slot.readOAuth()?.refreshToken, "b1")
         XCTAssertEqual(vm.activeClaudeCodeEmail, "backend@gotitapp.co")
@@ -169,6 +176,34 @@ final class DashboardViewModelSwitchTests: XCTestCase {
         await vm.requestSwitchClaudeCode(to: frontend.id)
         XCTAssertNil(vm.pendingSwitch)
         XCTAssertEqual(try slot.readOAuth()?.refreshToken, "f1")
+    }
+
+    /// Tapping Switch in the `.alert` also dismisses it, and the dismissal (`isPresented`'s
+    /// setter, i.e. `cancelPendingSwitch`) runs before the Task the button starts.
+    func testConfirmSurvivesTheAlertDismissingFirst() async throws {
+        let (vm, slot, _, backend) = try await makeQuotaLeftSwitch()
+        await vm.requestSwitchClaudeCode(to: backend.id)
+        let shown = try XCTUnwrap(vm.pendingSwitch)
+
+        let tap = Task { await vm.confirmSwitch(shown) }
+        vm.cancelPendingSwitch()
+        await tap.value
+
+        XCTAssertNil(vm.pendingSwitch)
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "b1")
+    }
+
+    /// The other order: the button's Task runs before the dismissal.
+    func testConfirmSurvivesTheButtonRunningFirst() async throws {
+        let (vm, slot, _, backend) = try await makeQuotaLeftSwitch()
+        await vm.requestSwitchClaudeCode(to: backend.id)
+        let shown = try XCTUnwrap(vm.pendingSwitch)
+
+        await vm.confirmSwitch(shown)
+        vm.cancelPendingSwitch()
+
+        XCTAssertNil(vm.pendingSwitch)
+        XCTAssertEqual(try slot.readOAuth()?.refreshToken, "b1")
     }
 
     func testErrorMessagesNameTheFix() {

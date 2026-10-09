@@ -640,8 +640,12 @@ final class DashboardViewModel: ObservableObject {
         await switchClaudeCode(to: accountId)
     }
 
-    func confirmPendingSwitch() async {
-        guard let pending = pendingSwitch else { return }
+    /// Runs the switch the confirm prompt showed. Takes `pending` from the prompt, not from
+    /// `pendingSwitch`: tapping a button in an `.alert` dismisses it, and the dismissal calls
+    /// `cancelPendingSwitch` before any Task the button starts.
+    ///
+    ///     Button("Switch") { Task { await viewModel.confirmSwitch(pending) } }
+    func confirmSwitch(_ pending: PendingSwitch) async {
         pendingSwitch = nil
         await switchClaudeCode(to: pending.targetId)
     }

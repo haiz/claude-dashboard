@@ -205,14 +205,15 @@ extension View {
             Text("Claude Dashboard opened your browser profile for this account. Sign in and "
                 + "click Authorize to finish, then it switches automatically.")
         }
+        // `presenting` hands the button its own copy of the pending switch (see `confirmSwitch`).
         .alert("Switch Claude Code?", isPresented: Binding(
             get: { viewModel.pendingSwitch != nil },
             set: { if !$0 { viewModel.cancelPendingSwitch() } }
-        )) {
-            Button("Switch") { Task { await viewModel.confirmPendingSwitch() } }
-            Button("Cancel", role: .cancel) { viewModel.cancelPendingSwitch() }
-        } message: {
-            Text(viewModel.pendingSwitch?.message ?? "")
+        ), presenting: viewModel.pendingSwitch) { pending in
+            Button("Switch") { Task { await viewModel.confirmSwitch(pending) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { pending in
+            Text(pending.message)
         }
     }
 
@@ -225,7 +226,7 @@ extension View {
             if let pending = viewModel.pendingSwitch {
                 InlinePrompt(title: "Switch Claude Code?", message: pending.message, button: "Switch",
                              onCancel: { viewModel.cancelPendingSwitch() }) {
-                    Task { await viewModel.confirmPendingSwitch() }
+                    Task { await viewModel.confirmSwitch(pending) }
                 }
             } else if let message = viewModel.switchMessage {
                 InlinePrompt(title: "Claude Code", message: message, button: "OK") {
