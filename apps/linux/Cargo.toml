@@ -4,7 +4,7 @@ members = ["core", "helper"]
 
 [workspace.package]
 edition = "2021"
-version = "1.20.0"   # kept in sync with /VERSION by scripts/sync-version.sh
+version = "1.21.0"   # kept in sync with /VERSION by scripts/sync-version.sh
 # Floor was 1.88 from the dependency graph (`time`, the `icu_*` crates); raised
 # to 1.89 by `core`'s use of `std::fs::File::lock` (stable 1.89), which the
 # Windows store lock needs. clippy's incompatible-msrv lint enforces this.
