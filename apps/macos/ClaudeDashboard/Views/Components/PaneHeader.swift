@@ -23,10 +23,11 @@ struct PaneHeader<Trailing: View>: View {
             .font(.title2.bold())
             .lineLimit(1)
             .truncationMode(.middle)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // As tall as the toolbar, so the title centres on the toolbar row and the
+            // content below starts clear of the toolbar's buttons.
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
             .padding(.horizontal, 20)
-            .padding(.top, 14)
-            .padding(.bottom, 8)
+            .padding(.bottom, 12)
             .toolbar {
                 // `.primaryAction` is the leading edge on macOS; a toolbar Spacer is a
                 // flexible space, which pushes the buttons to the trailing edge.
