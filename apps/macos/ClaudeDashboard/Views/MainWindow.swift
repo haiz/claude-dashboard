@@ -29,12 +29,13 @@ struct MainWindow: View {
         } detail: {
             pane
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                // The transparent titlebar would otherwise push every pane down
-                // by its full height; System Settings puts the title on that row.
-                // With the sidebar collapsed the traffic lights and the sidebar
-                // toggle sit on that row instead, so the pane stays below it.
-                .ignoresSafeArea(.container,
-                                 edges: columnVisibility == .detailOnly ? [] : .top)
+                // Lift the pane so its PaneHeader sits on the titlebar row, the way System
+                // Settings does. Not `.ignoresSafeArea`: header buttons laid out that way got
+                // no mouse clicks on that row, while a lifted pane's buttons do. With the
+                // sidebar collapsed the traffic lights and sidebar toggle own that row.
+                .padding(.top, columnVisibility == .detailOnly ? 0 : -36)
+                // Card edges line up with the header buttons only without a scroller.
+                .scrollIndicators(.never)
         }
         .frame(minWidth: 900, minHeight: 560)
         .onAppear {

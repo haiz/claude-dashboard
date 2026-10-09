@@ -1,9 +1,7 @@
 import SwiftUI
 
 /// Title row at the top of every main-window pane, with that pane's buttons on the
-/// trailing side. The title sits on the titlebar row; the buttons go in the window
-/// toolbar `NavigationSplitView` puts there (its sidebar toggle), because that toolbar
-/// covers the row and swallows mouse clicks on any content button drawn under it.
+/// trailing side. `MainWindow` lifts it onto the titlebar row while the sidebar shows.
 ///
 ///     PaneHeader(title: "Command Log") {
 ///         Button("Clear All") { confirmingClear = true }
@@ -19,23 +17,16 @@ struct PaneHeader<Trailing: View>: View {
     }
 
     var body: some View {
-        Text(title)
-            .font(.title2.bold())
-            .lineLimit(1)
-            .truncationMode(.middle)
-            // As tall as the toolbar, so the title centres on the toolbar row and the
-            // content below starts clear of the toolbar's buttons.
-            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 12)
-            .toolbar {
-                // `.primaryAction` is the leading edge on macOS; a toolbar Spacer is a
-                // flexible space, which pushes the buttons to the trailing edge.
-                ToolbarItemGroup {
-                    Spacer()
-                    trailing.labelStyle(.titleAndIcon)
-                }
-            }
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.title2.bold())
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            trailing
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 14)
     }
 }
 
