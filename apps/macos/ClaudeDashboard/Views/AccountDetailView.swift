@@ -58,16 +58,10 @@ struct AccountDetailView: View {
                     toolbarExtra: {
                         // Writes the shared window; AccountPane's onChange applies it,
                         // so the picker and every gauge tap share one path.
-                        Picker("Window", selection: Binding(
+                        UsageWindowPicker(selection: Binding(
                             get: { viewModel.selectedWindow },
                             set: { dashboardViewModel.preselectedWindow = $0 }
-                        )) {
-                            Text("5h").tag(UsageWindow.fiveHour)
-                            Text("7d").tag(UsageWindow.sevenDay)
-                            Text("F").tag(UsageWindow.fable)
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
+                        ))
                         .frame(width: 180)
 
                         if viewModel.selectedCycle != nil {

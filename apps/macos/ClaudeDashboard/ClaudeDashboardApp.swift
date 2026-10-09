@@ -86,6 +86,7 @@ struct ClaudeDashboardApp: App {
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 }
             )
+            .buttonStyle(HoverBorderedButtonStyle())
             .environmentObject(updateViewModel)
             .onAppear {
                 appDelegate.updateViewModel = updateViewModel

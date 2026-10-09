@@ -99,3 +99,30 @@ struct HoverableRowStyle: ButtonStyle {
         }
     }
 }
+
+/// The system's own button look (`.automatic`, so bordered, default-action and
+/// destructive variants stay native) plus a hover highlight. Set once on a root
+/// view; buttons with an explicit style keep theirs.
+///
+///     MainWindow(...).buttonStyle(HoverBorderedButtonStyle())
+struct HoverBorderedButtonStyle: PrimitiveButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HoverBorderedButton(configuration: configuration)
+    }
+
+    private struct HoverBorderedButton: View {
+        let configuration: PrimitiveButtonStyleConfiguration
+        @State private var isHovered = false
+        @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.colorScheme) private var colorScheme
+
+        var body: some View {
+            Button(configuration)
+                .buttonStyle(.automatic)
+                // Lighten in dark mode, darken in light mode: a white button can't get lighter.
+                .brightness(isHovered && isEnabled ? (colorScheme == .dark ? 0.08 : -0.05) : 0)
+                .onHover { isHovered = $0 }
+                .animation(.easeOut(duration: 0.12), value: isHovered)
+        }
+    }
+}

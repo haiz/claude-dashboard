@@ -124,6 +124,7 @@ struct SetupView: View {
         }
         .sheet(isPresented: $showingPasteKey) {
             PasteKeyView(viewModel: viewModel) { showingPasteKey = false }
+                .buttonStyle(HoverBorderedButtonStyle())
         }
     }
 

@@ -63,14 +63,8 @@ struct OverviewChartView: View {
                         overviewChart(range: range)
                     },
                     toolbarExtra: {
-                        Picker("Window", selection: $selectedWindow) {
-                            Text("5h").tag(UsageWindow.fiveHour)
-                            Text("7d").tag(UsageWindow.sevenDay)
-                            Text("F").tag(UsageWindow.fable)
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .frame(width: 180)
+                        UsageWindowPicker(selection: $selectedWindow)
+                            .frame(width: 180)
                     }
                 )
             }

@@ -38,6 +38,8 @@ struct MainWindow: View {
                 .scrollIndicators(.never)
         }
         .frame(minWidth: 900, minHeight: 560)
+        // Sheets get it too: each one is set below rather than trusting inheritance.
+        .buttonStyle(HoverBorderedButtonStyle())
         .onAppear {
             if showSetupOnAppear { showingSetup = true }
         }
@@ -45,6 +47,7 @@ struct MainWindow: View {
             SetupView(viewModel: viewModel) {
                 showingSetup = false
             }
+            .buttonStyle(HoverBorderedButtonStyle())
         }
         .sheet(item: $runCommandAccount) { account in
             RunCommandSheet(
@@ -56,6 +59,7 @@ struct MainWindow: View {
                 runner: viewModel.commandRunner,
                 onRefresh: { Task { await viewModel.refreshAll() } }
             )
+            .buttonStyle(HoverBorderedButtonStyle())
         }
     }
 
