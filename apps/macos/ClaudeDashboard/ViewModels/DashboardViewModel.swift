@@ -67,6 +67,12 @@ extension ManualKeyOutcome {
     }
 }
 
+/// A Switch held back until the user confirms it: `message` explains why.
+struct PendingSwitch: Equatable {
+    let targetId: UUID
+    let message: String
+}
+
 @MainActor
 final class DashboardViewModel: ObservableObject {
     @Published var accountStates: [AccountUsageState] = []
@@ -86,6 +92,9 @@ final class DashboardViewModel: ObservableObject {
     /// Non-nil while a Switch is waiting for the user to authorize in the browser; the UI
     /// shows a cancellable "waiting" state for this account.
     @Published private(set) var awaitingBrowserAccount: UUID?
+    /// Non-nil while a Switch waits for the user to confirm leaving an active account
+    /// that still has quota left; the UI shows `message` with Switch / Cancel.
+    @Published private(set) var pendingSwitch: PendingSwitch?
 
     @Published var autoRefreshEnabled: Bool {
         didSet { AppDefaults.shared.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
@@ -609,6 +618,42 @@ final class DashboardViewModel: ObservableObject {
     private func forgetClaudeCodeLogins(of removed: Set<UUID>) {
         guard let ccSwitcher, !removed.isEmpty else { return }
         Task.detached { for id in removed { ccSwitcher.forget(accountId: id) } }
+    }
+
+    /// What every Switch button calls. While the account Claude Code uses now still has
+    /// quota left (see `hasQuotaLeft`), it parks the switch in `pendingSwitch` for the user
+    /// to confirm or cancel; otherwise it switches straight away.
+    func requestSwitchClaudeCode(to accountId: UUID) async {
+        if let active = accountStates.first(where: isActiveClaudeCodeAccount),
+           active.id != accountId,
+           let usage = active.usage,
+           Self.hasQuotaLeft(usage),
+           let target = accountStates.first(where: { $0.id == accountId }) {
+            let activeName = active.account.email ?? active.account.name
+            pendingSwitch = PendingSwitch(
+                targetId: accountId,
+                message: "\(activeName) still has quota left "
+                    + "(5h \(Int(usage.fiveHour.utilization))%, 7d \(Int(usage.sevenDay.utilization))%). "
+                    + "Switch Claude Code to \(target.account.email ?? target.account.name) anyway?")
+            return
+        }
+        await switchClaudeCode(to: accountId)
+    }
+
+    func confirmPendingSwitch() async {
+        guard let pending = pendingSwitch else { return }
+        pendingSwitch = nil
+        await switchClaudeCode(to: pending.targetId)
+    }
+
+    func cancelPendingSwitch() {
+        pendingSwitch = nil
+    }
+
+    /// True while an account is below both limits that make a switch worth it:
+    /// 5h under 95% and 7d under 99%.
+    static func hasQuotaLeft(_ usage: UsageData) -> Bool {
+        usage.fiveHour.utilization < 95 && usage.sevenDay.utilization < 99
     }
 
     func switchClaudeCode(to accountId: UUID) async {

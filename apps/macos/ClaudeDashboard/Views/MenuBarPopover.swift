@@ -110,7 +110,7 @@ struct MenuBarPopover: View {
                                     },
                                     isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
                                     switchAvailability: viewModel.switchAvailability[state.id],
-                                    onSwitchClaudeCode: { Task { await viewModel.switchClaudeCode(to: state.id) } },
+                                    onSwitchClaudeCode: { Task { await viewModel.requestSwitchClaudeCode(to: state.id) } },
                                     isSwitchingClaudeCode: viewModel.isSwitchingClaudeCode,
                                     isCompact: true
                                 )

@@ -186,6 +186,7 @@ extension SwitchAvailability {
 extension View {
     /// Shows `viewModel.switchMessage` once, then clears it, and — while a Switch is
     /// waiting on a browser sign-in — a cancellable "finish in your browser" prompt.
+    /// Also asks to confirm a `viewModel.pendingSwitch`.
     func claudeCodeSwitchAlert(_ viewModel: DashboardViewModel) -> some View {
         alert("Claude Code", isPresented: Binding(
             get: { viewModel.switchMessage != nil },
@@ -204,6 +205,15 @@ extension View {
             Text("Claude Dashboard opened your browser profile for this account. Sign in and "
                 + "click Authorize to finish, then it switches automatically.")
         }
+        .alert("Switch Claude Code?", isPresented: Binding(
+            get: { viewModel.pendingSwitch != nil },
+            set: { if !$0 { viewModel.cancelPendingSwitch() } }
+        )) {
+            Button("Switch") { Task { await viewModel.confirmPendingSwitch() } }
+            Button("Cancel", role: .cancel) { viewModel.cancelPendingSwitch() }
+        } message: {
+            Text(viewModel.pendingSwitch?.message ?? "")
+        }
     }
 
     /// Popover variant of `claudeCodeSwitchAlert`. In the `MenuBarExtra` panel an `.alert` is a
@@ -212,7 +222,12 @@ extension View {
     /// the same prompts inside the panel instead.
     func claudeCodeSwitchOverlay(_ viewModel: DashboardViewModel) -> some View {
         overlay {
-            if let message = viewModel.switchMessage {
+            if let pending = viewModel.pendingSwitch {
+                InlinePrompt(title: "Switch Claude Code?", message: pending.message, button: "Switch",
+                             onCancel: { viewModel.cancelPendingSwitch() }) {
+                    Task { await viewModel.confirmPendingSwitch() }
+                }
+            } else if let message = viewModel.switchMessage {
                 InlinePrompt(title: "Claude Code", message: message, button: "OK") {
                     viewModel.dismissSwitchMessage()
                 }
@@ -240,6 +255,8 @@ private struct InlinePrompt: View {
     let title: String
     let message: String
     let button: String
+    /// Non-nil adds a Cancel button beside `button`.
+    var onCancel: (() -> Void)? = nil
     let action: () -> Void
 
     var body: some View {
@@ -248,10 +265,18 @@ private struct InlinePrompt: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text(title).font(.headline)
                 Text(message).fixedSize(horizontal: false, vertical: true)
-                Button(action: action) {
-                    Text(button).frame(maxWidth: .infinity)
+                HStack {
+                    if let onCancel {
+                        Button(action: onCancel) {
+                            Text("Cancel").frame(maxWidth: .infinity)
+                        }
+                        .keyboardShortcut(.cancelAction)
+                    }
+                    Button(action: action) {
+                        Text(button).frame(maxWidth: .infinity)
+                    }
+                    .keyboardShortcut(.defaultAction)
                 }
-                .keyboardShortcut(.defaultAction)
                 .controlSize(.large)
                 .padding(.top, 4)
             }

@@ -32,6 +32,16 @@ struct AccountPane: View {
                 if state.isLoading {
                     ProgressView().controlSize(.small)
                 }
+                if let availability = dashboardViewModel.switchAvailability[state.id],
+                   let help = availability.switchHelp {
+                    Button {
+                        Task { await dashboardViewModel.requestSwitchClaudeCode(to: state.id) }
+                    } label: {
+                        Label("Switch", systemImage: "arrow.left.arrow.right")
+                    }
+                    .disabled(dashboardViewModel.isSwitchingClaudeCode)
+                    .help(help)
+                }
                 // Scoped to this account: a whole-fleet pass would re-fetch usage
                 // nobody asked for and clear the error other cards are showing.
                 // `refreshAll` skips expired accounts, so Re-sync is the way back.
@@ -159,17 +169,6 @@ struct AccountPane: View {
                 .controlSize(.small)
             }
             Divider()
-            if let availability = dashboardViewModel.switchAvailability[state.id],
-               let help = availability.switchHelp {
-                actionRow("Use this account in Claude Code") {
-                    Button("Switch") {
-                        Task { await dashboardViewModel.switchClaudeCode(to: state.id) }
-                    }
-                    .disabled(dashboardViewModel.isSwitchingClaudeCode)
-                    .help(help)
-                }
-                Divider()
-            }
             actionRow("Run a command for this account") {
                 Button("Run Command\u{2026}", action: onRunCommand)
             }
