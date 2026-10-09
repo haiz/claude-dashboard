@@ -71,7 +71,7 @@ struct HelpView: View {
 
             bodyText("**Right-click** a card to pin it to the top of the list regardless of burn rate.")
 
-            bodyText("The terminal icon on a card opens **Run Command** — enter any shell command and it runs using that account's context, then the dashboard refreshes.")
+            bodyText("The terminal icon on a card opens **Run Command** — enter any shell command and it runs using that account's context, then the dashboard refreshes. Turn the icon on or off in **Settings > General > Cards**.")
         }
     }
 
