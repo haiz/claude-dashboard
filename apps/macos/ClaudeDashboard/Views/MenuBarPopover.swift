@@ -41,6 +41,11 @@ struct MenuBarPopover: View {
     private var showRunCommand = false
     static let showRunCommandKey = "menuBarShowRunCommand"
     private static let scrollTopID = "cards-top"
+    /// Wide enough for a compact card's three gauge groups plus `cardListPadding`
+    /// on each side; narrower and the card overflows the scroll view, which
+    /// then draws it flush left (`AccountCardLayoutTests` guards this).
+    static let width: CGFloat = 344
+    static let cardListPadding: CGFloat = 12
 
     var body: some View {
         VStack(spacing: 0) {
@@ -116,9 +121,12 @@ struct MenuBarPopover: View {
                                 )
                             }
                         }
-                        .padding(12)
+                        .padding(Self.cardListPadding)
                         .id(Self.scrollTopID)
                     }
+                    // A legacy (always shown) scroller would take its width from
+                    // the right side only, leaving the cards off-center.
+                    .scrollIndicators(.never)
                     .scrollsToTopAfterSwitch(viewModel, proxy: proxy, id: Self.scrollTopID)
                 }
                 .frame(maxHeight: 400)
@@ -142,7 +150,7 @@ struct MenuBarPopover: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
         }
-        .frame(width: 320)
+        .frame(width: Self.width)
         .fixedSize(horizontal: false, vertical: true)
         .overlay {
             if let account = runCommandAccount {
@@ -163,7 +171,7 @@ struct MenuBarPopover: View {
                     .background(.regularMaterial)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .padding(12)
-                    .frame(width: 320)
+                    .frame(width: Self.width)
                 }
             }
         }
