@@ -186,7 +186,7 @@ extension View {
     func claudeCodeSwitchAlert(_ viewModel: DashboardViewModel) -> some View {
         alert("Claude Code", isPresented: Binding(
             get: { viewModel.switchMessage != nil },
-            set: { if !$0 { viewModel.switchMessage = nil } }
+            set: { if !$0 { viewModel.dismissSwitchMessage() } }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -200,6 +200,13 @@ extension View {
         } message: {
             Text("Claude Dashboard opened your browser profile for this account. Sign in and "
                 + "click Authorize to finish, then it switches automatically.")
+        }
+    }
+
+    /// Scrolls `proxy` to the view tagged `id` whenever `viewModel.scrollToTopRequest` bumps.
+    func scrollsToTopAfterSwitch(_ viewModel: DashboardViewModel, proxy: ScrollViewProxy, id: some Hashable) -> some View {
+        onChange(of: viewModel.scrollToTopRequest) { _ in
+            withAnimation { proxy.scrollTo(id, anchor: .top) }
         }
     }
 }

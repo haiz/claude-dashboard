@@ -37,6 +37,7 @@ struct MenuBarPopover: View {
 
     @State private var scrollAnchorId: UUID? = nil
     @State private var runCommandAccount: Account? = nil
+    private static let scrollTopID = "cards-top"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -102,29 +103,33 @@ struct MenuBarPopover: View {
             if viewModel.accountStates.isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    VStack(spacing: 8) {
-                        ForEach(viewModel.accountStates) { state in
-                            AccountCard(
-                                state: state,
-                                onResync: { Task { await viewModel.resyncAccount(state.id) } },
-                                onTogglePin: { viewModel.togglePin(for: state.id) },
-                                onRefresh: { Task { await viewModel.refreshAll() } },
-                                onRunCommand: { runCommandAccount = state.account },
-                                onOpenChart: { window in
-                                    let popover = NSApp.keyWindow
-                                    onOpenAccountDetail(state.id, window)
-                                    popover?.close()
-                                },
-                                isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
-                                switchAvailability: viewModel.switchAvailability[state.id],
-                                onSwitchClaudeCode: { Task { await viewModel.switchClaudeCode(to: state.id) } },
-                                isSwitchingClaudeCode: viewModel.isSwitchingClaudeCode,
-                                isCompact: true
-                            )
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 8) {
+                            ForEach(viewModel.accountStates) { state in
+                                AccountCard(
+                                    state: state,
+                                    onResync: { Task { await viewModel.resyncAccount(state.id) } },
+                                    onTogglePin: { viewModel.togglePin(for: state.id) },
+                                    onRefresh: { Task { await viewModel.refreshAll() } },
+                                    onRunCommand: { runCommandAccount = state.account },
+                                    onOpenChart: { window in
+                                        let popover = NSApp.keyWindow
+                                        onOpenAccountDetail(state.id, window)
+                                        popover?.close()
+                                    },
+                                    isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
+                                    switchAvailability: viewModel.switchAvailability[state.id],
+                                    onSwitchClaudeCode: { Task { await viewModel.switchClaudeCode(to: state.id) } },
+                                    isSwitchingClaudeCode: viewModel.isSwitchingClaudeCode,
+                                    isCompact: true
+                                )
+                            }
                         }
+                        .padding(12)
+                        .id(Self.scrollTopID)
                     }
-                    .padding(12)
+                    .scrollsToTopAfterSwitch(viewModel, proxy: proxy, id: Self.scrollTopID)
                 }
                 .frame(maxHeight: 400)
             }

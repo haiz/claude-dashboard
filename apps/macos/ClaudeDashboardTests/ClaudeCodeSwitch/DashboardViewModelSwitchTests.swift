@@ -62,6 +62,15 @@ final class DashboardViewModelSwitchTests: XCTestCase {
         XCTAssertFalse(vm.isSwitchingClaudeCode)
         // The newly-active account floats to the top immediately, without a refresh.
         XCTAssertEqual(vm.accountStates.first?.id, backend.id)
+
+        // Dismissing the success alert asks the card lists to scroll to the top, once.
+        XCTAssertEqual(vm.scrollToTopRequest, 0)
+        vm.dismissSwitchMessage()
+        XCTAssertNil(vm.switchMessage)
+        XCTAssertEqual(vm.scrollToTopRequest, 1)
+        vm.switchMessage = "Something else"
+        vm.dismissSwitchMessage()
+        XCTAssertEqual(vm.scrollToTopRequest, 1)
     }
 
     func testRemovingAnAccountDeletesItsVaultCopy() async throws {

@@ -8,6 +8,7 @@ struct DashboardPane: View {
     @ObservedObject var viewModel: DashboardViewModel
     let onAddAccount: () -> Void
     let onRunCommand: (Account) -> Void
+    private static let scrollTopID = "cards-top"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,35 +25,39 @@ struct DashboardPane: View {
             if viewModel.accountStates.isEmpty {
                 emptyStateView
             } else {
-                ScrollView {
-                    LazyVGrid(
-                        // Cards can show up to three gauges (5h, 7d, and the
-                        // Fable model window when present). Size the column to fit
-                        // three and cap the max so cards don't stretch and leave a
-                        // blank band on the right. Two-gauge cards center their
-                        // gauges within the same width.
-                        columns: [GridItem(.adaptive(minimum: 420, maximum: 480), spacing: 12, alignment: .top)],
-                        alignment: .leading,
-                        spacing: 12
-                    ) {
-                        ForEach(viewModel.accountStates) { state in
-                            AccountCard(
-                                state: state,
-                                onResync: { Task { await viewModel.resyncAccount(state.id) } },
-                                onTogglePin: { viewModel.togglePin(for: state.id) },
-                                onRefresh: { Task { await viewModel.refreshAll() } },
-                                onRunCommand: { onRunCommand(state.account) },
-                                onOpenChart: { window in viewModel.openAccount(state.id, window: window) },
-                                isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
-                                switchAvailability: viewModel.switchAvailability[state.id],
-                                onSwitchClaudeCode: { Task { await viewModel.switchClaudeCode(to: state.id) } },
-                                isSwitchingClaudeCode: viewModel.isSwitchingClaudeCode,
-                                isCompact: false
-                            )
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVGrid(
+                            // Cards can show up to three gauges (5h, 7d, and the
+                            // Fable model window when present). Size the column to fit
+                            // three and cap the max so cards don't stretch and leave a
+                            // blank band on the right. Two-gauge cards center their
+                            // gauges within the same width.
+                            columns: [GridItem(.adaptive(minimum: 420, maximum: 480), spacing: 12, alignment: .top)],
+                            alignment: .leading,
+                            spacing: 12
+                        ) {
+                            ForEach(viewModel.accountStates) { state in
+                                AccountCard(
+                                    state: state,
+                                    onResync: { Task { await viewModel.resyncAccount(state.id) } },
+                                    onTogglePin: { viewModel.togglePin(for: state.id) },
+                                    onRefresh: { Task { await viewModel.refreshAll() } },
+                                    onRunCommand: { onRunCommand(state.account) },
+                                    onOpenChart: { window in viewModel.openAccount(state.id, window: window) },
+                                    isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
+                                    switchAvailability: viewModel.switchAvailability[state.id],
+                                    onSwitchClaudeCode: { Task { await viewModel.switchClaudeCode(to: state.id) } },
+                                    isSwitchingClaudeCode: viewModel.isSwitchingClaudeCode,
+                                    isCompact: false
+                                )
+                            }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
+                        .id(Self.scrollTopID)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
+                    .scrollsToTopAfterSwitch(viewModel, proxy: proxy, id: Self.scrollTopID)
                 }
             }
         }

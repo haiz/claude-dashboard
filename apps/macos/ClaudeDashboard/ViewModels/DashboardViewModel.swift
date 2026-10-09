@@ -77,6 +77,10 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var switchAvailability: [UUID: SwitchAvailability] = [:]
     /// Outcome of the last Switch, shown once as an alert.
     @Published var switchMessage: String?
+    /// Bumped when the user dismisses a successful Switch's message; the card lists then
+    /// scroll to the top, where the newly-active account now sits.
+    @Published private(set) var scrollToTopRequest = 0
+    private var scrollToTopOnDismiss = false
     /// True while a Switch runs; the Switch controls are disabled meanwhile.
     @Published private(set) var isSwitchingClaudeCode = false
     /// Non-nil while a Switch is waiting for the user to authorize in the browser; the UI
@@ -633,6 +637,7 @@ final class DashboardViewModel: ObservableObject {
             try await Task.detached { try await ccSwitcher.switchTo(target, accounts: accounts) }.value
             switchMessage = "Claude Code now uses \(target.email ?? target.name). "
                 + "Running sessions pick it up within about 30 seconds."
+            scrollToTopOnDismiss = true
         } catch let error as SwitchError {
             switchMessage = Self.message(for: error, target: target)
         } catch {
@@ -642,6 +647,16 @@ final class DashboardViewModel: ObservableObject {
         // Re-sort so the newly-active account floats to the top now, not only after a refresh.
         sortStates()
         switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
+    }
+
+    /// Clears `switchMessage` (its alert was dismissed) and, after a successful Switch,
+    /// requests one scroll to the top.
+    func dismissSwitchMessage() {
+        switchMessage = nil
+        if scrollToTopOnDismiss {
+            scrollToTopOnDismiss = false
+            scrollToTopRequest += 1
+        }
     }
 
     /// Cancels an in-flight browser authorization (the "waiting for browser" Cancel).
