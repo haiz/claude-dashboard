@@ -140,9 +140,10 @@ A user therefore runs `/login` once per account; the next refresh captures it.
 
 - `AccountCard` and `AccountPane` gain a **Switch** button. It is hidden on the account
   that is already active (the existing badge marks it).
-- Disabled, with a tooltip, when the vault has no copy ("Run /login once in Claude Code
-  with this account") or the copy is past `refreshTokenExpiresAt` ("Login expired, run
-  /login").
+- When the vault has no copy ("Run /login once in Claude Code with this account") or the
+  copy is past `refreshTokenExpiresAt` ("Login expired, run /login"), it stays enabled
+  with that tooltip, and a tap shows the same fix in an alert. A disabled icon looked
+  enabled and a tap did nothing. It is disabled only while a switch is running.
 - The four intentional `AccountCard` gauge details stay unchanged.
 
 ## Testing

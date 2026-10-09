@@ -165,7 +165,7 @@ struct AccountPane: View {
                     Button("Switch") {
                         Task { await dashboardViewModel.switchClaudeCode(to: state.id) }
                     }
-                    .disabled(availability != .ready || dashboardViewModel.isSwitchingClaudeCode)
+                    .disabled(dashboardViewModel.isSwitchingClaudeCode)
                     .help(help)
                 }
                 Divider()

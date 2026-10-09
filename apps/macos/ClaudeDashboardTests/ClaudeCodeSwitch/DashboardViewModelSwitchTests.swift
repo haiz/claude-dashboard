@@ -96,6 +96,39 @@ final class DashboardViewModelSwitchTests: XCTestCase {
         XCTAssertNotNil(try vault.load(kept.id))
     }
 
+    /// The Switch control is never disabled for an unready account: a tap explains the fix.
+    func testSwitchToUnreadyAccountExplainsTheFix() async throws {
+        let kc = InMemoryKeychain()
+        let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
+        let switcher = ClaudeCodeSwitcher(slot: slot, vault: KeychainCredentialVault(keychain: kc),
+                                          config: ClaudeConfigFile(fileURL: configURL), now: Date.init, sleep: { _ in })
+        let store = AccountStore(defaults: try XCTUnwrap(UserDefaults(suiteName: suite)))
+        let frontend = Account(id: UUID(), name: "fe", email: "frontend@gotitapp.co", chromeProfilePath: "",
+                               plan: .max5x, status: .active, source: .manual)
+        let backend = Account(id: UUID(), name: "be", email: "backend@gotitapp.co", chromeProfilePath: "",
+                              plan: .max5x, status: .active, source: .manual)
+        store.addAccount(frontend)
+        store.addAccount(backend)
+        // Claude Code names frontend but its credential is gone: frontend needs /login, backend was never captured.
+        try JSONSerialization.data(withJSONObject: ["oauthAccount": ["emailAddress": "frontend@gotitapp.co"]]).write(to: configURL)
+
+        let vm = DashboardViewModel(accountStore: store,
+                                    ccDetector: ClaudeCodeAccountDetector(fileURL: configURL),
+                                    ccSwitcher: switcher)
+        await vm.refreshAll()
+        XCTAssertEqual(vm.switchAvailability[frontend.id], .needsLogin)
+        XCTAssertEqual(vm.switchAvailability[backend.id], .notCaptured)
+
+        await vm.switchClaudeCode(to: backend.id)
+        XCTAssertEqual(vm.switchMessage, DashboardViewModel.message(for: .notCaptured, target: backend))
+
+        vm.switchMessage = nil
+        await vm.switchClaudeCode(to: frontend.id)
+        XCTAssertEqual(vm.switchMessage?.contains("/login"), true)
+        XCTAssertEqual(vm.switchMessage?.contains("now uses"), false)
+        XCTAssertNil(try slot.readOAuth())
+    }
+
     func testErrorMessagesNameTheFix() {
         let a = Account(id: UUID(), name: "be", email: "backend@gotitapp.co", chromeProfilePath: "",
                         plan: .max5x, status: .active, source: .manual)

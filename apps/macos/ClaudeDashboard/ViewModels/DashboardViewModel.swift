@@ -597,6 +597,11 @@ final class DashboardViewModel: ObservableObject {
     func switchClaudeCode(to accountId: UUID) async {
         guard let ccSwitcher,
               let target = accountStore.accounts.first(where: { $0.id == accountId }) else { return }
+        // Already active, so the switcher would no-op; only a fresh /login restores it.
+        if switchAvailability[accountId] == .needsLogin {
+            switchMessage = "Claude Code lost the login for \(target.email ?? target.name). Run /login once with it."
+            return
+        }
         guard !isSwitchingClaudeCode else { return }
         isSwitchingClaudeCode = true
         defer { isSwitchingClaudeCode = false }

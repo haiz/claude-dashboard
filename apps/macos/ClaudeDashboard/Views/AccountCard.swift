@@ -59,7 +59,7 @@ struct AccountCard: View {
                                     .padding(2)
                             }
                             .buttonStyle(.plain)
-                            .disabled(switchAvailability != .ready || isSwitchingClaudeCode)
+                            .disabled(isSwitchingClaudeCode)
                             .help(help)
                             .accessibilityLabel("Switch Claude Code to this account")
                         }
