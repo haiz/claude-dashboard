@@ -42,6 +42,7 @@
 		4BA658DB89EAC4997E431C13 /* ClaudeCodeAccountDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CECA8F5BDB86E3741F82280 /* ClaudeCodeAccountDetector.swift */; };
 		4C53E5634BE6BEB75B5E870C /* BrowserCookieService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4ED0121EB136414664B103B /* BrowserCookieService.swift */; };
 		4CA534BEA7CEF61184000A1A /* HoverableButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E104FF0D60CC558E8D93B0 /* HoverableButtonStyle.swift */; };
+		4D01A2531154E711C067D3F7 /* AutoSwitchSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6447B0A3331AC52DA9880390 /* AutoSwitchSettingsTests.swift */; };
 		4D7FBC890DD263E8B631E033 /* AccountPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD5987436CCEAA1F1FC1DC6 /* AccountPane.swift */; };
 		4DAC62ECE4128ED5AF364BE5 /* CommandLogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E980125C6DA9C24229B20C59 /* CommandLogModels.swift */; };
 		4DE5C82CED65AD27400B202E /* DashboardViewModelSwitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61D99E3B38744F96DA50CF5A /* DashboardViewModelSwitchTests.swift */; };
@@ -54,6 +55,7 @@
 		54D5B307F0F74D250E1E46AF /* Browser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCBF1EA7D7222950388A01C /* Browser.swift */; };
 		54DE3955ADEE20964A867146 /* ScanOutcomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB083F464444A9AAEFA0DDE /* ScanOutcomeTests.swift */; };
 		56CDB1C08E0C2EB2BED3CE7D /* AccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 268FCC5C51E46A928607748C /* AccountDetailView.swift */; };
+		57E13576C5B94C057B6DD112 /* AutoSwitchSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FC225BDED78A49E00D41BB3 /* AutoSwitchSettings.swift */; };
 		5994EEF08661FBAD5564707D /* OverviewChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AA56B8E5252FD397123C6C2 /* OverviewChartView.swift */; };
 		59981BFBE9EFB0B6576EDB4E /* AppDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C66707D08388FB1A9081646 /* AppDefaults.swift */; };
 		59BBA1121C8E9182A56F468B /* StoreFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18EFF689916F3050F6F7354D /* StoreFixture.swift */; };
@@ -222,6 +224,7 @@
 		1AFC5BA1E046AD26CBECA092 /* UsageDecodingContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageDecodingContractTests.swift; sourceTree = "<group>"; };
 		1B626BA4B6B77C9127190E09 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAPIService.swift; sourceTree = "<group>"; };
+		1FC225BDED78A49E00D41BB3 /* AutoSwitchSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchSettings.swift; sourceTree = "<group>"; };
 		23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreTests.swift; sourceTree = "<group>"; };
 		23E104FF0D60CC558E8D93B0 /* HoverableButtonStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverableButtonStyle.swift; sourceTree = "<group>"; };
 		25E51410A9645A70619053EF /* ContractFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractFixtures.swift; sourceTree = "<group>"; };
@@ -259,6 +262,7 @@
 		61CE79EE895C0FE88D1ED98A /* UsageDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageDataTests.swift; sourceTree = "<group>"; };
 		61D99E3B38744F96DA50CF5A /* DashboardViewModelSwitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModelSwitchTests.swift; sourceTree = "<group>"; };
 		61DBDB15BABBFD4D7ABC3047 /* TerminalLauncherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalLauncherTests.swift; sourceTree = "<group>"; };
+		6447B0A3331AC52DA9880390 /* AutoSwitchSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchSettingsTests.swift; sourceTree = "<group>"; };
 		64695012FC6F1C08762E7E77 /* UsageAPIServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAPIServiceTests.swift; sourceTree = "<group>"; };
 		653DEC7215637CF705CDA949 /* CommandLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandLogView.swift; sourceTree = "<group>"; };
 		65B6FF0D0BD63D5125DBE9E9 /* OrgSelectionContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrgSelectionContractTests.swift; sourceTree = "<group>"; };
@@ -408,6 +412,7 @@
 			isa = PBXGroup;
 			children = (
 				BD2F60A213BB9D946C30DC73 /* AutoSwitchPlannerTests.swift */,
+				6447B0A3331AC52DA9880390 /* AutoSwitchSettingsTests.swift */,
 			);
 			path = AutoSwitch;
 			sourceTree = "<group>";
@@ -540,6 +545,7 @@
 			isa = PBXGroup;
 			children = (
 				61909AF36968A9389D9F3A8F /* AccountBadgeColor.swift */,
+				1FC225BDED78A49E00D41BB3 /* AutoSwitchSettings.swift */,
 				ADDFE458A047B94A7BDECE60 /* ClaudeCodeCredential.swift */,
 				E980125C6DA9C24229B20C59 /* CommandLogModels.swift */,
 				74CE7503C313DA263B2EC1BA /* RunCommandSettings.swift */,
@@ -826,6 +832,7 @@
 				EA2D655C3363DACEE2AA5C8C /* AppDefaultsTests.swift in Sources */,
 				A695D976DBF8E5BBF704DC8D /* AppVersionTests.swift in Sources */,
 				C1EBCFB4688B8106C910642D /* AutoSwitchPlannerTests.swift in Sources */,
+				4D01A2531154E711C067D3F7 /* AutoSwitchSettingsTests.swift in Sources */,
 				652766CECD3E48E91FF33533 /* BrowserCookieServiceTests.swift in Sources */,
 				3A7A4D7688E6CED6C2105C86 /* BrowserProfileOpenerTests.swift in Sources */,
 				7CF21E5F1DE379253A2A1CE7 /* BrowserTests.swift in Sources */,
@@ -959,6 +966,7 @@
 				B17665D047E3FF28A5833216 /* AppDefaults.swift in Sources */,
 				AE3B5F95AC15F193C1B2C9CE /* AppVersion.swift in Sources */,
 				02CF4A615FE527647C38BDEE /* AutoSwitchPlanner.swift in Sources */,
+				57E13576C5B94C057B6DD112 /* AutoSwitchSettings.swift in Sources */,
 				54D5B307F0F74D250E1E46AF /* Browser.swift in Sources */,
 				4C53E5634BE6BEB75B5E870C /* BrowserCookieService.swift in Sources */,
 				BB0F46A73BAA2C671C8C0BEF /* BrowserProfileOpener.swift in Sources */,
