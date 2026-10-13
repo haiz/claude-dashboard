@@ -95,6 +95,11 @@ final class DashboardViewModel: ObservableObject {
     /// Non-nil while a Switch waits for the user to confirm leaving an active account
     /// that still has quota left; the UI shows `message` with Switch / Cancel.
     @Published private(set) var pendingSwitch: PendingSwitch?
+    /// Auto switch settings and tick; views bind to them through this model.
+    let autoSwitchSettings: AutoSwitchSettings
+    let autoSwitch: AutoSwitchController
+    /// Fetches the active account every 60 s while it is near a limit (`updateAutoSwitchPoll`).
+    var autoSwitchPollTask: Task<Void, Never>?
 
     @Published var autoRefreshEnabled: Bool {
         didSet { AppDefaults.shared.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
@@ -148,7 +153,8 @@ final class DashboardViewModel: ObservableObject {
         ccSwitcher: ClaudeCodeSwitcher? = ClaudeCodeSwitcher.live(isRunningTests: AppDefaults.isRunningTests()),
         ccProvisioner: ClaudeCodeLoginProvisioner? =
             AppDefaults.isRunningTests() ? nil : ClaudeCodeLoginProvisioner.live(),
-        commandRunner: CommandRunner? = nil
+        commandRunner: CommandRunner? = nil,
+        autoSwitchSettings: AutoSwitchSettings? = nil
     ) {
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.autoRefreshMinutes = {
@@ -167,6 +173,9 @@ final class DashboardViewModel: ObservableObject {
         let cmdStore = commandLogStore ?? CommandLogStore()
         self.commandLogStore = cmdStore
         self.commandRunner = commandRunner ?? CommandRunner(store: cmdStore)
+        let switchSettings = autoSwitchSettings ?? AutoSwitchSettings(defaults: AppDefaults.shared)
+        self.autoSwitchSettings = switchSettings
+        self.autoSwitch = AutoSwitchController(settings: switchSettings)
         self.activeClaudeCodeEmail = ccDetector.activeEmail()
 
         // Cleanup old logs on launch
@@ -179,6 +188,13 @@ final class DashboardViewModel: ObservableObject {
             .sink { [weak self] accounts in
                 self?.syncStates(with: accounts)
             }
+            .store(in: &cancellables)
+        // Views observe this model only; forward the nested objects' changes to them.
+        switchSettings.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        autoSwitch.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
         scheduleAutoRefresh()
@@ -400,6 +416,7 @@ final class DashboardViewModel: ObservableObject {
         // Sort: pinned > (active Claude Code if no pin) > burn rate
         sortStates()
         lastLogsUpdatedAt = Date()
+        await runAutoSwitch()
     }
 
     /// Re-reads one account's browser cookies and writes the new session key, the
@@ -687,6 +704,7 @@ final class DashboardViewModel: ObservableObject {
             switchMessage = "Claude Code now uses \(target.email ?? target.name). "
                 + "Running sessions pick it up within about 30 seconds."
             scrollToTopOnDismiss = true
+            autoSwitch.clearLock()
         } catch let error as SwitchError {
             switchMessage = Self.message(for: error, target: target)
         } catch {
@@ -694,6 +712,23 @@ final class DashboardViewModel: ObservableObject {
         }
         activeClaudeCodeEmail = ccDetector.activeEmail()
         // Re-sort so the newly-active account floats to the top now, not only after a refresh.
+        sortStates()
+        switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
+    }
+
+    /// Auto switch's path: swaps in a captured login only. Unlike `switchClaudeCode` it never
+    /// opens a browser and never sets `switchMessage` (the footer reports instead); it
+    /// throws what the switcher throws, so the controller can start its cooldown.
+    func performAutoSwitch(to accountId: UUID) async throws {
+        guard let ccSwitcher, !isSwitchingClaudeCode,
+              let target = accountStore.accounts.first(where: { $0.id == accountId }) else {
+            throw SwitchError.notCaptured
+        }
+        isSwitchingClaudeCode = true
+        defer { isSwitchingClaudeCode = false }
+        let accounts = accountStore.accounts
+        try await Task.detached { try await ccSwitcher.switchTo(target, accounts: accounts) }.value
+        activeClaudeCodeEmail = ccDetector.activeEmail()
         sortStates()
         switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
     }
