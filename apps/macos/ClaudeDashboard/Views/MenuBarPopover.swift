@@ -35,6 +35,8 @@ struct MenuBarPopover: View {
 
     @State private var scrollAnchorId: UUID? = nil
     @State private var runCommandAccount: Account? = nil
+    /// Quit sits right under the card list, so a stray click asks first.
+    @State private var confirmingQuit = false
     /// Off by default: the card's Run Command button is easy to hit by mistake
     /// and costs header space. Settings > General flips it.
     @AppStorage(MenuBarPopover.showRunCommandKey, store: AppDefaults.shared)
@@ -146,7 +148,7 @@ struct MenuBarPopover: View {
             // Footer with Quit
             HStack {
                 Button(action: {
-                    NSApplication.shared.terminate(nil)
+                    confirmingQuit = true
                 }) {
                     Label("Quit Claude Dashboard", systemImage: "power")
                         .font(.caption)
@@ -186,6 +188,18 @@ struct MenuBarPopover: View {
             }
         }
         .claudeCodeSwitchOverlay(viewModel)
+        // Inline, not `.alert`: see `claudeCodeSwitchOverlay` for why the panel can't host one.
+        .overlay {
+            if confirmingQuit {
+                InlinePrompt(title: "Quit Claude Dashboard?",
+                             message: "Usage monitoring stops until you open the app again.",
+                             button: "Quit",
+                             buttonHelp: "Quit the app and stop monitoring usage",
+                             onCancel: { confirmingQuit = false }) {
+                    NSApplication.shared.terminate(nil)
+                }
+            }
+        }
     }
 
     private var updateBanner: some View {

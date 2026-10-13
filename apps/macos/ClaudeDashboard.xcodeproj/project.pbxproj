@@ -102,6 +102,7 @@
 		861BA6B0F607213E156F515D /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A87EC4F90E188AAAFB660C3 /* AppVersion.swift */; };
 		86A12F08814BB2ED1FFC6013 /* RunCommandSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74CE7503C313DA263B2EC1BA /* RunCommandSettings.swift */; };
 		8842F857F1AFCB1B005A65E3 /* StoreFixture+Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9460FE177070480C505142E8 /* StoreFixture+Account.swift */; };
+		89EF0ECEF1D170B4BA0889F1 /* InlinePrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63F7648F7947F079340F6B42 /* InlinePrompt.swift */; };
 		8A05B43134B187D33EE15895 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		8C6A56AA09D21B951F1E7863 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D572159B978911BF3D1EDAC0 /* Assets.xcassets */; };
 		8E1EEC3CBBD3A1C11213166D /* UpdateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101FB3B509DBD5E1813FDABE /* UpdateViewModel.swift */; };
@@ -269,6 +270,7 @@
 		61CE79EE895C0FE88D1ED98A /* UsageDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageDataTests.swift; sourceTree = "<group>"; };
 		61D99E3B38744F96DA50CF5A /* DashboardViewModelSwitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModelSwitchTests.swift; sourceTree = "<group>"; };
 		61DBDB15BABBFD4D7ABC3047 /* TerminalLauncherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalLauncherTests.swift; sourceTree = "<group>"; };
+		63F7648F7947F079340F6B42 /* InlinePrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlinePrompt.swift; sourceTree = "<group>"; };
 		6447B0A3331AC52DA9880390 /* AutoSwitchSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchSettingsTests.swift; sourceTree = "<group>"; };
 		64695012FC6F1C08762E7E77 /* UsageAPIServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAPIServiceTests.swift; sourceTree = "<group>"; };
 		653DEC7215637CF705CDA949 /* CommandLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandLogView.swift; sourceTree = "<group>"; };
@@ -540,6 +542,7 @@
 				653DEC7215637CF705CDA949 /* CommandLogView.swift */,
 				DFA6B7D8BC846956FB00E42A /* DashboardPane.swift */,
 				DC394CD29F6E869A54D1CE5A /* HelpView.swift */,
+				63F7648F7947F079340F6B42 /* InlinePrompt.swift */,
 				86AC4B09025CCFBC088F61A5 /* InteractiveChartContainer.swift */,
 				82BD8EADA1A53C63A8745853 /* MainWindow.swift */,
 				52F459D10501056C193989A6 /* MenuBarPopover.swift */,
@@ -1012,6 +1015,7 @@
 				EA49B0D971AF46AC2AE410A6 /* GeneralSettingsPane.swift in Sources */,
 				6B5178E7AE39D91E564BD7AD /* HelpView.swift in Sources */,
 				4CA534BEA7CEF61184000A1A /* HoverableButtonStyle.swift in Sources */,
+				89EF0ECEF1D170B4BA0889F1 /* InlinePrompt.swift in Sources */,
 				04AD291FD33FFB834B40D945 /* InteractiveChartContainer.swift in Sources */,
 				E58E9615874AAD6AC19F48DE /* MainWindow.swift in Sources */,
 				310A4AEEB4EF068D8522A921 /* ManualKey.swift in Sources */,
