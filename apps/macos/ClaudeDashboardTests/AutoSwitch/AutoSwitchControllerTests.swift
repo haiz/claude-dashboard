@@ -76,6 +76,30 @@ final class AutoSwitchControllerTests: XCTestCase {
         XCTAssertEqual(calls, 2)
     }
 
+    func testActiveLoginFailurePausesAutoSwitchInsteadOfTryingEachCandidate() async {
+        let active = account("a", five: 96, seven: 10, active: true)
+        let first = account("b", five: 10, seven: 10)
+        let second = account("c", five: 10, seven: 10)
+        var tried: [UUID] = []
+        let perform: (UUID) async throws -> Void = { tried.append($0); throw SwitchError.activeAccountUnknown }
+
+        _ = await controller.evaluate([active, first, second], perform: perform)
+        clock += 60
+        _ = await controller.evaluate([active, first, second], perform: perform)
+        XCTAssertEqual(tried, [first.id], "the current login is the problem, not the target")
+        XCTAssertEqual(controller.lastEvent?.isFailure, true)
+
+        clock += AutoSwitchController.failureCooldown
+        _ = await controller.evaluate([active, first, second], perform: perform)
+        XCTAssertEqual(tried.count, 2)
+    }
+
+    func testShouldFastPollIgnoresStaleActiveUsage() {
+        var active = account("a", five: 93, seven: 10, active: true)
+        active.isFresh = false
+        XCTAssertFalse(controller.shouldFastPoll([active]))
+    }
+
     func testPriorityClearedAfterSwitch() async {
         let active = account("a", five: 10, seven: 10, active: true)
         let ticked = account("t", five: 0, seven: 20, fiveResets: nil)

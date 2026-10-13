@@ -111,6 +111,39 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
         XCTAssertEqual(h.vm.autoSwitch.lastEvent?.kind, .noCandidate)
     }
 
+    func testPollRunsNearALimitAndStopsWhenDisabled() async throws {
+        let h = try await makeHarness(captureBackend: false)   // no candidate: nothing switches
+        try setUsage(h.vm, h.frontend.id, five: 93, seven: 40)
+        h.settings.isEnabled = true
+
+        await h.vm.runAutoSwitch()
+        XCTAssertNotNil(h.vm.autoSwitchPollTask, "in the warning zone the 60 s poll runs")
+
+        h.settings.isEnabled = false
+        h.vm.updateAutoSwitchPoll()
+        XCTAssertNil(h.vm.autoSwitchPollTask)
+
+        h.settings.isEnabled = true
+        h.vm.updateAutoSwitchPoll()
+        XCTAssertNotNil(h.vm.autoSwitchPollTask, "the poll restarts after it was stopped")
+        h.settings.isEnabled = false
+        h.vm.updateAutoSwitchPoll()
+    }
+
+    func testUnknownClaudeCodeLoginStaysPut() async throws {
+        let h = try await makeHarness(captureBackend: true)
+        try setUsage(h.vm, h.frontend.id, five: 99, seven: 40)
+        try setUsage(h.vm, h.backend.id, five: 10, seven: 20)
+        h.vm.activeClaudeCodeEmail = "stranger@example.com"
+        h.settings.isEnabled = true
+
+        await h.vm.runAutoSwitch()
+
+        XCTAssertEqual(try h.slot.readOAuth()?.refreshToken, "f1")
+        XCTAssertNil(h.vm.autoSwitch.lastEvent)
+        XCTAssertNil(h.vm.autoSwitchPollTask)
+    }
+
     func testTickRecordsTheFiveHourBaselineAndToggles() async throws {
         let h = try await makeHarness(captureBackend: true)
         try setUsage(h.vm, h.backend.id, five: 50, seven: 20)

@@ -60,6 +60,20 @@ final class AutoSwitchPlannerTests: XCTestCase {
         XCTAssertEqual(decide(snapshot([active, b])), .stay(.noActiveAccount))
     }
 
+    func testStaysWhenActiveUsageIsStale() {
+        var active = account("a", five: 99, seven: 10, active: true)
+        active.isFresh = false
+        let b = account("b", five: 0, seven: 10)
+        XCTAssertEqual(decide(snapshot([active, b])), .stay(.noActiveAccount))
+    }
+
+    func testStaleCandidateIsSkipped() {
+        let active = account("a", five: 96, seven: 10, active: true)
+        var stale = account("b", five: 0, seven: 10)
+        stale.isFresh = false
+        XCTAssertEqual(decide(snapshot([active, stale])), .stay(.noCandidate))
+    }
+
     func testWarningZoneEdges() {
         func usage(_ five: Double, _ seven: Double) -> UsageData {
             UsageData(fiveHour: UsageLimit(utilization: five, resetsAt: nil),

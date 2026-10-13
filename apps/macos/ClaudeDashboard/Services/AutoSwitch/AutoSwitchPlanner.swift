@@ -11,6 +11,9 @@ struct AutoSwitchAccount: Equatable {
     let isUsable: Bool
     /// Claude Code uses this account now.
     let isActive: Bool
+    /// The last fetch succeeded (`AccountUsageState.error == nil`). A failed fetch keeps the
+    /// previous usage on the card; deciding on those numbers would act on stale data.
+    var isFresh = true
 
     var fiveHour: Double { usage?.fiveHour.utilization ?? 100 }
     var sevenDay: Double { usage?.sevenDay.utilization ?? 100 }
@@ -54,7 +57,7 @@ enum AutoSwitchReason: Equatable {
 }
 
 enum AutoSwitchStayReason: Equatable {
-    /// Claude Code's account is not on the dashboard, or its usage never loaded.
+    /// Claude Code's account is not on the dashboard, or its usage never loaded or is stale.
     case noActiveAccount
     case belowThreshold
     case noCandidate
@@ -139,13 +142,14 @@ enum AutoSwitchPlanner {
     }
 
     static func isCandidate(_ a: AutoSwitchAccount, excluded: Set<UUID>) -> Bool {
-        !a.isActive && a.availability == .ready && a.isUsable && a.usage != nil
+        !a.isActive && a.availability == .ready && a.isUsable && a.isFresh && a.usage != nil
             && !excluded.contains(a.id) && a.fiveHour < 100 && a.sevenDay < 100
     }
 
     /// `pickIndex(n)` returns an index in `0..<n`; production passes `Int.random(in:)`.
     static func decide(_ s: AutoSwitchSnapshot, pickIndex: (Int) -> Int) -> AutoSwitchDecision {
-        guard let active = s.accounts.first(where: \.isActive), let activeUsage = active.usage else {
+        guard let active = s.accounts.first(where: \.isActive), active.isFresh,
+              let activeUsage = active.usage else {
             return .stay(.noActiveAccount)
         }
         let candidates = s.accounts.filter { isCandidate($0, excluded: s.excluded) }

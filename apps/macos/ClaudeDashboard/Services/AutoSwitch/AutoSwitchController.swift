@@ -42,6 +42,9 @@ final class AutoSwitchController: ObservableObject {
     @Published private(set) var lastEvent: AutoSwitchEvent?
     private(set) var lock: AutoSwitchLock?
     private var cooldownUntil: [UUID: Date] = [:]
+    /// Set when a switch fails because of Claude Code's current login, not the target:
+    /// every target would fail the same way, so auto switch pauses as a whole.
+    private var pausedUntil: Date?
     private let now: () -> Date
     private let pickIndex: (Int) -> Int
 
@@ -58,7 +61,8 @@ final class AutoSwitchController: ObservableObject {
 
     /// True while auto switch is on and the active account is in the warning zone.
     func shouldFastPoll(_ accounts: [AutoSwitchAccount]) -> Bool {
-        guard settings.isEnabled, let usage = accounts.first(where: \.isActive)?.usage else { return false }
+        guard settings.isEnabled, let active = accounts.first(where: \.isActive), active.isFresh,
+              let usage = active.usage else { return false }
         return AutoSwitchPlanner.isInWarningZone(usage, thresholds: settings.thresholds)
     }
 
@@ -74,6 +78,8 @@ final class AutoSwitchController: ObservableObject {
         guard settings.isEnabled else { return nil }
 
         let t = now()
+        if let pausedUntil, pausedUntil > t { return nil }
+        pausedUntil = nil
         cooldownUntil = cooldownUntil.filter { $0.value > t }
         lock = AutoSwitchPlanner.updatedLock(lock, active: accounts.first(where: \.isActive))
         let snapshot = AutoSwitchSnapshot(accounts: accounts, thresholds: settings.thresholds, lock: lock,
@@ -90,7 +96,11 @@ final class AutoSwitchController: ObservableObject {
             do {
                 try await perform(id)
             } catch {
-                cooldownUntil[id] = t.addingTimeInterval(Self.failureCooldown)
+                if Self.isActiveLoginError(error) {
+                    pausedUntil = t.addingTimeInterval(Self.failureCooldown)
+                } else {
+                    cooldownUntil[id] = t.addingTimeInterval(Self.failureCooldown)
+                }
                 lastEvent = AutoSwitchEvent(kind: .failed(Self.describe(error)),
                                             accountName: target?.displayName, date: t)
                 return nil
@@ -101,6 +111,13 @@ final class AutoSwitchController: ObservableObject {
             if settings.priority?.accountId == id { settings.setPriority(nil) }
             lastEvent = AutoSwitchEvent(kind: .switched(reason), accountName: target?.displayName, date: t)
             return id
+        }
+    }
+
+    private static func isActiveLoginError(_ error: Error) -> Bool {
+        switch error as? SwitchError {
+        case .activeAccountNotInDashboard?, .activeAccountUnknown?: return true
+        default: return false
         }
     }
 

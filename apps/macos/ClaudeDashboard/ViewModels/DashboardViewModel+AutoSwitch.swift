@@ -11,7 +11,8 @@ extension DashboardViewModel {
                               usage: state.usage,
                               availability: switchAvailability[state.id],
                               isUsable: state.account.status == .active,
-                              isActive: isActiveClaudeCodeAccount(state))
+                              isActive: isActiveClaudeCodeAccount(state),
+                              isFresh: state.error == nil)
         }
     }
 
