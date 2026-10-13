@@ -169,6 +169,19 @@ struct AccountPane: View {
                 .labelsHidden()
                 .controlSize(.small)
             }
+            if dashboardViewModel.canTickPriority(state) || dashboardViewModel.isPriorityTarget(state.id) {
+                Divider()
+                actionRow("Switch here after 5h reset") {
+                    Toggle("", isOn: Binding(
+                        get: { dashboardViewModel.isPriorityTarget(state.id) },
+                        set: { _ in dashboardViewModel.togglePriority(for: state.id) }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .help("Switch Claude Code to this account as soon as its 5h limit resets")
+                }
+            }
             Divider()
             actionRow("Run a command for this account") {
                 Button("Run Command\u{2026}", action: onRunCommand)

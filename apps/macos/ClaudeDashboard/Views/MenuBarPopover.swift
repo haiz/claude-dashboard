@@ -121,6 +121,9 @@ struct MenuBarPopover: View {
                                     switchAvailability: viewModel.switchAvailability[state.id],
                                     onSwitchClaudeCode: { Task { await viewModel.requestSwitchClaudeCode(to: state.id) } },
                                     isSwitchingClaudeCode: viewModel.isSwitchingClaudeCode,
+                                    isPriorityTarget: viewModel.isPriorityTarget(state.id),
+                                    onTogglePriority: viewModel.canTickPriority(state) || viewModel.isPriorityTarget(state.id)
+                                        ? { viewModel.togglePriority(for: state.id) } : nil,
                                     isCompact: true
                                 )
                             }
@@ -137,6 +140,8 @@ struct MenuBarPopover: View {
             }
 
             Divider()
+
+            AutoSwitchFooter(viewModel: viewModel)
 
             // Footer with Quit
             HStack {

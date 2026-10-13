@@ -93,6 +93,13 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   the vault, not the active slot). Nil under XCTest, like the switcher. (Git history has removed
   silent-mint `ClaudeAIGrantClient` and a terminal `claude auth login` handoff — the first used an
   undocumented endpoint behind the 24h gate; the second couldn't target the per-account profile.)
+- **AutoSwitch** (`Services/AutoSwitch/`) — moves Claude Code to another account when the
+  active one reaches 5h >= T5 or 7d >= T7 (Settings, default 95/99), or to a ticked account
+  right after its 5h reset. `AutoSwitchPlanner` is pure (three tiers, score = 7d days elapsed
+  x (98 - 7d%), random within 85% of the top); `AutoSwitchController` holds the in-memory lock,
+  a 10-minute failure cooldown and the footer event. It only uses `.ready` accounts via
+  `ClaudeCodeSwitcher.switchTo`: never a browser, never `switchMessage`.
+  Spec: `docs/superpowers/specs/2026-10-13-auto-switch-design.md`.
 
 ### ViewModel
 - **DashboardViewModel** — `@MainActor` observable. Parallel refresh via `TaskGroup`. Sorts accounts by burn rate (utilization / time-remaining). Computes menu bar label from highest utilization.

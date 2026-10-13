@@ -3,7 +3,7 @@ import AppKit
 
 /// Settings > General: app identity (icon, name, version), auto refresh
 /// (on/off plus a 1-60 minute interval), the cards' Run Command button (menu bar
-/// and Dashboard),
+/// and Dashboard), auto switch (on/off, 5h and 7d thresholds, menu bar toggle),
 /// and updates (daily toggle plus the manual check).
 ///
 ///     GeneralSettingsPane(viewModel: vm).environmentObject(updateViewModel)
@@ -28,6 +28,29 @@ struct GeneralSettingsPane: View {
                 }
                 Section("Cards") {
                     Toggle("Show Run Command button on cards", isOn: $showRunCommandOnCards)
+                }
+                Section {
+                    Toggle("Enable auto switch", isOn: Binding(
+                        get: { viewModel.autoSwitchSettings.isEnabled },
+                        set: { viewModel.setAutoSwitchEnabled($0) }))
+                    LabeledContent("Switch at 5h usage") {
+                        Stepper("\(viewModel.autoSwitchSettings.fiveHourThreshold)%",
+                                value: switchBinding(\.fiveHourThreshold),
+                                in: AutoSwitchSettings.fiveHourRange)
+                    }
+                    LabeledContent("Switch at 7d usage") {
+                        Stepper("\(viewModel.autoSwitchSettings.sevenDayThreshold)%",
+                                value: switchBinding(\.sevenDayThreshold),
+                                in: AutoSwitchSettings.sevenDayRange)
+                    }
+                    Toggle("Show toggle in menu bar when near limit",
+                           isOn: switchBinding(\.showWidgetToggle))
+                } header: {
+                    Text("Auto Switch")
+                } footer: {
+                    Text("Moves Claude Code to the account whose weekly quota is closest to expiring unused. Only accounts already signed in to Claude Code are used; no browser opens.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 Section {
                     Toggle("Auto-update daily", isOn: $updateViewModel.autoUpdateEnabled)
@@ -56,6 +79,12 @@ struct GeneralSettingsPane: View {
             }
             .formStyle(.grouped)
         }
+    }
+
+    /// `autoSwitchSettings` is a `let` on the view model, so `$viewModel...` cannot reach it.
+    private func switchBinding<Value>(_ keyPath: ReferenceWritableKeyPath<AutoSwitchSettings, Value>) -> Binding<Value> {
+        Binding(get: { viewModel.autoSwitchSettings[keyPath: keyPath] },
+                set: { viewModel.autoSwitchSettings[keyPath: keyPath] = $0 })
     }
 
     private var about: some View {

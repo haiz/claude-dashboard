@@ -14,6 +14,10 @@ struct AccountCard: View {
     var switchAvailability: SwitchAvailability? = nil
     var onSwitchClaudeCode: (() -> Void)? = nil
     var isSwitchingClaudeCode: Bool = false
+    /// True when this account is ticked to take over after its 5h reset.
+    var isPriorityTarget: Bool = false
+    /// nil hides the tick button (account cannot be ticked).
+    var onTogglePriority: (() -> Void)? = nil
     var isCompact: Bool = true
 
     /// The header's icon buttons (Switch, Run Command): hover background, tight padding.
@@ -51,6 +55,20 @@ struct AccountCard: View {
                     Spacer(minLength: 0)
 
                     HStack(spacing: 2) {
+                        if let onTogglePriority {
+                            Button {
+                                onTogglePriority()
+                            } label: {
+                                Image(systemName: isPriorityTarget ? "bolt.fill" : "bolt")
+                                    .font(.callout)
+                                    .foregroundStyle(isPriorityTarget ? Color.orange : Color.secondary)
+                            }
+                            .buttonStyle(Self.iconButtonStyle)
+                            .help(isPriorityTarget
+                                  ? "Ticked: Claude Code switches here when its 5h limit resets. Click to cancel"
+                                  : "Switch Claude Code here as soon as its 5h limit resets")
+                            .accessibilityLabel("Switch here after 5h reset")
+                        }
                         if let switchAvailability, let help = switchAvailability.switchHelp {
                             Button {
                                 onSwitchClaudeCode?()

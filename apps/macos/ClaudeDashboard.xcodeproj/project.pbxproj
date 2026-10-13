@@ -28,6 +28,7 @@
 		203ACE14CE6715FA4B712065 /* HelperAccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB2623CB6EC20CACFF82236 /* HelperAccountStore.swift */; };
 		211F98E0C0F99203EF129492 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066B8B1E829B2024AB298464 /* SetupView.swift */; };
 		2AD7F348C0B9F5BC6AB4D450 /* ProcessTreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6C06F755D5222731477EC6 /* ProcessTreeTests.swift */; };
+		2B81ED6B2F89077F9AD8196B /* AutoSwitchFooter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6C3E19F896C2400679616B /* AutoSwitchFooter.swift */; };
 		2FC957209C42E7534C44884C /* DispatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C86648065DF41E58DFDD1855 /* DispatchTests.swift */; };
 		307F1C1773F3ED6E78BEC859 /* UsageGaugeRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95082583D7C4BDB685C32B1 /* UsageGaugeRow.swift */; };
 		310A4AEEB4EF068D8522A921 /* ManualKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF55256F6D81B14585D71C9 /* ManualKey.swift */; };
@@ -312,6 +313,7 @@
 		98D70116CC22F5808DE2352C /* ClaudeCodeSlot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeSlot.swift; sourceTree = "<group>"; };
 		9AEE29987B849E18AFE5E428 /* BurnRateContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnRateContractTests.swift; sourceTree = "<group>"; };
 		9D3775C1FC2B1C99A5FDB188 /* GeneralSettingsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsPane.swift; sourceTree = "<group>"; };
+		9D6C3E19F896C2400679616B /* AutoSwitchFooter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchFooter.swift; sourceTree = "<group>"; };
 		9D9410DC3E0803A469DCDE90 /* MockURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockURLProtocol.swift; sourceTree = "<group>"; };
 		9E5DC2CBF0146B4C97668D08 /* ClaudeCodeSwitcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeSwitcherTests.swift; sourceTree = "<group>"; };
 		A23FF51936BD885B6281CE0F /* RunningProcessRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunningProcessRegistry.swift; sourceTree = "<group>"; };
@@ -534,6 +536,7 @@
 				786E54BCD656D51F01E86B77 /* AccountCard.swift */,
 				268FCC5C51E46A928607748C /* AccountDetailView.swift */,
 				FFD5987436CCEAA1F1FC1DC6 /* AccountPane.swift */,
+				9D6C3E19F896C2400679616B /* AutoSwitchFooter.swift */,
 				653DEC7215637CF705CDA949 /* CommandLogView.swift */,
 				DFA6B7D8BC846956FB00E42A /* DashboardPane.swift */,
 				DC394CD29F6E869A54D1CE5A /* HelpView.swift */,
@@ -980,6 +983,7 @@
 				B17665D047E3FF28A5833216 /* AppDefaults.swift in Sources */,
 				AE3B5F95AC15F193C1B2C9CE /* AppVersion.swift in Sources */,
 				F1060C38798420C35CC6F2F1 /* AutoSwitchController.swift in Sources */,
+				2B81ED6B2F89077F9AD8196B /* AutoSwitchFooter.swift in Sources */,
 				02CF4A615FE527647C38BDEE /* AutoSwitchPlanner.swift in Sources */,
 				57E13576C5B94C057B6DD112 /* AutoSwitchSettings.swift in Sources */,
 				54D5B307F0F74D250E1E46AF /* Browser.swift in Sources */,
