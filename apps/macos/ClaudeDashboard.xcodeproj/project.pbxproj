@@ -114,6 +114,7 @@
 		9759697B6C02F84B6EF06C09 /* DashboardViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690E18B51A43CF7A0BFFA627 /* DashboardViewModelTests.swift */; };
 		98FD479769E1857F43E86CCB /* UsageLogModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8ADAEF8BBFC797B0D4950E3 /* UsageLogModelsTests.swift */; };
 		9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF469D724BE1FCA1D071131F /* AccountStore.swift */; };
+		9ABEC1784D916F22BCDC0786 /* AutoSwitchControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA457A45F67B4D67C244760D /* AutoSwitchControllerTests.swift */; };
 		9C1660C69D3A0A2D926B179E /* UpdateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 373E95B92E85447700BA3DEF /* UpdateServiceTests.swift */; };
 		9C632D2CDB84CD434C8D1B33 /* SyncCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B48B3EE5B29CFDE5EA2B450 /* SyncCommandTests.swift */; };
 		9FAB31B717BAEDE9C724CB3E /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
@@ -170,6 +171,7 @@
 		EA49B0D971AF46AC2AE410A6 /* GeneralSettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D3775C1FC2B1C99A5FDB188 /* GeneralSettingsPane.swift */; };
 		EA9BA4D00613E09D8D0A427E /* ClaudeCodeOAuthClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F8B5FF0329E0A79D62CA8AF /* ClaudeCodeOAuthClient.swift */; };
 		EF7B63DE0D75895646ECE918 /* CommandLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00229BEACBD8E4DA299944B9 /* CommandLogStoreTests.swift */; };
+		F1060C38798420C35CC6F2F1 /* AutoSwitchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 307168BF6B40DB84E0E5A46F /* AutoSwitchController.swift */; };
 		F108A126F5779799A8FF1DB6 /* SessionCandidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53FC5C2A26C631D62371B57C /* SessionCandidate.swift */; };
 		F244E129297C5C17AD9B2833 /* DecryptCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73EA27C3A6B23F369D86DDB7 /* DecryptCommandTests.swift */; };
 		F25AC7AD4FA98DC521351742 /* UsageLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */; };
@@ -234,6 +236,7 @@
 		2B9035A662D17D7670BAB113 /* ClaudeCodeCredentialTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeCredentialTests.swift; sourceTree = "<group>"; };
 		2CECA8F5BDB86E3741F82280 /* ClaudeCodeAccountDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeAccountDetector.swift; sourceTree = "<group>"; };
 		2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
+		307168BF6B40DB84E0E5A46F /* AutoSwitchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchController.swift; sourceTree = "<group>"; };
 		3146B8ECCCCE23C2B29BFCD8 /* BrowserProfileOpenerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserProfileOpenerTests.swift; sourceTree = "<group>"; };
 		348C8E47DD7A1A6C254070A5 /* SettingsIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsIcon.swift; sourceTree = "<group>"; };
 		36CFE6B80C6A187D9A176752 /* UsageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageBar.swift; sourceTree = "<group>"; };
@@ -341,6 +344,7 @@
 		D572159B978911BF3D1EDAC0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D627736A32F2282084F78A58 /* ManualKeyContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualKeyContractTests.swift; sourceTree = "<group>"; };
 		D99517C3BBF094ACC2BA1B74 /* AppVersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersionTests.swift; sourceTree = "<group>"; };
+		DA457A45F67B4D67C244760D /* AutoSwitchControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchControllerTests.swift; sourceTree = "<group>"; };
 		DC2A774B02398706067FC3A3 /* AccountStoreQuarantine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreQuarantine.swift; sourceTree = "<group>"; };
 		DC2E021E6A7AAD0A4DCC9F0B /* ClaudeCodeOAuthClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeOAuthClientTests.swift; sourceTree = "<group>"; };
 		DC394CD29F6E869A54D1CE5A /* HelpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpView.swift; sourceTree = "<group>"; };
@@ -411,6 +415,7 @@
 		0D88C6830E049763BE5F1719 /* AutoSwitch */ = {
 			isa = PBXGroup;
 			children = (
+				DA457A45F67B4D67C244760D /* AutoSwitchControllerTests.swift */,
 				BD2F60A213BB9D946C30DC73 /* AutoSwitchPlannerTests.swift */,
 				6447B0A3331AC52DA9880390 /* AutoSwitchSettingsTests.swift */,
 			);
@@ -512,6 +517,7 @@
 		709D121147FC3E435BF5C079 /* AutoSwitch */ = {
 			isa = PBXGroup;
 			children = (
+				307168BF6B40DB84E0E5A46F /* AutoSwitchController.swift */,
 				A460EE7CEDF2261DFEAA6C1A /* AutoSwitchPlanner.swift */,
 			);
 			path = AutoSwitch;
@@ -831,6 +837,7 @@
 				A39C01692A8EA4FA3A76ED88 /* AccountStoreTests.swift in Sources */,
 				EA2D655C3363DACEE2AA5C8C /* AppDefaultsTests.swift in Sources */,
 				A695D976DBF8E5BBF704DC8D /* AppVersionTests.swift in Sources */,
+				9ABEC1784D916F22BCDC0786 /* AutoSwitchControllerTests.swift in Sources */,
 				C1EBCFB4688B8106C910642D /* AutoSwitchPlannerTests.swift in Sources */,
 				4D01A2531154E711C067D3F7 /* AutoSwitchSettingsTests.swift in Sources */,
 				652766CECD3E48E91FF33533 /* BrowserCookieServiceTests.swift in Sources */,
@@ -965,6 +972,7 @@
 				128088AF39F18164CCF8402B /* AccountsSettingsPane.swift in Sources */,
 				B17665D047E3FF28A5833216 /* AppDefaults.swift in Sources */,
 				AE3B5F95AC15F193C1B2C9CE /* AppVersion.swift in Sources */,
+				F1060C38798420C35CC6F2F1 /* AutoSwitchController.swift in Sources */,
 				02CF4A615FE527647C38BDEE /* AutoSwitchPlanner.swift in Sources */,
 				57E13576C5B94C057B6DD112 /* AutoSwitchSettings.swift in Sources */,
 				54D5B307F0F74D250E1E46AF /* Browser.swift in Sources */,
