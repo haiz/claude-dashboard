@@ -615,3 +615,28 @@ driven by `cases/manual-key.json`.
 
 The Linux side has no resync. `sync` and `add-key` are its two writers, and
 `add-key` obeys the pasted-key rule above rather than the resync one.
+
+## Ping
+
+Starting an account's usage windows without Claude Code: one short claude.ai message sent
+with the account's `sessionKey` cookie and the usual `anthropic-client-platform: web_claude_ai`
+header. Implemented on macOS only (`apps/macos/Shared/PingService.swift`). The endpoints are
+undocumented claude.ai internals and may change; every outcome is logged so a change shows up.
+
+1. `POST /api/organizations/{orgId}/chat_conversations` with `{"uuid": <new lowercase UUID>, "name": ""}`.
+2. `POST /api/organizations/{orgId}/chat_conversations/{uuid}/completion` with
+   `{"prompt": "Reply with just: ok", "timezone": <IANA zone>, "attachments": [], "files": [],
+   "rendering_mode": "messages"}`. The reply is SSE; an `event: message_start` means the
+   message was accepted and the windows started. No `model` field: the account default is used.
+3. `DELETE /api/organizations/{orgId}/chat_conversations/{uuid}`, best effort, also after a
+   failed step 2.
+
+| Response | Outcome |
+|---|---|
+| `message_start` seen | ok (a failed DELETE only adds a note) |
+| 401, or 403 with a JSON body | expired |
+| 403 with a `cf-mitigated` header or an HTML body | blocked |
+| anything else (429, timeout, network error, no `message_start`) | failed |
+
+Observed 2026-10-14: before a ping `five_hour.resets_at` was `null`; right after, it was the
+ping time plus 5 h rounded down to a 10-minute boundary, while utilization stayed 0.

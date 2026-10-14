@@ -100,6 +100,16 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   a 10-minute failure cooldown and the footer event. It only uses `.ready` accounts via
   `ClaudeCodeSwitcher.switchTo`: never a browser, never `switchMessage`.
   Spec: `docs/superpowers/specs/2026-10-13-auto-switch-design.md`.
+- **Ping** (`Shared/PingService.swift`, `Services/Ping/`) — starts an account's 5h/7d window by
+  sending one short claude.ai message with its session key (create conversation, completion,
+  delete; see `contract/README.md`, "Ping"). The account page's **Ping** button pings by hand;
+  Settings > General > **Auto Ping** (key `autoPingEnabled`, default off, one switch for every
+  account) makes `PingController` ping each `.active` account whose fresh usage shows
+  `five_hour` or `seven_day` `resets_at: null`, latched until both windows run again, with a
+  10-minute retry after a failed auto ping. `PingLogStore` keeps the newest 500 pings in
+  `ping_logs.db` (Tools > Ping Log). `PingMigration` deletes Run Command leftovers
+  (`command_logs.db`, `runCommand_*` keys) at launch. macOS only: Windows keeps Run Command.
+  Spec: `docs/superpowers/specs/2026-10-14-ping-design.md`.
 
 ### ViewModel
 - **DashboardViewModel** — `@MainActor` observable. Parallel refresh via `TaskGroup`. Sorts accounts by burn rate (utilization / time-remaining). Computes menu bar label from highest utilization.
@@ -107,7 +117,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 ### Views
 - **ClaudeDashboardApp** — Entry point. `MenuBarExtra` with `AppDelegate` managing window lifecycle.
 - **MenuBarPopover** — Compact menu bar dropdown. Expand button opens `MainWindow`.
-- **MainWindow** — System Settings-style `NavigationSplitView`. `SidebarView` lists Usage (Dashboard, Overview), Accounts (one row per account), Tools (Command Log, Help) and Settings (Accounts, General); `DashboardViewModel.selection: SidebarItem` picks the pane. Each pane starts with a `PaneHeader` (title + its buttons; the AppKit window has no native toolbar).
+- **MainWindow** — System Settings-style `NavigationSplitView`. `SidebarView` lists Usage (Dashboard, Overview), Accounts (one row per account), Tools (Ping Log, Help) and Settings (Accounts, General); `DashboardViewModel.selection: SidebarItem` picks the pane. Each pane starts with a `PaneHeader` (title + its buttons; the AppKit window has no native toolbar).
 - **DashboardPane / AccountPane** — the `AccountCard` grid, and the per-account page (header, `UsageGaugeRow`, the `AccountDetailView` chart, actions).
 - **AccountCard / UsageBar** — Per-account display with color-interpolated progress bars (green→red).
 - **SetupView** — Wizard scanning browser profiles for active Claude sessions. Offers the installed browsers (Chrome, Arc, Brave, Edge) and scans the one the user picks, remembering the choice in `preferredScanBrowser`.
