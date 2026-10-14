@@ -96,6 +96,7 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
 
     func testAutoSwitchDoesNothingWhileDisabled() async throws {
         let h = try await makeHarness(captureBackend: true)
+        h.settings.isEnabled = false
         try setUsage(h.vm, h.frontend.id, five: 99, seven: 40)
         try setUsage(h.vm, h.backend.id, five: 10, seven: 20)
 
