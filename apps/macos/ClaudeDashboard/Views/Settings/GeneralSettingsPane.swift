@@ -2,16 +2,13 @@ import SwiftUI
 import AppKit
 
 /// Settings > General: app identity (icon, name, version), auto refresh
-/// (on/off plus a 1-60 minute interval), the cards' Run Command button (menu bar
-/// and Dashboard), auto switch (on/off, 5h and 7d thresholds, menu bar toggle),
+/// (on/off plus a 1-60 minute interval), Auto Ping (on/off), auto switch (on/off, 5h and 7d thresholds, menu bar toggle),
 /// and updates (daily toggle plus the manual check).
 ///
 ///     GeneralSettingsPane(viewModel: vm).environmentObject(updateViewModel)
 struct GeneralSettingsPane: View {
     @ObservedObject var viewModel: DashboardViewModel
     @EnvironmentObject var updateViewModel: UpdateViewModel
-    @AppStorage(MenuBarPopover.showRunCommandKey, store: AppDefaults.shared)
-    private var showRunCommandOnCards = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,8 +23,16 @@ struct GeneralSettingsPane: View {
                         }
                     }
                 }
-                Section("Cards") {
-                    Toggle("Show Run Command button on cards", isOn: $showRunCommandOnCards)
+                Section {
+                    Toggle("Ping when a usage window is not running", isOn: Binding(
+                        get: { viewModel.pingController.isAutoPingEnabled },
+                        set: { viewModel.setAutoPingEnabled($0) }))
+                } header: {
+                    Text("Auto Ping")
+                } footer: {
+                    Text("Starts a new window for every active account whose 5h or 7d window is not running. Each ping sends one short message from that account.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 Section {
                     Toggle("Enable auto switch", isOn: Binding(

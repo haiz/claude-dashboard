@@ -34,14 +34,8 @@ struct MenuBarPopover: View {
     let onOpenAccountDetail: (UUID, UsageWindow) -> Void
 
     @State private var scrollAnchorId: UUID? = nil
-    @State private var runCommandAccount: Account? = nil
     /// Quit sits right under the card list, so a stray click asks first.
     @State private var confirmingQuit = false
-    /// Off by default: the card's Run Command button is easy to hit by mistake
-    /// and costs header space. Settings > General flips it.
-    @AppStorage(MenuBarPopover.showRunCommandKey, store: AppDefaults.shared)
-    private var showRunCommand = false
-    static let showRunCommandKey = "menuBarShowRunCommand"
     private static let scrollTopID = "cards-top"
     /// Wide enough for a compact card's three gauge groups plus `cardListPadding`
     /// on each side; narrower and the card overflows the scroll view, which
@@ -113,7 +107,6 @@ struct MenuBarPopover: View {
                                     onResync: { Task { await viewModel.resyncAccount(state.id) } },
                                     onTogglePin: { viewModel.togglePin(for: state.id) },
                                     onRefresh: { Task { await viewModel.refreshAll() } },
-                                    onRunCommand: showRunCommand ? { runCommandAccount = state.account } : nil,
                                     onOpenChart: { window in
                                         let popover = NSApp.keyWindow
                                         onOpenAccountDetail(state.id, window)
@@ -164,29 +157,6 @@ struct MenuBarPopover: View {
         }
         .frame(width: Self.width)
         .fixedSize(horizontal: false, vertical: true)
-        .overlay {
-            if let account = runCommandAccount {
-                ZStack {
-                    Color.black.opacity(0.4)
-                        .ignoresSafeArea()
-                        .onTapGesture { runCommandAccount = nil }
-
-                    RunCommandSheet(
-                        account: account,
-                        isPresented: Binding(
-                            get: { runCommandAccount != nil },
-                            set: { if !$0 { runCommandAccount = nil } }
-                        ),
-                        runner: viewModel.commandRunner,
-                        onRefresh: { Task { await viewModel.refreshAll() } }
-                    )
-                    .background(.regularMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .padding(12)
-                    .frame(width: Self.width)
-                }
-            }
-        }
         .claudeCodeSwitchOverlay(viewModel)
         // Inline, not `.alert`: see `claudeCodeSwitchOverlay` for why the panel can't host one.
         .overlay {

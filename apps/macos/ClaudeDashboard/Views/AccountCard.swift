@@ -6,8 +6,6 @@ struct AccountCard: View {
     let onTogglePin: () -> Void
     var onTap: (() -> Void)? = nil
     var onRefresh: (() -> Void)? = nil
-    /// nil hides the Run Command button.
-    var onRunCommand: (() -> Void)? = nil
     var onOpenChart: ((UsageWindow) -> Void)? = nil
     var isActiveClaudeCodeAccount: Bool = false
     /// nil hides the Switch button (switcher disabled).
@@ -20,7 +18,7 @@ struct AccountCard: View {
     var onTogglePriority: (() -> Void)? = nil
     var isCompact: Bool = true
 
-    /// The header's icon buttons (Switch, Run Command): hover background, tight padding.
+    /// The header's icon buttons (priority tick, Switch): hover background, tight padding.
     private static let iconButtonStyle = HoverableButtonStyle(horizontalPadding: 3, verticalPadding: 2, cornerRadius: 4)
 
     var body: some View {
@@ -81,18 +79,6 @@ struct AccountCard: View {
                             .disabled(isSwitchingClaudeCode)
                             .help(help)
                             .accessibilityLabel("Switch Claude Code to this account")
-                        }
-
-                        if let onRunCommand {
-                            Button {
-                                onRunCommand()
-                            } label: {
-                                Image(systemName: "terminal")
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(Self.iconButtonStyle)
-                            .help("Run a saved command for this account")
                         }
 
                         // Plan badge

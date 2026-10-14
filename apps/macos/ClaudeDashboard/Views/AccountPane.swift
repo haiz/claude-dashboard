@@ -4,21 +4,18 @@ import SwiftUI
 /// Settings: identity and usage gauges in one box, the usage chart, then actions.
 /// Give it `.id(state.id)` so switching accounts rebuilds the chart state.
 ///
-///     AccountPane(dashboardViewModel: vm, state: state,
-///                 onRunCommand: { runCommandAccount = state.account })
+///     AccountPane(dashboardViewModel: vm, state: state)
 ///         .id(state.id)
 struct AccountPane: View {
     @ObservedObject var dashboardViewModel: DashboardViewModel
     let state: AccountUsageState
-    let onRunCommand: () -> Void
 
     @StateObject private var chartViewModel: AccountDetailViewModel
     @State private var confirmingRemove = false
 
-    init(dashboardViewModel: DashboardViewModel, state: AccountUsageState, onRunCommand: @escaping () -> Void) {
+    init(dashboardViewModel: DashboardViewModel, state: AccountUsageState) {
         self.dashboardViewModel = dashboardViewModel
         self.state = state
-        self.onRunCommand = onRunCommand
         _chartViewModel = StateObject(wrappedValue: AccountDetailViewModel(
             accountId: state.id,
             logStore: dashboardViewModel.logStore,
@@ -83,6 +80,7 @@ struct AccountPane: View {
             Button("Cancel", role: .cancel) {}
         }
         .claudeCodeSwitchAlert(dashboardViewModel)
+        .task(id: state.id) { await dashboardViewModel.pingController.loadLatest(for: state.id) }
     }
 
     /// Identity and the usage gauges in one box: avatar, name and status on
@@ -183,9 +181,24 @@ struct AccountPane: View {
                 }
             }
             Divider()
-            actionRow("Run a command for this account") {
-                Button("Run Command\u{2026}", action: onRunCommand)
-                    .help("Run a saved command for this account")
+            actionRow("Start the 5h window now") {
+                VStack(alignment: .trailing, spacing: 2) {
+                    HStack(spacing: 6) {
+                        if dashboardViewModel.pingController.inFlight.contains(state.id) {
+                            ProgressView().controlSize(.small)
+                        }
+                        Button("Ping") {
+                            Task { await dashboardViewModel.pingNow(state.id) }
+                        }
+                        .disabled(!dashboardViewModel.canPing(state))
+                        .help("Send one short message from this account to start its 5h and 7d windows")
+                    }
+                    if let entry = dashboardViewModel.pingController.latest[state.id] {
+                        Text(entry.caption(time: { $0.formatted(date: .omitted, time: .shortened) }))
+                            .font(.caption)
+                            .foregroundStyle(entry.outcome == .ok ? Color.secondary : Color.red)
+                    }
+                }
             }
             Divider()
             actionRow("Read a fresh session key from the browser") {

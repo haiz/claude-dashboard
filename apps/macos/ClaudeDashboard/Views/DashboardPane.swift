@@ -2,15 +2,10 @@ import SwiftUI
 
 /// Dashboard pane: the account card grid (unchanged cards) or the empty state.
 ///
-///     DashboardPane(viewModel: vm, onAddAccount: { showingSetup = true },
-///                   onRunCommand: { runCommandAccount = $0 })
+///     DashboardPane(viewModel: vm, onAddAccount: { showingSetup = true })
 struct DashboardPane: View {
     @ObservedObject var viewModel: DashboardViewModel
     let onAddAccount: () -> Void
-    let onRunCommand: (Account) -> Void
-    /// Same setting as the menu bar popover: off hides the cards' Run Command button.
-    @AppStorage(MenuBarPopover.showRunCommandKey, store: AppDefaults.shared)
-    private var showRunCommand = false
     private static let scrollTopID = "cards-top"
 
     var body: some View {
@@ -47,7 +42,6 @@ struct DashboardPane: View {
                                     onResync: { Task { await viewModel.resyncAccount(state.id) } },
                                     onTogglePin: { viewModel.togglePin(for: state.id) },
                                     onRefresh: { Task { await viewModel.refreshAll() } },
-                                    onRunCommand: showRunCommand ? { onRunCommand(state.account) } : nil,
                                     onOpenChart: { window in viewModel.openAccount(state.id, window: window) },
                                     isActiveClaudeCodeAccount: viewModel.isActiveClaudeCodeAccount(state),
                                     switchAvailability: viewModel.switchAvailability[state.id],

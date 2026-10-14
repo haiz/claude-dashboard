@@ -133,28 +133,25 @@ final class DashboardViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var autoRefreshTask: Task<Void, Never>?
     private var resetMonitorTask: Task<Void, Never>?
-    /// Accounts already pinged for the current "circle not started" episode. An account
-    /// is cleared once both its windows report a reset again, so the next reset re-fires
-    /// the command exactly once instead of on every refresh while `resetsAt` stays nil.
-    private var pingedAccounts: Set<UUID> = []
+    /// Manual and auto pings; owns the auto-ping latch (see `PingController`).
+    let pingController: PingController
+    /// The latest batch of auto pings and the refresh after it. Tests await it.
+    var autoPingTask: Task<Void, Never>?
     private let burnRateTracker: BurnRateTracker
     let logStore: UsageLogStore
-    let commandLogStore: CommandLogStore
-    let commandRunner: CommandRunner
 
     init(
         accountStore: AccountStore = AccountStore(),
         apiService: UsageAPIService = UsageAPIService(),
         logStore: UsageLogStore? = nil,
-        commandLogStore: CommandLogStore? = nil,
         ccDetector: ClaudeCodeAccountDetector = ClaudeCodeAccountDetector(),
         cookieProvider: @escaping (String, Browser) -> ChromeCookieResult
             = BrowserCookieService.extractCookies(for:browser:),
         ccSwitcher: ClaudeCodeSwitcher? = ClaudeCodeSwitcher.live(isRunningTests: AppDefaults.isRunningTests()),
         ccProvisioner: ClaudeCodeLoginProvisioner? =
             AppDefaults.isRunningTests() ? nil : ClaudeCodeLoginProvisioner.live(),
-        commandRunner: CommandRunner? = nil,
-        autoSwitchSettings: AutoSwitchSettings? = nil
+        autoSwitchSettings: AutoSwitchSettings? = nil,
+        pingController: PingController? = nil
     ) {
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.autoRefreshMinutes = {
@@ -170,12 +167,11 @@ final class DashboardViewModel: ObservableObject {
         let store = logStore ?? UsageLogStore()
         self.logStore = store
         self.burnRateTracker = BurnRateTracker(logStore: store)
-        let cmdStore = commandLogStore ?? CommandLogStore()
-        self.commandLogStore = cmdStore
-        self.commandRunner = commandRunner ?? CommandRunner(store: cmdStore)
         let switchSettings = autoSwitchSettings ?? AutoSwitchSettings(defaults: AppDefaults.shared)
         self.autoSwitchSettings = switchSettings
         self.autoSwitch = AutoSwitchController(settings: switchSettings)
+        self.pingController = pingController ?? PingController(
+            service: PingService(), logStore: PingLogStore(), defaults: AppDefaults.shared)
         self.activeClaudeCodeEmail = ccDetector.activeEmail()
 
         // Cleanup old logs on launch
@@ -194,6 +190,9 @@ final class DashboardViewModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         autoSwitch.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        self.pingController.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
@@ -232,11 +231,11 @@ final class DashboardViewModel: ObservableObject {
     }
 
     /// Once a window's reset time has passed, the next API fetch reports `resets_at:
-    /// null`. Refresh promptly so `refreshAll` can fire the saved command to restart
-    /// the circle within seconds, instead of waiting for the next auto-refresh. The
+    /// null`. Refresh promptly so `refreshAll` can auto-ping to restart
+    /// the window within seconds, instead of waiting for the next auto-refresh. The
     /// 10s grace avoids reacting to the sub-second jitter `resets_at` shows right at
-    /// the boundary. Firing and de-duplication live in `refreshAll`, not here, so the
-    /// command can never fire twice for one reset.
+    /// the boundary. Firing and de-duplication live in `refreshAll`, not here, so
+    /// a window is never pinged twice for one reset.
     private func checkResetTriggers() async {
         let threshold = Date().addingTimeInterval(-10)
         let circlePassed = accountStates.contains { state in
@@ -248,18 +247,6 @@ final class DashboardViewModel: ObservableObject {
         if circlePassed {
             await refreshAll()
         }
-    }
-
-    /// The saved command exists to (re)start a reset circle. The true signal is a nil
-    /// `resetsAt` on either tracked window (5h / 7d): Claude returns `resets_at: null`
-    /// after a window resets and until its next first request, which is exactly the
-    /// "circle not started" state. Utilization is the wrong signal — it sits at 0 for
-    /// any idle-but-running window, so the old `utilization == 0` check fired on every
-    /// refresh for unused accounts. A failed fetch (usage == nil) does NOT fire: we
-    /// can't read the window state, and a network blip must not trigger a ping.
-    static func shouldRunSavedCommand(for usage: UsageData?) -> Bool {
-        guard let usage else { return false }
-        return usage.fiveHour.resetsAt == nil || usage.sevenDay.resetsAt == nil
     }
 
     // MARK: - Refresh
@@ -278,8 +265,8 @@ final class DashboardViewModel: ObservableObject {
         activeClaudeCodeEmail = ccDetector.activeEmail()
         await refreshClaudeCodeSwitchState()
 
-        // Saved commands to run for accounts whose refresh produced no 5h/7d usage.
-        var autoCommands: [(accountId: UUID, command: String)] = []
+        // Accounts whose fresh usage shows a window not running (see PingController).
+        var autoPings: [PingTarget] = []
 
         await withTaskGroup(of: (UUID, UsageData?, String?, AccountPlan?, AccountInfo?).self) { group in
             for state in accountStates
@@ -328,21 +315,17 @@ final class DashboardViewModel: ObservableObject {
                     accountStates[index].usage = usage ?? accountStates[index].usage
                     accountStates[index].error = error
 
-                    // Run the account's saved command once when a window's circle has
-                    // reset (resets_at == nil). Evaluate against the stored usage so a
-                    // failed fetch keeps the prior state instead of re-arming. The ping
-                    // fills resets_at, ending the nil episode; `pingedAccounts` blocks a
-                    // re-fire until both circles are present again (re-arm below).
-                    let acctId = accountStates[index].account.id
-                    if Self.shouldRunSavedCommand(for: accountStates[index].usage) {
-                        let cmdKey = RunCommandSettings.commandKey(for: acctId)
-                        if let cmd = AppDefaults.shared.string(forKey: cmdKey), !cmd.isEmpty,
-                           !pingedAccounts.contains(acctId) {
-                            pingedAccounts.insert(acctId)
-                            autoCommands.append((acctId, cmd))
-                        }
-                    } else {
-                        pingedAccounts.remove(acctId)
+                    // Auto ping on this refresh's own fetch, never the stored usage:
+                    // a failed fetch (usage == nil) must not ping. A successful fetch
+                    // marks the account `.active` below (through the store, which
+                    // reaches `accountStates` later), so an `.error` account that just
+                    // recovered counts as active now.
+                    let pingAccount = accountStates[index].account
+                    let pingStatus: AccountStatus = error == nil ? .active : pingAccount.status
+                    if let target = pingTarget(for: pingAccount),
+                       pingController.claimAutoPing(accountId: accountId, status: pingStatus,
+                                                    freshUsage: usage) {
+                        autoPings.append(target)
                     }
 
                     if error == "expired" {
@@ -395,23 +378,8 @@ final class DashboardViewModel: ObservableObject {
             }
         }
 
-        // Fire the de-duplicated saved commands without blocking the refresh spinner.
-        // Each fires once per reset (see pingedAccounts), so the command log no longer
-        // fills with repeats while a window sits idle.
-        if !autoCommands.isEmpty {
-            let commands = autoCommands
-            // Copy to a local so the detached task doesn't capture @MainActor self.
-            let runner = commandRunner
-            Task.detached {
-                await withTaskGroup(of: Void.self) { group in
-                    for item in commands {
-                        group.addTask {
-                            await runner.run(command: item.command, accountId: item.accountId, trigger: .autoReset)
-                        }
-                    }
-                }
-            }
-        }
+        // Fire auto pings without blocking the refresh spinner.
+        runAutoPings(autoPings)
 
         // Sort: pinned > (active Claude Code if no pin) > burn rate
         sortStates()

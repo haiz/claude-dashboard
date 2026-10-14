@@ -5,8 +5,8 @@ import Foundation
 /// Not `.standard` unconditionally, because the `ClaudeDashboardTests` scheme
 /// is hosted by `ClaudeDashboard.app`: every `xcodebuild test` launches the
 /// real app, whose stores are built at startup against the developer's own
-/// accounts. Any write in that path — the account store's quarantine move, its
-/// pruning of dead run commands — then runs on a real machine, on data no test
+/// accounts. Any write in that path — the account store's quarantine move, the
+/// Ping migration deleting Run Command leftovers — then runs on a real machine, on data no test
 /// declared. Diverting the host to a suite of its own is what makes a test run
 /// observably harmless.
 ///
