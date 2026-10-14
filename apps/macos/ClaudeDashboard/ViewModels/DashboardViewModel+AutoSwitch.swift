@@ -38,9 +38,10 @@ extension DashboardViewModel {
         autoSwitchSettings.priority?.accountId == id
     }
 
-    /// A tick needs an account auto switch could move to, with loaded usage for the baseline.
+    /// A tick needs the active account or one auto switch could move to, with loaded usage
+    /// for the baseline.
     func canTickPriority(_ state: AccountUsageState) -> Bool {
-        switchAvailability[state.id] == .ready && !isActiveClaudeCodeAccount(state) && state.usage != nil
+        (switchAvailability[state.id] == .ready || isActiveClaudeCodeAccount(state)) && state.usage != nil
     }
 
     /// Ticks `id` (moving the tick off any other account) or unticks it.
@@ -49,7 +50,12 @@ extension DashboardViewModel {
             autoSwitchSettings.setPriority(nil)
             return
         }
-        let baseline = accountStates.first { $0.id == id }?.usage?.fiveHour.resetsAt
+        let state = accountStates.first { $0.id == id }
+        let baseline = state.flatMap { state in
+            isActiveClaudeCodeAccount(state)
+                ? state.usage.map { AutoSwitchPlanner.priorityBaseline($0, now: Date()) }
+                : state.usage?.fiveHour.resetsAt
+        }
         autoSwitchSettings.setPriority(AutoSwitchPriority(accountId: id, baseline: baseline))
         Task { await runAutoSwitch() }
     }

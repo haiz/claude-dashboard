@@ -177,7 +177,7 @@ struct AccountPane: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .controlSize(.small)
-                    .help("Switch Claude Code to this account as soon as its 5h limit resets")
+                    .help("Switch Claude Code back to this account each time its 5h limit resets")
                 }
             }
             Divider()

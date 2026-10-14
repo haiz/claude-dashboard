@@ -12,7 +12,7 @@ struct AccountCard: View {
     var switchAvailability: SwitchAvailability? = nil
     var onSwitchClaudeCode: (() -> Void)? = nil
     var isSwitchingClaudeCode: Bool = false
-    /// True when this account is ticked to take over after its 5h reset.
+    /// True when this is the home account Claude Code returns to after each 5h reset.
     var isPriorityTarget: Bool = false
     /// nil hides the tick button (account cannot be ticked).
     var onTogglePriority: (() -> Void)? = nil
@@ -63,8 +63,8 @@ struct AccountCard: View {
                             }
                             .buttonStyle(Self.iconButtonStyle)
                             .help(isPriorityTarget
-                                  ? "Ticked: Claude Code switches here when its 5h limit resets. Click to cancel"
-                                  : "Switch Claude Code here as soon as its 5h limit resets")
+                                  ? "Ticked: Claude Code comes back here each time its 5h limit resets. Click to cancel"
+                                  : "Switch Claude Code here each time its 5h limit resets")
                             .accessibilityLabel("Switch here after 5h reset")
                         }
                         if let switchAvailability, let help = switchAvailability.switchHelp {

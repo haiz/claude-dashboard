@@ -169,10 +169,11 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
     func testTickRecordsTheFiveHourBaselineAndToggles() async throws {
         let h = try await makeHarness(captureBackend: true)
         try setUsage(h.vm, h.backend.id, five: 50, seven: 20)
+        try setUsage(h.vm, h.frontend.id, five: 30, seven: 20)
         let state = try XCTUnwrap(h.vm.accountStates.first { $0.id == h.backend.id })
         let active = try XCTUnwrap(h.vm.accountStates.first { $0.id == h.frontend.id })
         XCTAssertTrue(h.vm.canTickPriority(state))
-        XCTAssertFalse(h.vm.canTickPriority(active), "the active account cannot be ticked")
+        XCTAssertTrue(h.vm.canTickPriority(active), "the active account can be ticked as home")
 
         h.vm.togglePriority(for: h.backend.id)
         XCTAssertEqual(h.settings.priority?.accountId, h.backend.id)
@@ -181,5 +182,17 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
 
         h.vm.togglePriority(for: h.backend.id)
         XCTAssertNil(h.settings.priority)
+    }
+
+    func testTickingTheActiveAccountKeepsTheTick() async throws {
+        let h = try await makeHarness(captureBackend: true)
+        try setUsage(h.vm, h.frontend.id, five: 50, seven: 20)
+        let active = try XCTUnwrap(h.vm.accountStates.first { $0.id == h.frontend.id })
+
+        h.vm.togglePriority(for: h.frontend.id)
+        await h.vm.runAutoSwitch()
+
+        XCTAssertTrue(h.vm.isPriorityTarget(h.frontend.id))
+        XCTAssertEqual(h.settings.priority?.baseline, active.usage?.fiveHour.resetsAt)
     }
 }

@@ -24,8 +24,9 @@ struct AutoSwitchThresholds: Equatable {
     let sevenDay: Double
 }
 
-/// The account to switch to as soon as its 5h window resets. `baseline` is its 5h
-/// `resetsAt` when ticked; nil means the window had not started.
+/// The home account: Claude Code moves back to it each time its 5h window resets.
+/// `baseline` is its 5h `resetsAt` when ticked, or when Claude Code last used it; nil
+/// means it was ticked before its window started.
 struct AutoSwitchPriority: Equatable {
     let accountId: UUID
     let baseline: Date?
@@ -81,6 +82,7 @@ enum AutoSwitchPlanner {
     static let groupRatio = 0.85
     /// `resetsAt` drifts by sub-seconds between fetches; a real reset moves it by hours.
     static let resetTolerance: TimeInterval = 60
+    static let fiveHourWindow: TimeInterval = 5 * 3600
 
     static func isTriggered(_ usage: UsageData, thresholds: AutoSwitchThresholds) -> Bool {
         usage.fiveHour.utilization >= thresholds.fiveHour
@@ -114,6 +116,20 @@ enum AutoSwitchPlanner {
     static func hasReset(current: Date?, baseline: Date?) -> Bool {
         guard let baseline, let current else { return true }
         return current.timeIntervalSince(baseline) > resetTolerance
+    }
+
+    /// The baseline of the ticked account while Claude Code uses it: its 5h `resetsAt`, or,
+    /// before its window starts, the earliest time a window started from now could reset.
+    static func priorityBaseline(_ usage: UsageData, now: Date) -> Date {
+        usage.fiveHour.resetsAt ?? now + fiveHourWindow
+    }
+
+    /// True when the ticked account's 5h window has reset since `baseline`. A nil `current`
+    /// counts only once the baseline has passed: a baseline still ahead was set when Claude
+    /// Code left it before its window started.
+    static func isPriorityDue(current: Date?, baseline: Date?, now: Date) -> Bool {
+        if current == nil, let baseline, baseline > now { return false }
+        return hasReset(current: current, baseline: baseline)
     }
 
     static func effectiveThresholds(for id: UUID, base: AutoSwitchThresholds,
@@ -166,7 +182,7 @@ enum AutoSwitchPlanner {
         if let priority = s.priority,
            let target = candidates.first(where: { $0.id == priority.accountId }),
            target.sevenDay < tierSevenDayLimit,
-           hasReset(current: target.usage?.fiveHour.resetsAt, baseline: priority.baseline) {
+           isPriorityDue(current: target.usage?.fiveHour.resetsAt, baseline: priority.baseline, now: s.now) {
             return .switchTo(target.id, .priorityReset)
         }
 

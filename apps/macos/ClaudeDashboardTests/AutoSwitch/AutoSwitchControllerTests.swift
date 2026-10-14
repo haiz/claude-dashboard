@@ -104,14 +104,68 @@ final class AutoSwitchControllerTests: XCTestCase {
         XCTAssertFalse(controller.shouldFastPoll([active]))
     }
 
-    func testPriorityClearedAfterSwitch() async {
+    func testPriorityKeptAfterSwitch() async {
         let active = account("a", five: 10, seven: 10, active: true)
         let ticked = account("t", five: 0, seven: 20, fiveResets: nil)
         settings.setPriority(AutoSwitchPriority(accountId: ticked.id, baseline: clock - 600))
         let result = await controller.evaluate([active, ticked]) { _ in }
         XCTAssertEqual(result, ticked.id)
-        XCTAssertNil(settings.priority)
+        XCTAssertEqual(settings.priority?.accountId, ticked.id)
         XCTAssertEqual(controller.lastEvent?.kind, .switched(.priorityReset))
+    }
+
+    func testActiveTickedAccountKeepsTickAndFollowsItsWindowEvenWhileDisabled() async {
+        settings.isEnabled = false
+        let home = account("h", five: 40, seven: 20, fiveResets: clock + 3600, active: true)
+        settings.setPriority(AutoSwitchPriority(accountId: home.id, baseline: clock - 9000))
+        _ = await controller.evaluate([home, account("b", five: 0, seven: 10)]) { _ in }
+        XCTAssertEqual(settings.priority, AutoSwitchPriority(accountId: home.id, baseline: clock + 3600))
+    }
+
+    func testActiveTickedAccountBeforeItsWindowStartsWaitsFiveHours() async {
+        let home = account("h", five: 0, seven: 20, fiveResets: nil, active: true)
+        settings.setPriority(AutoSwitchPriority(accountId: home.id, baseline: nil))
+        _ = await controller.evaluate([home]) { _ in }
+        XCTAssertEqual(settings.priority?.baseline, clock + 5 * 3600)
+    }
+
+    func testStaleActiveTickedAccountKeepsItsBaseline() async {
+        var home = account("h", five: 40, seven: 20, fiveResets: clock + 3600, active: true)
+        home.isFresh = false
+        settings.setPriority(AutoSwitchPriority(accountId: home.id, baseline: clock - 9000))
+        _ = await controller.evaluate([home]) { _ in }
+        XCTAssertEqual(settings.priority?.baseline, clock - 9000)
+    }
+
+    func testLeavesTheHomeAccountAtItsLimitAndComesBackAfterItsReset() async {
+        let homeId = UUID()
+        func home(five: Double, resets: Date?, active: Bool) -> AutoSwitchAccount {
+            AutoSwitchAccount(id: homeId, displayName: "h",
+                              usage: UsageData(fiveHour: UsageLimit(utilization: five, resetsAt: resets),
+                                               sevenDay: UsageLimit(utilization: 20, resetsAt: clock + 86_400)),
+                              availability: active ? .active : .ready, isUsable: true, isActive: active)
+        }
+        let otherId = UUID()
+        func other(active: Bool) -> AutoSwitchAccount {
+            AutoSwitchAccount(id: otherId, displayName: "o",
+                              usage: UsageData(fiveHour: UsageLimit(utilization: 10, resetsAt: clock + 3600),
+                                               sevenDay: UsageLimit(utilization: 20, resetsAt: clock + 86_400)),
+                              availability: active ? .active : .ready, isUsable: true, isActive: active)
+        }
+        let resets = clock + 1800
+        settings.setPriority(AutoSwitchPriority(accountId: homeId, baseline: nil))
+
+        let left = await controller.evaluate([home(five: 96, resets: resets, active: true), other(active: false)]) { _ in }
+        XCTAssertEqual(left, otherId)
+        XCTAssertEqual(settings.priority, AutoSwitchPriority(accountId: homeId, baseline: resets))
+
+        let early = await controller.evaluate([home(five: 96, resets: resets, active: false), other(active: true)]) { _ in }
+        XCTAssertNil(early, "its window has not reset yet")
+
+        clock = resets + 60
+        let back = await controller.evaluate([home(five: 0, resets: nil, active: false), other(active: true)]) { _ in }
+        XCTAssertEqual(back, homeId)
+        XCTAssertEqual(settings.priority?.accountId, homeId)
     }
 
     func testPriorityDroppedWhenItsAccountIsGoneEvenWhileDisabled() async {
