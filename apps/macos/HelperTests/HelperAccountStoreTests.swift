@@ -70,6 +70,29 @@ final class HelperAccountStoreTests: XCTestCase {
         XCTAssertNotNil(StoreFixture.readData(fromSuite: suite), "and nothing was moved")
     }
 
+    /// `contract/account-schema.md` "A record this build cannot read": both
+    /// loads skip it, and a save writes it back untouched.
+    func testARecordFromANewerBuildIsSkippedOnLoadAndKeptOnSave() throws {
+        let known = StoreFixture.account(name: "person@example.com", orgId: "org-1")
+        let knownObject = try JSONSerialization.jsonObject(with: JSONEncoder().encode(known))
+        var newer = try XCTUnwrap(knownObject as? [String: Any])
+        newer["id"] = UUID().uuidString
+        newer["browser"] = "someFutureBrowser"
+        StoreFixture.seedData(try JSONSerialization.data(withJSONObject: [knownObject, newer]), intoSuite: suite)
+
+        XCTAssertEqual(HelperAccountStore.loadAccounts(), [known])
+        let loaded = HelperAccountStore.loadAccountsForWrite()
+        XCTAssertEqual(loaded.accounts, [known])
+        XCTAssertNil(loaded.quarantined)
+
+        HelperAccountStore.saveAccounts([])
+
+        let stored = try XCTUnwrap(StoreFixture.readData(fromSuite: suite))
+        let records = try XCTUnwrap(try JSONSerialization.jsonObject(with: stored) as? [Any])
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first as? NSDictionary, newer as NSDictionary)
+    }
+
     func testDestroyUnlinksTheBackingPlistFile() {
         let plistPath = NSHomeDirectory() + "/Library/Preferences/\(suite!).plist"
 

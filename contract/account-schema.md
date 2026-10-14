@@ -102,11 +102,12 @@ and the record reads afterwards as browser-backed with an empty profile path.
 Usage polling still works; re-sync reports opening a profile named `''` until the
 key is pasted again.
 
-A `"chromeDev"` record is worse for an older macOS build: `Browser` there has no
-such case, so decoding the array fails as a whole and `AccountStoreQuarantine`
-moves every account aside (`claude-dashboard.accounts.unreadable.<timestamp>`),
-leaving an empty store. Once a Chrome Dev account is added, do not run a build
-that predates it.
+A `"chromeDev"` record is worse for a macOS build older than Chrome Dev support:
+`Browser` there has no such case, so decoding the array fails as a whole and
+`AccountStoreQuarantine` moves every account aside
+(`claude-dashboard.accounts.unreadable.<timestamp>`), leaving an empty store.
+Once a Chrome Dev account is added, do not run such a build. Builds from
+"A record this build cannot read" onward only hide the one record.
 
 ## Backward compatibility
 
@@ -336,4 +337,21 @@ and a command that only reads has nothing to protect by doing it, so `decrypt`
 keeps reporting an unreadable store the same way it reports an empty one (see
 `contract/helper-cli.md`'s "`decrypt`" section). That is a diagnosability
 gap, not a data-loss one.
+
+### A record this build cannot read
+
+The rule above is for a store that is not a JSON array at all. One record
+inside a good array that this build cannot decode (most often a newer build's
+`browser`, `plan`, `status` or `source` value) is a different case, and must
+not cost the other records:
+
+1. Every load, read-only or not, returns the records it can decode and leaves
+   the others out. Nothing is quarantined.
+2. Every write puts the left-out records back, unchanged, after the records it
+   writes. A writer takes them from the bytes it is about to replace, so a
+   record survives any number of writes by a build that cannot read it.
+
+The user sees nothing of such a record until a build that can read it runs
+again. macOS only for now (`apps/macos/Shared/AccountStoreCodec.swift`); the
+Linux store still decodes the array as a whole.
 

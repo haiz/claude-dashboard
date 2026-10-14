@@ -114,6 +114,45 @@ final class AccountStoreTests: XCTestCase {
         XCTAssertEqual(recovered.accounts.count, 1, "and the store still works")
     }
 
+    /// `contract/account-schema.md` "A record this build cannot read": a
+    /// record a newer build wrote is hidden here, not quarantined with the
+    /// rest, and survives this build's writes.
+    func testARecordFromANewerBuildIsHiddenAndSurvivesAWrite() throws {
+        let known = Account(
+            id: UUID(),
+            name: "Known",
+            email: nil,
+            chromeProfilePath: "Profile 1",
+            chromeProfileName: nil,
+            orgId: "org-123",
+            plan: .pro,
+            lastSynced: nil,
+            status: .active,
+            source: .browser
+        )
+        var newer = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: JSONEncoder().encode(known)) as? [String: Any]
+        )
+        newer["id"] = UUID().uuidString
+        newer["browser"] = "someFutureBrowser"
+        let knownObject = try JSONSerialization.jsonObject(with: JSONEncoder().encode(known))
+        defaults.set(
+            try JSONSerialization.data(withJSONObject: [knownObject, newer]),
+            forKey: StoreFixture.storageKey
+        )
+
+        let reopened = AccountStore(defaults: defaults)
+        XCTAssertEqual(reopened.accounts, [known])
+        XCTAssertTrue(StoreFixture.unreadableCopies(inSuite: suiteName).isEmpty, "nothing quarantined")
+
+        reopened.removeAccount(id: known.id)
+
+        let stored = try XCTUnwrap(defaults.data(forKey: StoreFixture.storageKey))
+        let records = try XCTUnwrap(try JSONSerialization.jsonObject(with: stored) as? [Any])
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first as? NSDictionary, newer as NSDictionary)
+    }
+
     func testPersistsAcrossInstances() {
         let account = Account(
             id: UUID(),

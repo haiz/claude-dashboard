@@ -50,7 +50,8 @@ final class AccountStore: ObservableObject {
     // MARK: - Persistence
 
     private func persist() {
-        guard let data = try? JSONEncoder().encode(accounts) else { return }
+        let existing = defaults.data(forKey: storageKey)
+        guard let data = try? AccountStoreCodec.encode(accounts, over: existing) else { return }
         defaults.set(data, forKey: storageKey)
     }
 }
