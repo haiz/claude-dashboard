@@ -75,11 +75,7 @@ final class AutoSwitchController: ObservableObject {
     @discardableResult
     func evaluate(_ accounts: [AutoSwitchAccount],
                   perform: (UUID) async throws -> Void) async -> UUID? {
-        // A tick on a removed or now-active account has nothing left to wait for.
-        if let priority = settings.priority,
-           accounts.first(where: { $0.id == priority.accountId })?.isActive ?? true {
-            settings.setPriority(nil)
-        }
+        updatePriority(accounts)
         guard settings.isEnabled else { return nil }
 
         let t = now()
@@ -129,12 +125,26 @@ final class AutoSwitchController: ObservableObject {
             lock = target?.usage.flatMap {
                 AutoSwitchPlanner.makeLock(for: id, usage: $0, thresholds: settings.thresholds)
             }
-            if settings.priority?.accountId == id { settings.setPriority(nil) }
             lastEvent = AutoSwitchEvent(kind: .switched(reason), accountName: target?.displayName, date: t)
             await logStore.insert(date: t, outcome: .switched, fromName: active?.displayName,
                                   toName: target?.displayName, reason: reasonText,
                                   detail: target.map { "\($0.displayName): \(Self.usageText($0))" })
             return id
+        }
+    }
+
+    /// Drops a tick on a removed account. While the ticked account is active, moves its
+    /// baseline to the window Claude Code uses, so leaving it waits for that window's reset.
+    private func updatePriority(_ accounts: [AutoSwitchAccount]) {
+        guard let priority = settings.priority else { return }
+        guard let home = accounts.first(where: { $0.id == priority.accountId }) else {
+            settings.setPriority(nil)
+            return
+        }
+        guard home.isActive, home.isFresh, let usage = home.usage else { return }
+        let baseline = AutoSwitchPlanner.priorityBaseline(usage, now: now())
+        if baseline != priority.baseline {
+            settings.setPriority(AutoSwitchPriority(accountId: home.id, baseline: baseline))
         }
     }
 

@@ -277,6 +277,29 @@ final class AutoSwitchPlannerTests: XCTestCase {
         XCTAssertEqual(decide(snapshot([active, ticked], priority: p)), .switchTo(ticked.id, .priorityReset))
     }
 
+    func testPriorityWaitsWhileABaselineAheadHasNoWindow() {
+        let active = account("a", five: 10, seven: 10, active: true)
+        let ticked = account("t", five: 0, seven: 40, fiveResets: nil)
+        let p = AutoSwitchPriority(accountId: ticked.id, baseline: now + 3600)
+        XCTAssertEqual(decide(snapshot([active, ticked], priority: p)), .stay(.belowThreshold))
+    }
+
+    func testPriorityFiresOnceABaselineAheadHasPassed() {
+        let active = account("a", five: 10, seven: 10, active: true)
+        let ticked = account("t", five: 0, seven: 40, fiveResets: nil)
+        let p = AutoSwitchPriority(accountId: ticked.id, baseline: now - 1)
+        XCTAssertEqual(decide(snapshot([active, ticked], priority: p)), .switchTo(ticked.id, .priorityReset))
+    }
+
+    func testPriorityBaselineIsTheWindowResetOrFiveHoursAhead() {
+        let started = UsageData(fiveHour: UsageLimit(utilization: 5, resetsAt: now + 600),
+                                sevenDay: UsageLimit(utilization: 5, resetsAt: nil))
+        let unstarted = UsageData(fiveHour: UsageLimit(utilization: 0, resetsAt: nil),
+                                  sevenDay: UsageLimit(utilization: 5, resetsAt: nil))
+        XCTAssertEqual(AutoSwitchPlanner.priorityBaseline(started, now: now), now + 600)
+        XCTAssertEqual(AutoSwitchPlanner.priorityBaseline(unstarted, now: now), now + 5 * 3600)
+    }
+
     func testPriorityBlockedBySevenDay99() {
         let active = account("a", five: 10, seven: 10, active: true)
         let ticked = account("t", five: 0, seven: 99, fiveResets: nil)

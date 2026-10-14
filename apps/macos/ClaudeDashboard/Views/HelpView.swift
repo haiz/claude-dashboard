@@ -101,7 +101,7 @@ struct HelpView: View {
                 HelpBadge("Pro", color: AccountPlan.pro.badgeColor)
             }
             HelpRow(symbol: "pin.fill", "**Pinned**: always at the top of the list, and the account shown in the menu bar.")
-            HelpRow(symbol: "bolt.fill", color: .orange, "**Next after reset**: Claude Code moves here as soon as this account's 5h limit resets.")
+            HelpRow(symbol: "bolt.fill", color: .orange, "**Home after reset**: Claude Code comes back here each time this account's 5h limit resets.")
             HelpRow(symbol: "exclamationmark.triangle.fill", color: .orange, "**Session expired**: sign in again in the browser, then **Re-sync**.")
 
             HelpCallout(.note, "The menu bar shows the 5h usage and the time left until reset for your pinned account, or the top account when none is pinned.")
@@ -148,7 +148,7 @@ struct HelpView: View {
                 "Sign in and click **Authorize**.",
                 "The switch finishes by itself. From then on it is instant, no browser, for about 30 days.",
             ], color: .pink)
-            HelpRow(symbol: "bolt", color: .orange, "**Switch after reset**: tick \(Image(systemName: "bolt")) on a card (or the toggle on its page) to move Claude Code there as soon as its 5h limit resets. Only one account can be ticked.")
+            HelpRow(symbol: "bolt", color: .orange, "**Switch after reset**: tick \(Image(systemName: "bolt")) on a card (or the toggle on its page) to move Claude Code there each time its 5h limit resets. The tick stays until you untick it, and the active account can be ticked too. Only one account can be ticked.")
             HelpCallout(.warning, "Don't also use the same account through another `CLAUDE_CONFIG_DIR`. Two copies of one login sign each other out.")
         }
     }
