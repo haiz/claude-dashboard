@@ -27,11 +27,13 @@
 		1FC7DDFCDA4DE7B462FFF965 /* UsageDecodingContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AFC5BA1E046AD26CBECA092 /* UsageDecodingContractTests.swift */; };
 		203ACE14CE6715FA4B712065 /* HelperAccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB2623CB6EC20CACFF82236 /* HelperAccountStore.swift */; };
 		211F98E0C0F99203EF129492 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066B8B1E829B2024AB298464 /* SetupView.swift */; };
+		216AF1BAC39CD9C75CB0B9DE /* PingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D76299585A3672F3ADD331 /* PingService.swift */; };
 		2AD7F348C0B9F5BC6AB4D450 /* ProcessTreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6C06F755D5222731477EC6 /* ProcessTreeTests.swift */; };
 		2B81ED6B2F89077F9AD8196B /* AutoSwitchFooter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6C3E19F896C2400679616B /* AutoSwitchFooter.swift */; };
 		2FC957209C42E7534C44884C /* DispatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C86648065DF41E58DFDD1855 /* DispatchTests.swift */; };
 		307F1C1773F3ED6E78BEC859 /* UsageGaugeRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95082583D7C4BDB685C32B1 /* UsageGaugeRow.swift */; };
 		310A4AEEB4EF068D8522A921 /* ManualKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF55256F6D81B14585D71C9 /* ManualKey.swift */; };
+		3171A3E2DE30580E87AE725D /* PingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D76299585A3672F3ADD331 /* PingService.swift */; };
 		390BB1B38D799B09D2603F36 /* InMemoryKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761BB0FBD8610B01A0F298F6 /* InMemoryKeychain.swift */; };
 		3A7A4D7688E6CED6C2105C86 /* BrowserProfileOpenerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3146B8ECCCCE23C2B29BFCD8 /* BrowserProfileOpenerTests.swift */; };
 		3BF60AFACFB6A826612DEFD2 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
@@ -102,6 +104,7 @@
 		861BA6B0F607213E156F515D /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A87EC4F90E188AAAFB660C3 /* AppVersion.swift */; };
 		86A12F08814BB2ED1FFC6013 /* RunCommandSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74CE7503C313DA263B2EC1BA /* RunCommandSettings.swift */; };
 		8842F857F1AFCB1B005A65E3 /* StoreFixture+Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9460FE177070480C505142E8 /* StoreFixture+Account.swift */; };
+		88AFDA0122C8083C17A003FF /* PingServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50394951A2973974631180D4 /* PingServiceTests.swift */; };
 		89EF0ECEF1D170B4BA0889F1 /* InlinePrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63F7648F7947F079340F6B42 /* InlinePrompt.swift */; };
 		8A05B43134B187D33EE15895 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		8C6A56AA09D21B951F1E7863 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D572159B978911BF3D1EDAC0 /* Assets.xcassets */; };
@@ -151,6 +154,7 @@
 		C1EBCFB4688B8106C910642D /* AutoSwitchPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD2F60A213BB9D946C30DC73 /* AutoSwitchPlannerTests.swift */; };
 		C23B74F40DBB7E413F3954EA /* AddKeyCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F466F80474346C7DBE22396 /* AddKeyCommand.swift */; };
 		C2A2A8E4EB4A85A4C2B4FC6F /* HelperAccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB2623CB6EC20CACFF82236 /* HelperAccountStore.swift */; };
+		C3A07C8ABE7AA0986CE63789 /* PingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D76299585A3672F3ADD331 /* PingService.swift */; };
 		C42D702D9ABD1294DCD9AD91 /* PlanDetectionContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */; };
 		C436B7F85AB4285388BE8869 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
 		C5EF5EF93570CBB91B78006E /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
@@ -257,6 +261,7 @@
 		4AF7DEAC28930337FB1D5772 /* DecryptCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecryptCommand.swift; sourceTree = "<group>"; };
 		4CB083F464444A9AAEFA0DDE /* ScanOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanOutcomeTests.swift; sourceTree = "<group>"; };
 		4EB2623CB6EC20CACFF82236 /* HelperAccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperAccountStore.swift; sourceTree = "<group>"; };
+		50394951A2973974631180D4 /* PingServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingServiceTests.swift; sourceTree = "<group>"; };
 		512662F087ECA27278605DEA /* ClaudeConfigFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeConfigFile.swift; sourceTree = "<group>"; };
 		52F459D10501056C193989A6 /* MenuBarPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPopover.swift; sourceTree = "<group>"; };
 		53030D91918FBE91B264165C /* UsageCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageCommandTests.swift; sourceTree = "<group>"; };
@@ -298,6 +303,7 @@
 		82BD8EADA1A53C63A8745853 /* MainWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindow.swift; sourceTree = "<group>"; };
 		82BDA8522FB7218F3456ECCF /* CommandLogViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandLogViewModelTests.swift; sourceTree = "<group>"; };
 		8454A54E81908E1F697644E4 /* UsageLogModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogModels.swift; sourceTree = "<group>"; };
+		84D76299585A3672F3ADD331 /* PingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingService.swift; sourceTree = "<group>"; };
 		8539697E193D19F4B3E8F24C /* SidebarItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarItem.swift; sourceTree = "<group>"; };
 		85AD7D28083E9B6F696E72C7 /* AccountCardLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountCardLayoutTests.swift; sourceTree = "<group>"; };
 		86AC4B09025CCFBC088F61A5 /* InteractiveChartContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractiveChartContainer.swift; sourceTree = "<group>"; };
@@ -473,6 +479,7 @@
 				185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */,
 				0D88C6830E049763BE5F1719 /* AutoSwitch */,
 				F6D0B8F31AE95BFBEF0BCB5D /* ClaudeCodeSwitch */,
+				FD40D3961777D7506C5CEFA0 /* Ping */,
 				09B6A04220B10A8B2279E533 /* TestSupport */,
 			);
 			path = ClaudeDashboardTests;
@@ -651,6 +658,7 @@
 				6C7E115BD84248989BAA883F /* CryptoService.swift */,
 				3DF55256F6D81B14585D71C9 /* ManualKey.swift */,
 				7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */,
+				84D76299585A3672F3ADD331 /* PingService.swift */,
 				53FC5C2A26C631D62371B57C /* SessionCandidate.swift */,
 				1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */,
 				2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */,
@@ -703,6 +711,14 @@
 				5D7F8D21DE2B512AD580A3AC /* SecurityCLIKeychainTests.swift */,
 			);
 			path = ClaudeCodeSwitch;
+			sourceTree = "<group>";
+		};
+		FD40D3961777D7506C5CEFA0 /* Ping */ = {
+			isa = PBXGroup;
+			children = (
+				50394951A2973974631180D4 /* PingServiceTests.swift */,
+			);
+			path = Ping;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -882,6 +898,7 @@
 				B9591794E9DA0689E406A431 /* MockURLProtocol.swift in Sources */,
 				95B1138E1D2272D2AB2BB8CA /* OAuthCallbackListenerTests.swift in Sources */,
 				69E5C98294531C72DBF1D4CC /* OrgSelectionContractTests.swift in Sources */,
+				88AFDA0122C8083C17A003FF /* PingServiceTests.swift in Sources */,
 				C42D702D9ABD1294DCD9AD91 /* PlanDetectionContractTests.swift in Sources */,
 				FD8D11773B4AB3B5B1F02A3B /* PlanRefreshContractTests.swift in Sources */,
 				2AD7F348C0B9F5BC6AB4D450 /* ProcessTreeTests.swift in Sources */,
@@ -928,6 +945,7 @@
 				E99F26B2AF2EACF7A4B12282 /* ManualKey.swift in Sources */,
 				81F2429B21545DD0CB6C2FE9 /* ManualKeyInput.swift in Sources */,
 				1CBA83E327ED724A9852B8FD /* MockURLProtocol.swift in Sources */,
+				3171A3E2DE30580E87AE725D /* PingService.swift in Sources */,
 				BB846D46C30AC543BA5BC1BD /* SessionCandidate.swift in Sources */,
 				8842F857F1AFCB1B005A65E3 /* StoreFixture+Account.swift in Sources */,
 				7D8F80A24990E59DEB9A2FF6 /* StoreFixture.swift in Sources */,
@@ -958,6 +976,7 @@
 				203ACE14CE6715FA4B712065 /* HelperAccountStore.swift in Sources */,
 				1213175776995521648C0196 /* ManualKey.swift in Sources */,
 				9FAB31B717BAEDE9C724CB3E /* ManualKeyInput.swift in Sources */,
+				C3A07C8ABE7AA0986CE63789 /* PingService.swift in Sources */,
 				697FD5163EBEAA9871C91C38 /* SessionCandidate.swift in Sources */,
 				A45521DA5ED20F5EEDA1F30E /* SyncCommand.swift in Sources */,
 				46ACA4D872B48395C5A010F6 /* UsageAPIService.swift in Sources */,
@@ -1025,6 +1044,7 @@
 				5994EEF08661FBAD5564707D /* OverviewChartView.swift in Sources */,
 				E31B51A27092F17B0C752A22 /* PaneHeader.swift in Sources */,
 				85A890C260027761BE3F5188 /* PasteKeyView.swift in Sources */,
+				216AF1BAC39CD9C75CB0B9DE /* PingService.swift in Sources */,
 				B110EB4BECFCCD30DE2E8674 /* ProcessTree.swift in Sources */,
 				86A12F08814BB2ED1FFC6013 /* RunCommandSettings.swift in Sources */,
 				E6585C166C57BFBA1B32371D /* RunCommandSheet.swift in Sources */,
