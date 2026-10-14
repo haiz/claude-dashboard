@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The popover's bottom row: Quit on the left, the auto switch toggle on the right and its
 /// last event between them. The toggle shows only while `showsAutoSwitchToggle` (on, or near
-/// a limit with the widget toggle allowed).
+/// a limit with the widget toggle allowed), dimmed while the active account is not near a limit.
 ///
 ///     PopoverFooter(viewModel: viewModel, onQuit: { confirmingQuit = true })
 struct PopoverFooter: View {
@@ -36,6 +36,7 @@ struct PopoverFooter: View {
                     .toggleStyle(AccentSwitchToggleStyle())
                     .font(.caption)
                     .fixedSize()
+                    .opacity(viewModel.isAutoSwitchNearLimit ? 1 : 0.4)
                     .help("Move Claude Code to another account when this one reaches its limit")
             }
         }

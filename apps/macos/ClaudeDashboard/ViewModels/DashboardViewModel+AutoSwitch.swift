@@ -19,9 +19,12 @@ extension DashboardViewModel {
     /// The popover footer shows the toggle while auto switch is on, and near a limit when
     /// the user lets it (`showWidgetToggle`).
     var showsAutoSwitchToggle: Bool {
-        if autoSwitchSettings.isEnabled { return true }
-        guard autoSwitchSettings.showWidgetToggle,
-              let usage = accountStates.first(where: isActiveClaudeCodeAccount)?.usage else { return false }
+        autoSwitchSettings.isEnabled || (autoSwitchSettings.showWidgetToggle && isAutoSwitchNearLimit)
+    }
+
+    /// The active account is in the toggle zone. Outside it the footer dims an on toggle.
+    var isAutoSwitchNearLimit: Bool {
+        guard let usage = accountStates.first(where: isActiveClaudeCodeAccount)?.usage else { return false }
         return AutoSwitchPlanner.isInToggleZone(usage, thresholds: autoSwitchSettings.thresholds)
     }
 

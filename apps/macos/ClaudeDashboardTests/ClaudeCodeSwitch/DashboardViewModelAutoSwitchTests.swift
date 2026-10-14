@@ -139,6 +139,19 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
         h.vm.updateAutoSwitchPoll()
     }
 
+    func testFooterToggleDimsOutsideTheToggleZone() async throws {
+        let h = try await makeHarness(captureBackend: true)
+        h.settings.isEnabled = true
+        try setUsage(h.vm, h.frontend.id, five: 3, seven: 68)
+        XCTAssertTrue(h.vm.showsAutoSwitchToggle, "an on toggle always shows")
+        XCTAssertFalse(h.vm.isAutoSwitchNearLimit, "far from a limit it is dimmed")
+
+        try setUsage(h.vm, h.frontend.id, five: 80, seven: 10)
+        XCTAssertTrue(h.vm.isAutoSwitchNearLimit)
+        try setUsage(h.vm, h.frontend.id, five: 10, seven: 96)
+        XCTAssertTrue(h.vm.isAutoSwitchNearLimit)
+    }
+
     func testUnknownClaudeCodeLoginStaysPut() async throws {
         let h = try await makeHarness(captureBackend: true)
         try setUsage(h.vm, h.frontend.id, five: 99, seven: 40)
