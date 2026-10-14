@@ -8,18 +8,22 @@ final class AutoSwitchControllerTests: XCTestCase {
     private var settings: AutoSwitchSettings!
     private var clock = Date(timeIntervalSince1970: 1_800_000_000)
     private var controller: AutoSwitchController!
+    private var logPath: String!
 
     override func setUp() async throws {
         try await super.setUp()
         suite = StoreFixture.makeSuiteName()
         settings = AutoSwitchSettings(defaults: try XCTUnwrap(UserDefaults(suiteName: suite)))
         settings.isEnabled = true
-        controller = AutoSwitchController(settings: settings, now: { [unowned self] in self.clock },
+        logPath = NSTemporaryDirectory() + "auto_switch_logs_\(UUID().uuidString).db"
+        controller = AutoSwitchController(settings: settings, logStore: AutoSwitchLogStore(dbPath: logPath),
+                                          now: { [unowned self] in self.clock },
                                           pickIndex: { _ in 0 })
     }
 
     override func tearDown() async throws {
         StoreFixture.destroy(suite: suite)
+        try? FileManager.default.removeItem(atPath: logPath)
         try await super.tearDown()
     }
 
@@ -133,5 +137,75 @@ final class AutoSwitchControllerTests: XCTestCase {
         XCTAssertFalse(controller.shouldFastPoll(accounts))
         settings.isEnabled = true
         XCTAssertFalse(controller.shouldFastPoll([account("a", five: 50, seven: 10, active: true)]))
+    }
+
+    // MARK: - Switch Log
+
+    private func logged() async -> [AutoSwitchLogEntry] {
+        await controller.logStore.fetch(limit: 50).reversed()
+    }
+
+    func testSwitchIsLoggedWithTriggerTierAndTargetUsage() async {
+        let active = account("a@x.com", five: 96, seven: 10, active: true)
+        let target = account("b@x.com", five: 10, seven: 99.5)
+        _ = await controller.evaluate([active, target]) { _ in }
+
+        let rows = await logged()
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.outcome, .switched)
+        XCTAssertEqual(rows.first?.date, clock)
+        XCTAssertEqual(rows.first?.fromName, "a@x.com")
+        XCTAssertEqual(rows.first?.toName, "b@x.com")
+        XCTAssertEqual(rows.first?.reason, "5h 96% >= 95%, tier 3")
+        XCTAssertEqual(rows.first?.detail, "b@x.com: 5h 10%, 7d 100%")
+    }
+
+    func testFailureIsLoggedWithTheError() async {
+        let active = account("a", five: 96, seven: 99, active: true)
+        let target = account("b", five: 10, seven: 10)
+        _ = await controller.evaluate([active, target]) { _ in throw SwitchError.loginExpired }
+
+        let rows = await logged()
+        XCTAssertEqual(rows.map(\.outcome), [.failed])
+        XCTAssertEqual(rows.first?.reason, "5h 96% >= 95%, 7d 99% >= 99%, tier 1")
+        XCTAssertEqual(rows.first?.detail, "it needs a browser sign-in first")
+    }
+
+    func testPrioritySwitchIsLoggedAsTheReset() async {
+        let active = account("a", five: 10, seven: 10, active: true)
+        let ticked = account("t", five: 0, seven: 20, fiveResets: nil)
+        settings.setPriority(AutoSwitchPriority(accountId: ticked.id, baseline: clock - 600))
+        _ = await controller.evaluate([active, ticked]) { _ in }
+
+        let rows = await logged()
+        XCTAssertEqual(rows.first?.reason, "Ticked account's 5h window reset")
+    }
+
+    func testNoCandidateIsLoggedOncePerStretch() async {
+        let active = account("a", five: 96, seven: 10, active: true)
+        let notReady = account("b", five: 0, seven: 10, availability: .notCaptured)
+        _ = await controller.evaluate([active, notReady]) { _ in }
+        clock += 60
+        _ = await controller.evaluate([active, notReady]) { _ in }
+        let first = await logged()
+        XCTAssertEqual(first.map(\.outcome), [.noCandidate], "a repeat is not logged again")
+
+        clock += 60
+        _ = await controller.evaluate([account("a", five: 50, seven: 10, active: true), notReady]) { _ in }
+        clock += 60
+        _ = await controller.evaluate([active, notReady]) { _ in }
+        let rows = await logged()
+        XCTAssertEqual(rows.map(\.outcome), [.noCandidate, .noCandidate], "a new stretch is logged")
+        XCTAssertEqual(rows.first?.reason, "5h 96% >= 95%")
+        XCTAssertNil(rows.first?.toName)
+    }
+
+    func testNothingIsLoggedBelowThresholdOrWhileDisabled() async {
+        let target = account("b", five: 10, seven: 10)
+        _ = await controller.evaluate([account("a", five: 50, seven: 10, active: true), target]) { _ in }
+        settings.isEnabled = false
+        _ = await controller.evaluate([account("a", five: 99, seven: 10, active: true), target]) { _ in }
+        let rows = await logged()
+        XCTAssertEqual(rows, [])
     }
 }

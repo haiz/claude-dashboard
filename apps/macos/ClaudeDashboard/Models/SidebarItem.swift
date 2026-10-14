@@ -10,6 +10,7 @@ enum SidebarItem: Hashable {
     case overview
     case account(UUID)
     case pingLog
+    case switchLog
     case help
     case settingsAccounts
     case settingsGeneral
@@ -28,6 +29,7 @@ enum SidebarItem: Hashable {
         case .overview: return Style(title: "Overview", systemImage: "chart.xyaxis.line", tileColor: .orange)
         case .account: return nil
         case .pingLog: return Style(title: "Ping Log", systemImage: "dot.radiowaves.left.and.right", tileColor: .indigo)
+        case .switchLog: return Style(title: "Switch Log", systemImage: "arrow.left.arrow.right", tileColor: .pink)
         case .help: return Style(title: "Help", systemImage: "questionmark", tileColor: .green)
         case .settingsAccounts: return Style(title: "Accounts", systemImage: "person.2", tileColor: .teal)
         case .settingsGeneral: return Style(title: "General", systemImage: "gearshape", tileColor: .gray)
@@ -35,6 +37,6 @@ enum SidebarItem: Hashable {
     }
 
     static let usageItems: [SidebarItem] = [.dashboard, .overview]
-    static let toolItems: [SidebarItem] = [.pingLog, .help]
+    static let toolItems: [SidebarItem] = [.pingLog, .switchLog, .help]
     static let settingsItems: [SidebarItem] = [.settingsAccounts, .settingsGeneral]
 }

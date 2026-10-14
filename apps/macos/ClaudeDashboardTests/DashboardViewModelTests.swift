@@ -238,6 +238,8 @@ final class DashboardViewModelTests: XCTestCase {
             logStore: UsageLogStore(dbPath: tempDir.appendingPathComponent("usage.sqlite").path),
             ccDetector: detector,
             cookieProvider: cookieProvider ?? { _, _ in cookies },
+            autoSwitchLogStore: AutoSwitchLogStore(
+                dbPath: tempDir.appendingPathComponent("auto_switch.sqlite").path),
             pingController: pingController)
         return (vm, store)
     }
@@ -1069,11 +1071,11 @@ final class DashboardViewModelTests: XCTestCase {
         func isStatic(_ item: SidebarItem) -> Bool {
             switch item {
             case .account: return false
-            case .dashboard, .overview, .pingLog, .help,
+            case .dashboard, .overview, .pingLog, .switchLog, .help,
                  .settingsAccounts, .settingsGeneral: return true
             }
         }
-        let expected: [SidebarItem] = [.dashboard, .overview, .pingLog, .help,
+        let expected: [SidebarItem] = [.dashboard, .overview, .pingLog, .switchLog, .help,
                                        .settingsAccounts, .settingsGeneral]
         XCTAssertTrue(expected.allSatisfy(isStatic))
         let listed = SidebarItem.usageItems + SidebarItem.toolItems + SidebarItem.settingsItems

@@ -151,6 +151,7 @@ final class DashboardViewModel: ObservableObject {
         ccProvisioner: ClaudeCodeLoginProvisioner? =
             AppDefaults.isRunningTests() ? nil : ClaudeCodeLoginProvisioner.live(),
         autoSwitchSettings: AutoSwitchSettings? = nil,
+        autoSwitchLogStore: AutoSwitchLogStore? = nil,
         pingController: PingController? = nil
     ) {
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
@@ -169,7 +170,8 @@ final class DashboardViewModel: ObservableObject {
         self.burnRateTracker = BurnRateTracker(logStore: store)
         let switchSettings = autoSwitchSettings ?? AutoSwitchSettings(defaults: AppDefaults.shared)
         self.autoSwitchSettings = switchSettings
-        self.autoSwitch = AutoSwitchController(settings: switchSettings)
+        self.autoSwitch = AutoSwitchController(settings: switchSettings,
+                                               logStore: autoSwitchLogStore ?? AutoSwitchLogStore())
         self.pingController = pingController ?? PingController(
             service: PingService(), logStore: PingLogStore(), defaults: AppDefaults.shared)
         self.activeClaudeCodeEmail = ccDetector.activeEmail()

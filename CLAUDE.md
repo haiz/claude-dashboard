@@ -97,7 +97,8 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   active one reaches 5h >= T5 or 7d >= T7 (Settings, default 95/99), or to a ticked account
   right after its 5h reset. `AutoSwitchPlanner` is pure (three tiers, score = 7d days elapsed
   x (98 - 7d%), random within 85% of the top); `AutoSwitchController` holds the in-memory lock,
-  a 10-minute failure cooldown and the footer event. It only uses `.ready` accounts via
+  a 10-minute failure cooldown, the footer event and the Switch Log (`AutoSwitchLogStore`,
+  `auto_switch_logs.db`: each switch and failed attempt, and one row per no-candidate stretch). It only uses `.ready` accounts via
   `ClaudeCodeSwitcher.switchTo`: never a browser, never `switchMessage`.
   Spec: `docs/superpowers/specs/2026-10-13-auto-switch-design.md`.
 - **Ping** (`Shared/PingService.swift`, `Services/Ping/`) — starts an account's 5h/7d window by
@@ -117,7 +118,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 ### Views
 - **ClaudeDashboardApp** — Entry point. `MenuBarExtra` with `AppDelegate` managing window lifecycle.
 - **MenuBarPopover** — Compact menu bar dropdown. Expand button opens `MainWindow`.
-- **MainWindow** — System Settings-style `NavigationSplitView`. `SidebarView` lists Usage (Dashboard, Overview), Accounts (one row per account), Tools (Ping Log, Help) and Settings (Accounts, General); `DashboardViewModel.selection: SidebarItem` picks the pane. Each pane starts with a `PaneHeader` (title + its buttons; the AppKit window has no native toolbar).
+- **MainWindow** — System Settings-style `NavigationSplitView`. `SidebarView` lists Usage (Dashboard, Overview), Accounts (one row per account), Tools (Ping Log, Switch Log, Help) and Settings (Accounts, General); `DashboardViewModel.selection: SidebarItem` picks the pane. Each pane starts with a `PaneHeader` (title + its buttons; the AppKit window has no native toolbar).
 - **DashboardPane / AccountPane** — the `AccountCard` grid, and the per-account page (header, `UsageGaugeRow`, the `AccountDetailView` chart, actions).
 - **AccountCard / UsageBar** — Per-account display with color-interpolated progress bars (green→red).
 - **SetupView** — Wizard scanning browser profiles for active Claude sessions. Offers the installed browsers (Chrome, Arc, Brave, Edge) and scans the one the user picks, remembering the choice in `preferredScanBrowser`.

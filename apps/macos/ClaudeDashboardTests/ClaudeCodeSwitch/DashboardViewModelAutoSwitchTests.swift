@@ -6,17 +6,20 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
 
     private var suite: String!
     private var configURL: URL!
+    private var logPath: String!
 
     override func setUp() {
         super.setUp()
         suite = StoreFixture.makeSuiteName()
         configURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("DashboardViewModelAutoSwitchTests-\(UUID().uuidString).json")
+        logPath = NSTemporaryDirectory() + "auto_switch_logs_\(UUID().uuidString).db"
     }
 
     override func tearDown() {
         StoreFixture.destroy(suite: suite)
         try? FileManager.default.removeItem(at: configURL)
+        try? FileManager.default.removeItem(atPath: logPath)
         super.tearDown()
     }
 
@@ -58,7 +61,8 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
         let settings = AutoSwitchSettings(defaults: defaults)
         let vm = DashboardViewModel(accountStore: store,
                                     ccDetector: ClaudeCodeAccountDetector(fileURL: configURL),
-                                    ccSwitcher: switcher, autoSwitchSettings: settings)
+                                    ccSwitcher: switcher, autoSwitchSettings: settings,
+                                    autoSwitchLogStore: AutoSwitchLogStore(dbPath: logPath))
         await vm.refreshAll()
         return Harness(vm: vm, slot: slot, frontend: frontend, backend: backend, settings: settings)
     }
@@ -84,6 +88,10 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
         XCTAssertEqual(h.vm.autoSwitch.lastEvent?.kind, .switched(.threshold(tier: 1)))
         XCTAssertEqual(h.vm.accountStates.first?.id, h.backend.id)
         XCTAssertFalse(h.vm.isSwitchingClaudeCode)
+        let logged = await h.vm.autoSwitch.logStore.fetch(limit: 10)
+        XCTAssertEqual(logged.map(\.outcome), [.switched])
+        XCTAssertEqual(logged.first?.fromName, "frontend@gotitapp.co")
+        XCTAssertEqual(logged.first?.toName, "backend@gotitapp.co")
     }
 
     func testAutoSwitchDoesNothingWhileDisabled() async throws {

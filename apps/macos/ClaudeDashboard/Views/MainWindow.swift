@@ -10,6 +10,7 @@ struct MainWindow: View {
     let showSetupOnAppear: Bool
 
     @StateObject private var pingLogViewModel: PingLogViewModel
+    @StateObject private var switchLogViewModel: AutoSwitchLogViewModel
     @State private var showingSetup = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
@@ -21,6 +22,8 @@ struct MainWindow: View {
             accountStore: viewModel.accountStore,
             onClear: { viewModel.pingController.clearLatest() }
         ))
+        _switchLogViewModel = StateObject(wrappedValue: AutoSwitchLogViewModel(
+            store: viewModel.autoSwitch.logStore))
     }
 
     var body: some View {
@@ -64,6 +67,8 @@ struct MainWindow: View {
             }
         case .pingLog:
             PingLogView(viewModel: pingLogViewModel)
+        case .switchLog:
+            AutoSwitchLogView(viewModel: switchLogViewModel)
         case .help:
             HelpView()
         case .settingsAccounts:
