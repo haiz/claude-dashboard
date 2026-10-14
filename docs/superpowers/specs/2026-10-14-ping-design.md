@@ -127,13 +127,13 @@ The sidebar's Tools item "Command Log" becomes **Ping Log**.
 |---|---|---|
 | `id` | INTEGER PK | row order |
 | `account_id` | TEXT | `Account.id` |
-| `trigger` | INTEGER | 0 manual, 1 auto |
+| `trig` | INTEGER | trigger: 0 manual, 1 auto (`trigger` is an SQL keyword) |
 | `started` | REAL | start time |
 | `finished` | REAL | end time |
 | `outcome` | INTEGER | 0 ok, 1 expired, 2 blocked, 3 failed |
 | `detail` | TEXT NULL | error or note |
 
-Raw values of `trigger` and `outcome` are fixed and never renumbered. One row per ping, written
+Raw values of `trig` and `outcome` are fixed and never renumbered. One row per ping, written
 when it finishes. The newest 500 rows are kept. API: `insert`, `fetch(limit:)`,
 `latest(for:)`, `clear()`; `init(dbPath:maxEntries:)` so tests use a temp file.
 
@@ -158,7 +158,7 @@ account in UserDefaults, so deleting an account needs no extra cleanup; its log 
 | Unit | Location | Responsibility | Depends on |
 |---|---|---|---|
 | `PingService` | `Shared/PingService.swift` | The three requests and outcome mapping. `init(session: URLSession)`, `ping(orgId:sessionKey:) async -> PingResult` (`outcome`, `detail`) | `URLSession`, `APIBaseURL` |
-| `PingController` | `ClaudeDashboard/Services/Ping/PingController.swift` | `@MainActor`. `shouldAutoPing(for:)`, latch, in-flight set, cooldown, `pingNow(account:trigger:)`, publishes per-account in-flight state and latest result, writes the log | `PingService` (protocol), `PingLogStore`, clock, a refresh callback |
+| `PingController` | `ClaudeDashboard/Services/Ping/PingController.swift` | `@MainActor`. `claimAutoPing(accountId:status:freshUsage:)` (the auto-ping rule, latch and cooldown), `ping(_:trigger:)` (in-flight guard, log write), publishes `inFlight`, `latest` and `isAutoPingEnabled`. The view model refreshes after a ping | `Pinging` (protocol), `PingLogStore`, `UserDefaults`, clock |
 | `PingLogStore` | `ClaudeDashboard/Services/Ping/PingLogStore.swift` | SQLite persistence | SQLite3 |
 | `PingMigration` | `ClaudeDashboard/Services/Ping/PingMigration.swift` | Launch cleanup | `UserDefaults`, `FileManager` |
 | `PingLogView` / `PingLogViewModel` | `Views/`, `ViewModels/` | Ping Log pane | `PingLogStore`, `AccountStore` |
