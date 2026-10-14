@@ -9,7 +9,7 @@ struct MainWindow: View {
     @ObservedObject var viewModel: DashboardViewModel
     let showSetupOnAppear: Bool
 
-    @StateObject private var commandLogViewModel: CommandLogViewModel
+    @StateObject private var pingLogViewModel: PingLogViewModel
     @State private var showingSetup = false
     @State private var runCommandAccount: Account?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -17,8 +17,8 @@ struct MainWindow: View {
     init(viewModel: DashboardViewModel, showSetupOnAppear: Bool) {
         self.viewModel = viewModel
         self.showSetupOnAppear = showSetupOnAppear
-        _commandLogViewModel = StateObject(wrappedValue: CommandLogViewModel(
-            store: viewModel.commandLogStore,
+        _pingLogViewModel = StateObject(wrappedValue: PingLogViewModel(
+            store: viewModel.pingController.logStore,
             accountStore: viewModel.accountStore
         ))
     }
@@ -77,8 +77,8 @@ struct MainWindow: View {
                             onRunCommand: { runCommandAccount = state.account })
                     .id(id)
             }
-        case .commandLog:
-            CommandLogView(viewModel: commandLogViewModel)
+        case .pingLog:
+            PingLogView(viewModel: pingLogViewModel)
         case .help:
             HelpView()
         case .settingsAccounts:

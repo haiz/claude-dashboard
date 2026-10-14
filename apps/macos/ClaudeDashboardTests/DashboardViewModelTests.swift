@@ -1070,11 +1070,11 @@ final class DashboardViewModelTests: XCTestCase {
         func isStatic(_ item: SidebarItem) -> Bool {
             switch item {
             case .account: return false
-            case .dashboard, .overview, .commandLog, .help,
+            case .dashboard, .overview, .pingLog, .help,
                  .settingsAccounts, .settingsGeneral: return true
             }
         }
-        let expected: [SidebarItem] = [.dashboard, .overview, .commandLog, .help,
+        let expected: [SidebarItem] = [.dashboard, .overview, .pingLog, .help,
                                        .settingsAccounts, .settingsGeneral]
         XCTAssertTrue(expected.allSatisfy(isStatic))
         let listed = SidebarItem.usageItems + SidebarItem.toolItems + SidebarItem.settingsItems

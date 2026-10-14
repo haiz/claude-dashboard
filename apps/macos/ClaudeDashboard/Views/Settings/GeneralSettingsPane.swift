@@ -30,6 +30,17 @@ struct GeneralSettingsPane: View {
                     Toggle("Show Run Command button on cards", isOn: $showRunCommandOnCards)
                 }
                 Section {
+                    Toggle("Ping when a usage window is not running", isOn: Binding(
+                        get: { viewModel.pingController.isAutoPingEnabled },
+                        set: { viewModel.setAutoPingEnabled($0) }))
+                } header: {
+                    Text("Auto Ping")
+                } footer: {
+                    Text("Starts a new window for every active account whose 5h or 7d window is not running. Each ping sends one short message from that account.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section {
                     Toggle("Enable auto switch", isOn: Binding(
                         get: { viewModel.autoSwitchSettings.isEnabled },
                         set: { viewModel.setAutoSwitchEnabled($0) }))
