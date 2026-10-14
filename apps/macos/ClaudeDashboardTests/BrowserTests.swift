@@ -4,11 +4,13 @@ import XCTest
 final class BrowserTests: XCTestCase {
 
     func testAllCasesPresent() {
-        XCTAssertEqual(Set(Browser.allCases), [.chrome, .arc, .brave, .edge])
+        XCTAssertEqual(Set(Browser.allCases), [.chrome, .chromeDev, .arc, .brave, .edge])
     }
 
     func testKeychainServiceNames() {
         XCTAssertEqual(Browser.chrome.keychainService, "Chrome Safe Storage")
+        // Every Google Chrome channel shares Chrome's Keychain item.
+        XCTAssertEqual(Browser.chromeDev.keychainService, "Chrome Safe Storage")
         XCTAssertEqual(Browser.arc.keychainService, "Arc Safe Storage")
         XCTAssertEqual(Browser.brave.keychainService, "Brave Safe Storage")
         XCTAssertEqual(Browser.edge.keychainService, "Microsoft Edge Safe Storage")
@@ -17,6 +19,7 @@ final class BrowserTests: XCTestCase {
     func testBasePathSuffixes() {
         let home = NSHomeDirectory() + "/Library/Application Support/"
         XCTAssertEqual(Browser.chrome.basePath, home + "Google/Chrome")
+        XCTAssertEqual(Browser.chromeDev.basePath, home + "Google/Chrome Dev")
         XCTAssertEqual(Browser.arc.basePath, home + "Arc/User Data")
         XCTAssertEqual(Browser.brave.basePath, home + "BraveSoftware/Brave-Browser")
         XCTAssertEqual(Browser.edge.basePath, home + "Microsoft Edge")
@@ -24,6 +27,7 @@ final class BrowserTests: XCTestCase {
 
     func testDisplayNames() {
         XCTAssertEqual(Browser.chrome.displayName, "Google Chrome")
+        XCTAssertEqual(Browser.chromeDev.displayName, "Google Chrome Dev")
         XCTAssertEqual(Browser.arc.displayName, "Arc")
         XCTAssertEqual(Browser.brave.displayName, "Brave")
         XCTAssertEqual(Browser.edge.displayName, "Microsoft Edge")
@@ -34,5 +38,7 @@ final class BrowserTests: XCTestCase {
         XCTAssertEqual(String(data: data, encoding: .utf8), "\"brave\"")
         let decoded = try JSONDecoder().decode(Browser.self, from: "\"edge\"".data(using: .utf8)!)
         XCTAssertEqual(decoded, .edge)
+        let dev = try JSONEncoder().encode(Browser.chromeDev)
+        XCTAssertEqual(String(data: dev, encoding: .utf8), "\"chromeDev\"")
     }
 }

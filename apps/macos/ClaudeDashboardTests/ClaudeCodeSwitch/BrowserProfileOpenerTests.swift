@@ -12,6 +12,11 @@ final class BrowserProfileOpenerTests: XCTestCase {
             ["-n", "-a", "Google Chrome", "--args", "--profile-directory=Profile 1", url.absoluteString])
     }
 
+    func testChromeDevOpensTheNamedProfileInTheDevApp() {
+        XCTAssertEqual(BrowserProfileOpener.command(browser: .chromeDev, profilePath: "Profile 2", url: url).arguments,
+            ["-n", "-a", "Google Chrome Dev", "--args", "--profile-directory=Profile 2", url.absoluteString])
+    }
+
     func testBraveAndEdgeUseTheirAppNames() {
         XCTAssertEqual(BrowserProfileOpener.command(browser: .brave, profilePath: "Default", url: url).arguments,
             ["-n", "-a", "Brave", "--args", "--profile-directory=Default", url.absoluteString])

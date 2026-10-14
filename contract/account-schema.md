@@ -84,10 +84,11 @@ from this raw value.
 (the enum's raw values are its unadorned case names — Swift's default
 `String` raw-value synthesis).
 
-`Browser` (`apps/macos/Shared/Browser.swift:6-10`): `"chrome"`, `"arc"`,
-`"brave"`, `"edge"` (same default-synthesis rule — the enum has no explicit
-`= "..."` per case, so each case's raw value is its lowercase name, which is
-already lowercase here).
+`Browser` (`apps/macos/Shared/Browser.swift:6-11`): `"chrome"`, `"chromeDev"`,
+`"arc"`, `"brave"`, `"edge"` (same default-synthesis rule — the enum has no
+explicit `= "..."` per case, so each case's raw value is its case name, verbatim;
+`"chromeDev"` keeps its capital `D`). `"chromeDev"` (Google Chrome Dev) is
+macOS-only; Linux and Windows never write it.
 
 `AccountSource` wire values are `"browser"` and `"manual"`.
 
@@ -100,6 +101,12 @@ has no catch-all. The first write from an older build therefore strips `source`,
 and the record reads afterwards as browser-backed with an empty profile path.
 Usage polling still works; re-sync reports opening a profile named `''` until the
 key is pasted again.
+
+A `"chromeDev"` record is worse for an older macOS build: `Browser` there has no
+such case, so decoding the array fails as a whole and `AccountStoreQuarantine`
+moves every account aside (`claude-dashboard.accounts.unreadable.<timestamp>`),
+leaving an empty store. Once a Chrome Dev account is added, do not run a build
+that predates it.
 
 ## Backward compatibility
 

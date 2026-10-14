@@ -159,7 +159,7 @@ claude-dashboard-cli sync
 claude-dashboard-cli
 ```
 
-`sync` opens the cookie database of every installed supported browser (Chrome, Arc, Brave, Edge), validates each session against the Claude.ai API, detects the plan (Pro or Max), and saves the accounts — on macOS to `~/Library/Preferences/com.claude-dashboard.app.plist` (shared with the menu bar app), on Linux to `~/.config/claude-dashboard/accounts.json` (or `$XDG_CONFIG_HOME/claude-dashboard/accounts.json` if that variable is set).
+`sync` opens the cookie database of every installed supported browser (Chrome, Chrome Dev on macOS, Arc, Brave, Edge), validates each session against the Claude.ai API, detects the plan (Pro or Max), and saves the accounts — on macOS to `~/Library/Preferences/com.claude-dashboard.app.plist` (shared with the menu bar app), on Linux to `~/.config/claude-dashboard/accounts.json` (or `$XDG_CONFIG_HOME/claude-dashboard/accounts.json` if that variable is set).
 
 ### Commands
 
@@ -199,11 +199,11 @@ The `resets` column shows when each window resets (local time). Progress bars tr
 - **Windows** 10 or 11, x64 (ARM64 runs the x64 build under emulation), for
   the tray app
 - One of Google Chrome, Arc, Brave, or Microsoft Edge (for automatic session key
-  extraction)
+  extraction); on macOS, Google Chrome Dev also works
 
 ## How It Works
 
-1. Reads Claude.ai session cookies from a supported browser's encrypted cookie database (Chrome, Arc, Brave, or Edge)
+1. Reads Claude.ai session cookies from a supported browser's encrypted cookie database (Chrome, Chrome Dev, Arc, Brave, or Edge)
 2. Encrypts session keys with AES-GCM (key derived from the machine's identity — the hardware UUID on macOS, `/etc/machine-id` on Linux) and stores them — on macOS in the app's preferences, on Linux in `~/.config/claude-dashboard/accounts.json`
 3. Fetches usage data from Claude.ai's API
 4. Displays real-time utilization with burn-rate-based sorting
