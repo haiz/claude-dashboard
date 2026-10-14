@@ -85,6 +85,17 @@ final class AutoSwitchPlannerTests: XCTestCase {
         XCTAssertFalse(AutoSwitchPlanner.isInWarningZone(usage(0, 97.9), thresholds: base))
     }
 
+    func testToggleZoneEdges() {
+        func usage(_ five: Double, _ seven: Double) -> UsageData {
+            UsageData(fiveHour: UsageLimit(utilization: five, resetsAt: nil),
+                      sevenDay: UsageLimit(utilization: seven, resetsAt: nil))
+        }
+        XCTAssertTrue(AutoSwitchPlanner.isInToggleZone(usage(80, 0), thresholds: base))
+        XCTAssertFalse(AutoSwitchPlanner.isInToggleZone(usage(79.9, 0), thresholds: base))
+        XCTAssertTrue(AutoSwitchPlanner.isInToggleZone(usage(0, 96), thresholds: base))
+        XCTAssertFalse(AutoSwitchPlanner.isInToggleZone(usage(0, 95.9), thresholds: base))
+    }
+
     // MARK: Candidates
 
     func testCandidateFiltersLeaveNoCandidate() {

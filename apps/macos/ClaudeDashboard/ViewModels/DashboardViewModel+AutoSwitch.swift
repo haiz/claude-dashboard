@@ -22,7 +22,7 @@ extension DashboardViewModel {
         if autoSwitchSettings.isEnabled { return true }
         guard autoSwitchSettings.showWidgetToggle,
               let usage = accountStates.first(where: isActiveClaudeCodeAccount)?.usage else { return false }
-        return AutoSwitchPlanner.isInWarningZone(usage, thresholds: autoSwitchSettings.thresholds)
+        return AutoSwitchPlanner.isInToggleZone(usage, thresholds: autoSwitchSettings.thresholds)
     }
 
     /// Turning it on near a limit acts now, not at the next refresh.

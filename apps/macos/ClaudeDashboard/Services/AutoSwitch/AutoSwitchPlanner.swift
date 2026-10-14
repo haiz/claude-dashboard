@@ -91,6 +91,13 @@ enum AutoSwitchPlanner {
             || usage.sevenDay.utilization >= thresholds.sevenDay - 1
     }
 
+    /// Wider than the warning zone: the footer toggle appears early enough to turn auto
+    /// switch on before the fast poll would start.
+    static func isInToggleZone(_ usage: UsageData, thresholds: AutoSwitchThresholds) -> Bool {
+        usage.fiveHour.utilization >= thresholds.fiveHour - 15
+            || usage.sevenDay.utilization >= thresholds.sevenDay - 3
+    }
+
     /// Days elapsed in the 7d window times the 7d percent left below 98. A week that has
     /// not started (`resetsAt == nil`) has 0 days elapsed.
     static func score(_ usage: UsageData, now: Date) -> Double {
