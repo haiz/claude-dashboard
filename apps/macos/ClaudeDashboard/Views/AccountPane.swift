@@ -4,21 +4,18 @@ import SwiftUI
 /// Settings: identity and usage gauges in one box, the usage chart, then actions.
 /// Give it `.id(state.id)` so switching accounts rebuilds the chart state.
 ///
-///     AccountPane(dashboardViewModel: vm, state: state,
-///                 onRunCommand: { runCommandAccount = state.account })
+///     AccountPane(dashboardViewModel: vm, state: state)
 ///         .id(state.id)
 struct AccountPane: View {
     @ObservedObject var dashboardViewModel: DashboardViewModel
     let state: AccountUsageState
-    let onRunCommand: () -> Void
 
     @StateObject private var chartViewModel: AccountDetailViewModel
     @State private var confirmingRemove = false
 
-    init(dashboardViewModel: DashboardViewModel, state: AccountUsageState, onRunCommand: @escaping () -> Void) {
+    init(dashboardViewModel: DashboardViewModel, state: AccountUsageState) {
         self.dashboardViewModel = dashboardViewModel
         self.state = state
-        self.onRunCommand = onRunCommand
         _chartViewModel = StateObject(wrappedValue: AccountDetailViewModel(
             accountId: state.id,
             logStore: dashboardViewModel.logStore,

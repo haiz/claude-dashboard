@@ -139,21 +139,17 @@ final class DashboardViewModel: ObservableObject {
     var autoPingTask: Task<Void, Never>?
     private let burnRateTracker: BurnRateTracker
     let logStore: UsageLogStore
-    let commandLogStore: CommandLogStore
-    let commandRunner: CommandRunner
 
     init(
         accountStore: AccountStore = AccountStore(),
         apiService: UsageAPIService = UsageAPIService(),
         logStore: UsageLogStore? = nil,
-        commandLogStore: CommandLogStore? = nil,
         ccDetector: ClaudeCodeAccountDetector = ClaudeCodeAccountDetector(),
         cookieProvider: @escaping (String, Browser) -> ChromeCookieResult
             = BrowserCookieService.extractCookies(for:browser:),
         ccSwitcher: ClaudeCodeSwitcher? = ClaudeCodeSwitcher.live(isRunningTests: AppDefaults.isRunningTests()),
         ccProvisioner: ClaudeCodeLoginProvisioner? =
             AppDefaults.isRunningTests() ? nil : ClaudeCodeLoginProvisioner.live(),
-        commandRunner: CommandRunner? = nil,
         autoSwitchSettings: AutoSwitchSettings? = nil,
         pingController: PingController? = nil
     ) {
@@ -171,9 +167,6 @@ final class DashboardViewModel: ObservableObject {
         let store = logStore ?? UsageLogStore()
         self.logStore = store
         self.burnRateTracker = BurnRateTracker(logStore: store)
-        let cmdStore = commandLogStore ?? CommandLogStore()
-        self.commandLogStore = cmdStore
-        self.commandRunner = commandRunner ?? CommandRunner(store: cmdStore)
         let switchSettings = autoSwitchSettings ?? AutoSwitchSettings(defaults: AppDefaults.shared)
         self.autoSwitchSettings = switchSettings
         self.autoSwitch = AutoSwitchController(settings: switchSettings)

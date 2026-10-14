@@ -236,7 +236,6 @@ final class DashboardViewModelTests: XCTestCase {
             accountStore: store,
             apiService: api,
             logStore: UsageLogStore(dbPath: tempDir.appendingPathComponent("usage.sqlite").path),
-            commandLogStore: CommandLogStore(dbPath: tempDir.appendingPathComponent("commands.sqlite").path),
             ccDetector: detector,
             cookieProvider: cookieProvider ?? { _, _ in cookies },
             pingController: pingController)

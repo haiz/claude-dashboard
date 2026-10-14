@@ -18,15 +18,6 @@ final class AccountStore: ObservableObject {
         // that the bytes still exist to surface.
         let loaded = AccountStoreQuarantine.decodeForWrite(from: defaults, key: storageKey)
         self.accounts = loaded.accounts
-
-        // Only a store that actually decoded says which accounts are live.
-        // Unreadable bytes decode to zero accounts, and pruning against that
-        // would delete every saved command the user has — the same "an
-        // unreadable store is not an empty store" rule that keeps the accounts
-        // themselves from being overwritten.
-        if loaded.quarantined == nil {
-            RunCommandSettings.prune(keeping: Set(loaded.accounts.map(\.id)), in: defaults)
-        }
     }
 
     func addAccount(_ account: Account) {
@@ -36,9 +27,6 @@ final class AccountStore: ObservableObject {
 
     func removeAccount(id: UUID) {
         accounts.removeAll { $0.id == id }
-        // The account's saved command is keyed by its id, so nothing can read
-        // it again once the account is gone.
-        RunCommandSettings.remove(for: id, in: defaults)
         persist()
     }
 

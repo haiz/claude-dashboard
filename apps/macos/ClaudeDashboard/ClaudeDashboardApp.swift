@@ -66,6 +66,13 @@ struct ClaudeDashboardApp: App {
     @StateObject private var updateViewModel = UpdateViewModel()
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
+    init() {
+        // The test host is the real app; its launch must not delete files on disk.
+        if !AppDefaults.isRunningTests() {
+            PingMigration.run(defaults: AppDefaults.shared, logsDirectory: PingLogStore.defaultDirectory())
+        }
+    }
+
     var body: some Scene {
         MenuBarExtra {
             MenuBarPopover(
@@ -90,7 +97,6 @@ struct ClaudeDashboardApp: App {
             .environmentObject(updateViewModel)
             .onAppear {
                 appDelegate.updateViewModel = updateViewModel
-                appDelegate.runningProcesses = viewModel.commandRunner.registry
                 updateViewModel.startBackgroundChecks()
                 let key = "claude-dashboard.hasLaunchedBefore"
                 if !AppDefaults.shared.bool(forKey: key) {
@@ -112,15 +118,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var dashboardWindow: NSWindow?
     private weak var currentViewModel: DashboardViewModel?
     weak var updateViewModel: UpdateViewModel?
-    var runningProcesses: RunningProcessRegistry?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
-    }
-
-    func applicationWillTerminate(_ notification: Notification) {
-        // Reap any in-flight background command trees so caffeinate/claude do not leak.
-        runningProcesses?.terminateAll()
     }
 
     // Intercept the red-X close: hide the window instead of closing it.
@@ -128,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // this as "last window closed" and terminating the menu-bar-only app.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard sender === dashboardWindow else { return true }
-        // Dismiss any presented sheets (Setup, Run Command) so AppKit
+        // Dismiss any presented sheet (Setup) so AppKit
         // removes the dimming overlay before we hide the window.
         while let sheet = sender.attachedSheet {
             sender.endSheet(sheet)
@@ -159,8 +159,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         // A live window (closing it sets contentView = nil) already renders
         // `viewModel.selection`, which the caller has set. Raise it as is:
-        // ending its sheets or swapping its content would dismiss a Run Command
-        // sheet, whose onDisappear cancels the run and kills the process tree.
+        // ending its sheets or swapping its content would dismiss an open Setup
+        // sheet mid-scan.
         if let window = dashboardWindow, window.contentView != nil {
             if window.isMiniaturized { window.deminiaturize(nil) }
             NSApp.setActivationPolicy(.regular)

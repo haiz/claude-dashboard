@@ -71,7 +71,7 @@ struct HelpView: View {
 
             bodyText("**Right-click** a card to pin it to the top of the list regardless of burn rate.")
 
-            bodyText("The terminal icon on a card opens **Run Command** — enter any shell command and it runs using that account's context, then the dashboard refreshes. Turn the icon on or off in **Settings > General > Cards**.")
+            bodyText("On an account's page, **Ping** sends one short message from that account to start its 5h and 7d windows now. Turn on **Settings › General › Auto Ping** to ping every active account whose window is not running after each refresh. Every ping is listed in **Ping Log**.")
         }
     }
 

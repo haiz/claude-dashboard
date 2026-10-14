@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The single main window: a System Settings-style sidebar and the selected pane.
-/// Sheets (Setup, Run Command) hang off this view so any pane can open them.
+/// The Setup sheet hangs off this view so any pane can open it.
 ///
 ///     MainWindow(viewModel: vm, showSetupOnAppear: vm.accountStore.accounts.isEmpty)
 ///         .environmentObject(updateViewModel)
@@ -11,7 +11,6 @@ struct MainWindow: View {
 
     @StateObject private var pingLogViewModel: PingLogViewModel
     @State private var showingSetup = false
-    @State private var runCommandAccount: Account?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     init(viewModel: DashboardViewModel, showSetupOnAppear: Bool) {
@@ -49,32 +48,17 @@ struct MainWindow: View {
             }
             .buttonStyle(HoverBorderedButtonStyle())
         }
-        .sheet(item: $runCommandAccount) { account in
-            RunCommandSheet(
-                account: account,
-                isPresented: Binding(
-                    get: { runCommandAccount?.id == account.id },
-                    set: { if !$0 { runCommandAccount = nil } }
-                ),
-                runner: viewModel.commandRunner,
-                onRefresh: { Task { await viewModel.refreshAll() } }
-            )
-            .buttonStyle(HoverBorderedButtonStyle())
-        }
     }
 
     @ViewBuilder private var pane: some View {
         switch viewModel.selection {
         case .dashboard:
-            DashboardPane(viewModel: viewModel,
-                          onAddAccount: { showingSetup = true },
-                          onRunCommand: { runCommandAccount = $0 })
+            DashboardPane(viewModel: viewModel, onAddAccount: { showingSetup = true })
         case .overview:
             OverviewChartView(viewModel: viewModel)
         case .account(let id):
             if let state = viewModel.accountStates.first(where: { $0.id == id }) {
-                AccountPane(dashboardViewModel: viewModel, state: state,
-                            onRunCommand: { runCommandAccount = state.account })
+                AccountPane(dashboardViewModel: viewModel, state: state)
                     .id(id)
             }
         case .pingLog:
