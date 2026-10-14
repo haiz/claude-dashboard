@@ -191,49 +191,6 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertTrue(vm.menuBarPercentText.hasPrefix("10%"))
     }
 
-    // MARK: - shouldRunSavedCommand
-
-    /// The command fires to (re)start a reset circle. The signal is `resetsAt == nil`
-    /// (Claude returns `resets_at: null` after a window resets, until the next first
-    /// request), NOT utilization — an idle window sits at 0% while its circle keeps
-    /// running. Utilization is therefore fixed at 0 here to prove it's irrelevant.
-    private func makeUsage(fiveHourReset: Date?, sevenDayReset: Date?) -> UsageData {
-        UsageData(
-            fiveHour: UsageLimit(utilization: 0, resetsAt: fiveHourReset),
-            sevenDay: UsageLimit(utilization: 0, resetsAt: sevenDayReset)
-        )
-    }
-
-    func testShouldRunSavedCommand_falseWhenUsageNil() {
-        // Fetch failed → window state unknown → do not fire.
-        XCTAssertFalse(DashboardViewModel.shouldRunSavedCommand(for: nil))
-    }
-
-    func testShouldRunSavedCommand_trueWhenFiveHourResetNil() {
-        let future = Date().addingTimeInterval(3600)
-        XCTAssertTrue(DashboardViewModel.shouldRunSavedCommand(
-            for: makeUsage(fiveHourReset: nil, sevenDayReset: future)))
-    }
-
-    func testShouldRunSavedCommand_trueWhenSevenDayResetNil() {
-        let future = Date().addingTimeInterval(3600)
-        XCTAssertTrue(DashboardViewModel.shouldRunSavedCommand(
-            for: makeUsage(fiveHourReset: future, sevenDayReset: nil)))
-    }
-
-    func testShouldRunSavedCommand_trueWhenBothResetNil() {
-        XCTAssertTrue(DashboardViewModel.shouldRunSavedCommand(
-            for: makeUsage(fiveHourReset: nil, sevenDayReset: nil)))
-    }
-
-    func testShouldRunSavedCommand_falseWhenBothResetPresent_evenAtZeroUtilization() {
-        // The bug: an idle account (0% on both windows) whose circles are still
-        // running must NOT fire. Only a nil reset (circle gone) should.
-        let future = Date().addingTimeInterval(3600)
-        XCTAssertFalse(DashboardViewModel.shouldRunSavedCommand(
-            for: makeUsage(fiveHourReset: future, sevenDayReset: future)))
-    }
-
     func testSortStates_activeCCNotBoosted_whenOtherAccountIsPinned() throws {
         let vm = try makeViewModel(detectorEmail: "active@x.com")
         // C is pinned. B is the active CC account but unpinned.
@@ -260,7 +217,8 @@ final class DashboardViewModelTests: XCTestCase {
     /// test can hand one profile a working session and another none at all.
     private func makeViewModelWithStore(
         cookies: ChromeCookieResult = ChromeCookieResult(sessionKey: nil, orgId: nil),
-        cookieProvider: ((String, Browser) -> ChromeCookieResult)? = nil
+        cookieProvider: ((String, Browser) -> ChromeCookieResult)? = nil,
+        pinger: Pinging = FakePinger()
     ) throws -> (DashboardViewModel, AccountStore) {
         let detectorFile = tempDir.appendingPathComponent(".claude.json-\(UUID().uuidString)")
         let detector = ClaudeCodeAccountDetector(fileURL: detectorFile)
@@ -270,13 +228,18 @@ final class DashboardViewModelTests: XCTestCase {
         let api = UsageAPIService(session: URLSession(configuration: config))
         // Isolated SQLite files: a refresh this view model starts can outlive the test,
         // and the default stores point at the user's real databases.
+        let pingController = PingController(
+            service: pinger,
+            logStore: PingLogStore(dbPath: tempDir.appendingPathComponent("pings.sqlite").path),
+            defaults: defaults)
         let vm = DashboardViewModel(
             accountStore: store,
             apiService: api,
             logStore: UsageLogStore(dbPath: tempDir.appendingPathComponent("usage.sqlite").path),
             commandLogStore: CommandLogStore(dbPath: tempDir.appendingPathComponent("commands.sqlite").path),
             ccDetector: detector,
-            cookieProvider: cookieProvider ?? { _, _ in cookies })
+            cookieProvider: cookieProvider ?? { _, _ in cookies },
+            pingController: pingController)
         return (vm, store)
     }
 
@@ -322,6 +285,105 @@ final class DashboardViewModelTests: XCTestCase {
         let updated = store.accounts.first { $0.id == account.id }
         XCTAssertEqual(updated?.accountUuid, "acct-1")
         XCTAssertEqual(updated?.email, "person@example.com")
+    }
+
+    // MARK: - Auto ping
+
+    /// Waits for the background auto pings started by `refreshAll`. The view
+    /// model's own launch refresh can claim the account first, so this waits on
+    /// the pinger rather than on one particular task.
+    private func waitForPings(_ pinger: FakePinger, count: Int) async throws {
+        for _ in 0..<300 where pinger.calls.count < count {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        await Task.yield()
+    }
+
+    private func addIdleAccount(to store: AccountStore, vm: DashboardViewModel) async -> Account {
+        let account = makeAccount(orgId: "org-1", accountUuid: "acct-1")
+        store.addAccount(account)
+        store.saveSessionKey("sk-test", for: account.id)
+        respond(accountBody: #"{"uuid":"acct-1","email_address":"person@example.com","memberships":[]}"#)
+        await Task.yield()
+        XCTAssertEqual(vm.accountStates.count, 1, "sanity: account must reach accountStates before refreshAll runs")
+        return account
+    }
+
+    func testRefreshAutoPingsAnAccountWhoseWindowIsNotRunning() async throws {
+        let pinger = FakePinger()
+        let (vm, store) = try makeViewModelWithStore(pinger: pinger)
+        _ = await addIdleAccount(to: store, vm: vm)
+        vm.pingController.isAutoPingEnabled = true
+
+        await vm.refreshAll()
+        try await waitForPings(pinger, count: 1)
+
+        XCTAssertEqual(pinger.calls, ["org-1"])
+    }
+
+    func testLaterRefreshesDoNotPingAgainWhileTheApiStillReportsNull() async throws {
+        let pinger = FakePinger()
+        let (vm, store) = try makeViewModelWithStore(pinger: pinger)
+        _ = await addIdleAccount(to: store, vm: vm)
+        vm.pingController.isAutoPingEnabled = true
+
+        await vm.refreshAll()
+        try await waitForPings(pinger, count: 1)
+        await vm.autoPingTask?.value
+        await vm.refreshAll()
+        await vm.autoPingTask?.value
+
+        XCTAssertEqual(pinger.calls, ["org-1"])
+    }
+
+    func testAFailedAutoPingIsNotRetriedByTheRefreshThatFollowsIt() async throws {
+        let pinger = FakePinger(result: PingResult(outcome: .blocked, detail: nil))
+        let (vm, store) = try makeViewModelWithStore(pinger: pinger)
+        _ = await addIdleAccount(to: store, vm: vm)
+        vm.pingController.isAutoPingEnabled = true
+
+        await vm.refreshAll()
+        try await waitForPings(pinger, count: 1)
+        await vm.autoPingTask?.value   // includes the refresh after the ping
+        await vm.refreshAll()
+        await vm.autoPingTask?.value
+
+        XCTAssertEqual(pinger.calls, ["org-1"])
+    }
+
+    func testRefreshDoesNotPingWhenAutoPingIsOff() async throws {
+        let pinger = FakePinger()
+        let (vm, store) = try makeViewModelWithStore(pinger: pinger)
+        _ = await addIdleAccount(to: store, vm: vm)
+
+        await vm.refreshAll()
+        await vm.autoPingTask?.value
+
+        XCTAssertTrue(pinger.calls.isEmpty)
+        XCTAssertNil(vm.autoPingTask)
+    }
+
+    func testManualPingPingsOnceAndRecordsTheResult() async throws {
+        let pinger = FakePinger()
+        let (vm, store) = try makeViewModelWithStore(pinger: pinger)
+        let account = await addIdleAccount(to: store, vm: vm)
+
+        await vm.pingNow(account.id)
+
+        XCTAssertEqual(pinger.calls, ["org-1"])
+        XCTAssertEqual(vm.pingController.latest[account.id]?.trigger, .manual)
+        XCTAssertEqual(vm.pingController.latest[account.id]?.outcome, .ok)
+    }
+
+    func testCanPingOnlyAnActiveAccountWithAKey() async throws {
+        let (vm, store) = try makeViewModelWithStore()
+        let account = await addIdleAccount(to: store, vm: vm)
+        let state = try XCTUnwrap(vm.accountStates.first)
+        XCTAssertTrue(vm.canPing(state))
+
+        var expired = account
+        expired.status = .expired
+        XCTAssertFalse(vm.canPing(AccountUsageState(id: account.id, account: expired)))
     }
 
     // MARK: - Plan-tier refresh (contract/cases/plan-refresh.json)
