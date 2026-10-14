@@ -13,7 +13,7 @@ struct PingTarget: Equatable, Sendable {
 /// Auto-ping rule (spec, "Auto Ping"): a successfully refreshed `.active`
 /// account whose 5h or 7d window is not running (`resets_at == nil`) is pinged,
 /// once. The latch holds until both windows run again; a failed auto ping may
-/// retry after `failureCooldown`.
+/// retry after `failureCooldown`. An account with a window at 100% is never pinged.
 ///
 ///     if controller.claimAutoPing(accountId: id, status: .active, freshUsage: usage) {
 ///         await controller.ping(target, trigger: .auto)
@@ -63,6 +63,8 @@ final class PingController: ObservableObject {
             retryAfter[accountId] = nil
             return false
         }
+        // A capped account cannot start a window; pinging it only fills the log.
+        guard usage.fiveHour.utilization < 100, usage.sevenDay.utilization < 100 else { return false }
         guard isAutoPingEnabled, status == .active, !inFlight.contains(accountId) else { return false }
         if latched.contains(accountId) {
             guard let until = retryAfter[accountId], now() >= until else { return false }
@@ -70,6 +72,17 @@ final class PingController: ObservableObject {
         latched.insert(accountId)
         retryAfter[accountId] = nil
         return true
+    }
+
+    /// Undoes a claim whose ping never ran (skipped because another ping was in flight).
+    func releaseClaim(_ accountId: UUID) {
+        latched.remove(accountId)
+        retryAfter[accountId] = nil
+    }
+
+    /// Forgets every account's latest ping (the Ping Log was cleared).
+    func clearLatest() {
+        latest = [:]
     }
 
     /// Pings and logs one account. nil when a ping for it is already running.

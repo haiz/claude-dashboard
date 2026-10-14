@@ -18,7 +18,8 @@ struct MainWindow: View {
         self.showSetupOnAppear = showSetupOnAppear
         _pingLogViewModel = StateObject(wrappedValue: PingLogViewModel(
             store: viewModel.pingController.logStore,
-            accountStore: viewModel.accountStore
+            accountStore: viewModel.accountStore,
+            onClear: { viewModel.pingController.clearLatest() }
         ))
     }
 

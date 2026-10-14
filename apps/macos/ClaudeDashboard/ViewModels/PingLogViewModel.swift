@@ -13,8 +13,12 @@ final class PingLogViewModel: ObservableObject {
     private let store: PingLogStore
     private let accountStore: AccountStore
     private let limit: Int
+    private let onClear: () -> Void
 
-    init(store: PingLogStore, accountStore: AccountStore, limit: Int = 500) {
+    /// `onClear` runs after the log is cleared (e.g. to empty the account page captions).
+    init(store: PingLogStore, accountStore: AccountStore, limit: Int = 500,
+         onClear: @escaping () -> Void = {}) {
+        self.onClear = onClear
         self.store = store
         self.accountStore = accountStore
         self.limit = limit
@@ -27,6 +31,7 @@ final class PingLogViewModel: ObservableObject {
     func clear() async {
         await store.clear()
         entries = []
+        onClear()
     }
 
     /// "Removed account" once the account is gone; its rows stay until they age out.

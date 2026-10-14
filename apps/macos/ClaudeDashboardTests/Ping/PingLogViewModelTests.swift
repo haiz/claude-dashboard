@@ -48,6 +48,15 @@ final class PingLogViewModelTests: XCTestCase {
         XCTAssertTrue(reloaded.isEmpty)
     }
 
+    func testClearCallsOnClear() async {
+        var called = false
+        let vm = PingLogViewModel(store: store, accountStore: accountStore, onClear: { called = true })
+
+        await vm.clear()
+
+        XCTAssertTrue(called)
+    }
+
     func testAccountNameForALiveAndARemovedAccount() async {
         let account = Account(id: UUID(), name: "Work", email: nil, chromeProfilePath: "Profile 1",
                               chromeProfileName: nil, orgId: "org-1", plan: .pro, lastSynced: nil,

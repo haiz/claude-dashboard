@@ -234,7 +234,7 @@ final class DashboardViewModel: ObservableObject {
     /// null`. Refresh promptly so `refreshAll` can auto-ping to restart
     /// the window within seconds, instead of waiting for the next auto-refresh. The
     /// 10s grace avoids reacting to the sub-second jitter `resets_at` shows right at
-    /// the boundary. Firing and de-duplication live in `refreshAll`, not here, so the
+    /// the boundary. Firing and de-duplication live in `refreshAll`, not here, so
     /// a window is never pinged twice for one reset.
     private func checkResetTriggers() async {
         let threshold = Date().addingTimeInterval(-10)

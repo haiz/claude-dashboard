@@ -41,7 +41,11 @@ extension DashboardViewModel {
         autoPingTask = Task {
             await withTaskGroup(of: Void.self) { group in
                 for target in targets {
-                    group.addTask { _ = await controller.ping(target, trigger: .auto) }
+                    group.addTask {
+                    if await controller.ping(target, trigger: .auto) == nil {
+                        await controller.releaseClaim(target.accountId)
+                    }
+                }
                 }
             }
             await refreshAll(only: Set(targets.map(\.accountId)))

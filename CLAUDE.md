@@ -105,7 +105,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   delete; see `contract/README.md`, "Ping"). The account page's **Ping** button pings by hand;
   Settings > General > **Auto Ping** (key `autoPingEnabled`, default off, one switch for every
   account) makes `PingController` ping each `.active` account whose fresh usage shows
-  `five_hour` or `seven_day` `resets_at: null`, latched until both windows run again, with a
+  `five_hour` or `seven_day` `resets_at: null` and neither window at 100%, latched until both windows run again, with a
   10-minute retry after a failed auto ping. `PingLogStore` keeps the newest 500 pings in
   `ping_logs.db` (Tools > Ping Log). `PingMigration` deletes Run Command leftovers
   (`command_logs.db`, `runCommand_*` keys) at launch. macOS only: Windows keeps Run Command.

@@ -57,7 +57,7 @@ is ignored: the refresh that follows every ping already handles session key rota
 | Situation | `PingOutcome` |
 |---|---|
 | `message_start` seen (DELETE result does not matter; a failed DELETE sets `detail`) | `.ok` |
-| 401, or 403 with a session error | `.expired` |
+| 401, or a 403 that is not a Cloudflare challenge | `.expired` |
 | 403 with a `cf-mitigated` header or an HTML body | `.blocked` |
 | 429, timeout, network error, no `message_start`, any other status | `.failed(detail)` |
 
@@ -92,6 +92,7 @@ time passes), an account is auto-pinged when all hold:
 - `account.status == .active`;
 - this refresh fetched its usage successfully (a failed fetch never pings: the window state is
   unknown);
+- neither window is at 100% utilization (a capped account cannot start a window);
 - `five_hour.resets_at == nil` **or** `seven_day.resets_at == nil`;
 - it is not latched, not in flight, and not in the failure cooldown.
 

@@ -155,6 +155,38 @@ final class PingControllerTests: XCTestCase {
         XCTAssertEqual(gated.startedCount, 1)
     }
 
+    // MARK: - Exhausted, release, clear
+
+    func testNeverClaimsAnExhaustedAccount() {
+        let controller = makeController(FakePinger())
+        let sevenCapped = UsageData(fiveHour: UsageLimit(utilization: 0, resetsAt: nil),
+                                    sevenDay: UsageLimit(utilization: 100, resetsAt: running))
+        let fiveCapped = UsageData(fiveHour: UsageLimit(utilization: 100, resetsAt: running),
+                                   sevenDay: UsageLimit(utilization: 0, resetsAt: nil))
+        XCTAssertFalse(controller.claimAutoPing(accountId: id, status: .active, freshUsage: sevenCapped))
+        XCTAssertFalse(controller.claimAutoPing(accountId: id, status: .active, freshUsage: fiveCapped))
+        // Not latched: once the cap lifts the account is claimed at once.
+        XCTAssertTrue(controller.claimAutoPing(accountId: id, status: .active,
+                                               freshUsage: usage(fiveHour: nil, sevenDay: running)))
+    }
+
+    func testReleaseClaimAllowsAnotherClaim() {
+        let controller = makeController(FakePinger())
+        let u = usage(fiveHour: nil, sevenDay: running)
+        XCTAssertTrue(controller.claimAutoPing(accountId: id, status: .active, freshUsage: u))
+        XCTAssertFalse(controller.claimAutoPing(accountId: id, status: .active, freshUsage: u))
+        controller.releaseClaim(id)
+        XCTAssertTrue(controller.claimAutoPing(accountId: id, status: .active, freshUsage: u))
+    }
+
+    func testClearLatestEmptiesTheCaptionSource() async {
+        let controller = makeController(FakePinger())
+        await controller.ping(target, trigger: .manual)
+        XCTAssertNotNil(controller.latest[id])
+        controller.clearLatest()
+        XCTAssertTrue(controller.latest.isEmpty)
+    }
+
     // MARK: - Log
 
     func testEachPingWritesOneLogRowAndUpdatesLatest() async {
