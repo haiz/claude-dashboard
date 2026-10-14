@@ -77,6 +77,7 @@ enum AutoSwitchPlanner {
     static let tierFiveHourLimit = 91.0
     static let tierSevenDayLimit = 99.0
     static let scoreSevenDayCap = 98.0
+    static let scoreMinDaysLeft = 0.25
     static let groupRatio = 0.85
     /// `resetsAt` drifts by sub-seconds between fetches; a real reset moves it by hours.
     static let resetTolerance: TimeInterval = 60
@@ -98,12 +99,13 @@ enum AutoSwitchPlanner {
             || usage.sevenDay.utilization >= thresholds.sevenDay - 3
     }
 
-    /// Days elapsed in the 7d window times the 7d percent left below 98. A week that has
-    /// not started (`resetsAt == nil`) has 0 days elapsed.
+    /// The 7d percent left below 98 per day left in the week: what the account must burn
+    /// to use its quota before the reset. Days left are floored at `scoreMinDaysLeft`. A week
+    /// that has not started (`resetsAt == nil`) scores 0, keeping the account in reserve.
     static func score(_ usage: UsageData, now: Date) -> Double {
-        let elapsed = usage.sevenDay.resetsAt
-            .map { min(max(7 - $0.timeIntervalSince(now) / 86_400, 0), 7) } ?? 0
-        return elapsed * max(0, scoreSevenDayCap - usage.sevenDay.utilization)
+        guard let resetsAt = usage.sevenDay.resetsAt else { return 0 }
+        let daysLeft = min(max(resetsAt.timeIntervalSince(now) / 86_400, 0), 7)
+        return max(0, scoreSevenDayCap - usage.sevenDay.utilization) / max(daysLeft, scoreMinDaysLeft)
     }
 
     /// True when a window that had `baseline` as its `resetsAt` has since reset: it now

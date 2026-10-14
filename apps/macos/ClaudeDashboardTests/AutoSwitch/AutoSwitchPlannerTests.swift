@@ -119,18 +119,31 @@ final class AutoSwitchPlannerTests: XCTestCase {
             UsageData(fiveHour: UsageLimit(utilization: 0, resetsAt: nil),
                       sevenDay: UsageLimit(utilization: seven, resetsAt: resets))
         }
-        XCTAssertEqual(AutoSwitchPlanner.score(usage(58, resets: now + day), now: now), 240, accuracy: 0.001)
-        XCTAssertEqual(AutoSwitchPlanner.score(usage(8, resets: now + 6 * day), now: now), 90, accuracy: 0.001)
+        XCTAssertEqual(AutoSwitchPlanner.score(usage(58, resets: now + day), now: now), 40, accuracy: 0.001)
+        XCTAssertEqual(AutoSwitchPlanner.score(usage(8, resets: now + 6 * day), now: now), 15, accuracy: 0.001)
         XCTAssertEqual(AutoSwitchPlanner.score(usage(10, resets: nil), now: now), 0)
-        XCTAssertEqual(AutoSwitchPlanner.score(usage(10, resets: now + 9 * day), now: now), 0)
-        XCTAssertEqual(AutoSwitchPlanner.score(usage(10, resets: now - day), now: now), 7 * 88, accuracy: 0.001)
+        XCTAssertEqual(AutoSwitchPlanner.score(usage(10, resets: now + 9 * day), now: now), 88.0 / 7, accuracy: 0.001)
+        XCTAssertEqual(AutoSwitchPlanner.score(usage(10, resets: now - day), now: now), 88 / 0.25, accuracy: 0.001)
+        XCTAssertEqual(AutoSwitchPlanner.score(usage(10, resets: now + 3600), now: now), 88 / 0.25, accuracy: 0.001)
         XCTAssertEqual(AutoSwitchPlanner.score(usage(98.5, resets: now + day), now: now), 0)
+    }
+
+    /// Time left weighs more than percent used: 6 days in at 50% beats 4 days in at 0%,
+    /// and by more than the near-top group, so there is no coin flip.
+    func testLateHalfUsedClearlyBeatsEarlierUnused() {
+        let active = account("a", five: 96, seven: 10, active: true)
+        let late = account("late", five: 0, seven: 50, sevenResets: now + day)        // 48
+        let unused = account("unused", five: 0, seven: 0, sevenResets: now + 3 * day) // 32.7
+        var sizes: [Int] = []
+        let d = decide(snapshot([active, unused, late]), pick: { sizes.append($0); return $0 - 1 })
+        XCTAssertEqual(d, .switchTo(late.id, .threshold(tier: 1)))
+        XCTAssertEqual(sizes, [1])
     }
 
     func testFarAheadTopIsPicked() {
         let active = account("a", five: 96, seven: 10, active: true)
-        let late = account("late", five: 0, seven: 58, sevenResets: now + day)       // 240
-        let early = account("early", five: 0, seven: 8, sevenResets: now + 6 * day)  // 90
+        let late = account("late", five: 0, seven: 58, sevenResets: now + day)       // 40
+        let early = account("early", five: 0, seven: 8, sevenResets: now + 6 * day)  // 15
         var sizes: [Int] = []
         let d = decide(snapshot([active, early, late]), pick: { sizes.append($0); return $0 - 1 })
         XCTAssertEqual(d, .switchTo(late.id, .threshold(tier: 1)))
@@ -139,9 +152,9 @@ final class AutoSwitchPlannerTests: XCTestCase {
 
     func testRandomWithinNearTopGroup() {
         let active = account("a", five: 96, seven: 10, active: true)
-        let top = account("top", five: 0, seven: 58, sevenResets: now + day)         // 240
-        let close = account("close", five: 0, seven: 62, sevenResets: now + day)     // 216 >= 204
-        let far = account("far", five: 0, seven: 8, sevenResets: now + 6 * day)      // 90
+        let top = account("top", five: 0, seven: 58, sevenResets: now + day)         // 40
+        let close = account("close", five: 0, seven: 62, sevenResets: now + day)     // 36 >= 34
+        let far = account("far", five: 0, seven: 8, sevenResets: now + 6 * day)      // 15
         var sizes: [Int] = []
         let first = decide(snapshot([active, top, close, far]), pick: { sizes.append($0); return 0 })
         let last = decide(snapshot([active, top, close, far]), pick: { $0 - 1 })
