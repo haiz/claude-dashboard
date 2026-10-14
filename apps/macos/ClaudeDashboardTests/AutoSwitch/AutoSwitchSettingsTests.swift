@@ -20,12 +20,18 @@ final class AutoSwitchSettingsTests: XCTestCase {
 
     func testDefaults() {
         let s = AutoSwitchSettings(defaults: defaults)
-        XCTAssertFalse(s.isEnabled)
+        XCTAssertTrue(s.isEnabled)
         XCTAssertEqual(s.fiveHourThreshold, 95)
         XCTAssertEqual(s.sevenDayThreshold, 99)
         XCTAssertTrue(s.showWidgetToggle)
         XCTAssertNil(s.priority)
         XCTAssertEqual(s.thresholds, AutoSwitchThresholds(fiveHour: 95, sevenDay: 99))
+    }
+
+    /// On by default only when nothing is stored: a user who turned it off stays off.
+    func testStoredOffSurvivesTheOnDefault() {
+        defaults.set(false, forKey: AutoSwitchSettings.enabledKey)
+        XCTAssertFalse(AutoSwitchSettings(defaults: defaults).isEnabled)
     }
 
     func testValuesPersistAcrossInstances() {

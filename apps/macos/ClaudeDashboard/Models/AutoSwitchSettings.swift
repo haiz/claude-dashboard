@@ -41,7 +41,7 @@ final class AutoSwitchSettings: ObservableObject {
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
-        isEnabled = defaults.object(forKey: Self.enabledKey) as? Bool ?? false
+        isEnabled = defaults.object(forKey: Self.enabledKey) as? Bool ?? true
         fiveHourThreshold = Self.stored(defaults, Self.fiveHourKey, in: Self.fiveHourRange, default: 95)
         sevenDayThreshold = Self.stored(defaults, Self.sevenDayKey, in: Self.sevenDayRange, default: 99)
         showWidgetToggle = defaults.object(forKey: Self.showWidgetToggleKey) as? Bool ?? true

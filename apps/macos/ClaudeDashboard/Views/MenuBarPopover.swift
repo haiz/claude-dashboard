@@ -136,24 +136,7 @@ struct MenuBarPopover: View {
 
             Divider()
 
-            AutoSwitchFooter(viewModel: viewModel)
-
-            // Footer with Quit
-            HStack {
-                Button(action: {
-                    confirmingQuit = true
-                }) {
-                    Label("Quit Claude Dashboard", systemImage: "power")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(HoverableButtonStyle())
-                .help("Quit the app and stop monitoring usage")
-
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            PopoverFooter(viewModel: viewModel, onQuit: { confirmingQuit = true })
         }
         .frame(width: Self.width)
         .fixedSize(horizontal: false, vertical: true)
