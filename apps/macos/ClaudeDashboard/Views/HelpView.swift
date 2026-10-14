@@ -1,205 +1,351 @@
 import SwiftUI
 
+/// Tools > Help: one card per topic, with a topic grid at the top that scrolls to it.
+/// Blocks come from `HelpBlocks.swift`. Keep the wording in step with the UI labels
+/// it names (button titles, Settings section names).
+///
+///     HelpView()
 struct HelpView: View {
     var body: some View {
         VStack(spacing: 0) {
             PaneHeader(title: "Help")
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    gettingStartedSection
-                    readingUsageSection
-                    dashboardSection
-                    managingAccountsSection
-                    autoRefreshSection
-                    troubleshootingSection
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        topicGrid(proxy)
+                        ForEach(HelpTopic.allCases) { topic in
+                            HelpCard(title: topic.title, subtitle: topic.subtitle,
+                                     icon: topic.icon, color: topic.color) {
+                                content(for: topic)
+                            }
+                            .id(topic)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 20)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
             }
         }
     }
 
-    // MARK: - Sections
+    // MARK: - Topic grid
 
-    private var gettingStartedSection: some View {
-        helpSection(title: "Getting Started", icon: "sparkles", color: .blue) {
-            bodyText("Claude Dashboard shows your Claude.ai token usage across multiple accounts, pulled directly from your Chrome sessions — no passwords required.")
-
-            VStack(alignment: .leading, spacing: 6) {
-                step(number: 1, text: "Sign in to claude.ai in Google Chrome (one profile per account).")
-                step(number: 2, text: "Click the Claude Dashboard icon in the menu bar, then click **Add Account**.")
-                step(number: 3, text: "Select the Chrome profiles you want to track and click **Add Selected**.")
-            }
-
-            tip("When macOS asks for Keychain access, choose **Always Allow** — the app uses this to decrypt Chrome's cookie store.")
-        }
-    }
-
-    private var readingUsageSection: some View {
-        helpSection(title: "Reading Your Usage", icon: "chart.bar.fill", color: .purple) {
-            bodyText("Each account card shows up to three usage bars:")
-
-            VStack(alignment: .leading, spacing: 6) {
-                bullet(icon: nil, text: "**5h** — tokens used in the rolling 5-hour window.")
-                bullet(icon: nil, text: "**7d** — tokens used in the rolling 7-day window.")
-                bullet(icon: nil, text: "**F** — 7-day usage for the Fable model (shown only when your plan scopes it).")
-            }
-
-            bodyText("Bar color signals how much is left: green (plenty), yellow (halfway), red (nearly out). The countdown next to each bar shows when that window resets.")
-
-            bodyText("The animal emoji reflects your burn rate — a sloth means you're using tokens slowly; a cheetah means you're burning through them fast.")
-
-            bodyText("A green dot on an account name means that account is currently active in Claude Code.")
-        }
-    }
-
-    private var dashboardSection: some View {
-        helpSection(title: "Working With the Dashboard", icon: "square.grid.2x2", color: .indigo) {
-            bodyText("The menu bar popover header has five icon buttons, left to right:")
-
-            VStack(alignment: .leading, spacing: 6) {
-                bullet(icon: "arrow.clockwise",            text: "**Refresh** — fetch the latest usage now.")
-                bullet(icon: "rectangle.expand.vertical",  text: "**Expand** — open the full dashboard window.")
-                bullet(icon: "chart.xyaxis.line",          text: "**Overview** — see all accounts on one chart.")
-                bullet(icon: "questionmark.circle",        text: "**Help** — this screen.")
-                bullet(icon: "gearshape",                  text: "**Settings** — accounts, refresh, and updates.")
-            }
-
-            bodyText("Click any usage bar on a card to open that account's **Detail Chart**. Use the **5h / 7d / S** picker to change the time range, **Show All** to reset the zoom, and **Measure** to compare usage between two points.")
-
-            bodyText("In **Overview**, toggle individual accounts on and off using the legend at the bottom.")
-
-            bodyText("**Right-click** a card to pin it to the top of the list regardless of burn rate.")
-
-            bodyText("On an account's page, **Ping** sends one short message from that account to start its 5h and 7d windows now. Turn on **Settings › General › Auto Ping** to ping every active account whose window is not running after each refresh. Every ping is listed in **Ping Log**.")
-        }
-    }
-
-    private var managingAccountsSection: some View {
-        helpSection(title: "Managing Accounts", icon: "person.2.circle", color: .green) {
-            VStack(alignment: .leading, spacing: 6) {
-                bullet(icon: "plus.circle",  text: "**Add an account** — **Settings › Accounts** → **Add Account**, then pick your browser (Chrome, Arc, Brave, Edge).")
-                bullet(icon: "arrow.clockwise", text: "**Re-sync** — **Settings › Accounts** → **Re-sync All**, or use the **Re-sync** button on any expired card.")
-                bullet(icon: "trash",        text: "**Remove an account** — **Settings › Accounts** → trash icon next to the account, or **Remove Account…** on the account's page.")
-            }
-
-            tip("If a card shows an orange triangle, the session has expired. Open the matching browser profile, log into claude.ai, then re-sync.")
-        }
-    }
-
-    private var autoRefreshSection: some View {
-        helpSection(title: "Auto-Refresh & Updates", icon: "arrow.triangle.2.circlepath", color: .orange) {
-            bodyText("Enable **Auto Refresh** under **Settings › General** to keep usage current automatically. Set the interval anywhere from 1 to 60 minutes.")
-
-            bodyText("**Auto-update daily** checks GitHub once a day and installs new releases in the background. Use **Check for Updates** to force a check immediately.")
-        }
-    }
-
-    private var troubleshootingSection: some View {
-        helpSection(title: "Troubleshooting", icon: "wrench.and.screwdriver", color: .gray) {
-            VStack(alignment: .leading, spacing: 10) {
-                problemAnswer(
-                    problem: "\"No profiles found\"",
-                    answer: "The browser must be running with that profile open. Only profiles the browser currently considers active are scanned. Click **Retry Scan** after opening the browser."
-                )
-                problemAnswer(
-                    problem: "Account stuck on \"Session expired\"",
-                    answer: "Open the matching browser profile, log into claude.ai, then click **Re-sync** on the card."
-                )
-                problemAnswer(
-                    problem: "macOS blocks the app on first launch",
-                    answer: "Go to System Settings → Privacy & Security, scroll down, and click **Open Anyway**. Alternatively, right-click the app in Finder and choose **Open**."
-                )
-                problemAnswer(
-                    problem: "Usage not updating",
-                    answer: "Click the Refresh button in the popover. Make sure you have an active claude.ai session in Chrome for each tracked account."
-                )
+    private func topicGrid(_ proxy: ScrollViewProxy) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 8)], spacing: 8) {
+            ForEach(HelpTopic.allCases) { topic in
+                TopicChip(topic: topic) {
+                    withAnimation { proxy.scrollTo(topic, anchor: .top) }
+                }
             }
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Topics
 
-    private func helpSection<Content: View>(title: String, icon: String, color: Color, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+    @ViewBuilder
+    private func content(for topic: HelpTopic) -> some View {
+        switch topic {
+        case .gettingStarted: gettingStarted
+        case .readingCard: readingCard
+        case .findingYourWay: findingYourWay
+        case .charts: charts
+        case .switchClaudeCode: switchClaudeCode
+        case .autoSwitch: autoSwitch
+        case .ping: ping
+        case .accounts: accounts
+        case .refreshUpdates: refreshUpdates
+        case .troubleshooting: troubleshooting
+        }
+    }
+
+    private var gettingStarted: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HelpText("Claude Dashboard reads your claude.ai sessions straight from your browser. No passwords, nothing to type.")
+            HelpSteps([
+                "Sign in to claude.ai in **Chrome, Chrome Dev, Arc, Brave or Edge**. Use one browser profile per account.",
+                "Open **Settings › Accounts** and click **Add Account…**",
+                "Pick your browser, check the accounts it finds, then click **Add Selected**.",
+            ])
+            HelpCallout(.tip, "When macOS asks for Keychain access, choose **Always Allow**. The app needs it to read the browser's cookies.")
+            HelpCallout(.note, "No browser session? In the same window, click **Paste a session key instead** and paste the account's claude.ai `sessionKey` cookie.")
+        }
+    }
+
+    private var readingCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 20) {
+                UsageBar(label: "5h", utilization: 62, resetsAt: Date().addingTimeInterval(8_100),
+                         totalSeconds: 18_000, animal: "🐇", isCompact: false)
+                    .allowsHitTesting(false)
+                VStack(alignment: .leading, spacing: 8) {
+                    HelpText("**Big ring**: how much of the window you have used, with the percentage inside.")
+                    HelpText("**Small ring**: time until the window resets. One segment per hour (5h) or per day (7d). It turns green as the reset gets close.")
+                    HelpText("**Animal**: how fast you are burning (see below).")
+                }
+            }
+
+            HelpSubheading("The windows")
+            HelpRow("**5-hour window**: usage in the current 5-hour session.") { HelpBadge("5h") }
+            HelpRow("**7-day window**: your weekly usage across all models.") { HelpBadge("7d") }
+            HelpRow("**Fable**: weekly Fable usage. Shown only when your plan has a Fable limit; it resets together with 7d.") { HelpBadge("F") }
+            HelpRow("**Color** goes from green (plenty left) to red (almost out).") { usageGradient }
+
+            HelpSubheading("Burn rate: time until you hit 100% at the current pace")
+            burnRateScale
+
+            HelpSubheading("Badges on a card")
+            HelpRow("**Active in Claude Code**: the account Claude Code is using right now.") {
+                Circle().fill(.green).frame(width: 8, height: 8)
+            }
+            HelpRow("**Plan**: Pro, Max 5x, Max 20x, or Max when the tier is unknown.") {
+                HelpBadge("Pro", color: AccountPlan.pro.badgeColor)
+            }
+            HelpRow(symbol: "pin.fill", "**Pinned**: always at the top of the list, and the account shown in the menu bar.")
+            HelpRow(symbol: "bolt.fill", color: .orange, "**Next after reset**: Claude Code moves here as soon as this account's 5h limit resets.")
+            HelpRow(symbol: "exclamationmark.triangle.fill", color: .orange, "**Session expired**: sign in again in the browser, then **Re-sync**.")
+
+            HelpCallout(.note, "The menu bar shows the 5h usage and the time left until reset for your pinned account, or the top account when none is pinned.")
+        }
+    }
+
+    private var findingYourWay: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HelpSubheading("Menu bar popover")
+            HelpRow(symbol: "arrow.clockwise", "**Refresh**: fetch the latest usage for every account.")
+            HelpRow(symbol: "rectangle.expand.vertical", "**Open window**: the full dashboard.")
+            HelpRow(symbol: "questionmark.circle", "**Help**: this page.")
+            HelpRow(symbol: "gearshape", "**Settings**: accounts, refresh, Auto Ping, Auto Switch, updates.")
+            HelpRow(symbol: "power", "**Quit** (bottom left). The **Auto switch** toggle sits bottom right with its latest event.")
+
+            HelpSubheading("Main window sidebar")
+            HelpRow(symbol: "square.grid.2x2", color: .blue, "**Usage**: Dashboard (all cards) and Overview (all accounts on one chart).")
+            HelpRow(symbol: "person.crop.circle", color: .teal, "**Accounts**: one page per account, with its current usage next to the name.")
+            HelpRow(symbol: "wrench.and.screwdriver", color: .indigo, "**Tools**: Ping Log, Switch Log and Help.")
+            HelpRow(symbol: "gearshape", color: .gray, "**Settings**: Accounts and General.")
+
+            HelpCallout(.tip, "Click any ring to open that account's page on that window's chart. **Right-click** a card to pin it to the top.")
+        }
+    }
+
+    private var charts: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HelpText("Each account page has a **History** chart.")
+            HelpRow(symbol: "rectangle.split.3x1", "**Window**: pick 5h, 7d or Fable.")
+            HelpRow("**Range**: the last 5h, 24h, 3d, 7d or 30d.") { HelpBadge("24h") }
+            HelpRow(symbol: "arrow.up.and.down.and.arrow.left.and.right", "**Pan / zoom**: drag the chart to move through time; the mode button changes what a drag does.")
+            HelpRow(symbol: "list.bullet", "**Reset cycles**: click one to show only that cycle; **Show All** brings back the rest.")
+            HelpRow(symbol: "ruler", "**Measure**: click two points to see how much usage changed between them.")
+            HelpCallout(.tip, "**Overview** puts every account on one chart. Click an account in the legend to show or hide it.")
+        }
+    }
+
+    private var switchClaudeCode: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HelpText("Click \(Image(systemName: "arrow.left.arrow.right")) on a card, or **Switch** on the account page, then confirm. Claude Code now uses that account.")
+            HelpSubheading("The first time for an account")
+            HelpSteps([
+                "The app opens **that account's own browser profile** on Claude's sign-in page.",
+                "Sign in and click **Authorize**.",
+                "The switch finishes by itself. From then on it is instant, no browser, for about 30 days.",
+            ], color: .pink)
+            HelpRow(symbol: "bolt", color: .orange, "**Switch after reset**: tick \(Image(systemName: "bolt")) on a card (or the toggle on its page) to move Claude Code there as soon as its 5h limit resets. Only one account can be ticked.")
+            HelpCallout(.warning, "Don't also use the same account through another `CLAUDE_CONFIG_DIR`. Two copies of one login sign each other out.")
+        }
+    }
+
+    private var autoSwitch: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HelpText("Auto Switch is **on by default**. When the account Claude Code uses reaches a limit, Claude Code moves to another account without a click.")
+            HelpRow("**When**: 5h usage reaches **95%** or 7d usage reaches **99%**. Change both in **Settings › General › Auto Switch**.") {
+                HelpSymbol(name: "gauge.with.dots.needle.67percent", color: .orange)
+            }
+            HelpRow("**Where to**: the account whose weekly quota is closest to going unused, so nothing is wasted. Near-equal choices are picked at random.") {
+                HelpSymbol(name: "target", color: .teal)
+            }
+            HelpRow("**Which accounts**: only ones already signed in to Claude Code (through Switch or `/login`), so the switch is instant. It never opens a browser.") {
+                HelpSymbol(name: "checkmark.seal", color: .green)
+            }
+            HelpRow("**On failure**: that account is skipped for 10 minutes.") {
+                HelpSymbol(name: "clock.arrow.circlepath", color: .secondary)
+            }
+            HelpCallout(.tip, "**Switch Log** (Tools) lists every switch and every failed attempt, and why nothing happened when no account was available.")
+        }
+    }
+
+    private var ping: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HelpText("A window only starts counting at your first message. Pinging starts it now, so it resets sooner.")
+            HelpRow("**Ping** (account page): sends one short message from that account to start its 5h and 7d windows.") {
+                HelpSymbol(name: "hand.tap", color: .indigo)
+            }
+            HelpRow("**Auto Ping** (Settings › General, off by default): after each refresh, pings every active account whose 5h or 7d window is not running.") {
+                HelpSymbol(name: "repeat", color: .indigo)
+            }
+            HelpRow("**Ping Log** (Tools): the latest 500 pings and their results.") {
+                HelpSymbol(name: "list.bullet.rectangle", color: .indigo)
+            }
+        }
+    }
+
+    private var accounts: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HelpRow(symbol: "plus.circle", color: .green, "**Add**: **Settings › Accounts** → **Add Account…**")
+            HelpRow(symbol: "arrow.triangle.2.circlepath", color: .blue, "**Re-sync**: read a fresh session key from the browser. One account from its page, or every account with **Re-sync All**.")
+            HelpRow(symbol: "pin", color: .secondary, "**Pin to Top**: right-click a card, or the toggle on the account page.")
+            HelpRow(symbol: "trash", color: .red, "**Remove**: the trash icon in **Settings › Accounts**, or **Remove Account…** on the account page.")
+            HelpCallout(.note, "Account names come from the account's email (or the browser profile name) and update on each sync.")
+        }
+    }
+
+    private var refreshUpdates: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HelpRow(symbol: "arrow.clockwise", "**Auto Refresh** (Settings › General): keeps usage current, every 1 to 60 minutes.")
+            HelpRow(symbol: "arrow.down.circle", "**Auto-update daily**: checks GitHub once a day and installs new releases. **Check for Updates** checks right now.")
+        }
+    }
+
+    private var troubleshooting: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HelpFAQ("\"No profiles found\" when adding",
+                    "Make sure you are signed in to claude.ai in that browser, pick the right browser at the top, then click **Retry Scan**.")
+            HelpFAQ("A card says \"Session expired\"",
+                    "Open the browser profile named on the card, sign in to claude.ai, then click **Re-sync**. A pasted key can't be re-synced: add it again with **Paste a session key instead**.")
+            HelpFAQ("Switch asks me to run /login",
+                    "Claude Code lost that login. Run `/login` in Claude Code and sign in with that account.")
+            HelpFAQ("Switch is refused",
+                    "Claude Code is signed in to an account that is not on the dashboard. Add that account first so its login is kept safe.")
+            HelpFAQ("Auto Switch did nothing",
+                    "Check **Switch Log**. Usually no account was ready: switch to each account once by hand, or every other account is also at its limit.")
+            HelpFAQ("Usage is not updating",
+                    "Click **Refresh** and check **Auto Refresh** in Settings › General. Expired accounts are skipped until you re-sync them.")
+            HelpFAQ("macOS blocks the app on first launch",
+                    "Open **System Settings › Privacy & Security**, scroll down and click **Open Anyway**. Or right-click the app in Finder and choose **Open**.")
+        }
+    }
+
+    // MARK: - Visuals
+
+    private var usageGradient: some View {
+        Capsule()
+            .fill(LinearGradient(colors: [0, 50, 100].map { DashboardViewModel.usageColor(for: $0) },
+                                 startPoint: .leading, endPoint: .trailing))
+            .frame(width: 40, height: 8)
+    }
+
+    /// Mirrors `BurnRateResult.fromProjectedTime`.
+    private var burnRateScale: some View {
+        HStack(spacing: 6) {
+            ForEach(Self.burnRateLevels, id: \.level) { item in
+                VStack(spacing: 2) {
+                    Text(BurnRateResult.animals[item.level] ?? "")
+                        .font(.title2)
+                    Text(item.range)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+        }
+    }
+
+    private static let burnRateLevels: [(level: Int, range: String)] = [
+        (1, "over 5h"), (2, "3-5h"), (3, "1.5-3h"), (4, "30m-1.5h"), (5, "under 30m"),
+    ]
+}
+
+/// A tile in the Help pane's topic grid; clicking it scrolls to that topic's card.
+private struct TopicChip: View {
+    let topic: HelpTopic
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
             HStack(spacing: 8) {
-                SettingsIcon(systemImage: icon, color: color, size: 24)
-                Text(title)
-                    .font(.headline)
+                SettingsIcon(systemImage: topic.icon, color: topic.color, size: 20)
+                Text(topic.title)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
             }
-            content()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity)
+            .background(Color.primary.opacity(isHovered ? 0.10 : 0.04),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06))
-        )
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help("Jump to \(topic.title)")
     }
+}
 
-    private func bodyText(_ text: LocalizedStringKey) -> some View {
-        Text(text)
-            .font(.body)
-            .fixedSize(horizontal: false, vertical: true)
-    }
+/// The Help pane's topics, in display order.
+enum HelpTopic: String, CaseIterable, Identifiable {
+    case gettingStarted, readingCard, findingYourWay, charts, switchClaudeCode
+    case autoSwitch, ping, accounts, refreshUpdates, troubleshooting
 
-    private func step(number: Int, text: LocalizedStringKey) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("\(number).")
-                .font(.body.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 16, alignment: .trailing)
-            Text(text)
-                .font(.body)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
+    var id: String { rawValue }
 
-    private func bullet(icon: String?, text: LocalizedStringKey) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            if let icon {
-                Image(systemName: icon)
-                    .font(.caption)
-                    .frame(width: 16, alignment: .center)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("•")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16, alignment: .center)
-            }
-            Text(text)
-                .font(.body)
-                .fixedSize(horizontal: false, vertical: true)
+    var title: String {
+        switch self {
+        case .gettingStarted: return "Getting Started"
+        case .readingCard: return "Reading a Card"
+        case .findingYourWay: return "Finding Your Way"
+        case .charts: return "Charts"
+        case .switchClaudeCode: return "Switch Claude Code"
+        case .autoSwitch: return "Auto Switch"
+        case .ping: return "Ping"
+        case .accounts: return "Managing Accounts"
+        case .refreshUpdates: return "Refresh & Updates"
+        case .troubleshooting: return "Troubleshooting"
         }
     }
 
-    private func tip(_ text: LocalizedStringKey) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: "lightbulb")
-                .font(.caption)
-                .foregroundStyle(.yellow)
-            Text(text)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+    var subtitle: String {
+        switch self {
+        case .gettingStarted: return "Add your first account in under a minute."
+        case .readingCard: return "What the rings, colors, animals and badges mean."
+        case .findingYourWay: return "The menu bar popover and the main window."
+        case .charts: return "Look back at how each account was used."
+        case .switchClaudeCode: return "Move Claude Code to another account in one click."
+        case .autoSwitch: return "Let the app switch before you hit a limit."
+        case .ping: return "Start a usage window now so it resets sooner."
+        case .accounts: return "Add, re-sync, pin and remove accounts."
+        case .refreshUpdates: return "Keep usage and the app up to date."
+        case .troubleshooting: return "Common problems and how to fix them."
         }
-        .padding(8)
-        .background(.yellow.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
-    private func problemAnswer(problem: String, answer: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(problem)
-                .font(.body.weight(.medium))
-            Text(answer)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+    var icon: String {
+        switch self {
+        case .gettingStarted: return "sparkles"
+        case .readingCard: return "gauge.with.dots.needle.50percent"
+        case .findingYourWay: return "menubar.rectangle"
+        case .charts: return "chart.xyaxis.line"
+        case .switchClaudeCode: return "arrow.left.arrow.right"
+        case .autoSwitch: return "arrow.triangle.swap"
+        case .ping: return "dot.radiowaves.left.and.right"
+        case .accounts: return "person.2"
+        case .refreshUpdates: return "arrow.clockwise"
+        case .troubleshooting: return "wrench.and.screwdriver"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .gettingStarted: return .blue
+        case .readingCard: return .purple
+        case .findingYourWay: return .gray
+        case .charts: return .orange
+        case .switchClaudeCode: return .pink
+        case .autoSwitch: return .teal
+        case .ping: return .indigo
+        case .accounts: return .green
+        case .refreshUpdates: return .cyan
+        case .troubleshooting: return .brown
         }
     }
 }
