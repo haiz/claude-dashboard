@@ -196,7 +196,7 @@ struct SetupView: View {
                 .foregroundStyle(.orange)
 
             Text(scanError ?? (installedBrowsers.isEmpty
-                ? "No supported browser found (Chrome, Arc, Brave, Edge)."
+                ? "No supported browser found (Chrome, Chrome Dev, Arc, Brave, Edge)."
                 : "No \(selectedBrowser.displayName) profiles found with active Claude sessions."))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)

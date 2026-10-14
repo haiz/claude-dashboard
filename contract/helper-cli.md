@@ -33,7 +33,7 @@ detail. Linux was the side changed, because it had not shipped yet.
 
 The `sync` line reads "installed browsers" rather than "Chrome": the banner
 predates multi-browser support and named Chrome alone until the same date.
-Both platforms scan Chrome, Arc, Brave and Edge.
+Both platforms scan Chrome, Arc, Brave and Edge; macOS also scans Chrome Dev.
 
 The subcommand sections below cite **symbols, not line numbers**. The Swift
 helper has been restructured twice and nearly every pinpoint citation in this
@@ -368,7 +368,7 @@ pretty-printed JSON array with alphabetical keys. Fields:
 | `email` | string or null | |
 | `orgId` | string or null | Null for an account that never completed a sync. |
 | `chromeProfileName` | string or null | Which browser profile to open when a session expires. |
-| `browser` | string | `chrome` / `arc` / `brave` / `edge`. |
+| `browser` | string | `chrome` / `chromeDev` / `arc` / `brave` / `edge` (`chromeDev` is macOS-only). |
 | `plan` | string | A wire value from `account-schema.md`. |
 | `status` | string | `active` / `expired` / `error`. |
 | `source` | string | `browser` or `manual`. Decides which expired-account guidance to show: a manual key has no profile to reopen. |

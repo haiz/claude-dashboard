@@ -72,7 +72,7 @@ if $SHOW_HELP; then
 Usage: claude-dashboard-cli [command] [options]
 
 Commands:
-  sync              Scan Chrome, Arc, Brave, or Edge for Claude sessions and save accounts
+  sync              Scan Chrome, Chrome Dev (macOS), Arc, Brave, or Edge for Claude sessions and save accounts
   (default)         Show usage dashboard
 
 Options:

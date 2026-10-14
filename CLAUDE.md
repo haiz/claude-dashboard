@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-macOS menu bar app (SwiftUI) that monitors Claude.ai token usage across multiple accounts. Extracts session keys from the encrypted cookie database of a supported Chromium browser (Chrome, Arc, Brave, or Edge), fetches usage data from Claude.ai API, and displays real-time utilization with burn-rate-based sorting.
+macOS menu bar app (SwiftUI) that monitors Claude.ai token usage across multiple accounts. Extracts session keys from the encrypted cookie database of a supported Chromium browser (Chrome, Chrome Dev, Arc, Brave, or Edge), fetches usage data from Claude.ai API, and displays real-time utilization with burn-rate-based sorting.
 
 ## Build & Test Commands
 
@@ -50,10 +50,10 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 
 ## Architecture
 
-**Data flow:** Browser cookies — Chrome/Arc/Brave/Edge (SQLite + AES decryption) → Session keys (AES-GCM encrypted in UserDefaults) → Claude.ai API → Usage data → ViewModel → SwiftUI views
+**Data flow:** Browser cookies — Chrome/Chrome Dev/Arc/Brave/Edge (SQLite + AES decryption) → Session keys (AES-GCM encrypted in UserDefaults) → Claude.ai API → Usage data → ViewModel → SwiftUI views
 
 ### Services Layer
-- **BrowserCookieService** — Decrypts the SQLite cookie DB of Chrome, Arc, Brave, or Edge using PBKDF2-SHA1 + AES-128-CBC. The Safe Storage password is read from the Keychain per-browser, under that browser's own service name (e.g. "Chrome Safe Storage", "Brave Safe Storage" — see `Browser.swift`). Copies DB to avoid WAL locks.
+- **BrowserCookieService** — Decrypts the SQLite cookie DB of Chrome, Chrome Dev, Arc, Brave, or Edge using PBKDF2-SHA1 + AES-128-CBC. The Safe Storage password is read from the Keychain per-browser, under that browser's own service name (e.g. "Chrome Safe Storage", "Brave Safe Storage" — see `Browser.swift`; Chrome Dev shares Chrome's). Copies DB to avoid WAL locks.
 - **UsageAPIService** — Fetches `/api/organizations/{orgId}/usage` from claude.ai. Plan tier
   comes from the **organizations** endpoint's `capabilities` (`claude_pro` / `claude_max`),
   never from the usage response — `extra_usage` is a pay-as-you-go overage toggle with no
@@ -121,7 +121,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 - **MainWindow** — System Settings-style `NavigationSplitView`. `SidebarView` lists Usage (Dashboard, Overview), Accounts (one row per account), Tools (Ping Log, Switch Log, Help) and Settings (Accounts, General); `DashboardViewModel.selection: SidebarItem` picks the pane. Each pane starts with a `PaneHeader` (title + its buttons; the AppKit window has no native toolbar).
 - **DashboardPane / AccountPane** — the `AccountCard` grid, and the per-account page (header, `UsageGaugeRow`, the `AccountDetailView` chart, actions).
 - **AccountCard / UsageBar** — Per-account display with color-interpolated progress bars (green→red).
-- **SetupView** — Wizard scanning browser profiles for active Claude sessions. Offers the installed browsers (Chrome, Arc, Brave, Edge) and scans the one the user picks, remembering the choice in `preferredScanBrowser`.
+- **SetupView** — Wizard scanning browser profiles for active Claude sessions. Offers the installed browsers (Chrome, Chrome Dev, Arc, Brave, Edge) and scans the one the user picks, remembering the choice in `preferredScanBrowser`.
 - **Settings panes** (`Views/Settings/`) — `AccountsSettingsPane` (add via the `SetupView` sheet, delete, Re-sync All) and `GeneralSettingsPane` (About header, Auto Refresh, Updates). There is no rename UI; an account's name is derived at sync time (email when available, else the browser profile name).
 
 ### Tests

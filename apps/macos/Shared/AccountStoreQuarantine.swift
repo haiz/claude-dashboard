@@ -10,8 +10,9 @@ import Foundation
 /// has a branch this does not: see `contract/helper-cli.md`'s "add-key".
 enum AccountStoreQuarantine {
 
-    /// Decodes the store, and on a decode failure moves the bytes to a key of
-    /// their own and names it in the result. Absent data is genuinely no
+    /// Decodes the store, and when it is not a JSON array at all moves the
+    /// bytes to a key of their own and names it in the result. A single bad
+    /// record is not that case: `AccountStoreCodec` leaves it out instead. Absent data is genuinely no
     /// accounts, with nothing to keep.
     ///
     /// Callers that only read must not use this: moving the bytes aside is a
@@ -21,8 +22,8 @@ enum AccountStoreQuarantine {
         key: String
     ) -> (accounts: [Account], quarantined: String?) {
         guard let data = defaults.data(forKey: key) else { return ([], nil) }
-        if let accounts = try? JSONDecoder().decode([Account].self, from: data) {
-            return (accounts, nil)
+        if let decoded = AccountStoreCodec.decode(data) {
+            return (decoded.accounts, nil)
         }
         // The timestamp is what keeps a second failure from overwriting the
         // copy the first one kept. Clearing the original key afterwards is

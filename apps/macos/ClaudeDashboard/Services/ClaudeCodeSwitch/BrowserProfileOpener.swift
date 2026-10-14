@@ -3,7 +3,7 @@ import Foundation
 /// Opens a URL in a specific browser profile, so the OAuth consent page loads under the
 /// claude.ai session the dashboard scanned that account from.
 ///
-/// Chrome, Brave and Edge take `--profile-directory=<name>`. Arc has no such switch, so
+/// Chrome, Chrome Dev, Brave and Edge take `--profile-directory=<name>`. Arc has no such switch, so
 /// the URL opens in Arc and the user picks the space; this is the one browser where the
 /// profile cannot be forced.
 ///
@@ -18,7 +18,7 @@ struct BrowserProfileOpener {
     static func command(browser: Browser, profilePath: String, url: URL) -> Command {
         // `open -n -a <app> --args ...` launches a fresh instance with the given switches.
         switch browser {
-        case .chrome, .brave, .edge:
+        case .chrome, .chromeDev, .brave, .edge:
             return Command(launchPath: "/usr/bin/open", arguments: [
                 "-n", "-a", browser.displayName, "--args",
                 "--profile-directory=\(profilePath)", url.absoluteString,

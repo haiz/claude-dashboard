@@ -25,10 +25,10 @@ enum HelperAccountStore {
     static func loadAccounts() -> [Account] {
         guard let defaults = UserDefaults(suiteName: resolvedSuiteName()),
               let data = defaults.data(forKey: storageKey),
-              let accounts = try? JSONDecoder().decode([Account].self, from: data) else {
+              let decoded = AccountStoreCodec.decode(data) else {
             return []
         }
-        return accounts
+        return decoded.accounts
     }
 
     /// The load every writing path must use: three outcomes, not two
@@ -45,7 +45,7 @@ enum HelperAccountStore {
 
     static func saveAccounts(_ accounts: [Account]) {
         guard let defaults = UserDefaults(suiteName: resolvedSuiteName()),
-              let data = try? JSONEncoder().encode(accounts) else {
+              let data = try? AccountStoreCodec.encode(accounts, over: defaults.data(forKey: storageKey)) else {
             return
         }
         defaults.set(data, forKey: storageKey)
