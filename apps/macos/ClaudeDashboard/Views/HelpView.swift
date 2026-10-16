@@ -190,6 +190,7 @@ struct HelpView: View {
                        "**Home account**: comes back after its 5h reset, unless Claude Code is on a high critical account.",
                        "**Critical**: takes Claude Code from an ordinary account that is not the home account.",
                        "**Thresholds**: the usual 5h/7d switch."])
+            HelpCallout(.note, "After a critical switch or a manual **Switch**, Claude Code stays on that account until its 5h window resets, unless a 5h/7d limit or the home account's reset moves it.")
             HelpSubheading("Examples (X = 16%)")
             HelpText("**1.** 7d at 55%, 25 usable hours left (5 windows). Critical pace 50% costs 8% per window: 55 + 40 = **95**, so critical, 5% would go unused.")
             HelpText("**2.** 7d at 60%, reset in 48 hours from 10:00, quiet 00:00 to 07:00: 34 usable hours (6.8 windows) x 8% = 54.4, so 60 + 54.4 = **114.4**: not critical. At 7d 40% it is 94.4: critical.")
@@ -207,7 +208,7 @@ struct HelpView: View {
             HelpRow("**Where to**: the account whose weekly quota is closest to going unused, so nothing is wasted. Near-equal choices are picked at random.") {
                 HelpSymbol(name: "target", color: .teal)
             }
-            HelpRow("**First, critical accounts**: a high critical account takes Claude Code from anywhere, the home account (bolt) comes back after its 5h reset, and a critical account takes Claude Code from an ordinary account. See **Critical Accounts**.") {
+            HelpRow("**First, critical accounts**: a high critical account takes Claude Code from any account that is not high critical, the home account (bolt) included; the home account comes back after its 5h reset; and a critical account takes Claude Code from an ordinary account that is not the home account. See **Critical Accounts**.") {
                 HelpSymbol(name: "flame", color: .red)
             }
             HelpRow("**Which accounts**: only ones already signed in to Claude Code (through Switch or `/login`), so the switch is instant. It never opens a browser.") {
