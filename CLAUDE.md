@@ -101,6 +101,15 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   `auto_switch_logs.db`: each switch and failed attempt, and one row per no-candidate stretch). It only uses `.ready` accounts via
   `ClaudeCodeSwitcher.switchTo`: never a browser, never `switchMessage`.
   Spec: `docs/superpowers/specs/2026-10-13-auto-switch-design.md`.
+- **Critical** (`Services/Critical/`) — `UsageRatioController` recomputes X (7d % per full 5h window,
+  all accounts pooled, last 3 days of `usage_logs`, `resetsAt` jitter tolerated) at launch and hourly
+  into `ratio_logs.db` (90 days; default 16 until 100 points of 5h use exist); the Dashboard header
+  shows it with a history chart. `CriticalPlanner` (pure) marks an account **critical** when
+  `7d + usable hours / 5 x pace x X <= 100` at its weekly reset (pace 50, quiet hours 00:00-07:00
+  Asia/Ho_Chi_Minh excluded) and **high critical** at pace 80 around the clock; `CriticalSettings`
+  holds all five values. Auto switch order: high critical > home (bolt) > critical > threshold tiers;
+  a target needs a free 5h window (`resetsAt == nil` or `<= 2%`).
+  Spec: `docs/superpowers/specs/2026-10-16-critical-accounts-design.md`.
 - **Ping** (`Shared/PingService.swift`, `Services/Ping/`) — starts an account's 5h/7d window by
   sending one short claude.ai message with its session key (create conversation, completion,
   delete; see `contract/README.md`, "Ping"). The account page's **Ping** button pings by hand;

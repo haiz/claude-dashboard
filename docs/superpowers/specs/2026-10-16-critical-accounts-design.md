@@ -66,7 +66,7 @@ store is empty. Each run also deletes history older than 90 days.
 `UsageRatioStore` (actor), `ratio_logs.db` next to `usage_logs.db`:
 
 ```
-ratio_logs(id INTEGER PRIMARY KEY, t INTEGER NOT NULL, x REAL NOT NULL,
+ratio_logs(id INTEGER PRIMARY KEY, t INTEGER NOT NULL /* whole seconds */, x REAL NOT NULL,
            d5 REAL NOT NULL, d7 REAL NOT NULL)
 ```
 
@@ -77,7 +77,7 @@ Reads go through the existing `UsageLogStore.allLogs(window:from:to:)`.
 
 - **Dashboard `PaneHeader`**, left of Refresh: a plain button `X 16.1%`. Tooltip: "100% of a 5h
   window costs about 16.1% of the 7d quota. Measured over the last 3 days, updated hourly at
-  HH:mm". With the default: `X 16% (default)` in secondary color.
+  HH:mm" (time in the system short time format). With the default: `X 16% (default)` in secondary color.
 - **Click** opens a popover anchored to the button: Swift Charts line of X over time, range
   picker 7 days / 30 days / All, hover shows the nearest point's value and time, "No history
   yet" when empty.
@@ -95,7 +95,7 @@ range fall back to the default):
 | High critical pace | `criticalHighPace` | 80 | criticalPace...100, step 5 |
 | Quiet hours start | `criticalQuietStart` | 0 | 0...23 (hour) |
 | Quiet hours end | `criticalQuietEnd` | 7 | 0...23 (hour); start == end means no quiet hours |
-| Time zone | `criticalTimeZone` | `Asia/Ho_Chi_Minh` | any `TimeZone.knownTimeZoneIdentifiers` |
+| Time zone | `criticalTimeZone` | `Asia/Ho_Chi_Minh` | any `TimeZone.knownTimeZoneIdentifiers`, a plain menu (not searchable) |
 
 Raising Critical pace above High critical pace raises High critical pace with it.
 
@@ -115,6 +115,7 @@ projected(pace, quiet) = 7d + activeHours(quiet) / 5 * pace / 100 * X
 - else `.none`.
 - `waste = 100 - projected` of the level reached.
 - `.none` when the 7d window has not started (`resetsAt == nil`), or usage is missing or stale.
+- `.none` when 7d >= 99 (nothing meaningful left to burn; matches auto switch's 7d tier limit).
 
 Example (X = 16, pace 50, so 8% of 7d per window): 7d at 55% with 25 active hours (5 windows)
 left projects 55 + 40 = 95, so the account is critical with waste 5.
