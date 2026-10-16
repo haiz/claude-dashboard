@@ -155,8 +155,11 @@ do not fire while the active account is held (`now < until`); rules 2 and 4 are 
   `resetsAt`, or `now + 5h` when its window has not started.
 - A **manual Switch** holds the chosen account the same way (`noteManualSwitch(to:usage:)`, which
   also clears the lock), so the critical rules do not undo the user's choice on the next refresh.
-- Each evaluation drops the hold when Claude Code uses another account, and pulls `until` in
-  to the held account's 5h `resetsAt` once its window has started.
+- The hold covers the first 5h window the held account runs after the switch. Each evaluation
+  drops it when Claude Code uses another account, and keeps it unchanged when no active account
+  is detected (a failed read of `~/.claude.json`). While the held window has not started and the
+  hold is live, `until` slides to `now + 5h`; once the window starts before `until`, `until`
+  becomes its 5h `resetsAt` (earlier or later). A window that starts after `until` gets no hold.
 - A threshold or home switch clears the hold.
 
 Footer: "Switched to {name}: high critical account" (or "critical account").

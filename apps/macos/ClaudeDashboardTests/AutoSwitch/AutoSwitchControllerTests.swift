@@ -357,4 +357,80 @@ final class AutoSwitchControllerTests: XCTestCase {
         XCTAssertEqual(result, b.id)
         XCTAssertNil(controller.hold)
     }
+
+    /// Switches to a critical B whose 5h window has not started, then plays B as active:
+    /// idle for `idle` seconds, then its window starts and runs. Returns B, C and the
+    /// window's reset time, with the clock 1.5h before that reset and B no longer critical.
+    private func switchToIdleCriticalThenUse(idle: TimeInterval) async -> (b: AutoSwitchAccount, c: AutoSwitchAccount, resets: Date) {
+        let start = clock
+        let a = account("a", five: 10, seven: 10, active: true)
+        let b = with(account("b", five: 0, seven: 30), five: 0, seven: 30, active: false, level: .critical)
+        let c = account("c", five: 0, seven: 20)
+        let switched = await controller.evaluate([a, b, c]) { _ in }
+        XCTAssertEqual(switched, b.id)
+
+        // B sits idle, refreshed every hour: its window has not started, it is still critical.
+        let idleAccounts = [with(a, five: 10, seven: 10, active: false),
+                            with(b, five: 0, seven: 30, active: true, level: .critical), c]
+        while clock < start + idle {
+            clock = min(clock + 3600, start + idle)
+            let idleResult = await controller.evaluate(idleAccounts) { _ in }
+            XCTAssertNil(idleResult)
+        }
+
+        // The window starts now; 3.5h in, heavy use has made B not critical, and C is a free target.
+        let resets = clock + AutoSwitchPlanner.fiveHourWindow
+        clock += 60
+        _ = await controller.evaluate([with(a, five: 10, seven: 10, active: false),
+                                       with(b, five: 1, seven: 30, fiveResets: resets, active: true, level: .critical), c]) { _ in }
+        clock = resets - 1.5 * 3600
+        return (b, c, resets)
+    }
+
+    func testHoldFollowsAWindowThatStartsAfterAnIdleGap() async {
+        let (b, c, resets) = await switchToIdleCriticalThenUse(idle: 3 * 3600)
+        let accounts = [with(b, five: 70, seven: 66, fiveResets: resets, active: true),
+                        with(c, five: 0, seven: 20, active: false, level: .critical)]
+        var performed: [UUID] = []
+        let result = await controller.evaluate(accounts) { performed.append($0) }
+        XCTAssertNil(result, "B's window started inside the hold, so the hold lasts until that window resets")
+        XCTAssertEqual(performed, [])
+        XCTAssertEqual(controller.hold?.until, resets)
+
+        clock = resets
+        let after = await controller.evaluate(accounts) { _ in }
+        XCTAssertEqual(after, c.id)
+    }
+
+    func testHoldOutlastsAnIdleSpellLongerThanAWindow() async {
+        let (b, c, resets) = await switchToIdleCriticalThenUse(idle: 6 * 3600)
+        let accounts = [with(b, five: 70, seven: 66, fiveResets: resets, active: true),
+                        with(c, five: 0, seven: 20, active: false, level: .critical)]
+        let result = await controller.evaluate(accounts) { _ in }
+        XCTAssertNil(result)
+        XCTAssertEqual(controller.hold?.until, resets)
+    }
+
+    /// A failed read of Claude Code's login shows no active account for one refresh.
+    func testHoldKeptWhenNoActiveAccountIsDetected() async {
+        let a = account("a", five: 10, seven: 10, active: true)
+        let c = with(account("c", five: 0, seven: 20), five: 0, seven: 20, active: false, level: .critical)
+        controller.noteManualSwitch(to: a.id, usage: a.usage)
+        let held = controller.hold
+        _ = await controller.evaluate([with(a, five: 10, seven: 10, active: false), c]) { _ in }
+        XCTAssertEqual(controller.hold, held)
+
+        let result = await controller.evaluate([a, c]) { _ in }
+        XCTAssertNil(result)
+    }
+
+    /// Once the held window has reset, an idle account does not get a new hold.
+    func testHoldIsNotRenewedAfterTheHeldWindowResets() async {
+        let (b, c, resets) = await switchToIdleCriticalThenUse(idle: 0)
+        clock = resets + 600
+        let idleAgain = [with(b, five: 0, seven: 70, active: true),
+                         with(c, five: 0, seven: 20, active: false, level: .critical)]
+        let result = await controller.evaluate(idleAgain) { _ in }
+        XCTAssertEqual(result, c.id)
+    }
 }

@@ -94,7 +94,7 @@ final class AutoSwitchController: ObservableObject {
         pausedUntil = nil
         cooldownUntil = cooldownUntil.filter { $0.value > t }
         lock = AutoSwitchPlanner.updatedLock(lock, active: accounts.first(where: \.isActive))
-        hold = Self.updatedHold(hold, active: accounts.first(where: \.isActive))
+        hold = Self.updatedHold(hold, active: accounts.first(where: \.isActive), now: t)
         let snapshot = AutoSwitchSnapshot(accounts: accounts, thresholds: settings.thresholds, lock: lock, hold: hold,
                                           priority: settings.priority, excluded: Set(cooldownUntil.keys), now: t)
 
@@ -161,12 +161,20 @@ final class AutoSwitchController: ObservableObject {
         return AutoSwitchHold(accountId: id, until: resetsAt ?? now + AutoSwitchPlanner.fiveHourWindow)
     }
 
-    /// Drops the hold once Claude Code uses another account; pulls `until` in to the held
-    /// account's real 5h reset once its window has started.
-    private static func updatedHold(_ hold: AutoSwitchHold?, active: AutoSwitchAccount?) -> AutoSwitchHold? {
-        guard var hold, let active, active.id == hold.accountId else { return nil }
-        if active.isFresh, let resetsAt = active.usage?.fiveHour.resetsAt, resetsAt < hold.until {
-            hold.until = resetsAt
+    /// The hold covers the first 5h window the held account runs after the switch. While that
+    /// window has not started, `until` slides a full window ahead; once it starts before
+    /// `until`, `until` becomes its real reset (earlier or later). A window starting after
+    /// `until` is a later one and gets no hold. Dropped once Claude Code uses another account;
+    /// kept when no active account is detected (a failed read of Claude Code's login).
+    private static func updatedHold(_ hold: AutoSwitchHold?, active: AutoSwitchAccount?, now: Date) -> AutoSwitchHold? {
+        guard var hold else { return nil }
+        guard let active else { return hold }
+        guard active.id == hold.accountId else { return nil }
+        guard active.isFresh, let usage = active.usage, now < hold.until else { return hold }
+        if let resetsAt = usage.fiveHour.resetsAt {
+            if resetsAt - AutoSwitchPlanner.fiveHourWindow < hold.until { hold.until = resetsAt }
+        } else {
+            hold.until = max(hold.until, now + AutoSwitchPlanner.fiveHourWindow)
         }
         return hold
     }
