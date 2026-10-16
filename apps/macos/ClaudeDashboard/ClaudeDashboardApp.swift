@@ -81,7 +81,7 @@ struct ClaudeDashboardApp: App {
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
                 onOpenSettings: {
-                    viewModel.selection = .settingsAccounts
+                    viewModel.selection = .settingsGeneral
                     appDelegate.openDashboardWindow(viewModel: viewModel, updateViewModel: updateViewModel)
                 },
                 onOpenHelp: {
