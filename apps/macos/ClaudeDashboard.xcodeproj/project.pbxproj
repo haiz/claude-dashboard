@@ -162,6 +162,7 @@
 		C23B74F40DBB7E413F3954EA /* AddKeyCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F466F80474346C7DBE22396 /* AddKeyCommand.swift */; };
 		C2A2A8E4EB4A85A4C2B4FC6F /* HelperAccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB2623CB6EC20CACFF82236 /* HelperAccountStore.swift */; };
 		C3A07C8ABE7AA0986CE63789 /* PingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D76299585A3672F3ADD331 /* PingService.swift */; };
+		C3A6D666E94B04DEC5C365CD /* CriticalPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE366562BDB7D1A8CDE6FD20 /* CriticalPlannerTests.swift */; };
 		C42D702D9ABD1294DCD9AD91 /* PlanDetectionContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */; };
 		C436B7F85AB4285388BE8869 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
 		C5EF5EF93570CBB91B78006E /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
@@ -400,6 +401,7 @@
 		FC1E08FAF5239CE8AE48B898 /* CredentialVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialVault.swift; sourceTree = "<group>"; };
 		FC6B7044313E37D1A46EFB3C /* APIBaseURLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIBaseURLTests.swift; sourceTree = "<group>"; };
 		FCCFAC39E6AB87092AEC2D54 /* CriticalSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticalSettings.swift; sourceTree = "<group>"; };
+		FE366562BDB7D1A8CDE6FD20 /* CriticalPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticalPlannerTests.swift; sourceTree = "<group>"; };
 		FF4D3349D7E712D70BE8BB5D /* PingLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingLogStore.swift; sourceTree = "<group>"; };
 		FFD5987436CCEAA1F1FC1DC6 /* AccountPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountPane.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -548,6 +550,7 @@
 		2F20B0530DFDB04BA51763E2 /* Critical */ = {
 			isa = PBXGroup;
 			children = (
+				FE366562BDB7D1A8CDE6FD20 /* CriticalPlannerTests.swift */,
 				85466D536408CB51A8662E02 /* CriticalSettingsTests.swift */,
 				839A2FFF474675F3980B7B6F /* UsageRatioChartTests.swift */,
 				7FBB192F3C7ECCB6494F247F /* UsageRatioControllerTests.swift */,
@@ -948,6 +951,7 @@
 				96A707A76AACFD173F0FA7E0 /* ClaudeCodeSwitcherTests.swift in Sources */,
 				42520EE864030FCF5608DA96 /* ClaudeConfigFileTests.swift in Sources */,
 				F27FC866A1F7BAFB51308009 /* ContractFixtures.swift in Sources */,
+				C3A6D666E94B04DEC5C365CD /* CriticalPlannerTests.swift in Sources */,
 				E5305F7BB5F35DD4A630FBF5 /* CriticalSettingsTests.swift in Sources */,
 				CE55D2C28FBD864C7E772496 /* DashboardViewModelAutoSwitchTests.swift in Sources */,
 				C7D3F994BAA968A2E2F93649 /* DashboardViewModelProvisionTests.swift in Sources */,
