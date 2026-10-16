@@ -7,6 +7,7 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
     private var suite: String!
     private var configURL: URL!
     private var logPath: String!
+    private var usageLogPath: String!
 
     override func setUp() {
         super.setUp()
@@ -14,12 +15,14 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
         configURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("DashboardViewModelAutoSwitchTests-\(UUID().uuidString).json")
         logPath = NSTemporaryDirectory() + "auto_switch_logs_\(UUID().uuidString).db"
+        usageLogPath = NSTemporaryDirectory() + "usage_logs_\(UUID().uuidString).db"
     }
 
     override func tearDown() {
         StoreFixture.destroy(suite: suite)
         try? FileManager.default.removeItem(at: configURL)
         try? FileManager.default.removeItem(atPath: logPath)
+        try? FileManager.default.removeItem(atPath: usageLogPath)
         super.tearDown()
     }
 
@@ -59,7 +62,7 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
                 oauthAccount: OAuthAccountJSON.canonical(["emailAddress": "backend@gotitapp.co"])!), for: backend.id)
         }
         let settings = AutoSwitchSettings(defaults: defaults)
-        let vm = DashboardViewModel(accountStore: store,
+        let vm = DashboardViewModel(accountStore: store, logStore: UsageLogStore(dbPath: usageLogPath),
                                     ccDetector: ClaudeCodeAccountDetector(fileURL: configURL),
                                     ccSwitcher: switcher, autoSwitchSettings: settings,
                                     autoSwitchLogStore: AutoSwitchLogStore(dbPath: logPath))
@@ -92,6 +95,37 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
         XCTAssertEqual(logged.map(\.outcome), [.switched])
         XCTAssertEqual(logged.first?.fromName, "frontend@gotitapp.co")
         XCTAssertEqual(logged.first?.toName, "backend@gotitapp.co")
+    }
+
+    /// The home account at 95% four minutes before its 5h reset, with a backend to move to.
+    private func makeHomeNearReset(loggedSixMinutesAgo: Double?) async throws -> Harness {
+        let h = try await makeHarness(captureBackend: true)
+        let resetsAt = Date().addingTimeInterval(4 * 60)
+        let index = try XCTUnwrap(h.vm.accountStates.firstIndex { $0.id == h.frontend.id })
+        h.vm.accountStates[index].usage = UsageData(
+            fiveHour: UsageLimit(utilization: 95, resetsAt: resetsAt),
+            sevenDay: UsageLimit(utilization: 40, resetsAt: Date().addingTimeInterval(86_400)))
+        try setUsage(h.vm, h.backend.id, five: 10, seven: 20)
+        h.settings.setPriority(AutoSwitchPriority(accountId: h.frontend.id, baseline: resetsAt))
+        if let logged = loggedSixMinutesAgo {
+            await h.vm.logStore.record(accountId: h.frontend.id, window: .fiveHour, resetsAt: resetsAt,
+                                       utilization: logged, isLimited: false, at: Date().addingTimeInterval(-6 * 60))
+        }
+        h.settings.isEnabled = true
+        return h
+    }
+
+    func testHomeNearItsResetWaitsWhenTheLoggedPaceFits() async throws {
+        let h = try await makeHomeNearReset(loggedSixMinutesAgo: 93)
+        await h.vm.runAutoSwitch()
+        XCTAssertEqual(try h.slot.readOAuth()?.refreshToken, "f1")
+        XCTAssertNil(h.vm.autoSwitch.lastEvent)
+    }
+
+    func testHomeNearItsResetSwitchesWithoutALoggedPace() async throws {
+        let h = try await makeHomeNearReset(loggedSixMinutesAgo: nil)
+        await h.vm.runAutoSwitch()
+        XCTAssertEqual(try h.slot.readOAuth()?.refreshToken, "b1")
     }
 
     func testAutoSwitchDoesNothingWhileDisabled() async throws {

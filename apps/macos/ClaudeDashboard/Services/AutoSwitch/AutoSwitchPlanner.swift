@@ -16,6 +16,9 @@ struct AutoSwitchAccount: Equatable {
     var isFresh = true
     /// From `CriticalPlanner.assess`; `.none` when not critical or unknown.
     var critical: CriticalAssessment = .none
+    /// The newest 5h `usage_logs` rows, oldest first. Filled for Claude Code's account only:
+    /// the near-reset rule reads its recent pace.
+    var fiveHourLog: [UsageLogEntry] = []
 
     var fiveHour: Double { usage?.fiveHour.utilization ?? 100 }
     var sevenDay: Double { usage?.sevenDay.utilization ?? 100 }
@@ -75,6 +78,8 @@ enum AutoSwitchStayReason: Equatable {
     case noActiveAccount
     case belowThreshold
     case noCandidate
+    /// Over the 5h threshold, but the 5h window resets within minutes at a pace that fits.
+    case nearReset
 }
 
 enum AutoSwitchDecision: Equatable {
@@ -85,7 +90,8 @@ enum AutoSwitchDecision: Equatable {
 /// Which account Claude Code should move to, if any. Pure: the spec's rules
 /// (`docs/superpowers/specs/2026-10-13-auto-switch-design.md`) and nothing else.
 /// Priority order: high critical, home, critical, then the threshold tiers. A hold on the
-/// active account turns off the two critical rules until it ends.
+/// active account turns off the two critical rules until it ends. The thresholds wait out
+/// the last minutes of the home or most critical account's 5h window (`waitsForReset`).
 ///
 ///     let d = AutoSwitchPlanner.decide(snapshot, pickIndex: { Int.random(in: 0..<$0) })
 ///     if case .switchTo(let id, _) = d { ... }
@@ -100,6 +106,10 @@ enum AutoSwitchPlanner {
     static let fiveHourWindow: TimeInterval = 5 * 3600
     /// A critical target's 5h counts as free at or under this (an Auto Ping leaves about 1%).
     static let freeFiveHourLimit = 2.0
+    /// The near-reset rule looks at the last minutes of a 5h window, and keeps this much
+    /// of the 5h quota unused as a margin.
+    static let nearResetWindow: TimeInterval = 5 * 60
+    static let nearResetMargin = 1.0
 
     static func isTriggered(_ usage: UsageData, thresholds: AutoSwitchThresholds) -> Bool {
         usage.fiveHour.utilization >= thresholds.fiveHour
@@ -195,6 +205,31 @@ enum AutoSwitchPlanner {
         return usage.fiveHour.resetsAt == nil || usage.fiveHour.utilization <= freeFiveHourLimit
     }
 
+    /// True when Claude Code should sit out the last minutes of its 5h window instead of a
+    /// threshold switch it would undo at the reset. Only the home account (no high critical
+    /// target waiting) and the most critical account qualify, only for the 5h threshold, and
+    /// only when the 5h used in the last N+1 minutes (N = minutes left) fits in what is left,
+    /// less `nearResetMargin`. No log row at or before that point means no wait.
+    ///
+    ///     // 5 minutes left at 95%, 91% six minutes ago: 4 <= 100 - 95 - 1, so wait.
+    static func waitsForReset(_ active: AutoSwitchAccount, limits: AutoSwitchThresholds,
+                              targets: [AutoSwitchAccount], _ s: AutoSwitchSnapshot) -> Bool {
+        let others = targets.filter { $0.id != active.id }
+        let qualifies = active.id == s.priority?.accountId
+            ? !others.contains { $0.critical.level == .high }
+            : active.critical.level != .none && !others.contains { $0.critical.waste > active.critical.waste }
+        guard qualifies, let usage = active.usage, usage.sevenDay.utilization < limits.sevenDay,
+              let resetsAt = usage.fiveHour.resetsAt else { return false }
+        let left = resetsAt.timeIntervalSince(s.now)
+        guard left > 0, left <= nearResetWindow else { return false }
+        let cutoff = s.now - left - 60
+        guard let earlier = active.fiveHourLog
+            .filter({ $0.recordedAt <= cutoff && abs($0.resetsAt.timeIntervalSince(resetsAt)) <= resetTolerance })
+            .max(by: { $0.recordedAt < $1.recordedAt }) else { return false }
+        let used = usage.fiveHour.utilization - earlier.utilization
+        return used <= 100 - usage.fiveHour.utilization - nearResetMargin
+    }
+
     /// `pickIndex(n)` returns an index in `0..<n`; production passes `Int.random(in:)`.
     static func decide(_ s: AutoSwitchSnapshot, pickIndex: (Int) -> Int) -> AutoSwitchDecision {
         guard let active = s.accounts.first(where: \.isActive), active.isFresh,
@@ -228,6 +263,7 @@ enum AutoSwitchPlanner {
 
         let limits = effectiveThresholds(for: active.id, base: s.thresholds, lock: s.lock)
         guard isTriggered(activeUsage, thresholds: limits) else { return .stay(.belowThreshold) }
+        if waitsForReset(active, limits: limits, targets: targets, s) { return .stay(.nearReset) }
 
         let tier1 = candidates.filter { $0.fiveHour < tierFiveHourLimit && $0.sevenDay < tierSevenDayLimit }
         if !tier1.isEmpty {

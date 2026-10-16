@@ -142,7 +142,7 @@ window is free: `5h resetsAt == nil` or `5h <= 2` (2 tolerates an Auto Ping's 1%
 3. **Critical.** The active account is `.none`, is not the home account and is not held, and
    some critical target is `.critical` or `.high`: switch to the one with the largest `waste`.
    Reason `.critical(level)` with the target's level.
-4. **Threshold.** Unchanged: trigger, tiers 1 to 3, lock.
+4. **Threshold.** Trigger, tiers 1 to 3, lock, with one wait before the tiers (below).
 
 So: high critical beats home; home beats critical; critical beats an ordinary account.
 No ping-pong: using the target raises its 7d, so its level drops (`.critical` to `.none`, or
@@ -161,6 +161,24 @@ do not fire while the active account is held (`now < until`); rules 2 and 4 are 
   hold is live, `until` slides to `now + 5h`; once the window starts before `until`, `until`
   becomes its 5h `resetsAt` (earlier or later). A window that starts after `until` gets no hold.
 - A threshold or home switch clears the hold.
+
+**Near-reset wait (rule 4).** Leaving the home or a critical account a few minutes before its 5h
+reset only to come back right after it (rule 2 or 3) is two wasted switches. So when the 5h
+threshold triggers, Claude Code stays (`.stay(.nearReset)`, no footer event, no log row) when all
+hold:
+
+- the active account is the home account and no `.high` critical target waits (a `.critical`
+  one can wait the few minutes), or it is critical and no other critical target has a larger
+  `waste`;
+- the 7d threshold is not triggered (the wait is for the 5h window only);
+- its 5h window resets in N minutes, `0 < N <= 5`;
+- the 5h used since the newest `usage_logs` row of that window at or before N+1 minutes ago is
+  `<= 100 - 5h - 1`. Example: 5 minutes left at 95%, 91% six minutes ago: 4 <= 4, stay.
+
+No such row (app just opened, log gap) means switch as before. The 60 s poll (warning zone)
+re-checks each minute, so a faster pace switches on the next poll. Ordinary accounts are
+unchanged. The view model passes the active account's newest 20 5h rows in
+`AutoSwitchAccount.fiveHourLog`.
 
 Footer: "Switched to {name}: high critical account" (or "critical account").
 Switch Log reason: "High critical account's 5h window is free, {waste}% of 7d would go unused"

@@ -211,6 +211,9 @@ struct HelpView: View {
             HelpRow("**First, critical accounts**: a high critical account takes Claude Code from any account that is not high critical, the home account (bolt) included; the home account comes back after its 5h reset; and a critical account takes Claude Code from an ordinary account that is not the home account. See **Critical Accounts**.") {
                 HelpSymbol(name: "flame", color: .red)
             }
+            HelpRow("**Near a 5h reset**: on the home account or the most critical account, 5h at 95% with 5 minutes or less to its reset waits for the reset when your pace of the last few minutes would not reach 100%, so Claude Code does not leave and come straight back.") {
+                HelpSymbol(name: "timer", color: .blue)
+            }
             HelpRow("**Which accounts**: only ones already signed in to Claude Code (through Switch or `/login`), so the switch is instant. It never opens a browser.") {
                 HelpSymbol(name: "checkmark.seal", color: .green)
             }
@@ -264,7 +267,7 @@ struct HelpView: View {
             HelpFAQ("Switch is refused",
                     "Claude Code is signed in to an account that is not on the dashboard. Add that account first so its login is kept safe.")
             HelpFAQ("Auto Switch did nothing",
-                    "Check **Switch Log**. Usually no account was ready: switch to each account once by hand, or every other account is also at its limit.")
+                    "Check **Switch Log**. Usually no account was ready: switch to each account once by hand, or every other account is also at its limit. Within 5 minutes of a 5h reset, the home or most critical account waits for the reset on purpose.")
             HelpFAQ("Usage is not updating",
                     "Click **Refresh** and check **Auto Refresh** in Settings › General. Expired accounts are skipped until you re-sync them.")
             HelpFAQ("macOS blocks the app on first launch",
