@@ -32,6 +32,7 @@
 		22146F35394B407537DD25E0 /* AccountStoreCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E71CE0E11670D789A465FF7 /* AccountStoreCodec.swift */; };
 		24DD9B5EB91C0A793373C4C6 /* AutoSwitchLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0589371491C55017ABF34450 /* AutoSwitchLogStore.swift */; };
 		25FE3BB12F840162B3B4386A /* PingMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A49DF1036E4DBC2567EFDB6 /* PingMigration.swift */; };
+		28C137F8F1391B89BB5CCAC4 /* UsageRatioStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B55EE2FE0BB5EEA5EE32220A /* UsageRatioStoreTests.swift */; };
 		2FC957209C42E7534C44884C /* DispatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C86648065DF41E58DFDD1855 /* DispatchTests.swift */; };
 		307F1C1773F3ED6E78BEC859 /* UsageGaugeRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95082583D7C4BDB685C32B1 /* UsageGaugeRow.swift */; };
 		310A4AEEB4EF068D8522A921 /* ManualKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF55256F6D81B14585D71C9 /* ManualKey.swift */; };
@@ -39,6 +40,7 @@
 		390BB1B38D799B09D2603F36 /* InMemoryKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761BB0FBD8610B01A0F298F6 /* InMemoryKeychain.swift */; };
 		3A7A4D7688E6CED6C2105C86 /* BrowserProfileOpenerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3146B8ECCCCE23C2B29BFCD8 /* BrowserProfileOpenerTests.swift */; };
 		3BF60AFACFB6A826612DEFD2 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
+		40B53D7BDE58E7D4BDB21ED5 /* UsageRatioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDC2FF15CF85CB89A6E8154A /* UsageRatioStore.swift */; };
 		411CACBC4F1791E139BDF4BA /* AccountDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CC442D5CD274FE704D4AC0F /* AccountDetailViewModel.swift */; };
 		42520EE864030FCF5608DA96 /* ClaudeConfigFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BECC61A0A2C32E0517453B33 /* ClaudeConfigFileTests.swift */; };
 		452031F4CA41F34A18331D2D /* DashboardViewModel+AutoSwitch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA1E9D0BCC00C9ABCD8F6BF /* DashboardViewModel+AutoSwitch.swift */; };
@@ -343,6 +345,7 @@
 		AFD4C1EC6F97C4F34F204E5E /* DedupeContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DedupeContractTests.swift; sourceTree = "<group>"; };
 		B42BC9B8252B2535837CCBF3 /* ScanOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanOutcome.swift; sourceTree = "<group>"; };
 		B4ED0121EB136414664B103B /* BrowserCookieService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserCookieService.swift; sourceTree = "<group>"; };
+		B55EE2FE0BB5EEA5EE32220A /* UsageRatioStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageRatioStoreTests.swift; sourceTree = "<group>"; };
 		BA09806794F5E11A193DC9E0 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		BD2F60A213BB9D946C30DC73 /* AutoSwitchPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchPlannerTests.swift; sourceTree = "<group>"; };
 		BECC61A0A2C32E0517453B33 /* ClaudeConfigFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeConfigFileTests.swift; sourceTree = "<group>"; };
@@ -355,6 +358,7 @@
 		C9A372F80258848E86582DE6 /* AccountAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountAvatar.swift; sourceTree = "<group>"; };
 		CBC96C2BB8D763106FBEA74A /* AccountCodableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountCodableTests.swift; sourceTree = "<group>"; };
 		CBFA427293BFC51355250BB1 /* SyncCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncCommand.swift; sourceTree = "<group>"; };
+		CDC2FF15CF85CB89A6E8154A /* UsageRatioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageRatioStore.swift; sourceTree = "<group>"; };
 		CEA505924741CE7A0DFBB32F /* ClaudeDashboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeDashboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D05E2848D8529F3B12BFF386 /* AccountSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSourceTests.swift; sourceTree = "<group>"; };
 		D13B511083DF4FE0C75FA0DD /* BurnRateTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnRateTracker.swift; sourceTree = "<group>"; };
@@ -531,6 +535,7 @@
 			isa = PBXGroup;
 			children = (
 				0F9378D707962958C10CFE52 /* UsageRatioEstimatorTests.swift */,
+				B55EE2FE0BB5EEA5EE32220A /* UsageRatioStoreTests.swift */,
 			);
 			path = Critical;
 			sourceTree = "<group>";
@@ -630,6 +635,7 @@
 			isa = PBXGroup;
 			children = (
 				474260EC02246060DA1BE187 /* UsageRatioEstimator.swift */,
+				CDC2FF15CF85CB89A6E8154A /* UsageRatioStore.swift */,
 			);
 			path = Critical;
 			sourceTree = "<group>";
@@ -952,6 +958,7 @@
 				98FD479769E1857F43E86CCB /* UsageLogModelsTests.swift in Sources */,
 				F25AC7AD4FA98DC521351742 /* UsageLogStoreTests.swift in Sources */,
 				F53DEBB0E6AE273B5F70F0AD /* UsageRatioEstimatorTests.swift in Sources */,
+				28C137F8F1391B89BB5CCAC4 /* UsageRatioStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1109,6 +1116,7 @@
 				5EA995FF435E95F185C021D0 /* UsageLogModels.swift in Sources */,
 				799960A4D530BF35FAB68326 /* UsageLogStore.swift in Sources */,
 				F4547049CDD543ACEC547CB0 /* UsageRatioEstimator.swift in Sources */,
+				40B53D7BDE58E7D4BDB21ED5 /* UsageRatioStore.swift in Sources */,
 				839417BA3EBE78D6962AFF24 /* UsageWindowPicker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
