@@ -4,8 +4,10 @@ import SwiftUI
 /// Blocks come from `HelpBlocks.swift`. Keep the wording in step with the UI labels
 /// it names (button titles, Settings section names).
 ///
-///     HelpView()
+///     HelpView(focus: $vm.helpFocus)
 struct HelpView: View {
+    @Binding var focus: HelpTopic?
+
     var body: some View {
         VStack(spacing: 0) {
             PaneHeader(title: "Help")
@@ -24,7 +26,17 @@ struct HelpView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 20)
                 }
+                .onAppear { scrollToFocus(proxy) }
+                .onChange(of: focus) { _ in scrollToFocus(proxy) }
             }
+        }
+    }
+
+    private func scrollToFocus(_ proxy: ScrollViewProxy) {
+        guard let topic = focus else { return }
+        DispatchQueue.main.async {
+            withAnimation { proxy.scrollTo(topic, anchor: .top) }
+            focus = nil
         }
     }
 
@@ -51,6 +63,7 @@ struct HelpView: View {
         case .charts: charts
         case .switchClaudeCode: switchClaudeCode
         case .autoSwitch: autoSwitch
+        case .criticalAccounts: criticalAccounts
         case .ping: ping
         case .accounts: accounts
         case .refreshUpdates: refreshUpdates
@@ -150,6 +163,32 @@ struct HelpView: View {
             ], color: .pink)
             HelpRow(symbol: "bolt", color: .orange, "**Switch after reset**: tick \(Image(systemName: "bolt")) on a card (or the toggle on its page) to move Claude Code there each time its 5h limit resets. The tick stays until you untick it, and the active account can be ticked too. Only one account can be ticked.")
             HelpCallout(.warning, "Don't also use the same account through another `CLAUDE_CONFIG_DIR`. Two copies of one login sign each other out.")
+        }
+    }
+
+    private var criticalAccounts: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HelpText("An account is **critical** when its weekly (7d) quota will expire unused even if you keep using it steadily. The app marks it with a flame and, with **Auto Switch** on, moves Claude Code to it as soon as its 5h window is free.")
+            HelpSubheading("X: what a 5h window costs")
+            HelpText("**X** (Dashboard header) is the share of the 7d quota one full 5h window uses, measured every hour from the last 3 days of usage across all accounts. Click it for its history. Until enough history exists it shows **16% (default)**.")
+            HelpSubheading("The two levels")
+            HelpRow("**Critical** (orange flame): using **Critical pace** (default 50%) of every 5h window from now to the weekly reset, skipping **Quiet hours** (default 00:00 to 07:00, Asia/Ho_Chi_Minh), the account still ends at or under 100% of 7d.") {
+                HelpSymbol(name: "flame", color: .orange)
+            }
+            HelpRow("**High critical** (red flame): even **High critical pace** (default 80%) around the clock, quiet hours included, ends at or under 100%.") {
+                HelpSymbol(name: "flame.fill", color: .red)
+            }
+            HelpCallout(.note, "Formula: 7d now + (usable hours left / 5) x pace x X. Usable hours leave out quiet hours for Critical only.")
+            HelpSubheading("Who wins")
+            HelpSteps(["**High critical**: takes Claude Code from any account that is not high critical, the home account (bolt) included.",
+                       "**Home account**: comes back after its 5h reset, unless Claude Code is on a high critical account.",
+                       "**Critical**: takes Claude Code from an ordinary account that is not the home account.",
+                       "**Thresholds**: the usual 5h/7d switch."])
+            HelpSubheading("Examples (X = 16%)")
+            HelpText("**1.** 7d at 55%, 25 usable hours left (5 windows). Critical pace 50% costs 8% per window: 55 + 40 = **95**, so critical, 5% would go unused.")
+            HelpText("**2.** 7d at 60%, reset in 48 hours from 10:00, quiet 00:00 to 07:00: 34 usable hours (6.8 windows) x 8% = 54.4, so 60 + 54.4 = **114.4**: not critical. At 7d 40% it is 94.4: critical.")
+            HelpText("**3.** 7d at 60%, reset in 10 hours. High critical pace 80% costs 12.8% per window: 60 + 25.6 = **85.6**, so high critical. If Claude Code is on the home account, it moves here when this account's 5h window is free.")
+            HelpCallout(.tip, "Change the paces, quiet hours and time zone in **Settings › General › Critical Accounts**. Each setting's ⓘ shows another example.")
         }
     }
 
@@ -285,7 +324,7 @@ private struct TopicChip: View {
 /// The Help pane's topics, in display order.
 enum HelpTopic: String, CaseIterable, Identifiable {
     case gettingStarted, readingCard, findingYourWay, charts, switchClaudeCode
-    case autoSwitch, ping, accounts, refreshUpdates, troubleshooting
+    case autoSwitch, criticalAccounts, ping, accounts, refreshUpdates, troubleshooting
 
     var id: String { rawValue }
 
@@ -297,6 +336,7 @@ enum HelpTopic: String, CaseIterable, Identifiable {
         case .charts: return "Charts"
         case .switchClaudeCode: return "Switch Claude Code"
         case .autoSwitch: return "Auto Switch"
+        case .criticalAccounts: return "Critical Accounts"
         case .ping: return "Ping"
         case .accounts: return "Managing Accounts"
         case .refreshUpdates: return "Refresh & Updates"
@@ -312,6 +352,7 @@ enum HelpTopic: String, CaseIterable, Identifiable {
         case .charts: return "Look back at how each account was used."
         case .switchClaudeCode: return "Move Claude Code to another account in one click."
         case .autoSwitch: return "Let the app switch before you hit a limit."
+        case .criticalAccounts: return "Spend weekly quota before it expires unused."
         case .ping: return "Start a usage window now so it resets sooner."
         case .accounts: return "Add, re-sync, pin and remove accounts."
         case .refreshUpdates: return "Keep usage and the app up to date."
@@ -327,6 +368,7 @@ enum HelpTopic: String, CaseIterable, Identifiable {
         case .charts: return "chart.xyaxis.line"
         case .switchClaudeCode: return "arrow.left.arrow.right"
         case .autoSwitch: return "arrow.triangle.swap"
+        case .criticalAccounts: return "flame"
         case .ping: return "dot.radiowaves.left.and.right"
         case .accounts: return "person.2"
         case .refreshUpdates: return "arrow.clockwise"
@@ -342,6 +384,7 @@ enum HelpTopic: String, CaseIterable, Identifiable {
         case .charts: return .orange
         case .switchClaudeCode: return .pink
         case .autoSwitch: return .teal
+        case .criticalAccounts: return .red
         case .ping: return .indigo
         case .accounts: return .green
         case .refreshUpdates: return .cyan

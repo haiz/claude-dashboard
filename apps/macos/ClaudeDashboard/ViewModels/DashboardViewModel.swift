@@ -112,6 +112,8 @@ final class DashboardViewModel: ObservableObject {
 
     /// The sidebar row the main window shows.
     @Published var selection: SidebarItem = .dashboard
+    /// A Help topic to scroll to when the Help pane opens (set by "More in Help").
+    @Published var helpFocus: HelpTopic?
     /// Chart window an account pane opens on. Kept apart from `selection` so the
     /// sidebar row keeps one identity whichever gauge opened it.
     @Published var preselectedWindow: UsageWindow = .fiveHour

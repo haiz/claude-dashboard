@@ -3,7 +3,8 @@ import AppKit
 
 /// Settings > General: app identity (icon, name, version), auto refresh
 /// (on/off plus a 1-60 minute interval), Auto Ping (on/off), auto switch (on/off, 5h and 7d thresholds, menu bar toggle),
-/// and updates (daily toggle plus the manual check).
+/// Critical Accounts (paces, quiet hours, time zone) and updates (daily toggle plus the manual check).
+/// Every setting carries an `InfoTip` (hover summary, click for detail and example, link to Help).
 ///
 ///     GeneralSettingsPane(viewModel: vm).environmentObject(updateViewModel)
 struct GeneralSettingsPane: View {
@@ -16,17 +17,19 @@ struct GeneralSettingsPane: View {
             Form {
                 Section { about }
                 Section("Auto Refresh") {
-                    Toggle("Enable auto refresh", isOn: $viewModel.autoRefreshEnabled)
+                    Toggle(isOn: $viewModel.autoRefreshEnabled) { tipLabel("Enable auto refresh", SettingsTips.autoRefresh) }
                     if viewModel.autoRefreshEnabled {
-                        LabeledContent("Interval") {
+                        LabeledContent {
                             Stepper("\(viewModel.autoRefreshMinutes) min", value: $viewModel.autoRefreshMinutes, in: 1...60)
-                        }
+                        } label: { tipLabel("Interval", SettingsTips.refreshInterval) }
                     }
                 }
                 Section {
-                    Toggle("Ping when a usage window is not running", isOn: Binding(
+                    Toggle(isOn: Binding(
                         get: { viewModel.pingController.isAutoPingEnabled },
-                        set: { viewModel.setAutoPingEnabled($0) }))
+                        set: { viewModel.setAutoPingEnabled($0) })) {
+                        tipLabel("Ping when a usage window is not running", SettingsTips.autoPing)
+                    }
                 } header: {
                     Text("Auto Ping")
                 } footer: {
@@ -35,21 +38,24 @@ struct GeneralSettingsPane: View {
                         .foregroundStyle(.secondary)
                 }
                 Section {
-                    Toggle("Enable auto switch", isOn: Binding(
+                    Toggle(isOn: Binding(
                         get: { viewModel.autoSwitchSettings.isEnabled },
-                        set: { viewModel.setAutoSwitchEnabled($0) }))
-                    LabeledContent("Switch at 5h usage") {
+                        set: { viewModel.setAutoSwitchEnabled($0) })) {
+                        tipLabel("Enable auto switch", SettingsTips.autoSwitch)
+                    }
+                    LabeledContent {
                         Stepper("\(viewModel.autoSwitchSettings.fiveHourThreshold)%",
                                 value: switchBinding(\.fiveHourThreshold),
                                 in: AutoSwitchSettings.fiveHourRange)
-                    }
-                    LabeledContent("Switch at 7d usage") {
+                    } label: { tipLabel("Switch at 5h usage", SettingsTips.fiveHourThreshold) }
+                    LabeledContent {
                         Stepper("\(viewModel.autoSwitchSettings.sevenDayThreshold)%",
                                 value: switchBinding(\.sevenDayThreshold),
                                 in: AutoSwitchSettings.sevenDayRange)
+                    } label: { tipLabel("Switch at 7d usage", SettingsTips.sevenDayThreshold) }
+                    Toggle(isOn: switchBinding(\.showWidgetToggle)) {
+                        tipLabel("Show toggle in menu bar when near limit", SettingsTips.menuBarToggle)
                     }
-                    Toggle("Show toggle in menu bar when near limit",
-                           isOn: switchBinding(\.showWidgetToggle))
                 } header: {
                     Text("Auto Switch")
                 } footer: {
@@ -57,8 +63,9 @@ struct GeneralSettingsPane: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                CriticalSettingsSection(settings: viewModel.criticalSettings, openHelp: openHelp)
                 Section {
-                    Toggle("Auto-update daily", isOn: $updateViewModel.autoUpdateEnabled)
+                    Toggle(isOn: $updateViewModel.autoUpdateEnabled) { tipLabel("Auto-update daily", SettingsTips.autoUpdate) }
                     if let latest = updateViewModel.latestVersion {
                         LabeledContent("Latest version", value: "v\(latest)")
                     }
@@ -83,6 +90,18 @@ struct GeneralSettingsPane: View {
                 }
             }
             .formStyle(.grouped)
+        }
+    }
+
+    private func openHelp(_ topic: HelpTopic) {
+        viewModel.helpFocus = topic
+        viewModel.selection = .help
+    }
+
+    private func tipLabel(_ title: String, _ tip: SettingTip) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+            InfoTip(tip) { openHelp(tip.topic) }
         }
     }
 

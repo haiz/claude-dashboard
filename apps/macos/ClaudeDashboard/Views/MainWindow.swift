@@ -70,7 +70,7 @@ struct MainWindow: View {
         case .switchLog:
             AutoSwitchLogView(viewModel: switchLogViewModel)
         case .help:
-            HelpView()
+            HelpView(focus: $viewModel.helpFocus)
         case .settingsAccounts:
             AccountsSettingsPane(viewModel: viewModel, onAddAccount: { showingSetup = true })
         case .settingsGeneral:
