@@ -80,4 +80,19 @@ final class UsageRatioEstimatorTests: XCTestCase {
         let five = [row(a, .fiveHour, at: 0, resets: 18_000, 0), row(a, .fiveHour, at: 290, resets: 18_000, 100)]
         XCTAssertNil(UsageRatioEstimator.estimate(fiveHour: five, sevenDay: []))
     }
+
+    /// 7d fell inside a window without a week reset (a rollback or a correction): that window
+    /// says nothing about the ratio and must not pull X down.
+    func testWindowWhereSevenDayDroppedIsSkipped() {
+        let five = [row(a, .fiveHour, at: 0, resets: 18_000, 0), row(a, .fiveHour, at: 290, resets: 18_000, 100),
+                    row(b, .fiveHour, at: 0, resets: 19_000, 0), row(b, .fiveHour, at: 290, resets: 19_000, 100)]
+        let seven = [row(a, .sevenDay, at: 0, resets: 500_000, 10), row(a, .sevenDay, at: 290, resets: 500_000, 26),
+                     row(b, .sevenDay, at: 0, resets: 600_000, 50), row(b, .sevenDay, at: 290, resets: 600_000, 30)]
+        XCTAssertEqual(UsageRatioEstimator.estimate(fiveHour: five, sevenDay: seven),
+                       UsageRatioEstimate(x: 16, sumFiveHour: 100, sumSevenDay: 16), "only A's window counts")
+        let more = five + [row(b, .fiveHour, at: 600, resets: 40_000, 0), row(b, .fiveHour, at: 890, resets: 40_000, 100)]
+        let moreSeven = seven + [row(b, .sevenDay, at: 890, resets: 600_000, 46)]
+        XCTAssertEqual(UsageRatioEstimator.estimate(fiveHour: more, sevenDay: moreSeven),
+                       UsageRatioEstimate(x: 16, sumFiveHour: 200, sumSevenDay: 32))
+    }
 }

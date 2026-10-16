@@ -35,7 +35,9 @@ enum UsageRatioEstimator {
                   let series = weekly[first.accountId],
                   let w0 = reading(series, at: first.recordedAt),
                   let w1 = reading(series, at: last.recordedAt),
-                  abs(w1.resetsAt.timeIntervalSince(w0.resetsAt)) <= resetTolerance else { continue }
+                  abs(w1.resetsAt.timeIntervalSince(w0.resetsAt)) <= resetTolerance,
+                  // 7d fell without a week reset: a correction, not a cost; it would pull X down.
+                  w1.utilization - w0.utilization >= 0 else { continue }
             sumFive += last.utilization - first.utilization
             sumSeven += w1.utilization - w0.utilization
         }
