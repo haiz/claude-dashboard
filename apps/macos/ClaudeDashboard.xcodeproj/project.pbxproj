@@ -189,7 +189,9 @@
 		F244E129297C5C17AD9B2833 /* DecryptCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73EA27C3A6B23F369D86DDB7 /* DecryptCommandTests.swift */; };
 		F25AC7AD4FA98DC521351742 /* UsageLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */; };
 		F27FC866A1F7BAFB51308009 /* ContractFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E51410A9645A70619053EF /* ContractFixtures.swift */; };
+		F4547049CDD543ACEC547CB0 /* UsageRatioEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 474260EC02246060DA1BE187 /* UsageRatioEstimator.swift */; };
 		F4967C49A08B160D822F79B8 /* APIBaseURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BF0A4FB04BB2713656EADBF /* APIBaseURL.swift */; };
+		F53DEBB0E6AE273B5F70F0AD /* UsageRatioEstimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F9378D707962958C10CFE52 /* UsageRatioEstimatorTests.swift */; };
 		F58F0EA896BFE9B618492B9D /* APIBaseURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BF0A4FB04BB2713656EADBF /* APIBaseURL.swift */; };
 		F6F423B9B14E2440A491018C /* ClaudeCodeAccountDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A3660023E6BA291B7932FE /* ClaudeCodeAccountDetectorTests.swift */; };
 		FA34C144A6CC6F0D932C9009 /* AccountCardLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85AD7D28083E9B6F696E72C7 /* AccountCardLayoutTests.swift */; };
@@ -230,6 +232,7 @@
 		0CFF7855E900750FB088E5A7 /* ClaudeCodeSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeSwitcher.swift; sourceTree = "<group>"; };
 		0DF94AC1CCBEAEFA5EABDE34 /* AutoSwitchLogViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchLogViewModel.swift; sourceTree = "<group>"; };
 		0E836DDC2F3DA13CDC23B077 /* SecurityCLIKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityCLIKeychain.swift; sourceTree = "<group>"; };
+		0F9378D707962958C10CFE52 /* UsageRatioEstimatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageRatioEstimatorTests.swift; sourceTree = "<group>"; };
 		101FB3B509DBD5E1813FDABE /* UpdateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateViewModel.swift; sourceTree = "<group>"; };
 		1289C89308B21AC4804E0037 /* AccountStoreCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreCodecTests.swift; sourceTree = "<group>"; };
 		185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogStoreTests.swift; sourceTree = "<group>"; };
@@ -265,6 +268,7 @@
 		3DF55256F6D81B14585D71C9 /* ManualKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualKey.swift; sourceTree = "<group>"; };
 		4178DC5D69C19ECD002EF8A9 /* AccountIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountIdentity.swift; sourceTree = "<group>"; };
 		45A46883EF2F0ABE27EC8EC7 /* AppDefaultsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDefaultsTests.swift; sourceTree = "<group>"; };
+		474260EC02246060DA1BE187 /* UsageRatioEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageRatioEstimator.swift; sourceTree = "<group>"; };
 		4AF7DEAC28930337FB1D5772 /* DecryptCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecryptCommand.swift; sourceTree = "<group>"; };
 		4CB083F464444A9AAEFA0DDE /* ScanOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanOutcomeTests.swift; sourceTree = "<group>"; };
 		4E71CE0E11670D789A465FF7 /* AccountStoreCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreCodec.swift; sourceTree = "<group>"; };
@@ -481,6 +485,7 @@
 				185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */,
 				0D88C6830E049763BE5F1719 /* AutoSwitch */,
 				F6D0B8F31AE95BFBEF0BCB5D /* ClaudeCodeSwitch */,
+				2F20B0530DFDB04BA51763E2 /* Critical */,
 				FD40D3961777D7506C5CEFA0 /* Ping */,
 				09B6A04220B10A8B2279E533 /* TestSupport */,
 			);
@@ -522,6 +527,14 @@
 			path = Ping;
 			sourceTree = "<group>";
 		};
+		2F20B0530DFDB04BA51763E2 /* Critical */ = {
+			isa = PBXGroup;
+			children = (
+				0F9378D707962958C10CFE52 /* UsageRatioEstimatorTests.swift */,
+			);
+			path = Critical;
+			sourceTree = "<group>";
+		};
 		5FA635657F2C1FE8D6BBFB90 /* Services */ = {
 			isa = PBXGroup;
 			children = (
@@ -532,6 +545,7 @@
 				6A9C824A446A4513554E6BC5 /* UsageLogStore.swift */,
 				709D121147FC3E435BF5C079 /* AutoSwitch */,
 				839CD0EB0328C782F930AE06 /* ClaudeCodeSwitch */,
+				A5F245E6DAC326E77614348A /* Critical */,
 				2B61B6F3B9745C407CC017FA /* Ping */,
 			);
 			path = Services;
@@ -610,6 +624,14 @@
 				3B232994C234BB992BF28606 /* SidebarView.swift */,
 			);
 			path = Sidebar;
+			sourceTree = "<group>";
+		};
+		A5F245E6DAC326E77614348A /* Critical */ = {
+			isa = PBXGroup;
+			children = (
+				474260EC02246060DA1BE187 /* UsageRatioEstimator.swift */,
+			);
+			path = Critical;
 			sourceTree = "<group>";
 		};
 		A8C7505E85FF47BD0DA39F4F /* ClaudeDashboard */ = {
@@ -929,6 +951,7 @@
 				1FC7DDFCDA4DE7B462FFF965 /* UsageDecodingContractTests.swift in Sources */,
 				98FD479769E1857F43E86CCB /* UsageLogModelsTests.swift in Sources */,
 				F25AC7AD4FA98DC521351742 /* UsageLogStoreTests.swift in Sources */,
+				F53DEBB0E6AE273B5F70F0AD /* UsageRatioEstimatorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1085,6 +1108,7 @@
 				307F1C1773F3ED6E78BEC859 /* UsageGaugeRow.swift in Sources */,
 				5EA995FF435E95F185C021D0 /* UsageLogModels.swift in Sources */,
 				799960A4D530BF35FAB68326 /* UsageLogStore.swift in Sources */,
+				F4547049CDD543ACEC547CB0 /* UsageRatioEstimator.swift in Sources */,
 				839417BA3EBE78D6962AFF24 /* UsageWindowPicker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
