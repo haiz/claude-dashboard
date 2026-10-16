@@ -3,6 +3,8 @@ import SwiftUI
 /// The popover's bottom row: Quit on the left, the auto switch toggle on the right and its
 /// last event between them. The toggle shows only while `showsAutoSwitchToggle` (on, or near
 /// a limit with the widget toggle allowed), dimmed while the active account is not near a limit.
+/// The app version sits at the exact center: both sides take equal halves of the rest, so the
+/// event text truncates inside the right half instead of running under the version.
 ///
 ///     PopoverFooter(viewModel: viewModel, onQuit: { confirmingQuit = true })
 struct PopoverFooter: View {
@@ -18,27 +20,36 @@ struct PopoverFooter: View {
             }
             .buttonStyle(HoverableButtonStyle())
             .help("Quit the app and stop monitoring usage")
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: 4)
+            Text("v\(AppVersion.string)")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help("Claude Dashboard \(AppVersion.string)")
 
-            if viewModel.showsAutoSwitchToggle {
-                if let event = viewModel.autoSwitch.lastEvent {
-                    (Text(event.text) + Text(" \u{00B7} ") + Text(event.date, style: .time))
+            HStack(spacing: 8) {
+                if viewModel.showsAutoSwitchToggle {
+                    if let event = viewModel.autoSwitch.lastEvent {
+                        (Text(event.text) + Text(" \u{00B7} ") + Text(event.date, style: .time))
+                            .font(.caption)
+                            .foregroundStyle(event.isFailure ? Color.red : Color.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(event.text)
+                    }
+                    Toggle("Auto switch", isOn: Binding(
+                        get: { viewModel.autoSwitchSettings.isEnabled },
+                        set: { viewModel.setAutoSwitchEnabled($0) }))
+                        .toggleStyle(AccentSwitchToggleStyle())
                         .font(.caption)
-                        .foregroundStyle(event.isFailure ? Color.red : Color.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .help(event.text)
+                        .fixedSize()
+                        .opacity(viewModel.isAutoSwitchNearLimit ? 1 : 0.4)
+                        .help("Move Claude Code to another account when this one reaches its limit")
                 }
-                Toggle("Auto switch", isOn: Binding(
-                    get: { viewModel.autoSwitchSettings.isEnabled },
-                    set: { viewModel.setAutoSwitchEnabled($0) }))
-                    .toggleStyle(AccentSwitchToggleStyle())
-                    .font(.caption)
-                    .fixedSize()
-                    .opacity(viewModel.isAutoSwitchNearLimit ? 1 : 0.4)
-                    .help("Move Claude Code to another account when this one reaches its limit")
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
