@@ -16,6 +16,8 @@ struct AccountCard: View {
     var isPriorityTarget: Bool = false
     /// nil hides the tick button (account cannot be ticked).
     var onTogglePriority: (() -> Void)? = nil
+    /// Non-nil shows the flame: orange for critical, red for high critical.
+    var critical: CriticalBadge? = nil
     var isCompact: Bool = true
 
     /// The header's icon buttons (priority tick, Switch): hover background, tight padding.
@@ -53,6 +55,14 @@ struct AccountCard: View {
                     Spacer(minLength: 0)
 
                     HStack(spacing: 2) {
+                        if let critical {
+                            Image(systemName: critical.level == .high ? "flame.fill" : "flame")
+                                .font(.callout)
+                                .foregroundStyle(critical.level == .high ? Color.red : Color.orange)
+                                .padding(.horizontal, 3)
+                                .help(critical.help)
+                                .accessibilityLabel(critical.level.label)
+                        }
                         if let onTogglePriority {
                             Button {
                                 onTogglePriority()

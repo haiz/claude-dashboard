@@ -98,6 +98,8 @@ final class DashboardViewModel: ObservableObject {
     /// Auto switch settings and tick; views bind to them through this model.
     let autoSwitchSettings: AutoSwitchSettings
     let autoSwitch: AutoSwitchController
+    /// Paces and quiet hours for critical accounts (`DashboardViewModel+Critical`).
+    let criticalSettings: CriticalSettings
     /// Fetches the active account every 60 s while it is near a limit (`updateAutoSwitchPoll`).
     var autoSwitchPollTask: Task<Void, Never>?
 
@@ -154,7 +156,8 @@ final class DashboardViewModel: ObservableObject {
             AppDefaults.isRunningTests() ? nil : ClaudeCodeLoginProvisioner.live(),
         autoSwitchSettings: AutoSwitchSettings? = nil,
         autoSwitchLogStore: AutoSwitchLogStore? = nil,
-        pingController: PingController? = nil
+        pingController: PingController? = nil,
+        criticalSettings: CriticalSettings? = nil
     ) {
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.autoRefreshMinutes = {
@@ -175,6 +178,7 @@ final class DashboardViewModel: ObservableObject {
         self.autoSwitchSettings = switchSettings
         self.autoSwitch = AutoSwitchController(settings: switchSettings,
                                                logStore: autoSwitchLogStore ?? AutoSwitchLogStore())
+        self.criticalSettings = criticalSettings ?? CriticalSettings(defaults: AppDefaults.shared)
         self.pingController = pingController ?? PingController(
             service: PingService(), logStore: PingLogStore(), defaults: AppDefaults.shared)
         self.activeClaudeCodeEmail = ccDetector.activeEmail()
@@ -198,6 +202,9 @@ final class DashboardViewModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         self.pingController.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        self.criticalSettings.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         ratioController.objectWillChange

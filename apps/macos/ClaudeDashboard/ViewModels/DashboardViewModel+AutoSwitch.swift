@@ -12,7 +12,8 @@ extension DashboardViewModel {
                               availability: switchAvailability[state.id],
                               isUsable: state.account.status == .active,
                               isActive: isActiveClaudeCodeAccount(state),
-                              isFresh: state.error == nil)
+                              isFresh: state.error == nil,
+                              critical: criticalAssessment(for: state))
         }
     }
 

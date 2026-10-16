@@ -119,6 +119,7 @@ struct MenuBarPopover: View {
                                     isPriorityTarget: viewModel.isPriorityTarget(state.id),
                                     onTogglePriority: viewModel.canTickPriority(state) || viewModel.isPriorityTarget(state.id)
                                         ? { viewModel.togglePriority(for: state.id) } : nil,
+                                    critical: viewModel.criticalBadge(for: state),
                                     isCompact: true
                                 )
                             }
