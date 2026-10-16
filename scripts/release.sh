@@ -74,6 +74,12 @@ echo ""
 echo "==> Step 1: Bump version"
 printf '%s\n' "$NEW_VERSION" > VERSION
 ./scripts/sync-version.sh
+# The release day shown next to the version in Settings > General. Written here,
+# not in sync-version.sh, so that script stays idempotent.
+sed -i '' "/<key>CDReleaseDate<\/key>/{n;s|<string>[^<]*</string>|<string>$(date +%Y-%m-%d)</string>|;}" \
+    apps/macos/ClaudeDashboard/Info.plist
+grep -q "<string>$(date +%Y-%m-%d)</string>" apps/macos/ClaudeDashboard/Info.plist \
+    || { echo "error: failed to write CDReleaseDate" >&2; exit 1; }
 
 # ── 2. Regenerate Xcode project ──────────────────────────────────────────────
 echo ""

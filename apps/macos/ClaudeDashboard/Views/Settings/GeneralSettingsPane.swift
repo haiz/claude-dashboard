@@ -118,8 +118,14 @@ struct GeneralSettingsPane: View {
                 .frame(width: 64, height: 64)
             Text("Claude Dashboard")
                 .font(.title2.bold())
-            Text("Version \(AppVersion.string)")
-                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("Version \(AppVersion.string)")
+                if let released = AppVersion.releaseDate {
+                    Text(released.formatted(date: .abbreviated, time: .omitted))
+                        .font(.caption)
+                }
+            }
+            .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
