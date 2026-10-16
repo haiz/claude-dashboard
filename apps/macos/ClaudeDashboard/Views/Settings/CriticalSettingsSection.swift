@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Settings > General > Critical Accounts: both paces, quiet hours and their time zone.
 ///
-///     CriticalSettingsSection(settings: vm.criticalSettings, openHelp: { vm.openHelp($0) })
+///     CriticalSettingsSection(settings: viewModel.criticalSettings,
+///                             openHelp: { viewModel.helpFocus = $0; viewModel.selection = .help })
 struct CriticalSettingsSection: View {
     @ObservedObject var settings: CriticalSettings
     let openHelp: (HelpTopic) -> Void

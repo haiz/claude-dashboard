@@ -48,7 +48,8 @@ final class UsageRatioController: ObservableObject {
         task?.cancel()
         task = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.recompute()
+                guard let self else { return }
+                await self.recompute()
                 try? await Task.sleep(nanoseconds: UInt64(Self.interval * 1_000_000_000))
             }
         }
