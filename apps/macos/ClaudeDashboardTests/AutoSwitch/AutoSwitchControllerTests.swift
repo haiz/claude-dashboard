@@ -276,4 +276,85 @@ final class AutoSwitchControllerTests: XCTestCase {
         let row = await AutoSwitchLogStore(dbPath: logPath).fetch(limit: 1).first
         XCTAssertEqual(row?.reason, "High critical account's 5h window is free, 12% of 7d would go unused")
     }
+
+    // MARK: Hold
+
+    private func with(_ a: AutoSwitchAccount, five: Double, seven: Double, fiveResets: Date? = nil,
+                      active: Bool, level: CriticalLevel = .none) -> AutoSwitchAccount {
+        var copy = AutoSwitchAccount(id: a.id, displayName: a.displayName,
+                                     usage: UsageData(fiveHour: UsageLimit(utilization: five, resetsAt: fiveResets),
+                                                      sevenDay: UsageLimit(utilization: seven, resetsAt: clock + 86_400)),
+                                     availability: active ? .active : .ready, isUsable: true, isActive: active)
+        copy.critical = CriticalAssessment(level: level, waste: 10)
+        return copy
+    }
+
+    func testCriticalSwitchHoldsClaudeCodeOnTheTargetUntilIts5hReset() async {
+        let a = account("a", five: 10, seven: 10, active: true)
+        let b = with(account("b", five: 0, seven: 30), five: 0, seven: 30, active: false, level: .critical)
+        let c = account("c", five: 0, seven: 20)
+        let switched = await controller.evaluate([a, b, c]) { _ in }
+        XCTAssertEqual(switched, b.id)
+        XCTAssertEqual(controller.hold, AutoSwitchHold(accountId: b.id, until: clock + AutoSwitchPlanner.fiveHourWindow))
+
+        // An hour later B is active, no longer critical, and C has become a free critical target.
+        clock += 3600
+        let resets = clock + 4 * 3600
+        let accounts = [with(a, five: 10, seven: 10, active: false),
+                        with(b, five: 60, seven: 45, fiveResets: resets, active: true),
+                        with(c, five: 0, seven: 20, active: false, level: .critical)]
+        var performed: [UUID] = []
+        let next = await controller.evaluate(accounts) { performed.append($0) }
+        XCTAssertNil(next)
+        XCTAssertEqual(performed, [])
+        XCTAssertEqual(controller.hold?.until, resets, "the hold follows B's real 5h reset")
+
+        // After B's 5h reset the hold has ended and rule 3 applies again.
+        clock = resets
+        let after = await controller.evaluate(accounts) { _ in }
+        XCTAssertEqual(after, c.id)
+    }
+
+    func testManualSwitchHoldsAgainstCriticalRule() async {
+        let a = account("a", five: 10, seven: 10, active: true)
+        let c = with(account("c", five: 0, seven: 20), five: 0, seven: 20, active: false, level: .critical)
+        controller.noteManualSwitch(to: a.id, usage: a.usage)
+        XCTAssertEqual(controller.hold, AutoSwitchHold(accountId: a.id, until: clock + AutoSwitchPlanner.fiveHourWindow))
+        var performed: [UUID] = []
+        let result = await controller.evaluate([a, c]) { performed.append($0) }
+        XCTAssertNil(result)
+        XCTAssertEqual(performed, [])
+    }
+
+    func testManualSwitchClearsTheLockAndHoldsUntilTheKnownReset() async {
+        let active = account("a", five: 96, seven: 10, active: true)
+        let target = account("b", five: 10, seven: 99.5)
+        _ = await controller.evaluate([active, target]) { _ in }
+        XCTAssertNotNil(controller.lock)
+        let resets = clock + 3 * 3600
+        controller.noteManualSwitch(to: active.id, usage: with(active, five: 50, seven: 10, fiveResets: resets, active: true).usage)
+        XCTAssertNil(controller.lock)
+        XCTAssertEqual(controller.hold, AutoSwitchHold(accountId: active.id, until: resets))
+    }
+
+    func testHoldDroppedWhenTheActiveAccountChanges() async {
+        let a = account("a", five: 10, seven: 10, active: true)
+        let b = account("b", five: 10, seven: 10)
+        controller.noteManualSwitch(to: a.id, usage: a.usage)
+        let c = with(account("c", five: 0, seven: 20), five: 0, seven: 20, active: false, level: .critical)
+        // Claude Code moved to B outside the dashboard: A's hold no longer applies.
+        let accounts = [with(a, five: 10, seven: 10, active: false), with(b, five: 10, seven: 10, active: true), c]
+        let result = await controller.evaluate(accounts) { _ in }
+        XCTAssertEqual(result, c.id)
+        XCTAssertEqual(controller.hold?.accountId, c.id, "the critical switch to C holds C")
+    }
+
+    func testThresholdSwitchClearsTheHold() async {
+        let a = account("a", five: 96, seven: 10, active: true)
+        let b = account("b", five: 0, seven: 10)
+        controller.noteManualSwitch(to: a.id, usage: a.usage)
+        let result = await controller.evaluate([a, b]) { _ in }
+        XCTAssertEqual(result, b.id)
+        XCTAssertNil(controller.hold)
+    }
 }

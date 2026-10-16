@@ -43,6 +43,7 @@ final class AutoSwitchController: ObservableObject {
     let logStore: AutoSwitchLogStore
     @Published private(set) var lastEvent: AutoSwitchEvent?
     private(set) var lock: AutoSwitchLock?
+    private(set) var hold: AutoSwitchHold?
     private var cooldownUntil: [UUID: Date] = [:]
     /// Set when a switch fails because of Claude Code's current login, not the target:
     /// every target would fail the same way, so auto switch pauses as a whole.
@@ -65,6 +66,15 @@ final class AutoSwitchController: ObservableObject {
     /// A manual switch ends the lock at once.
     func clearLock() { lock = nil }
 
+    /// A manual Switch to `id`: ends the lock and holds Claude Code there until its 5h window
+    /// resets, so the critical rules do not undo the user's choice on the next refresh.
+    ///
+    ///     autoSwitch.noteManualSwitch(to: target.id, usage: state?.usage)
+    func noteManualSwitch(to id: UUID, usage: UsageData?) {
+        clearLock()
+        hold = Self.makeHold(for: id, usage: usage, now: now())
+    }
+
     /// True while auto switch is on and the active account is in the warning zone.
     func shouldFastPoll(_ accounts: [AutoSwitchAccount]) -> Bool {
         guard settings.isEnabled, let active = accounts.first(where: \.isActive), active.isFresh,
@@ -84,7 +94,8 @@ final class AutoSwitchController: ObservableObject {
         pausedUntil = nil
         cooldownUntil = cooldownUntil.filter { $0.value > t }
         lock = AutoSwitchPlanner.updatedLock(lock, active: accounts.first(where: \.isActive))
-        let snapshot = AutoSwitchSnapshot(accounts: accounts, thresholds: settings.thresholds, lock: lock,
+        hold = Self.updatedHold(hold, active: accounts.first(where: \.isActive))
+        let snapshot = AutoSwitchSnapshot(accounts: accounts, thresholds: settings.thresholds, lock: lock, hold: hold,
                                           priority: settings.priority, excluded: Set(cooldownUntil.keys), now: t)
 
         let decision = AutoSwitchPlanner.decide(snapshot, pickIndex: pickIndex)
@@ -130,12 +141,34 @@ final class AutoSwitchController: ObservableObject {
             lock = target?.usage.flatMap {
                 AutoSwitchPlanner.makeLock(for: id, usage: $0, thresholds: settings.thresholds)
             }
+            if case .critical = reason {
+                hold = Self.makeHold(for: id, usage: target?.usage, now: t)
+            } else {
+                hold = nil
+            }
             lastEvent = AutoSwitchEvent(kind: .switched(reason), accountName: target?.displayName, date: t)
             await logStore.insert(date: t, outcome: .switched, fromName: active?.displayName,
                                   toName: target?.displayName, reason: reasonText,
                                   detail: target.map { "\($0.displayName): \(Self.usageText($0))" })
             return id
         }
+    }
+
+    /// Until the account's 5h reset, or a full window from now when its window has not
+    /// started (or the card still shows a reset already past).
+    private static func makeHold(for id: UUID, usage: UsageData?, now: Date) -> AutoSwitchHold {
+        let resetsAt = usage?.fiveHour.resetsAt.flatMap { $0 > now ? $0 : nil }
+        return AutoSwitchHold(accountId: id, until: resetsAt ?? now + AutoSwitchPlanner.fiveHourWindow)
+    }
+
+    /// Drops the hold once Claude Code uses another account; pulls `until` in to the held
+    /// account's real 5h reset once its window has started.
+    private static func updatedHold(_ hold: AutoSwitchHold?, active: AutoSwitchAccount?) -> AutoSwitchHold? {
+        guard var hold, let active, active.id == hold.accountId else { return nil }
+        if active.isFresh, let resetsAt = active.usage?.fiveHour.resetsAt, resetsAt < hold.until {
+            hold.until = resetsAt
+        }
+        return hold
     }
 
     /// Drops a tick on a removed account. While the ticked account is active, moves its

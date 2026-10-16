@@ -690,7 +690,7 @@ final class DashboardViewModel: ObservableObject {
             switchMessage = "Claude Code now uses \(target.email ?? target.name). "
                 + "Running sessions pick it up within about 30 seconds."
             scrollToTopOnDismiss = true
-            autoSwitch.clearLock()
+            autoSwitch.noteManualSwitch(to: accountId, usage: accountStates.first { $0.id == accountId }?.usage)
         } catch let error as SwitchError {
             switchMessage = Self.message(for: error, target: target)
         } catch {

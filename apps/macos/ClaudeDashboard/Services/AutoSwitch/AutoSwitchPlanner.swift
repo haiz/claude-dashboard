@@ -44,10 +44,20 @@ struct AutoSwitchLock: Equatable {
     var sevenDay: Window?
 }
 
+/// After a critical switch or a manual Switch, Claude Code stays on that account until
+/// `until` (its 5h reset): rules 1 and 3 do not move it while the hold lasts. Using the
+/// account lowers its critical level, which would otherwise pull Claude Code to the next
+/// critical account mid window. The home reset and the thresholds still apply.
+struct AutoSwitchHold: Equatable {
+    let accountId: UUID
+    var until: Date
+}
+
 struct AutoSwitchSnapshot {
     var accounts: [AutoSwitchAccount]
     var thresholds: AutoSwitchThresholds
     var lock: AutoSwitchLock?
+    var hold: AutoSwitchHold? = nil
     var priority: AutoSwitchPriority?
     /// Accounts in the failure cooldown.
     var excluded: Set<UUID>
@@ -74,7 +84,8 @@ enum AutoSwitchDecision: Equatable {
 
 /// Which account Claude Code should move to, if any. Pure: the spec's rules
 /// (`docs/superpowers/specs/2026-10-13-auto-switch-design.md`) and nothing else.
-/// Priority order: high critical, home, critical, then the threshold tiers.
+/// Priority order: high critical, home, critical, then the threshold tiers. A hold on the
+/// active account turns off the two critical rules until it ends.
 ///
 ///     let d = AutoSwitchPlanner.decide(snapshot, pickIndex: { Int.random(in: 0..<$0) })
 ///     if case .switchTo(let id, _) = d { ... }
@@ -193,9 +204,10 @@ enum AutoSwitchPlanner {
         let candidates = s.accounts.filter { isCandidate($0, excluded: s.excluded) }
         let targets = s.accounts.filter { isCriticalTarget($0, excluded: s.excluded) }
         let activeIsHigh = active.critical.level == .high
+        let isHeld = s.hold.map { $0.accountId == active.id && s.now < $0.until } ?? false
 
-        // 1. High critical beats everything, home included.
-        if !activeIsHigh,
+        // 1. High critical beats everything, home included, unless Claude Code is held.
+        if !activeIsHigh, !isHeld,
            let target = targets.filter({ $0.critical.level == .high }).max(by: { $0.critical.waste < $1.critical.waste }) {
             return .switchTo(target.id, .critical(.high))
         }
@@ -208,8 +220,8 @@ enum AutoSwitchPlanner {
             return .switchTo(target.id, .priorityReset)
         }
 
-        // 3. Critical beats an ordinary account that is not home.
-        if active.critical.level == .none, active.id != s.priority?.accountId,
+        // 3. Critical beats an ordinary account that is not home, unless Claude Code is held.
+        if !isHeld, active.critical.level == .none, active.id != s.priority?.accountId,
            let target = targets.max(by: { $0.critical.waste < $1.critical.waste }) {
             return .switchTo(target.id, .critical(target.critical.level))
         }

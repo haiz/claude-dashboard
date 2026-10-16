@@ -19,8 +19,9 @@ final class AutoSwitchPlannerTests: XCTestCase {
     }
 
     private func snapshot(_ accounts: [AutoSwitchAccount], lock: AutoSwitchLock? = nil,
+                          hold: AutoSwitchHold? = nil,
                           priority: AutoSwitchPriority? = nil, excluded: Set<UUID> = []) -> AutoSwitchSnapshot {
-        AutoSwitchSnapshot(accounts: accounts, thresholds: base, lock: lock,
+        AutoSwitchSnapshot(accounts: accounts, thresholds: base, lock: lock, hold: hold,
                            priority: priority, excluded: excluded, now: now)
     }
 
@@ -420,11 +421,54 @@ final class AutoSwitchPlannerTests: XCTestCase {
         XCTAssertEqual(decide(snapshot([active, notReady, stale, cooling], excluded: [cooling.id])), .stay(.belowThreshold))
     }
 
-    /// After the switch the target is active and its 5h runs: the next evaluation stays.
-    func testNoPingPongAfterTheSwitch() {
-        let previous = account("a", five: 10, seven: 10)
-        let nowActive = critical(account("b", five: 5, seven: 31, fiveResets: now.addingTimeInterval(4 * 3600), active: true), .critical)
-        XCTAssertEqual(decide(snapshot([previous, nowActive])), .stay(.belowThreshold))
+    // MARK: Hold
+
+    private func hold(_ a: AutoSwitchAccount, for interval: TimeInterval = 2 * 3600) -> AutoSwitchHold {
+        AutoSwitchHold(accountId: a.id, until: now.addingTimeInterval(interval))
+    }
+
+    /// The reviewer's reproduction: Claude Code was moved to critical A, using it dropped
+    /// A to `.none` mid window, and C is a free critical target.
+    func testHeldAccountThatStoppedBeingCriticalStays() {
+        let a = account("a", five: 70, seven: 66.2, fiveResets: now.addingTimeInterval(2 * 3600), active: true)
+        let c = critical(account("c", five: 0, seven: 30), .critical)
+        XCTAssertEqual(decide(snapshot([a, c], hold: hold(a))), .stay(.belowThreshold))
+        XCTAssertEqual(decide(snapshot([a, c])), .switchTo(c.id, .critical(.critical)),
+                       "without the hold rule 3 moves Claude Code mid window")
+    }
+
+    func testHeldHighAccountThatDroppedToCriticalStays() {
+        let a = critical(account("a", five: 40, seven: 50, active: true), .critical)
+        let b = critical(account("b", five: 0, seven: 30), .high)
+        XCTAssertEqual(decide(snapshot([a, b], hold: hold(a))), .stay(.belowThreshold))
+        XCTAssertEqual(decide(snapshot([a, b])), .switchTo(b.id, .critical(.high)))
+    }
+
+    func testExpiredHoldIsIgnored() {
+        let a = account("a", five: 70, seven: 60, active: true)
+        let c = critical(account("c", five: 0, seven: 30), .critical)
+        XCTAssertEqual(decide(snapshot([a, c], hold: hold(a, for: 0))), .switchTo(c.id, .critical(.critical)))
+        XCTAssertEqual(decide(snapshot([a, c], hold: hold(a, for: -60))), .switchTo(c.id, .critical(.critical)))
+    }
+
+    func testHoldOnAnotherAccountIsIgnored() {
+        let a = account("a", five: 70, seven: 60, active: true)
+        let b = account("b", five: 0, seven: 10)
+        let c = critical(account("c", five: 0, seven: 30), .high)
+        XCTAssertEqual(decide(snapshot([a, b, c], hold: hold(b))), .switchTo(c.id, .critical(.high)))
+    }
+
+    func testThresholdStillFiresWhileHeld() {
+        let a = account("a", five: 96, seven: 60, active: true)
+        let b = account("b", five: 0, seven: 10)
+        XCTAssertEqual(decide(snapshot([a, b], hold: hold(a))), .switchTo(b.id, .threshold(tier: 1)))
+    }
+
+    func testHomeResetStillFiresWhileHeld() {
+        let a = account("a", five: 40, seven: 60, active: true)
+        let home = account("home", five: 0, seven: 10)
+        let s = snapshot([a, home], hold: hold(a), priority: AutoSwitchPriority(accountId: home.id, baseline: nil))
+        XCTAssertEqual(decide(s), .switchTo(home.id, .priorityReset))
     }
 
     func testThresholdTiersStillRunWhenNoCriticalTarget() {
