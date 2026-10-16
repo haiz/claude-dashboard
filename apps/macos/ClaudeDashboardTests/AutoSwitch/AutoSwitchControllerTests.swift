@@ -262,4 +262,18 @@ final class AutoSwitchControllerTests: XCTestCase {
         let rows = await logged()
         XCTAssertEqual(rows, [])
     }
+
+    func testCriticalSwitchTextInFooterAndLog() async {
+        let active = account("a@x.com", five: 10, seven: 10, active: true)
+        var target = account("b@x.com", five: 0, seven: 30)
+        target.critical = CriticalAssessment(level: .high, waste: 12.4)
+
+        let result = await controller.evaluate([active, target]) { _ in }
+
+        XCTAssertEqual(result, target.id)
+        XCTAssertEqual(controller.lastEvent?.kind, .switched(.critical(.high)))
+        XCTAssertEqual(controller.lastEvent?.text, "Switched to b@x.com: high critical account")
+        let row = await AutoSwitchLogStore(dbPath: logPath).fetch(limit: 1).first
+        XCTAssertEqual(row?.reason, "High critical account's 5h window is free, 12% of 7d would go unused")
+    }
 }

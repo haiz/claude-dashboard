@@ -15,6 +15,7 @@ struct AutoSwitchEvent: Equatable {
         let name = accountName ?? "account"
         switch kind {
         case .switched(.priorityReset): return "Switched to \(name) after its 5h reset"
+        case .switched(.critical(let level)): return "Switched to \(name): \(level.label) account"
         case .switched: return "Auto-switched to \(name)"
         case .failed(let reason): return "Could not switch to \(name): \(reason)"
         case .noCandidate: return "No account to switch to"
@@ -105,6 +106,10 @@ final class AutoSwitchController: ObservableObject {
             let reasonText: String
             switch reason {
             case .priorityReset: reasonText = "Ticked account's 5h window reset"
+            case .critical(let level):
+                let kind = level == .high ? "High critical" : "Critical"
+                let waste = Self.percent(target?.critical.waste ?? 0)
+                reasonText = "\(kind) account's 5h window is free, \(waste) of 7d would go unused"
             case .threshold(let tier): reasonText = "\(triggerText(active)), tier \(tier)"
             }
             do {

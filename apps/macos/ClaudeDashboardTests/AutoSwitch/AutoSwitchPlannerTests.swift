@@ -313,4 +313,123 @@ final class AutoSwitchPlannerTests: XCTestCase {
         let p = AutoSwitchPriority(accountId: ticked.id, baseline: now - 600)
         XCTAssertEqual(decide(snapshot([active, ticked], priority: p)), .stay(.belowThreshold))
     }
+
+    // MARK: Critical
+
+    private func critical(_ a: AutoSwitchAccount, _ level: CriticalLevel, waste: Double = 10) -> AutoSwitchAccount {
+        var a = a
+        a.critical = CriticalAssessment(level: level, waste: waste)
+        return a
+    }
+
+    func testHighCriticalPullsFromAnOrdinaryAccountBelowThreshold() {
+        let active = account("a", five: 10, seven: 10, active: true)
+        let target = critical(account("b", five: 0, seven: 30), .high)
+        XCTAssertEqual(decide(snapshot([active, target])), .switchTo(target.id, .critical(.high)))
+    }
+
+    func testHighCriticalPullsFromHome() {
+        let active = account("home", five: 10, seven: 10, active: true)
+        let target = critical(account("b", five: 0, seven: 30), .high)
+        let s = snapshot([active, target], priority: AutoSwitchPriority(accountId: active.id, baseline: nil))
+        XCTAssertEqual(decide(s), .switchTo(target.id, .critical(.high)))
+    }
+
+    func testCriticalDoesNotPullFromHome() {
+        let active = account("home", five: 10, seven: 10, active: true)
+        let target = critical(account("b", five: 0, seven: 30), .critical)
+        let s = snapshot([active, target], priority: AutoSwitchPriority(accountId: active.id, baseline: nil))
+        XCTAssertEqual(decide(s), .stay(.belowThreshold))
+    }
+
+    func testCriticalPullsFromAnOrdinaryAccount() {
+        let active = account("a", five: 10, seven: 10, active: true)
+        let target = critical(account("b", five: 0, seven: 30), .critical)
+        XCTAssertEqual(decide(snapshot([active, target])), .switchTo(target.id, .critical(.critical)))
+    }
+
+    func testCriticalDoesNotPullFromAnotherCritical() {
+        let active = critical(account("a", five: 10, seven: 10, active: true), .critical)
+        let target = critical(account("b", five: 0, seven: 30), .critical, waste: 50)
+        XCTAssertEqual(decide(snapshot([active, target])), .stay(.belowThreshold))
+    }
+
+    func testHighCriticalDoesNotPullFromAnotherHighCritical() {
+        let active = critical(account("a", five: 10, seven: 10, active: true), .high)
+        let target = critical(account("b", five: 0, seven: 30), .high, waste: 50)
+        XCTAssertEqual(decide(snapshot([active, target])), .stay(.belowThreshold))
+    }
+
+    func testHighCriticalPullsFromCritical() {
+        let active = critical(account("a", five: 10, seven: 10, active: true), .critical)
+        let target = critical(account("b", five: 0, seven: 30), .high)
+        XCTAssertEqual(decide(snapshot([active, target])), .switchTo(target.id, .critical(.high)))
+    }
+
+    func testHomeResetPullsFromCritical() {
+        let active = critical(account("a", five: 10, seven: 10, active: true), .critical)
+        let home = account("home", five: 0, seven: 10)
+        let s = snapshot([active, home], priority: AutoSwitchPriority(accountId: home.id, baseline: nil))
+        XCTAssertEqual(decide(s), .switchTo(home.id, .priorityReset))
+    }
+
+    func testHomeResetDoesNotPullFromHighCritical() {
+        let active = critical(account("a", five: 10, seven: 10, active: true), .high)
+        let home = account("home", five: 0, seven: 10)
+        let s = snapshot([active, home], priority: AutoSwitchPriority(accountId: home.id, baseline: nil))
+        XCTAssertEqual(decide(s), .stay(.belowThreshold))
+    }
+
+    func testHighCriticalBeatsAHomeResetAtTheSameTime() {
+        let active = account("a", five: 10, seven: 10, active: true)
+        let home = account("home", five: 0, seven: 10)
+        let target = critical(account("b", five: 0, seven: 30), .high)
+        let s = snapshot([active, home, target], priority: AutoSwitchPriority(accountId: home.id, baseline: nil))
+        XCTAssertEqual(decide(s), .switchTo(target.id, .critical(.high)))
+    }
+
+    func testHomeBeatsCriticalAtTheSameTime() {
+        let active = account("a", five: 10, seven: 10, active: true)
+        let home = account("home", five: 0, seven: 10)
+        let target = critical(account("b", five: 0, seven: 30), .critical)
+        let s = snapshot([active, home, target], priority: AutoSwitchPriority(accountId: home.id, baseline: nil))
+        XCTAssertEqual(decide(s), .switchTo(home.id, .priorityReset))
+    }
+
+    func testFiveHourAtTwoIsFreeAndAtThreeIsNot() {
+        let active = account("a", five: 10, seven: 10, active: true)
+        let two = critical(account("b", five: 2, seven: 30, fiveResets: now.addingTimeInterval(3600)), .critical)
+        XCTAssertEqual(decide(snapshot([active, two])), .switchTo(two.id, .critical(.critical)))
+        let three = critical(account("c", five: 3, seven: 30, fiveResets: now.addingTimeInterval(3600)), .critical)
+        XCTAssertEqual(decide(snapshot([active, three])), .stay(.belowThreshold))
+    }
+
+    func testLargestWasteWins() {
+        let active = account("a", five: 10, seven: 10, active: true)
+        let small = critical(account("b", five: 0, seven: 30), .critical, waste: 3)
+        let large = critical(account("c", five: 0, seven: 30), .critical, waste: 9)
+        XCTAssertEqual(decide(snapshot([active, small, large])), .switchTo(large.id, .critical(.critical)))
+    }
+
+    func testCriticalTargetMustBeACandidate() {
+        let active = account("a", five: 10, seven: 10, active: true)
+        let notReady = critical(account("b", five: 0, seven: 30, availability: .notCaptured), .high)
+        var stale = critical(account("c", five: 0, seven: 30), .high)
+        stale.isFresh = false
+        let cooling = critical(account("d", five: 0, seven: 30), .high)
+        XCTAssertEqual(decide(snapshot([active, notReady, stale, cooling], excluded: [cooling.id])), .stay(.belowThreshold))
+    }
+
+    /// After the switch the target is active and its 5h runs: the next evaluation stays.
+    func testNoPingPongAfterTheSwitch() {
+        let previous = account("a", five: 10, seven: 10)
+        let nowActive = critical(account("b", five: 5, seven: 31, fiveResets: now.addingTimeInterval(4 * 3600), active: true), .critical)
+        XCTAssertEqual(decide(snapshot([previous, nowActive])), .stay(.belowThreshold))
+    }
+
+    func testThresholdTiersStillRunWhenNoCriticalTarget() {
+        let active = account("a", five: 96, seven: 10, active: true)
+        let other = account("b", five: 0, seven: 10)
+        XCTAssertEqual(decide(snapshot([active, other])), .switchTo(other.id, .threshold(tier: 1)))
+    }
 }

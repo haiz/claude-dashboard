@@ -14,6 +14,8 @@ struct AutoSwitchAccount: Equatable {
     /// The last fetch succeeded (`AccountUsageState.error == nil`). A failed fetch keeps the
     /// previous usage on the card; deciding on those numbers would act on stale data.
     var isFresh = true
+    /// From `CriticalPlanner.assess`; `.none` when not critical or unknown.
+    var critical: CriticalAssessment = .none
 
     var fiveHour: Double { usage?.fiveHour.utilization ?? 100 }
     var sevenDay: Double { usage?.sevenDay.utilization ?? 100 }
@@ -54,6 +56,7 @@ struct AutoSwitchSnapshot {
 
 enum AutoSwitchReason: Equatable {
     case priorityReset
+    case critical(CriticalLevel)
     case threshold(tier: Int)
 }
 
@@ -71,6 +74,7 @@ enum AutoSwitchDecision: Equatable {
 
 /// Which account Claude Code should move to, if any. Pure: the spec's rules
 /// (`docs/superpowers/specs/2026-10-13-auto-switch-design.md`) and nothing else.
+/// Priority order: high critical, home, critical, then the threshold tiers.
 ///
 ///     let d = AutoSwitchPlanner.decide(snapshot, pickIndex: { Int.random(in: 0..<$0) })
 ///     if case .switchTo(let id, _) = d { ... }
@@ -83,6 +87,8 @@ enum AutoSwitchPlanner {
     /// `resetsAt` drifts by sub-seconds between fetches; a real reset moves it by hours.
     static let resetTolerance: TimeInterval = 60
     static let fiveHourWindow: TimeInterval = 5 * 3600
+    /// A critical target's 5h counts as free at or under this (an Auto Ping leaves about 1%).
+    static let freeFiveHourLimit = 2.0
 
     static func isTriggered(_ usage: UsageData, thresholds: AutoSwitchThresholds) -> Bool {
         usage.fiveHour.utilization >= thresholds.fiveHour
@@ -171,6 +177,13 @@ enum AutoSwitchPlanner {
             && !excluded.contains(a.id) && a.fiveHour < 100 && a.sevenDay < 100
     }
 
+    /// A critical candidate whose 5h window is free and whose week is not used up.
+    static func isCriticalTarget(_ a: AutoSwitchAccount, excluded: Set<UUID>) -> Bool {
+        guard a.critical.level != .none, isCandidate(a, excluded: excluded),
+              a.sevenDay < tierSevenDayLimit, let usage = a.usage else { return false }
+        return usage.fiveHour.resetsAt == nil || usage.fiveHour.utilization <= freeFiveHourLimit
+    }
+
     /// `pickIndex(n)` returns an index in `0..<n`; production passes `Int.random(in:)`.
     static func decide(_ s: AutoSwitchSnapshot, pickIndex: (Int) -> Int) -> AutoSwitchDecision {
         guard let active = s.accounts.first(where: \.isActive), active.isFresh,
@@ -178,12 +191,27 @@ enum AutoSwitchPlanner {
             return .stay(.noActiveAccount)
         }
         let candidates = s.accounts.filter { isCandidate($0, excluded: s.excluded) }
+        let targets = s.accounts.filter { isCriticalTarget($0, excluded: s.excluded) }
+        let activeIsHigh = active.critical.level == .high
 
-        if let priority = s.priority,
+        // 1. High critical beats everything, home included.
+        if !activeIsHigh,
+           let target = targets.filter({ $0.critical.level == .high }).max(by: { $0.critical.waste < $1.critical.waste }) {
+            return .switchTo(target.id, .critical(.high))
+        }
+
+        // 2. Home, unless Claude Code is on a high critical account.
+        if !activeIsHigh, let priority = s.priority,
            let target = candidates.first(where: { $0.id == priority.accountId }),
            target.sevenDay < tierSevenDayLimit,
            isPriorityDue(current: target.usage?.fiveHour.resetsAt, baseline: priority.baseline, now: s.now) {
             return .switchTo(target.id, .priorityReset)
+        }
+
+        // 3. Critical beats an ordinary account that is not home.
+        if active.critical.level == .none, active.id != s.priority?.accountId,
+           let target = targets.max(by: { $0.critical.waste < $1.critical.waste }) {
+            return .switchTo(target.id, .critical(target.critical.level))
         }
 
         let limits = effectiveThresholds(for: active.id, base: s.thresholds, lock: s.lock)
