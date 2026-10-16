@@ -108,7 +108,9 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   `7d + usable hours / 5 x pace x X <= 100` at its weekly reset (pace 50, quiet hours 00:00-07:00
   Asia/Ho_Chi_Minh excluded) and **high critical** at pace 80 around the clock; `CriticalSettings`
   holds all five values. Auto switch order: high critical > home (bolt) > critical > threshold tiers;
-  a target needs a free 5h window (`resetsAt == nil` or `<= 2%`).
+  a target needs a free 5h window (`resetsAt == nil` or `<= 2%`); after a critical switch or a
+  manual Switch, `AutoSwitchHold` keeps Claude Code there until its 5h reset (the critical rules
+  skip a held account; home and thresholds still apply).
   Spec: `docs/superpowers/specs/2026-10-16-critical-accounts-design.md`.
 - **Ping** (`Shared/PingService.swift`, `Services/Ping/`) — starts an account's 5h/7d window by
   sending one short claude.ai message with its session key (create conversation, completion,

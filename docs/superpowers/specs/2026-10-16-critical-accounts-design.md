@@ -1,7 +1,7 @@
 # Critical accounts and the 5h-to-7d ratio X (macOS)
 
 Date: 2026-10-16
-Status: approved design, awaiting implementation plan
+Status: implemented
 Scope: `apps/macos/ClaudeDashboard` only. Linux, Windows, the helper CLI, `Account` and
 `contract/` are untouched (auto switch exists only on macOS).
 Builds on: `2026-10-13-auto-switch-design.md`.
@@ -47,8 +47,9 @@ over 39 windows (per-account 15.6 to 17.1%).
    so the step reading is exact. 7d rows are read from `now - 3 days - 7 days`, so a reading
    exists even when the value has not changed for days.
 4. Skip the window when either 7d reading is missing, when the two readings' 7d `resetsAt`
-   differ by more than 60 s (the week reset inside it), or when `u1 - u0 < 10` (7d is reported in whole
-   percent; small windows are noise).
+   differ by more than 60 s (the week reset inside it), when the 7d delta is negative (7d fell
+   without a week reset: a correction, not a cost), or when `u1 - u0 < 10` (7d is reported in
+   whole percent; small windows are noise).
 5. `X = 100 * sum(d7) / sum(d5)` over the kept windows.
 6. Return nil when `sum(d5) < 100` (not enough data).
 
@@ -101,7 +102,7 @@ Raising Critical pace above High critical pace raises High critical pace with it
 
 ### Assessment
 
-`CriticalPlanner.assess(usage:x:settings:now:) -> CriticalAssessment` (pure), where
+`CriticalPlanner.assess(_:params:now:) -> CriticalAssessment` (pure), where
 `CriticalAssessment { level: .none | .critical | .high; waste: Double }`:
 
 ```
@@ -135,17 +136,28 @@ window is free: `5h resetsAt == nil` or `5h <= 2` (2 tolerates an Auto Ping's 1%
 
 `AutoSwitchPlanner.decide`, after the existing active-account guard:
 
-1. **High critical.** The active account is not `.high`, and some critical target is `.high`:
+1. **High critical.** The active account is not `.high` and not held, and some critical target is `.high`:
    switch to the `.high` target with the largest `waste`. Reason `.critical(.high)`.
 2. **Home.** The existing priority reset, skipped while the active account is `.high`.
-3. **Critical.** The active account is `.none` and is not the home account, and some critical
-   target is `.critical` or `.high`: switch to the one with the largest `waste`. Reason
-   `.critical(.normal)`.
+3. **Critical.** The active account is `.none`, is not the home account and is not held, and
+   some critical target is `.critical` or `.high`: switch to the one with the largest `waste`.
+   Reason `.critical(level)` with the target's level.
 4. **Threshold.** Unchanged: trigger, tiers 1 to 3, lock.
 
 So: high critical beats home; home beats critical; critical beats an ordinary account.
-No ping-pong: once Claude Code uses the target its 5h window starts and it stops being a
-target; it leaves only through the threshold rules.
+No ping-pong: using the target raises its 7d, so its level drops (`.critical` to `.none`, or
+`.high` to `.critical`) mid window, and rules 1 or 3 would then move Claude Code to the next
+critical account. To prevent that, `AutoSwitchController` keeps an in-memory
+`AutoSwitchHold { accountId; until }` and passes it in `AutoSwitchSnapshot.hold`. Rules 1 and 3
+do not fire while the active account is held (`now < until`); rules 2 and 4 are unchanged.
+
+- After a successful switch with reason `.critical(_)`, the target is held until its 5h
+  `resetsAt`, or `now + 5h` when its window has not started.
+- A **manual Switch** holds the chosen account the same way (`noteManualSwitch(to:usage:)`, which
+  also clears the lock), so the critical rules do not undo the user's choice on the next refresh.
+- Each evaluation drops the hold when Claude Code uses another account, and pulls `until` in
+  to the held account's 5h `resetsAt` once its window has started.
+- A threshold or home switch clears the hold.
 
 Footer: "Switched to {name}: high critical account" (or "critical account").
 Switch Log reason: "High critical account's 5h window is free, {waste}% of 7d would go unused"
@@ -192,8 +204,9 @@ passes `critical` into `AutoSwitchAccount` (about 10 lines). Anything larger mov
   a DST day, start == end, 7d not started, exactly 100.
 - `AutoSwitchPlannerTests`, one per branch: high pulls from home; critical does not pull from
   home; home pulls from critical but not from high; critical does not pull from another
-  critical; target at 5h 3% is not eligible; largest waste wins; no ping-pong across two
-  evaluations.
+  critical; target at 5h 3% is not eligible; largest waste wins; a held account that dropped
+  a level stays, an expired hold or one on another account is ignored, thresholds still fire
+  while held.
 - `CriticalSettingsTests`: defaults, out-of-range values, high pace kept >= pace.
 
 ## Out of scope
