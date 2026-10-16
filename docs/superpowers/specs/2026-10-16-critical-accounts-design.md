@@ -30,20 +30,24 @@ Part A is useful on its own; Part B reads X from it.
 ### Definition
 
 `X` = the share of the 7d quota (in %) that one full 5h window (100% of 5h) costs. One value
-for all accounts. Measured on 2026-10-16 from the last 3 days of `usage_logs.db`: 16.1%
-overall, per-account 15.6 to 17.1%, per-window median 16.2%.
+for all accounts. Measured on 2026-10-16 from the last 3 days of `usage_logs.db`: 16.3%
+over 39 windows (per-account 15.6 to 17.1%).
 
 ### Estimate
 
 `UsageRatioEstimator.estimate(fiveHour:sevenDay:) -> UsageRatioEstimate?` (pure):
 
 1. Input: every account's 5h and 7d log rows with `t >= now - 3 days`.
-2. Group 5h rows by `(account, 5h resetsAt)`: one group is one 5h window.
+2. Per account, walk the 5h rows in time order; a row whose `resetsAt` differs from the current
+   window's by more than 60 s starts a new window (`resetsAt` jitters by a second or more between
+   fetches, so grouping on the exact value splits windows).
 3. For each window take its first and last row (`t0, u0`) and (`t1, u1`). Read the account's 7d
-   value at `t0` and at `t1` as the last 7d row at or before that time. (Log compression only
-   drops repeated values, so the step reading is exact.)
-4. Skip the window when either 7d reading is missing, when the two readings have different 7d
-   `resetsAt` (the week reset inside it), or when `u1 - u0 < 10` (7d is reported in whole
+   value at `t0` and at `t1` as the last 7d row at or before that time plus 5 s (the 5h and 7d
+   rows of one refresh can land a second apart). Log compression only drops repeated values,
+   so the step reading is exact. 7d rows are read from `now - 3 days - 7 days`, so a reading
+   exists even when the value has not changed for days.
+4. Skip the window when either 7d reading is missing, when the two readings' 7d `resetsAt`
+   differ by more than 60 s (the week reset inside it), or when `u1 - u0 < 10` (7d is reported in whole
    percent; small windows are noise).
 5. `X = 100 * sum(d7) / sum(d5)` over the kept windows.
 6. Return nil when `sum(d5) < 100` (not enough data).
@@ -67,7 +71,7 @@ ratio_logs(id INTEGER PRIMARY KEY, t INTEGER NOT NULL, x REAL NOT NULL,
 ```
 
 API: `insert(_:at:)`, `latest()`, `series(from:to:)`, `deleteOlderThan(_:)`.
-`UsageLogStore` gains one read: all accounts' rows for a window since a date.
+Reads go through the existing `UsageLogStore.allLogs(window:from:to:)`.
 
 ### UI
 
@@ -142,9 +146,9 @@ So: high critical beats home; home beats critical; critical beats an ordinary ac
 No ping-pong: once Claude Code uses the target its 5h window starts and it stops being a
 target; it leaves only through the threshold rules.
 
-Footer: "Switched to {name}: high critical, {waste}% of 7d would go unused" (or "critical").
-Switch Log reason: "High critical account's 5h window is free" / "Critical account's 5h window
-is free".
+Footer: "Switched to {name}: high critical account" (or "critical account").
+Switch Log reason: "High critical account's 5h window is free, {waste}% of 7d would go unused"
+(or "Critical account's ...").
 
 ### Info tips and Help
 
