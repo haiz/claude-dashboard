@@ -84,6 +84,9 @@ final class AccountStoreCodecTests: XCTestCase {
     func testEncodeWithNothingToKeepIsPlainJSONEncoderOutput() throws {
         let known = account(name: "known", lastSynced: Date(timeIntervalSinceReferenceDate: 1.5))
 
-        XCTAssertEqual(try AccountStoreCodec.encode([known], over: nil), try JSONEncoder().encode([known]))
+        // As JSON, not bytes: two `JSONEncoder` runs on one value may order the keys differently.
+        let written = try JSONSerialization.jsonObject(with: try AccountStoreCodec.encode([known], over: nil))
+        let plain = try JSONSerialization.jsonObject(with: try JSONEncoder().encode([known]))
+        XCTAssertEqual(written as? NSArray, plain as? NSArray)
     }
 }
