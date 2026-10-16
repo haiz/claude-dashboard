@@ -11,6 +11,7 @@ struct DashboardPane: View {
     var body: some View {
         VStack(spacing: 0) {
             PaneHeader(title: "Dashboard") {
+                UsageRatioButton(controller: viewModel.ratioController)
                 if !viewModel.accountStates.isEmpty {
                     Button {
                         Task { await viewModel.refreshAll() }

@@ -110,6 +110,7 @@
 		8A05B43134B187D33EE15895 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		8C6A56AA09D21B951F1E7863 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D572159B978911BF3D1EDAC0 /* Assets.xcassets */; };
 		8E1EEC3CBBD3A1C11213166D /* UpdateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101FB3B509DBD5E1813FDABE /* UpdateViewModel.swift */; };
+		911688C64750805A0DBE0BC2 /* UsageRatioChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1004DB8DCC865D26DD88BA33 /* UsageRatioChart.swift */; };
 		924D219F90D34BE86951B7DB /* ManualKeyContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D627736A32F2282084F78A58 /* ManualKeyContractTests.swift */; };
 		930F5AEBCCD54FC692C8A38B /* AccountStoreCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E71CE0E11670D789A465FF7 /* AccountStoreCodec.swift */; };
 		9317FFCCE3828B6095DFC538 /* PingLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC670D86C6D9BB498AFA6B2E /* PingLogStoreTests.swift */; };
@@ -126,6 +127,7 @@
 		9ABEC1784D916F22BCDC0786 /* AutoSwitchControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA457A45F67B4D67C244760D /* AutoSwitchControllerTests.swift */; };
 		9C1660C69D3A0A2D926B179E /* UpdateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 373E95B92E85447700BA3DEF /* UpdateServiceTests.swift */; };
 		9C632D2CDB84CD434C8D1B33 /* SyncCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B48B3EE5B29CFDE5EA2B450 /* SyncCommandTests.swift */; };
+		9F5A8904E11A88034246F0D9 /* UsageRatioChartTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 839A2FFF474675F3980B7B6F /* UsageRatioChartTests.swift */; };
 		9FAB31B717BAEDE9C724CB3E /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
 		A0A51AB9400328B0A1CD094D /* SecurityCLIKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E836DDC2F3DA13CDC23B077 /* SecurityCLIKeychain.swift */; };
 		A11EFC038D280EA4034743AF /* Browser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCBF1EA7D7222950388A01C /* Browser.swift */; };
@@ -237,6 +239,7 @@
 		0DF94AC1CCBEAEFA5EABDE34 /* AutoSwitchLogViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchLogViewModel.swift; sourceTree = "<group>"; };
 		0E836DDC2F3DA13CDC23B077 /* SecurityCLIKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityCLIKeychain.swift; sourceTree = "<group>"; };
 		0F9378D707962958C10CFE52 /* UsageRatioEstimatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageRatioEstimatorTests.swift; sourceTree = "<group>"; };
+		1004DB8DCC865D26DD88BA33 /* UsageRatioChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageRatioChart.swift; sourceTree = "<group>"; };
 		101FB3B509DBD5E1813FDABE /* UpdateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateViewModel.swift; sourceTree = "<group>"; };
 		1289C89308B21AC4804E0037 /* AccountStoreCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreCodecTests.swift; sourceTree = "<group>"; };
 		185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogStoreTests.swift; sourceTree = "<group>"; };
@@ -318,6 +321,7 @@
 		8004A1F7B3F59AC4C7ECE6D6 /* HelperAccountStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperAccountStoreTests.swift; sourceTree = "<group>"; };
 		8007AA99F483598797EBFAE0 /* ClaudeDashboardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDashboardApp.swift; sourceTree = "<group>"; };
 		82BD8EADA1A53C63A8745853 /* MainWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindow.swift; sourceTree = "<group>"; };
+		839A2FFF474675F3980B7B6F /* UsageRatioChartTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageRatioChartTests.swift; sourceTree = "<group>"; };
 		8454A54E81908E1F697644E4 /* UsageLogModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogModels.swift; sourceTree = "<group>"; };
 		84D76299585A3672F3ADD331 /* PingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingService.swift; sourceTree = "<group>"; };
 		8539697E193D19F4B3E8F24C /* SidebarItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarItem.swift; sourceTree = "<group>"; };
@@ -538,6 +542,7 @@
 		2F20B0530DFDB04BA51763E2 /* Critical */ = {
 			isa = PBXGroup;
 			children = (
+				839A2FFF474675F3980B7B6F /* UsageRatioChartTests.swift */,
 				7FBB192F3C7ECCB6494F247F /* UsageRatioControllerTests.swift */,
 				0F9378D707962958C10CFE52 /* UsageRatioEstimatorTests.swift */,
 				B55EE2FE0BB5EEA5EE32220A /* UsageRatioStoreTests.swift */,
@@ -590,6 +595,7 @@
 				DA6CEE94A190F9667328C4A7 /* PopoverFooter.swift */,
 				066B8B1E829B2024AB298464 /* SetupView.swift */,
 				36CFE6B80C6A187D9A176752 /* UsageBar.swift */,
+				1004DB8DCC865D26DD88BA33 /* UsageRatioChart.swift */,
 				B51AEE5520251B7CA6015A18 /* Components */,
 				0A498B031093B1CE42ECDADE /* Settings */,
 				A3F87EC36CF0704A07D7ED8F /* Sidebar */,
@@ -963,6 +969,7 @@
 				1FC7DDFCDA4DE7B462FFF965 /* UsageDecodingContractTests.swift in Sources */,
 				98FD479769E1857F43E86CCB /* UsageLogModelsTests.swift in Sources */,
 				F25AC7AD4FA98DC521351742 /* UsageLogStoreTests.swift in Sources */,
+				9F5A8904E11A88034246F0D9 /* UsageRatioChartTests.swift in Sources */,
 				F14EBA39BCA7C47A462B6437 /* UsageRatioControllerTests.swift in Sources */,
 				F53DEBB0E6AE273B5F70F0AD /* UsageRatioEstimatorTests.swift in Sources */,
 				28C137F8F1391B89BB5CCAC4 /* UsageRatioStoreTests.swift in Sources */,
@@ -1122,6 +1129,7 @@
 				307F1C1773F3ED6E78BEC859 /* UsageGaugeRow.swift in Sources */,
 				5EA995FF435E95F185C021D0 /* UsageLogModels.swift in Sources */,
 				799960A4D530BF35FAB68326 /* UsageLogStore.swift in Sources */,
+				911688C64750805A0DBE0BC2 /* UsageRatioChart.swift in Sources */,
 				FAD9F75698D390A0550C8388 /* UsageRatioController.swift in Sources */,
 				F4547049CDD543ACEC547CB0 /* UsageRatioEstimator.swift in Sources */,
 				40B53D7BDE58E7D4BDB21ED5 /* UsageRatioStore.swift in Sources */,

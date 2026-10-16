@@ -139,6 +139,8 @@ final class DashboardViewModel: ObservableObject {
     var autoPingTask: Task<Void, Never>?
     private let burnRateTracker: BurnRateTracker
     let logStore: UsageLogStore
+    /// X, the 7d cost of a full 5h window; recomputed hourly (`UsageRatioController`).
+    let ratioController: UsageRatioController
 
     init(
         accountStore: AccountStore = AccountStore(),
@@ -168,6 +170,7 @@ final class DashboardViewModel: ObservableObject {
         let store = logStore ?? UsageLogStore()
         self.logStore = store
         self.burnRateTracker = BurnRateTracker(logStore: store)
+        self.ratioController = UsageRatioController.live(logStore: store, isRunningTests: AppDefaults.isRunningTests())
         let switchSettings = autoSwitchSettings ?? AutoSwitchSettings(defaults: AppDefaults.shared)
         self.autoSwitchSettings = switchSettings
         self.autoSwitch = AutoSwitchController(settings: switchSettings,
@@ -197,6 +200,10 @@ final class DashboardViewModel: ObservableObject {
         self.pingController.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        ratioController.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        ratioController.start()
 
         scheduleAutoRefresh()
         startResetMonitor()
