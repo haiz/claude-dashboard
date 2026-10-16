@@ -62,10 +62,25 @@ extension DashboardViewModel {
     }
 
     func runAutoSwitch() async {
+        let log = await activeFiveHourLog()
         if !isSwitchingClaudeCode {
-            await autoSwitch.evaluate(autoSwitchAccounts) { id in try await self.performAutoSwitch(to: id) }
+            let accounts = autoSwitchAccounts.map { account in
+                var account = account
+                if account.id == log?.id { account.fiveHourLog = log?.rows ?? [] }
+                return account
+            }
+            await autoSwitch.evaluate(accounts) { id in try await self.performAutoSwitch(to: id) }
         }
         updateAutoSwitchPoll()
+    }
+
+    /// The newest 5h log rows of Claude Code's account, for the near-reset rule. 20 rows span
+    /// well over the rule's 6 minutes at the 60 s poll; equal values are compressed anyway.
+    private func activeFiveHourLog() async -> (id: UUID, rows: [UsageLogEntry])? {
+        guard let id = accountStates.first(where: isActiveClaudeCodeAccount)?.id else { return nil }
+        let rows = await logStore.logsBefore(accountId: id, window: .fiveHour,
+                                             before: Date().addingTimeInterval(1), limit: 20)
+        return (id, rows)
     }
 
     /// Starts the 60 s poll of the active account while `shouldFastPoll`, stops it otherwise.

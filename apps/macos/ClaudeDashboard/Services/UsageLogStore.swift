@@ -19,11 +19,12 @@ actor UsageLogStore {
 
     // MARK: - Record
 
-    func record(accountId: UUID, window: UsageWindow, resetsAt: Date, utilization: Double, isLimited: Bool) {
+    func record(accountId: UUID, window: UsageWindow, resetsAt: Date, utilization: Double, isLimited: Bool,
+                at date: Date = Date()) {
         guard let aid = resolveAccountId(accountId) else { return }
         let w = Int32(window.rawValue)
         let rat = Int64(resetsAt.timeIntervalSince1970)
-        let t = Int64(Date().timeIntervalSince1970)
+        let t = Int64(date.timeIntervalSince1970)
         let u = Int64(round(utilization * 100))
         let lim: Int32 = isLimited ? 1 : 0
 

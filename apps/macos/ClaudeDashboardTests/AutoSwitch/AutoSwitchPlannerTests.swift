@@ -476,4 +476,109 @@ final class AutoSwitchPlannerTests: XCTestCase {
         let other = account("b", five: 0, seven: 10)
         XCTAssertEqual(decide(snapshot([active, other])), .switchTo(other.id, .threshold(tier: 1)))
     }
+
+    // MARK: Near reset
+
+    private let minute: TimeInterval = 60
+
+    /// Claude Code's account at `five`, its 5h window resetting in `left` seconds, with one
+    /// usage log row per `(seconds ago, utilization)` in that window.
+    private func nearReset(five: Double, seven: Double = 10, left: TimeInterval,
+                           log: [(TimeInterval, Double)]) -> AutoSwitchAccount {
+        let resetsAt = now.addingTimeInterval(left)
+        var a = account("a", five: five, seven: seven, fiveResets: resetsAt, active: true)
+        a.fiveHourLog = log.enumerated().map { i, row in
+            UsageLogEntry(id: Int64(i), accountId: a.id, window: .fiveHour, resetsAt: resetsAt,
+                          recordedAt: now.addingTimeInterval(-row.0), utilization: row.1, isLimited: false)
+        }
+        return a
+    }
+
+    private func home(_ a: AutoSwitchAccount) -> AutoSwitchPriority {
+        AutoSwitchPriority(accountId: a.id, baseline: a.usage?.fiveHour.resetsAt)
+    }
+
+    /// The user's example: 5 minutes left at 95%, 4% used in the 6 minutes before.
+    func testHomeWaitsForResetWhenThePaceFits() {
+        let a = nearReset(five: 95, left: 5 * minute, log: [(6 * minute, 91), (0, 95)])
+        let b = account("b", five: 0, seven: 10)
+        XCTAssertEqual(decide(snapshot([a, b], priority: home(a))), .stay(.nearReset))
+    }
+
+    func testHomeSwitchesWhenThePaceWouldHitTheLimit() {
+        let a = nearReset(five: 95, left: 5 * minute, log: [(6 * minute, 90), (0, 95)])
+        let b = account("b", five: 0, seven: 10)
+        XCTAssertEqual(decide(snapshot([a, b], priority: home(a))), .switchTo(b.id, .threshold(tier: 1)))
+    }
+
+    func testHomeSwitchesWhenTheResetIsMoreThanFiveMinutesAway() {
+        let a = nearReset(five: 95, left: 5 * minute + 1, log: [(7 * minute, 95), (0, 95)])
+        let b = account("b", five: 0, seven: 10)
+        XCTAssertEqual(decide(snapshot([a, b], priority: home(a))), .switchTo(b.id, .threshold(tier: 1)))
+    }
+
+    /// N+1 minutes back from now, not a fixed 6: with 2 minutes left the row 3 minutes back counts.
+    func testLookbackIsMinutesLeftPlusOne() {
+        let fits = nearReset(five: 95, left: 2 * minute, log: [(10 * minute, 80), (3 * minute, 91), (0, 95)])
+        let b = account("b", five: 0, seven: 10)
+        XCTAssertEqual(decide(snapshot([fits, b], priority: home(fits))), .stay(.nearReset))
+        let tooFast = nearReset(five: 95, left: 2 * minute, log: [(10 * minute, 85), (2.5 * minute, 94), (0, 95)])
+        XCTAssertEqual(decide(snapshot([tooFast, b], priority: home(tooFast))), .switchTo(b.id, .threshold(tier: 1)),
+                       "the newest row at or before the cutoff is 10 minutes back: 10% used")
+    }
+
+    func testHomeSwitchesWithoutALogRowBeforeTheCutoff() {
+        let none = nearReset(five: 95, left: 5 * minute, log: [])
+        let tooRecent = nearReset(five: 95, left: 5 * minute, log: [(3 * minute, 95), (0, 95)])
+        let b = account("b", five: 0, seven: 10)
+        XCTAssertEqual(decide(snapshot([none, b], priority: home(none))), .switchTo(b.id, .threshold(tier: 1)))
+        XCTAssertEqual(decide(snapshot([tooRecent, b], priority: home(tooRecent))), .switchTo(b.id, .threshold(tier: 1)))
+    }
+
+    func testLogRowFromAnotherWindowDoesNotCount() {
+        var a = nearReset(five: 95, left: 5 * minute, log: [])
+        a.fiveHourLog = [UsageLogEntry(id: 1, accountId: a.id, window: .fiveHour,
+                                       resetsAt: now.addingTimeInterval(-3 * 3600),
+                                       recordedAt: now.addingTimeInterval(-6 * minute), utilization: 95, isLimited: false)]
+        let b = account("b", five: 0, seven: 10)
+        XCTAssertEqual(decide(snapshot([a, b], priority: home(a))), .switchTo(b.id, .threshold(tier: 1)))
+    }
+
+    func testHomeWaitsDespiteANormalCriticalTarget() {
+        let a = nearReset(five: 95, left: 5 * minute, log: [(6 * minute, 93), (0, 95)])
+        let c = critical(account("c", five: 0, seven: 30), .critical)
+        XCTAssertEqual(decide(snapshot([a, c], priority: home(a))), .stay(.nearReset))
+    }
+
+    /// Rule 1 normally takes a high critical target first; under a hold it reaches the thresholds.
+    func testHeldHomeDoesNotWaitWhenAHighCriticalTargetExists() {
+        let a = nearReset(five: 95, left: 5 * minute, log: [(6 * minute, 93), (0, 95)])
+        let c = critical(account("c", five: 0, seven: 30), .high)
+        XCTAssertEqual(decide(snapshot([a, c], hold: hold(a), priority: home(a))), .switchTo(c.id, .threshold(tier: 1)))
+        XCTAssertEqual(decide(snapshot([a, c], priority: home(a))), .switchTo(c.id, .critical(.high)))
+    }
+
+    func testMostCriticalAccountWaitsForReset() {
+        let a = critical(nearReset(five: 95, left: 5 * minute, log: [(6 * minute, 93), (0, 95)]), .critical, waste: 20)
+        let c = critical(account("c", five: 0, seven: 30), .critical, waste: 10)
+        XCTAssertEqual(decide(snapshot([a, c], hold: hold(a))), .stay(.nearReset))
+    }
+
+    func testCriticalAccountSwitchesWhenAnotherIsMoreCritical() {
+        let a = critical(nearReset(five: 95, left: 5 * minute, log: [(6 * minute, 93), (0, 95)]), .critical, waste: 5)
+        let c = critical(account("c", five: 0, seven: 30), .critical, waste: 10)
+        XCTAssertEqual(decide(snapshot([a, c], hold: hold(a))), .switchTo(c.id, .threshold(tier: 1)))
+    }
+
+    func testOrdinaryAccountStillSwitchesNearReset() {
+        let a = nearReset(five: 95, left: 5 * minute, log: [(6 * minute, 95), (0, 95)])
+        let b = account("b", five: 0, seven: 10)
+        XCTAssertEqual(decide(snapshot([a, b])), .switchTo(b.id, .threshold(tier: 1)))
+    }
+
+    func testSevenDayThresholdStillSwitchesNearFiveHourReset() {
+        let a = nearReset(five: 95, seven: 99, left: 5 * minute, log: [(6 * minute, 95), (0, 95)])
+        let b = account("b", five: 0, seven: 10)
+        XCTAssertEqual(decide(snapshot([a, b], priority: home(a))), .switchTo(b.id, .threshold(tier: 1)))
+    }
 }
