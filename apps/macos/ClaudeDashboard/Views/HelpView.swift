@@ -115,6 +115,12 @@ struct HelpView: View {
             }
             HelpRow(symbol: "pin.fill", "**Pinned**: always at the top of the list, and the account shown in the menu bar.")
             HelpRow(symbol: "bolt.fill", color: .orange, "**Home after reset**: Claude Code comes back here each time this account's 5h limit resets.")
+            HelpRow("**Flame**: orange when the account is critical, red when high critical: its weekly quota will go unused. Hover for the numbers.") {
+                HelpSymbol(name: "flame.fill", color: .red)
+            }
+            HelpRow("**X** (Dashboard header): what a full 5h window costs of the 7d quota. Click for its history.") {
+                HelpSymbol(name: "chart.xyaxis.line", color: .orange)
+            }
             HelpRow(symbol: "exclamationmark.triangle.fill", color: .orange, "**Session expired**: sign in again in the browser, then **Re-sync**.")
 
             HelpCallout(.note, "The menu bar shows the 5h usage and the time left until reset for your pinned account, or the top account when none is pinned.")
@@ -200,6 +206,9 @@ struct HelpView: View {
             }
             HelpRow("**Where to**: the account whose weekly quota is closest to going unused, so nothing is wasted. Near-equal choices are picked at random.") {
                 HelpSymbol(name: "target", color: .teal)
+            }
+            HelpRow("**First, critical accounts**: a high critical account takes Claude Code from anywhere, the home account (bolt) comes back after its 5h reset, and a critical account takes Claude Code from an ordinary account. See **Critical Accounts**.") {
+                HelpSymbol(name: "flame", color: .red)
             }
             HelpRow("**Which accounts**: only ones already signed in to Claude Code (through Switch or `/login`), so the switch is instant. It never opens a browser.") {
                 HelpSymbol(name: "checkmark.seal", color: .green)
