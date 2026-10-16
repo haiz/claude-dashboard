@@ -35,7 +35,7 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
     }
 
     /// frontend is active in Claude Code; backend has a vault copy only when `captureBackend`.
-    private func makeHarness(captureBackend: Bool) async throws -> Harness {
+    private func makeHarness(captureBackend: Bool, frontendId: UUID = UUID()) async throws -> Harness {
         let kc = InMemoryKeychain()
         let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
         let vault = KeychainCredentialVault(keychain: kc)
@@ -43,7 +43,7 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
                                           now: Date.init, sleep: { _ in })
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         let store = AccountStore(defaults: defaults)
-        let frontend = Account(id: UUID(), name: "fe", email: "frontend@gotitapp.co", chromeProfilePath: "",
+        let frontend = Account(id: frontendId, name: "fe", email: "frontend@gotitapp.co", chromeProfilePath: "",
                                plan: .max5x, status: .active, source: .manual)
         let backend = Account(id: UUID(), name: "be", email: "backend@gotitapp.co", chromeProfilePath: "",
                               plan: .max5x, status: .active, source: .manual)
@@ -98,26 +98,39 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
     }
 
     /// The home account at 95% four minutes before its 5h reset, with a backend to move to.
+    /// The log row goes in before the view model exists: its launch refresh runs auto switch
+    /// in the background, and a pass that read the log earlier would switch on an empty one.
     private func makeHomeNearReset(loggedSixMinutesAgo: Double?) async throws -> Harness {
-        let h = try await makeHarness(captureBackend: true)
+        let frontendId = UUID()
         let resetsAt = Date().addingTimeInterval(4 * 60)
+        if let logged = loggedSixMinutesAgo {
+            await UsageLogStore(dbPath: usageLogPath).record(
+                accountId: frontendId, window: .fiveHour, resetsAt: resetsAt,
+                utilization: logged, isLimited: false, at: Date().addingTimeInterval(-6 * 60))
+        }
+        let h = try await makeHarness(captureBackend: true, frontendId: frontendId)
         let index = try XCTUnwrap(h.vm.accountStates.firstIndex { $0.id == h.frontend.id })
         h.vm.accountStates[index].usage = UsageData(
             fiveHour: UsageLimit(utilization: 95, resetsAt: resetsAt),
             sevenDay: UsageLimit(utilization: 40, resetsAt: Date().addingTimeInterval(86_400)))
         try setUsage(h.vm, h.backend.id, five: 10, seven: 20)
         h.settings.setPriority(AutoSwitchPriority(accountId: h.frontend.id, baseline: resetsAt))
-        if let logged = loggedSixMinutesAgo {
-            await h.vm.logStore.record(accountId: h.frontend.id, window: .fiveHour, resetsAt: resetsAt,
-                                       utilization: logged, isLimited: false, at: Date().addingTimeInterval(-6 * 60))
-        }
         h.settings.isEnabled = true
         return h
+    }
+
+    /// Waits out a switch still in flight from the launch refresh's pass, which makes the
+    /// test's own pass skip (`isSwitchingClaudeCode`).
+    private func settle(_ vm: DashboardViewModel) async {
+        for _ in 0..<200 where vm.isSwitchingClaudeCode {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
     }
 
     func testHomeNearItsResetWaitsWhenTheLoggedPaceFits() async throws {
         let h = try await makeHomeNearReset(loggedSixMinutesAgo: 93)
         await h.vm.runAutoSwitch()
+        await settle(h.vm)
         XCTAssertEqual(try h.slot.readOAuth()?.refreshToken, "f1")
         XCTAssertNil(h.vm.autoSwitch.lastEvent)
     }
@@ -125,6 +138,7 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
     func testHomeNearItsResetSwitchesWithoutALoggedPace() async throws {
         let h = try await makeHomeNearReset(loggedSixMinutesAgo: nil)
         await h.vm.runAutoSwitch()
+        await settle(h.vm)
         XCTAssertEqual(try h.slot.readOAuth()?.refreshToken, "b1")
     }
 
