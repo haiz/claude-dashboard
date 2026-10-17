@@ -13,6 +13,8 @@ only what is Windows-specific.
 |---|---|
 | Accounts store | `%APPDATA%\claude-dashboard\accounts.json` |
 | Usage log DB | `%LOCALAPPDATA%\claude-dashboard\usage_logs.db` |
+| Switch Log DB | `%LOCALAPPDATA%\claude-dashboard\auto_switch_logs.db` (newest 500) |
+| X history DB | `%LOCALAPPDATA%\claude-dashboard\ratio_logs.db` (90 days) |
 | Extension sources | `%APPDATA%\claude-dashboard\extension-sources.json` (beside the store) |
 | Store write lock | `%APPDATA%\claude-dashboard\accounts.json.lock` |
 
@@ -128,6 +130,14 @@ refresh timer with the new interval (as macOS reschedules its timer); it never
 starts a fetch. Writes from the Settings pane run one at a time, in click order.
 `hasLaunchedBefore` (default false) is set on the first launch and survives Reset
 All Settings.
+Auto Switch and Critical Accounts use the macOS keys and defaults: `autoSwitchEnabled`
+(true), `autoSwitchFiveHourThreshold` (95, 50...99), `autoSwitchSevenDayThreshold` (99,
+50...100), `autoSwitchShowWidgetToggle` (true), `autoSwitchPriorityAccountId` and
+`autoSwitchPriorityBaseline` (Unix seconds; the home account), `criticalPace` (50, 10...100),
+`criticalHighPace` (80, never below `criticalPace`), `criticalQuietStart` / `criticalQuietEnd`
+(0 / 7, 0...23; equal means no quiet hours) and `criticalTimeZone` (`Asia/Ho_Chi_Minh`, an IANA
+name). A stored value out of range, or an unknown zone, loads as the default. Reset All
+Settings restores them all and keeps the home account.
 
 ## Launch at startup
 
@@ -222,6 +232,22 @@ A switch writes the target's `claudeAiOauth` and `oauthAccount` (temp file + ren
 before write, rollback on failure). An account with no usable copy signs in once through its
 browser profile (`--profile-directory`; extension-fed accounts open their browser without a
 profile; pasted keys cannot). Dev runs have no switcher.
+
+## Auto Switch and Critical accounts
+
+Follows macOS (`docs/superpowers/specs/2026-10-16-critical-accounts-design.md` and the macOS
+`AutoSwitchPlanner` / `AutoSwitchController`; Windows design
+`docs/superpowers/specs/2026-10-17-windows-auto-switch-critical-design.md`). The planner, the
+critical assessment, the X estimate and both logs are pure `core` modules (`auto_switch`,
+`auto_switch_log`, `critical`, `usage_ratio`); the app's controller (`app/src/auto_switch.rs`)
+runs on the refresh thread after every refresh, then a switch re-captures Claude Code's login
+and moves the badge. Only `ready` accounts are used, through `Switcher::switch_to`: never a
+browser, never a prompt. A manual Switch and an auto switch never run together, and a manual
+Switch holds Claude Code on its target until its 5h reset. While auto switch is on and the
+active account is in the warning zone, the active account is fetched every 60 s. X is
+recomputed at launch and hourly from `usage_logs.db` (default 16 until 100 points of 5h use).
+Dev runs (`CLAUDE_DASHBOARD_FAKE_ROWS=1`) have no switcher, so they never switch, and keep the
+default X. Settings texts say "tray flyout" where macOS says "menu bar".
 
 ## App reload pipe
 

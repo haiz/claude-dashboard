@@ -181,7 +181,10 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
     the Ping Log match macOS (`core::ping`, `core::ping_log`, `app/src/ping.rs`; see
     `contract/windows.md`, "Ping"). The Claude Code account switch matches macOS too
     (`core::cc_switch`, `core::cc_oauth`, `app/src/cc_*.rs`; credentials file + DPAPI vault;
-    see `contract/windows.md`, "Claude Code switch"). Run Command and the
+    see `contract/windows.md`, "Claude Code switch"). Auto Switch, the Switch Log, critical
+    accounts and X match macOS as well (`core::auto_switch`, `core::auto_switch_log`,
+    `core::critical`, `core::usage_ratio`; `app/src/auto_switch.rs`, `ratio.rs`,
+    `switch_log_view.rs`; see `contract/windows.md`, "Auto Switch and Critical accounts"). Run Command and the
     Command Log were later removed, as on macOS; the app deletes their leftover files at launch
     (`app/src/migration.rs`; see `contract/windows.md`, "Launch cleanup"). Sub-project 6 adds
     release: a per-user MSI
