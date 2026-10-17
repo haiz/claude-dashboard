@@ -117,7 +117,18 @@ pub fn countdown_ring(remaining_s: f64, total_s: f64, diameter: f64, line_width:
         .collect()
 }
 
-fn window(w: &Option<WindowView>, total_s: f64, now: f64, local_shift: f64, animal: &str) -> UiWindow {
+fn animal_for(projected: Option<f64>) -> &'static str {
+    projected.map(|s| BurnRateResult::from_projected_time(s).animal).unwrap_or("")
+}
+
+fn window(
+    w: &Option<WindowView>,
+    total_s: f64,
+    now: f64,
+    local_shift: f64,
+    animal: &str,
+    countdown_ring_shown: bool,
+) -> UiWindow {
     match w {
         None => UiWindow {
             diameter: GAUGE_DIAMETER as f32,
@@ -149,8 +160,8 @@ fn window(w: &Option<WindowView>, total_s: f64, now: f64, local_shift: f64, anim
                 countdown: countdown.into(),
                 countdown_color: cd_color,
                 segments: slint::ModelRc::new(slint::VecModel::from(match v.resets_at_unix {
-                    Some(r) => countdown_ring(r - now, total_s, GAUGE_DIAMETER, GAUGE_LINE_WIDTH),
-                    None => Vec::new(),
+                    Some(r) if countdown_ring_shown => countdown_ring(r - now, total_s, GAUGE_DIAMETER, GAUGE_LINE_WIDTH),
+                    _ => Vec::new(),
                 })),
                 animal: animal.into(),
             }
@@ -161,10 +172,7 @@ fn window(w: &Option<WindowView>, total_s: f64, now: f64, local_shift: f64, anim
 pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
     let shift = local_offset_s();
     let seed = if row.account_id.is_empty() { &row.name } else { &row.account_id };
-    let animal = row
-        .burn_projected_seconds
-        .map(|s| BurnRateResult::from_projected_time(s).animal)
-        .unwrap_or("");
+    let animal = animal_for(row.burn_projected_seconds);
     let sidebar = sidebar_percent(row);
     UiRow {
         id: row.account_id.as_str().into(),
@@ -181,9 +189,24 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
         status: status_str(&row.status).into(),
         peak: row.peak_utilization as f32,
         peak_color: to_color(usage_color(row.peak_utilization)),
-        five_hour: window(&row.five_hour, FIVE_HOUR_S, now_unix_s, shift, animal),
-        seven_day: window(&row.seven_day, SEVEN_DAY_S, now_unix_s, shift, ""),
-        fable: window(&row.fable, SEVEN_DAY_S, now_unix_s, shift, ""),
+        five_hour: window(&row.five_hour, FIVE_HOUR_S, now_unix_s, shift, animal, true),
+        seven_day: window(
+            &row.seven_day,
+            SEVEN_DAY_S,
+            now_unix_s,
+            shift,
+            animal_for(row.burn_projected_seconds_7d),
+            true,
+        ),
+        // macOS `showCountdown: false` for Fable: no countdown segments.
+        fable: window(
+            &row.fable,
+            SEVEN_DAY_S,
+            now_unix_s,
+            shift,
+            animal_for(row.burn_projected_seconds_fable),
+            false,
+        ),
         avatar_color: to_color(avatar_color(seed)),
         animal: animal.into(),
         staleness: staleness(row.last_synced_unix, now_unix_s).into(),
@@ -203,6 +226,7 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use slint::Model;
 
     #[test]
     fn claude_code_flag_maps_to_ui() {
@@ -224,6 +248,8 @@ mod tests {
             fable: None,
             peak_utilization: 0.0,
             burn_projected_seconds: None,
+            burn_projected_seconds_7d: None,
+            burn_projected_seconds_fable: None,
             is_extension_sourced: false,
             error: None,
             last_synced_unix: None,
@@ -261,6 +287,26 @@ mod tests {
         assert!(blue.len() >= green.len());
         assert!(blue[0].path.starts_with("M "));
         assert!(countdown_ring(0.0, total, GAUGE_DIAMETER, GAUGE_LINE_WIDTH).is_empty());
+    }
+
+    #[test]
+    fn every_window_carries_its_animal_and_fable_has_no_countdown() {
+        let mut r = row();
+        let reset = Some(1e9 + 3600.0);
+        r.five_hour = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
+        r.seven_day = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
+        r.fable = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
+        r.burn_projected_seconds = Some(600.0);
+        r.burn_projected_seconds_7d = Some(1.0e6);
+        r.burn_projected_seconds_fable = Some(600.0);
+        let ui = to_ui_row(&r, 1e9);
+        assert!(!ui.five_hour.animal.is_empty());
+        assert!(!ui.seven_day.animal.is_empty());
+        assert!(!ui.fable.animal.is_empty());
+        assert_ne!(ui.five_hour.animal, ui.seven_day.animal);
+        assert!(ui.five_hour.segments.row_count() > 0);
+        assert!(ui.seven_day.segments.row_count() > 0);
+        assert_eq!(ui.fable.segments.row_count(), 0);
     }
 
     #[test]

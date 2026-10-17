@@ -138,6 +138,8 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         fable: None,
         peak_utilization: u5.max(u7),
         burn_projected_seconds: burn,
+        burn_projected_seconds_7d: None,
+        burn_projected_seconds_fable: None,
         is_extension_sourced: false,
         error: None,
         last_synced_unix: Some(now),

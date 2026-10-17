@@ -36,6 +36,9 @@ pub struct DisplayRow {
     /// The projection needs poll history (`BurnRateTracker`), which a pure
     /// row builder does not have; the caller fills this in.
     pub burn_projected_seconds: Option<f64>,
+    /// Same projection for the 7-day and Fable windows (macOS shows an animal on each gauge).
+    pub burn_projected_seconds_7d: Option<f64>,
+    pub burn_projected_seconds_fable: Option<f64>,
     pub is_extension_sourced: bool,
     pub error: Option<String>,
     pub last_synced_unix: Option<f64>,
@@ -104,6 +107,8 @@ pub fn build_rows(input: BuildInput<'_>) -> Vec<DisplayRow> {
                 fable,
                 peak_utilization: peak,
                 burn_projected_seconds: None,
+                burn_projected_seconds_7d: None,
+                burn_projected_seconds_fable: None,
                 is_extension_sourced: input.sources.bindings.values().any(|b| b.account_id == a.id),
                 error: input.errors.get(&a.id).cloned(),
                 last_synced_unix: a.last_synced_unix(),
@@ -134,10 +139,10 @@ pub fn build_rows(input: BuildInput<'_>) -> Vec<DisplayRow> {
 }
 
 /// Port of `DashboardViewModel.menuBarPercentText`'s row choice: the pinned
-/// row, else the first row (in sort order) that has a 5-hour reading.
+/// row when it has usage, else the first row (in sort order) that has a 5-hour reading.
 pub fn menu_bar_row(rows: &[DisplayRow]) -> Option<&DisplayRow> {
     rows.iter()
-        .find(|r| r.is_pinned)
+        .find(|r| r.is_pinned && r.five_hour.is_some())
         .or_else(|| rows.iter().find(|r| r.five_hour.is_some()))
 }
 
@@ -361,6 +366,15 @@ mod tests {
         let rows = vec![
             plain("a", false, AccountStatus::Active, Some(90.0), None),
             plain("b", true, AccountStatus::Active, Some(10.0), None),
+        ];
+        assert_eq!(menu_bar_row(&rows).unwrap().account_id, "b");
+    }
+
+    #[test]
+    fn menu_bar_row_ignores_pinned_row_without_usage() {
+        let rows = vec![
+            plain("a", true, AccountStatus::Active, None, None),
+            plain("b", false, AccountStatus::Active, Some(10.0), None),
         ];
         assert_eq!(menu_bar_row(&rows).unwrap().account_id, "b");
     }
