@@ -213,7 +213,7 @@ component TopicChip inherits Rectangle {
         : root.topic-id == "reading-a-card" ? "\u{E946}"
         : root.topic-id == "finding-your-way" ? "\u{E707}"
         : root.topic-id == "charts" ? "\u{E9D2}"
-        : root.topic-id == "ping" ? "\u{E8C8}"
+        : root.topic-id == "ping" ? "\u{E701}"
         : root.topic-id == "managing-accounts" ? "\u{E716}"
         : root.topic-id == "refresh-updates" ? "\u{E72C}"
         : "\u{E90F}";
@@ -424,13 +424,13 @@ export component HelpPane inherits Flickable {
             HelpRow { glyph: "\u{E72C}"; body: @markdown("**Refresh**: fetch the latest usage for every account."); }
             HelpRow { glyph: "\u{E740}"; body: @markdown("**Open window**: the full dashboard."); }
             HelpRow { glyph: "\u{E897}"; body: @markdown("**Help**: this page."); }
-            HelpRow { glyph: "\u{E713}"; body: @markdown("**Settings**: accounts, refresh, updates."); }
+            HelpRow { glyph: "\u{E713}"; body: @markdown("**Settings**: accounts, refresh, Auto Ping, updates."); }
             HelpRow { glyph: "\u{E7E8}"; body: @markdown("**Quit** (bottom left, asks first). **Right-click** the tray icon for **Open Dashboard**, **Refresh** and **Quit**. Closing the window keeps the app in the tray."); }
 
             HelpSubheading { text: "Main window sidebar"; }
             HelpRow { glyph: "\u{E80A}"; tint: #0a84ff; body: @markdown("**Usage**: Dashboard (all cards) and Overview (all accounts on one chart)."); }
             HelpRow { glyph: "\u{E77B}"; tint: #40c8e0; body: @markdown("**Accounts**: one page per account, with its current usage next to the name."); }
-            HelpRow { glyph: "\u{E90F}"; tint: #5e5ce6; body: @markdown("**Tools**: Help."); }
+            HelpRow { glyph: "\u{E90F}"; tint: #5e5ce6; body: @markdown("**Tools**: Ping Log and Help."); }
             HelpRow { glyph: "\u{E713}"; tint: #8e8e93; body: @markdown("**Settings**: Accounts and General."); }
 
             HelpCallout { kind: "tip"; body: @markdown("Click any ring to open that account's page on that window's chart. **Right-click** a card to pin it to the top."); }
@@ -458,7 +458,7 @@ export component HelpPane inherits Flickable {
             topic-id: "ping";
             title: "Ping";
             subtitle: "Start a usage window now so it resets sooner.";
-            glyph: "\u{E8C8}";
+            glyph: "\u{E701}";
             tile: #5e5ce6;
             HelpText { body: @markdown("A window only starts counting at your first message. Pinging starts it now, so it resets sooner."); }
             HelpRow { glyph: "\u{E7C9}"; tint: #5e5ce6; body: @markdown("**Ping** (account page): sends one short message from that account to start its 5h and 7d windows."); }

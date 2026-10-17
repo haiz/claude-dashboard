@@ -177,7 +177,9 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
     launch at startup) panes. Sub-project 4 adds charts: the per-account interactive usage chart
     (`ui/chart.slint`, `src/chart.rs`, pure helpers in `chart_model.rs`), shown in the History
     box on the account page (`src/history.rs`, with the Reset Cycles list), and the Overview multi-account chart opened from the sidebar "Overview" item. Sub-project 5 adds
-    the green Claude Code badge (`core::claude_code`) and the Help pane. Run Command and the
+    the green Claude Code badge (`core::claude_code`) and the Help pane. Ping, Auto Ping and
+    the Ping Log match macOS (`core::ping`, `core::ping_log`, `app/src/ping.rs`; see
+    `contract/windows.md`, "Ping"). Run Command and the
     Command Log were later removed, as on macOS; the app deletes their leftover files at launch
     (`app/src/migration.rs`; see `contract/windows.md`, "Launch cleanup"). Sub-project 6 adds
     release: a per-user MSI

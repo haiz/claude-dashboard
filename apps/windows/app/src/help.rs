@@ -48,6 +48,13 @@ mod tests {
     }
 
     #[test]
+    fn finding_your_way_names_ping_log_and_auto_ping() {
+        let ui = include_str!("../ui/help.slint");
+        assert!(ui.contains("**Tools**: Ping Log and Help."));
+        assert!(ui.contains("**Settings**: accounts, refresh, Auto Ping, updates."));
+    }
+
+    #[test]
     fn every_topic_has_a_card_in_the_slint_file() {
         let ui = include_str!("../ui/help.slint");
         for (id, title) in TOPICS {
