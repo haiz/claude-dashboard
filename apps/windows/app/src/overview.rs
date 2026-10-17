@@ -13,12 +13,11 @@ use claude_dashboard_core::store::UsageLogStore;
 use slint::{ComponentHandle, Model};
 
 use crate::chart::{now_ms, offset_ms, to_state, vis_with_context, Interaction, Mode, View};
-use crate::chart_model::{
-    format_stamp, interpolate, points_to_entries, series_path, x_to_ms,
-};
+use crate::chart_model::{format_stamp, interpolate, points_to_entries, series_path, x_to_ms};
 use crate::{AppWindow, ChartLegendItem, ChartLine, ChartPoint};
 
-const DEFAULT_PRESET: &str = "24h";
+/// macOS `OverviewChartView.initialPreset` (.fiveHour).
+const DEFAULT_PRESET: &str = "5h";
 const DEFAULT_WINDOW: &str = "5h";
 /// How far back the loaded history reaches (covers the 30d preset and pans).
 const HISTORY_DAYS: f64 = 400.0;
@@ -54,6 +53,10 @@ pub fn plan_weight(plan: &str) -> f64 {
         _ => 1.0,
     }
 }
+
+/// One frame of the Overview chart: the view state, the lines, the legend and
+/// the limit-hit markers.
+pub type OverviewView = (View, Vec<ChartLine>, Vec<ChartLegendItem>, Vec<(f64, f64)>);
 
 pub struct Overview {
     inner: Interaction,
@@ -119,10 +122,7 @@ impl Overview {
         a.animals[i].clone()
     }
 
-    pub fn view(
-        &self,
-        local_offset_ms: f64,
-    ) -> (View, Vec<ChartLine>, Vec<ChartLegendItem>, Vec<(f64, f64)>) {
+    pub fn view(&self, local_offset_ms: f64) -> OverviewView {
         let mut v = self.inner.view(local_offset_ms);
         let sc = self.inner.scale();
         let range = self.inner.range;
@@ -501,6 +501,13 @@ mod tests {
         );
         o.loaded(m, BTreeMap::new(), NOW);
         o
+    }
+
+    #[test]
+    fn opens_on_the_5h_preset_like_macos() {
+        assert_eq!(DEFAULT_PRESET, "5h");
+        let o = Overview::new(DEFAULT_WINDOW, DEFAULT_PRESET, Vec::new(), NOW);
+        assert_eq!(o.inner.preset, "5h");
     }
 
     #[test]

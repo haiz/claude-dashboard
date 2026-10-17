@@ -513,9 +513,9 @@ fn seed_5h(knots: &[(usize, f64)]) -> [f64; 40] {
     let mut out = [0.0; 40];
     for w in knots.windows(2) {
         let ((i0, v0), (i1, v1)) = (w[0], w[1]);
-        for i in i0..=i1 {
+        for (i, slot) in out.iter_mut().enumerate().take(i1 + 1).skip(i0) {
             // The step right after a limit hit is the reset itself (no ramp).
-            out[i] = if i1 == i0 + 1 {
+            *slot = if i1 == i0 + 1 {
                 if i == i0 {
                     v0
                 } else {

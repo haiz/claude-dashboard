@@ -381,6 +381,9 @@ export component AppWindow inherits Window {
     background: transparent;
     in property <bool> use-solid-background: false;
     in property <[UiRow]> account-rows;
+    // The same rows in a stable order (a re-sort never moves them), so the account
+    // pages' components, and their local state, survive a refresh. Set from Rust.
+    in property <[UiRow]> pane-rows;
     in-out property <Pane> selection: Pane.dashboard;
     in-out property <string> selected-account-id;
     // Help pane: the topic grid, and the topic id to scroll to ("" = top). `open-help` selects
@@ -574,7 +577,7 @@ export component AppWindow inherits Window {
             if root.selection == Pane.account: Rectangle {
                 vertical-stretch: 1;
                 // Non-layout container: one pane per row, only the selected one visible.
-                for acct in root.account-rows: AccountPane {
+                for acct in root.pane-rows: AccountPane {
                     visible: root.selected-account-id == acct.id;
                     active: root.selected-account-id == acct.id;
                     data: acct;

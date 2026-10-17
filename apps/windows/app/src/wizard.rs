@@ -59,7 +59,10 @@ fn account_ids() -> Vec<(String, String)> {
 }
 
 /// Builds the (hidden) wizard window and returns the function that opens it.
-pub fn install(dark: bool, nudge: Sender<crate::refresh::Nudge>) -> Result<Rc<dyn Fn()>, slint::PlatformError> {
+pub fn install(
+    dark: bool,
+    nudge: Sender<crate::refresh::Nudge>,
+) -> Result<Rc<dyn Fn()>, slint::PlatformError> {
     let win = SetupWizardWindow::new()?;
     win.global::<crate::Theme>().set_dark(dark);
 
@@ -144,7 +147,7 @@ pub fn install(dark: bool, nudge: Sender<crate::refresh::Nudge>) -> Result<Rc<dy
                                 Some(e) if !e.is_empty() => format!("{} ({e})", s.display_name),
                                 _ => s.display_name.clone(),
                             };
-                            let detail = format!("{:?} - {}", s.browser, s.profile_dir);
+                            let detail = format!("{} - {}", s.browser.short_name(), s.profile_dir);
                             rows.push((sessions.len() as i32, label, detail));
                             sessions.push(s);
                         }

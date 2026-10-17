@@ -16,6 +16,7 @@ mod pipe;
 mod popover;
 mod refresh;
 mod resync;
+mod row_sync;
 mod settings_accounts;
 mod settings_general;
 mod setup;
@@ -95,11 +96,15 @@ fn apply_output(
         }
     }
     if let Some(pop) = pop_weak.upgrade() {
-        pop.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows.clone())));
+        publish_rows(pop.get_account_rows(), rows.clone(), |m| pop.set_account_rows(m));
         pop.set_refreshing(false);
     }
     if let Some(app) = weak.upgrade() {
-        app.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+        use slint::Model;
+        let pane_ids: Vec<slint::SharedString> = app.get_pane_rows().iter().map(|r| r.id).collect();
+        let pane_rows = row_sync::stable_order(&pane_ids, rows.clone(), |r| r.id.clone());
+        publish_rows(app.get_pane_rows(), pane_rows, |m| app.set_pane_rows(m));
+        publish_rows(app.get_account_rows(), rows, |m| app.set_account_rows(m));
         app.set_refreshing(false);
         // The selected account is gone (removed here, in Settings, or by the store): fall back to Dashboard.
         if app.get_selection() == Pane::Account
@@ -119,6 +124,16 @@ fn apply_output(
     LAST_OUTPUT.with(|l| *l.borrow_mut() = Some((out.clone(), now)));
 }
 
+/// Updates the `VecModel` behind `current` in place by account id (see `row_sync`), so the
+/// repeaters keep their components; `set` installs a fresh model the first time.
+fn publish_rows(current: slint::ModelRc<UiRow>, rows: Vec<UiRow>, set: impl FnOnce(slint::ModelRc<UiRow>)) {
+    use slint::Model;
+    match current.as_any().downcast_ref::<slint::VecModel<UiRow>>() {
+        Some(vm) => row_sync::sync(vm, rows, |r| r.id.clone()),
+        None => set(slint::ModelRc::new(slint::VecModel::from(rows))),
+    }
+}
+
 
 /// Background loop: refresh now, then every Auto Refresh interval (re-read each
 /// cycle, so a settings change applies without restart) or whenever nudged. A
@@ -135,20 +150,25 @@ fn spawn_refresh_loop(
         let mut tracker = claude_dashboard_core::burn_rate::BurnRateTracker::default();
         let mut jobs = vec![Nudge::All];
         loop {
+            // `coalesce` drops `Reschedule`: an empty batch just waits again below,
+            // with the interval re-read from settings.
             for job in std::mem::take(&mut jobs) {
+                if job == Nudge::Reschedule {
+                    continue;
+                }
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs_f64())
                     .unwrap_or(0.0);
                 let only = match &job {
                     Nudge::One(id) => Some(id.clone()),
-                    Nudge::All => None,
+                    Nudge::All | Nudge::Reschedule => None,
                 };
                 // Spinners on until apply_output replaces the rows.
                 let (w, pw, o) = (weak.clone(), pop_weak.clone(), only.clone());
                 let _ = slint::invoke_from_event_loop(move || begin_refresh(&w, &pw, o.as_deref()));
                 let mut out = match &job {
-                    Nudge::All => {
+                    Nudge::All | Nudge::Reschedule => {
                         let fresh = refresh::refresh_once(now);
                         let fetched = fresh.is_ok();
                         let mut out = refresh::merge_errors(&prev, fresh);
@@ -203,15 +223,16 @@ fn dev_run() -> bool {
         || std::env::var_os("CLAUDE_DASHBOARD_SMOKE").is_some()
 }
 
-/// UI thread: sets `f` on the row `id` of the main window's model.
-fn patch_row(weak: &slint::Weak<AppWindow>, id: &str, f: impl FnOnce(&mut UiRow)) {
+/// UI thread: sets `f` on the row `id` of the main window's models (cards and pages).
+fn patch_row(weak: &slint::Weak<AppWindow>, id: &str, f: impl Fn(&mut UiRow)) {
     use slint::Model;
     let Some(app) = weak.upgrade() else { return };
-    let rows = app.get_account_rows();
-    if let Some(i) = (0..rows.row_count()).find(|&i| rows.row_data(i).is_some_and(|r| r.id == id)) {
-        if let Some(mut row) = rows.row_data(i) {
-            f(&mut row);
-            rows.set_row_data(i, row);
+    for rows in [app.get_account_rows(), app.get_pane_rows()] {
+        if let Some(i) = (0..rows.row_count()).find(|&i| rows.row_data(i).is_some_and(|r| r.id == id)) {
+            if let Some(mut row) = rows.row_data(i) {
+                f(&mut row);
+                rows.set_row_data(i, row);
+            }
         }
     }
 }
@@ -233,6 +254,7 @@ fn begin_refresh(weak: &slint::Weak<AppWindow>, pop_weak: &slint::Weak<PopoverWi
     };
     if let Some(app) = weak.upgrade() {
         mark(app.get_account_rows());
+        mark(app.get_pane_rows());
         app.set_refreshing(true);
     }
     if let Some(pop) = pop_weak.upgrade() {
@@ -270,7 +292,7 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
                 eprintln!("pin failed: {e}");
                 let msg = format!("Could not change the pin. {e}");
                 let _ = slint::invoke_from_event_loop(move || {
-                    patch_row(&w, &id, |r| r.error = msg.into());
+                    patch_row(&w, &id, |r| r.error = msg.as_str().into());
                 });
             }
         });
@@ -288,6 +310,10 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
         if ids.is_empty() {
             return;
         }
+        // Dev runs: the scanned fake rows, the denominator the real path counts from the store.
+        let dev_scanned = dev_run().then(|| {
+            LAST_OUTPUT.with(|l| l.borrow().as_ref().map_or(0, |(out, _)| fake_scanned_total(&out.rows)))
+        });
         app.set_resyncing(true);
         // Until the worker counts the scanned accounts.
         app.set_resync_progress("Re-syncing\u{2026}".into());
@@ -302,11 +328,13 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
                     }
                 });
             };
-            if dev_run() {
-                // Dev runs never touch the store: just walk the progress text.
-                for done in 1..=ids.len() {
+            if let Some(total) = dev_scanned {
+                // Dev runs never touch the store: just walk the progress text over the
+                // scanned rows, as the real path does.
+                post(Some(settings_accounts::progress_text(0, total)));
+                for done in 1..=total {
                     std::thread::sleep(std::time::Duration::from_millis(500));
-                    post(Some(settings_accounts::progress_text(done, ids.len())));
+                    post(Some(settings_accounts::progress_text(done, total)));
                 }
                 post(None);
                 return;
@@ -342,12 +370,20 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
                 }
                 resync::ResyncOutcome::Failed(msg) => {
                     let _ = slint::invoke_from_event_loop(move || {
-                        patch_row(&w, &id, |r| r.error = msg.into());
+                        patch_row(&w, &id, |r| r.error = msg.as_str().into());
                     });
                 }
             }
         });
     });
+}
+
+/// Dev-only: how many fake rows are scanned accounts (neither extension-fed nor pasted).
+fn fake_scanned_total(rows: &[claude_dashboard_core::rows::DisplayRow]) -> usize {
+    let pasted = claude_dashboard_core::account_kind::AccountKind::PastedKey.settings_label();
+    rows.iter()
+        .filter(|r| !r.is_extension_sourced && r.kind_label != pasted)
+        .count()
 }
 
 /// Dev-only: `CLAUDE_DASHBOARD_FAKE_ROWS=1` seeds sample cards (no network): a pinned
@@ -605,7 +641,7 @@ fn install_updates(app: &AppWindow) {
         if let Some(a) = w.upgrade() {
             a.set_auto_update(on);
         }
-        std::thread::spawn(move || {
+        settings_general::writer().submit(move || {
             if let Err(e) = settings_general::set_auto_update(on) {
                 eprintln!("save auto update failed: {e}");
             }
@@ -809,10 +845,10 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Some(a) = w.upgrade() {
                 a.set_auto_refresh_enabled(on);
             }
-            std::thread::spawn(move || match settings_general::set_auto_refresh_enabled(on) {
-                // Nudge: the loop wakes and re-reads the interval right away.
+            settings_general::writer().submit(move || match settings_general::set_auto_refresh_enabled(on) {
+                // Reschedule: the loop re-reads the interval and restarts its wait; no fetch.
                 Ok(()) => {
-                    let _ = tx.send(refresh::Nudge::All);
+                    let _ = tx.send(refresh::Nudge::Reschedule);
                 }
                 Err(e) => eprintln!("save auto refresh failed: {e}"),
             });
@@ -825,9 +861,9 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Some(a) = w.upgrade() {
                 a.set_auto_refresh_minutes(minutes);
             }
-            std::thread::spawn(move || match settings_general::set_auto_refresh_minutes(minutes as u64) {
+            settings_general::writer().submit(move || match settings_general::set_auto_refresh_minutes(minutes as u64) {
                 Ok(()) => {
-                    let _ = tx.send(refresh::Nudge::All);
+                    let _ = tx.send(refresh::Nudge::Reschedule);
                 }
                 Err(e) => eprintln!("save auto refresh failed: {e}"),
             });
@@ -836,7 +872,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let w = app.as_weak();
         app.on_reset_all_settings(move || {
             let (tx, w) = (tx.clone(), w.clone());
-            std::thread::spawn(move || match settings_general::reset_all() {
+            settings_general::writer().submit(move || match settings_general::reset_all() {
                 Ok(state) => {
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(a) = w.upgrade() {
@@ -845,7 +881,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             a.set_auto_update(state.auto_update);
                         }
                     });
-                    let _ = tx.send(refresh::Nudge::All);
+                    let _ = tx.send(refresh::Nudge::Reschedule);
                 }
                 Err(e) => eprintln!("reset settings failed: {e}"),
             });
@@ -853,7 +889,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let w = app.as_weak();
         app.on_set_launch_at_startup(move |on| {
             let w = w.clone();
-            std::thread::spawn(move || {
+            settings_general::writer().submit(move || {
                 if let Err(e) = settings_general::set_launch_at_startup(on) {
                     eprintln!("launch at startup failed: {e}");
                 }
@@ -1082,4 +1118,15 @@ fn main() -> Result<(), slint::PlatformError> {
     let result = slint::run_event_loop_until_quit();
     drop(focus_timer);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn fake_resync_all_counts_scanned_rows_only() {
+        // alice, carol and erin are scanned; bob is extension-fed, dave pasted.
+        let out = super::fake_rows(1_000_000.0);
+        assert_eq!(out.rows.len(), 5);
+        assert_eq!(super::fake_scanned_total(&out.rows), 3);
+    }
 }

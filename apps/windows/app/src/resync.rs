@@ -148,7 +148,10 @@ pub fn resync(account_id: &str, env: &dyn ResyncEnv) -> ResyncOutcome {
             target.email = info.email.clone();
         }
         match resolve_org_id(
-            cookie_org.as_deref().or(target.org_id.as_deref()),
+            cookie_org
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .or(target.org_id.as_deref()),
             &info.memberships,
         ) {
             Some(org) => target.org_id = Some(org),
@@ -347,6 +350,18 @@ mod tests {
         a.org_id = Some("org-stored".into());
         store::save_accounts(&[a]).unwrap();
         let env = fake(Ok("sk-new"), "uuid-1");
+        assert_eq!(resync("s", &env), ResyncOutcome::Updated);
+        assert_eq!(stored("s").org_id.as_deref(), Some("org-stored"));
+    }
+
+    #[test]
+    fn empty_cookie_org_falls_back_to_stored_org() {
+        let _g = crate::testenv::lock();
+        let mut a = account("s", AccountSource::Browser);
+        a.org_id = Some("org-stored".into());
+        let _d = setup(&[a], &[]);
+        let mut env = fake(Ok("sk-new"), "uuid-1");
+        env.cookie_org = Some(String::new());
         assert_eq!(resync("s", &env), ResyncOutcome::Updated);
         assert_eq!(stored("s").org_id.as_deref(), Some("org-stored"));
     }

@@ -79,7 +79,9 @@ jobs:
           TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           # About shows the release date, as macOS does; build.rs bakes it in (yyyy-MM-dd).
-          $env:CLAUDE_DASHBOARD_RELEASE_DATE = (git log -1 --format=%cs "$env:TAG").Trim()
+          # Null-safe: no output leaves it empty (About then shows no date) instead of failing.
+          $date = git log -1 --format=%cs "$env:TAG"
+          $env:CLAUDE_DASHBOARD_RELEASE_DATE = if ($date) { "$date".Trim() } else { "" }
           ./apps/windows/scripts/build-msi.ps1
 
       - name: Pack extension

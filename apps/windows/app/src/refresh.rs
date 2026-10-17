@@ -16,22 +16,27 @@ pub struct RefreshOutput {
     pub peak: f64,
 }
 
-/// What wakes the refresh loop: every account, or just one (the account page's Refresh).
+/// What wakes the refresh loop: every account, just one (the account page's Refresh), or
+/// `Reschedule`: the Auto Refresh setting changed, so restart the wait with the new
+/// interval without fetching anything (macOS only reschedules its timer).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Nudge {
     All,
     One(String),
+    Reschedule,
 }
 
 /// Folds the nudges that piled up while a cycle ran: any `All` covers everything, otherwise
-/// each distinct account once, in arrival order.
+/// each distinct account once, in arrival order. `Reschedule` is never a cycle: it is
+/// dropped, so a batch of only `Reschedule`s yields nothing to run and the loop simply
+/// waits again with a freshly read interval.
 pub fn coalesce(nudges: Vec<Nudge>) -> Vec<Nudge> {
     if nudges.contains(&Nudge::All) {
         return vec![Nudge::All];
     }
     let mut out: Vec<Nudge> = Vec::new();
     for n in nudges {
-        if !out.contains(&n) {
+        if n != Nudge::Reschedule && !out.contains(&n) {
             out.push(n);
         }
     }
@@ -402,6 +407,19 @@ mod tests {
             vec![One("a".into()), One("b".into())]
         );
         assert!(coalesce(vec![]).is_empty());
+    }
+
+    #[test]
+    fn reschedule_never_becomes_a_refresh() {
+        use Nudge::*;
+        assert!(coalesce(vec![Reschedule]).is_empty(), "only re-wait");
+        assert!(coalesce(vec![Reschedule, Reschedule]).is_empty());
+        assert_eq!(coalesce(vec![Reschedule, All, Reschedule]), vec![All], "All wins");
+        assert_eq!(
+            coalesce(vec![Reschedule, One("a".into()), Reschedule]),
+            vec![One("a".into())],
+            "One wins"
+        );
     }
 
     #[test]

@@ -4,6 +4,41 @@
 use claude_dashboard_core::{settings, startup};
 
 pub const APP_NAME: &str = "Claude Dashboard";
+
+type Job = Box<dyn FnOnce() + Send>;
+
+/// One worker thread that runs settings writes in the order they were
+/// submitted, so rapid clicks (the interval stepper) cannot land out of order
+/// the way one thread per click could.
+pub struct SettingsWriter {
+    tx: std::sync::Mutex<std::sync::mpsc::Sender<Job>>,
+}
+
+impl SettingsWriter {
+    pub fn spawn() -> Self {
+        let (tx, rx) = std::sync::mpsc::channel::<Job>();
+        std::thread::spawn(move || {
+            for job in rx {
+                job();
+            }
+        });
+        SettingsWriter {
+            tx: std::sync::Mutex::new(tx),
+        }
+    }
+
+    /// Queues `job` behind every write submitted before it.
+    pub fn submit(&self, job: impl FnOnce() + Send + 'static) {
+        let tx = self.tx.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = tx.send(Box::new(job));
+    }
+}
+
+/// The app's settings writer (Settings > General and the auto-update toggle).
+pub fn writer() -> &'static SettingsWriter {
+    static W: std::sync::LazyLock<SettingsWriter> = std::sync::LazyLock::new(SettingsWriter::spawn);
+    &W
+}
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Persists the Auto Refresh on/off switch. The refresh loop re-reads settings
@@ -89,6 +124,30 @@ pub fn set_auto_update(on: bool) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn writer_runs_jobs_in_submission_order() {
+        let _env = crate::testenv::lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("APPDATA", dir.path());
+        std::env::set_var("LOCALAPPDATA", dir.path());
+        let w = SettingsWriter::spawn();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        for m in 1..=20u64 {
+            let seen = seen.clone();
+            w.submit(move || {
+                set_auto_refresh_minutes(m).unwrap();
+                seen.lock().unwrap().push(m);
+            });
+        }
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        w.submit(move || done_tx.send(()).unwrap());
+        done_rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap();
+        assert_eq!(*seen.lock().unwrap(), (1..=20).collect::<Vec<_>>());
+        assert_eq!(current_auto_refresh(), (true, 20), "the last click wins");
+    }
 
     #[test]
     fn reset_all_restores_refresh_and_update_keeps_startup() {

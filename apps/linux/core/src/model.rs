@@ -49,6 +49,17 @@ impl Browser {
         }
     }
 
+    /// Short name for compact UI text (the scan wizard's row detail).
+    pub fn short_name(&self) -> &'static str {
+        match self {
+            Browser::Chrome => "Chrome",
+            Browser::ChromeDev => "Chrome Dev",
+            Browser::Arc => "Arc",
+            Browser::Brave => "Brave",
+            Browser::Edge => "Edge",
+        }
+    }
+
     /// Parses the browser string of an extension binding.
     pub fn from_extension_key(s: &str) -> Option<Browser> {
         match s {
@@ -141,6 +152,15 @@ mod tests {
         assert_eq!(Browser::Edge.display_name(), "Microsoft Edge");
         assert_eq!(Browser::from_extension_key("edge"), Some(Browser::Edge));
         assert_eq!(Browser::from_extension_key("nope"), None);
+    }
+
+    #[test]
+    fn short_names() {
+        assert_eq!(Browser::Chrome.short_name(), "Chrome");
+        assert_eq!(Browser::ChromeDev.short_name(), "Chrome Dev");
+        assert_eq!(Browser::Arc.short_name(), "Arc");
+        assert_eq!(Browser::Brave.short_name(), "Brave");
+        assert_eq!(Browser::Edge.short_name(), "Edge");
     }
 
     #[test]

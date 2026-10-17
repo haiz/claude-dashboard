@@ -44,8 +44,6 @@ pub fn interpolate(entries: &[Entry], ms: f64) -> Option<f64> {
     }
 }
 
-/// "d MMM HH:mm" (macOS `formatHoverTime`), the wall clock of `ms`.
-
 const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
