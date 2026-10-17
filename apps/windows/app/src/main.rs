@@ -96,12 +96,19 @@ fn spawn_refresh_loop(
 ) {
     std::thread::spawn(move || {
         let mut prev: Vec<claude_dashboard_core::rows::DisplayRow> = Vec::new();
+        let mut tracker = claude_dashboard_core::burn_rate::BurnRateTracker::default();
         loop {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs_f64())
                 .unwrap_or(0.0);
-            let out = refresh::merge_errors(&prev, refresh::refresh_once(now));
+            let fresh = refresh::refresh_once(now);
+            let fetched = fresh.is_ok();
+            let mut out = refresh::merge_errors(&prev, fresh);
+            // Only a real fetch is a new measurement; a failed refresh keeps the previous projections.
+            if fetched {
+                refresh::apply_projections(&mut tracker, &mut out.rows, now);
+            }
             prev = out.rows.clone();
             let (weak, pop_weak) = (weak.clone(), pop_weak.clone());
             let _ = slint::invoke_from_event_loop(move || apply_output(&weak, &pop_weak, &out, now));

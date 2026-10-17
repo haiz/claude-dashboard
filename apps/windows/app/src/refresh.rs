@@ -3,8 +3,10 @@
 use std::collections::{HashMap, HashSet};
 
 use claude_dashboard_core::api;
+use claude_dashboard_core::burn_rate::BurnRateTracker;
+use claude_dashboard_core::model::AccountStatus;
 use claude_dashboard_core::extension_sources;
-use claude_dashboard_core::rows::{build_rows, peak_utilization, BuildInput, DisplayRow};
+use claude_dashboard_core::rows::{build_rows, peak_utilization, BuildInput, DisplayRow, WindowView};
 use claude_dashboard_core::store::{self, UsageLogStore};
 use claude_dashboard_core::usage::{UsageData, UsageLimit};
 
@@ -26,6 +28,32 @@ pub fn merge_errors(prev: &[DisplayRow], fresh: Result<RefreshOutput, String>) -
             eprintln!("refresh failed, keeping previous rows: {e}");
             RefreshOutput { rows: prev.to_vec(), peak: peak_utilization(prev) }
         }
+    }
+}
+
+/// Feeds each healthy row's windows to the tracker and stores the projected
+/// seconds-to-limit on the row, as macOS does after each fetch
+/// (`DashboardViewModel.refresh`: 5h and 7d always, Fable when present; a
+/// missing reset time falls back to now + the window length). Expired or
+/// errored rows get no projection.
+pub fn apply_projections(tracker: &mut BurnRateTracker, rows: &mut [DisplayRow], now_unix_s: f64) {
+    for row in rows.iter_mut() {
+        row.burn_projected_seconds = None;
+        row.burn_projected_seconds_7d = None;
+        row.burn_projected_seconds_fable = None;
+        if row.error.is_some() || row.status != AccountStatus::Active {
+            continue;
+        }
+        let mut project = |w: &Option<WindowView>, window: i64, total_s: f64| {
+            let w = w.as_ref()?;
+            let resets = w.resets_at_unix.unwrap_or(now_unix_s + total_s);
+            tracker
+                .record(&row.account_id, window, w.utilization, Some(resets), now_unix_s)
+                .map(|r| r.projected_time)
+        };
+        row.burn_projected_seconds = project(&row.five_hour, WINDOW_FIVE_HOUR, 18000.0);
+        row.burn_projected_seconds_7d = project(&row.seven_day, WINDOW_SEVEN_DAY, 604800.0);
+        row.burn_projected_seconds_fable = project(&row.fable, WINDOW_FABLE, 604800.0);
     }
 }
 
@@ -197,6 +225,35 @@ mod tests {
         assert_eq!(timeout_for(true, 999), Some(Duration::from_secs(3600)));
     }
     use claude_dashboard_core::model::Account;
+
+    #[test]
+    fn projections_follow_rising_usage_per_window_and_skip_bad_rows() {
+        let mut t = BurnRateTracker::default();
+        let reset = Some(NOW + 3600.0);
+        let w = |u: f64| Some(WindowView { utilization: u, resets_at_unix: reset, is_limited: false });
+        let mk = |u5: f64, u7: f64| {
+            let mut rs = rows(&[("c", "boom")]);
+            for r in rs.iter_mut() {
+                r.five_hour = w(u5);
+                r.seven_day = w(u7);
+                r.fable = None;
+            }
+            rs
+        };
+        let mut first = mk(10.0, 5.0);
+        apply_projections(&mut t, &mut first, NOW);
+        assert!(first.iter().all(|r| r.burn_projected_seconds.is_none()), "first record has no rate");
+
+        // 5h rises 10 -> 20 in 600 s (rate 1/60 %/s -> 4800 s left); 7d unchanged.
+        let mut second = mk(20.0, 5.0);
+        apply_projections(&mut t, &mut second, NOW + 600.0);
+        let a = second.iter().find(|r| r.account_id == "a").unwrap();
+        assert!((a.burn_projected_seconds.unwrap() - 4800.0).abs() < 1e-6);
+        assert!(a.burn_projected_seconds_7d.is_none(), "unchanged usage projects nothing");
+        assert!(a.burn_projected_seconds_fable.is_none());
+        let c = second.iter().find(|r| r.account_id == "c").unwrap();
+        assert!(c.error.is_some() && c.burn_projected_seconds.is_none(), "errored row gets none");
+    }
 
     const NOW: f64 = 1_000_000.0;
 
