@@ -59,12 +59,35 @@ pub fn classify_profile(
     }
 }
 
+/// Classifies one discovered Windows profile by reading and decoding its cookies.
+#[cfg(windows)]
+fn scan_one_profile(p: crate::browser::WindowsProfile) -> ProfileScanStatus {
+    use crate::browser::read_claude_cookie_db;
+    use crate::cookie::win::{decode_value, profile_key};
+
+    let (Some((schema, raw)), Some(key)) =
+        (read_claude_cookie_db(&p.cookies_db), profile_key(&p.local_state))
+    else {
+        return ProfileScanStatus::NoSession;
+    };
+    let cookies: Vec<(String, Result<String, CookieError>)> = raw
+        .iter()
+        .map(|c| {
+            (
+                c.name.clone(),
+                decode_value(&c.encrypted_value, &c.host_key, schema, &key),
+            )
+        })
+        .collect();
+    let name = p.display_name.clone().unwrap_or_else(|| p.profile_dir.clone());
+    classify_profile(p.browser, &p.profile_dir, &name, p.google_email, &cookies)
+}
+
 /// Scans every Chrome/Edge/Brave profile under `%LOCALAPPDATA%`; one status per
 /// discovered profile.
 #[cfg(windows)]
 pub fn scan_windows_profiles() -> Vec<ProfileScanStatus> {
-    use crate::browser::{discover_windows_profiles_under, read_claude_cookie_db};
-    use crate::cookie::win::{decode_value, profile_key};
+    use crate::browser::discover_windows_profiles_under;
 
     let local = match std::env::var("LOCALAPPDATA") {
         Ok(v) if !v.is_empty() => std::path::PathBuf::from(v),
@@ -72,25 +95,38 @@ pub fn scan_windows_profiles() -> Vec<ProfileScanStatus> {
     };
     discover_windows_profiles_under(&local)
         .into_iter()
-        .map(|p| {
-            let (Some((schema, raw)), Some(key)) =
-                (read_claude_cookie_db(&p.cookies_db), profile_key(&p.local_state))
-            else {
-                return ProfileScanStatus::NoSession;
-            };
-            let cookies: Vec<(String, Result<String, CookieError>)> = raw
-                .iter()
-                .map(|c| {
-                    (
-                        c.name.clone(),
-                        decode_value(&c.encrypted_value, &c.host_key, schema, &key),
-                    )
-                })
-                .collect();
-            let name = p.display_name.clone().unwrap_or_else(|| p.profile_dir.clone());
-            classify_profile(p.browser, &p.profile_dir, &name, p.google_email, &cookies)
-        })
+        .map(scan_one_profile)
         .collect()
+}
+
+/// Why a re-sync could not read a key from a stored profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResyncReadError {
+    /// No profile, no cookie, or the cookie could not be decoded.
+    NoSession,
+    /// The profile's cookies are `v20` app-bound; only the extension can feed it.
+    AppBound,
+}
+
+/// Re-reads the claude.ai `sessionKey` of one profile (`profile_dir` is the
+/// account's `chromeProfilePath`) of `browser`.
+#[cfg(windows)]
+pub fn read_profile_session_key(browser: Browser, profile_dir: &str) -> Result<String, ResyncReadError> {
+    use crate::browser::discover_windows_profiles_under;
+
+    let local = match std::env::var("LOCALAPPDATA") {
+        Ok(v) if !v.is_empty() => std::path::PathBuf::from(v),
+        _ => return Err(ResyncReadError::NoSession),
+    };
+    let profile = discover_windows_profiles_under(&local)
+        .into_iter()
+        .find(|p| p.browser == browser && p.profile_dir == profile_dir)
+        .ok_or(ResyncReadError::NoSession)?;
+    match scan_one_profile(profile) {
+        ProfileScanStatus::Found(s) => Ok(s.session_key),
+        ProfileScanStatus::AppBound => Err(ResyncReadError::AppBound),
+        ProfileScanStatus::NoSession => Err(ResyncReadError::NoSession),
+    }
 }
 
 #[cfg(test)]

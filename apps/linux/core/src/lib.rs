@@ -16,6 +16,7 @@ pub mod format;
 pub mod rows;
 pub mod extension_sources;
 pub mod scan;
+pub mod account_kind;
 pub mod startup;
 pub mod claude_code;
 

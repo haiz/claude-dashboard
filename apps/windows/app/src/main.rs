@@ -12,6 +12,9 @@ mod model;
 mod pipe;
 mod popover;
 mod refresh;
+// Logic only for now; the Re-sync buttons (later tasks) call into it.
+#[allow(dead_code)]
+mod resync;
 mod settings_accounts;
 mod settings_general;
 mod setup;
