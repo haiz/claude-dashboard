@@ -5,14 +5,15 @@
 //! `chart_model`; the `.slint` only draws what this module computes.
 
 use claude_dashboard_core::chart::{
-    average_rate, format_tick, make_scale, nearest_entry, noon_markers, Entry, Range, Scale,
+    average_rate, make_scale, noon_markers, rate_at, Entry, Range, Scale,
 };
 use claude_dashboard_core::store::ResetCycle;
 
 use crate::chart_model::{
     axis_ticks, dashed_vlines, format_duration, format_stamp, interpolate, preset_span_ms,
     series_path, x_to_ms,
-};use crate::{ChartState, ChartTick};
+};
+use crate::{ChartState, ChartTick};
 
 /// Uniform padding (px) around the plot; holds the axis labels.
 pub(crate) const PAD: f64 = 36.0;
@@ -146,7 +147,10 @@ impl Interaction {
             from -= to - self.now_ms;
             to = self.now_ms;
         }
-        self.range = Range { from_ms: from, to_ms: to };
+        self.range = Range {
+            from_ms: from,
+            to_ms: to,
+        };
         self.custom = true;
         self.hover = None;
     }
@@ -161,7 +165,10 @@ impl Interaction {
         if b - a < MIN_ZOOM_MS {
             return;
         }
-        self.range = Range { from_ms: a, to_ms: b };
+        self.range = Range {
+            from_ms: a,
+            to_ms: b,
+        };
         self.custom = true;
         self.hover = None;
     }
@@ -175,7 +182,9 @@ impl Interaction {
             return;
         }
         let ms = x_to_ms(x, &sc);
-        let Some(value) = interpolate(&self.entries, ms) else { return };
+        let Some(value) = interpolate(&self.entries, ms) else {
+            return;
+        };
         let p = Entry { ms, value };
         self.measure = match self.measure {
             None => Some((p, None)),
@@ -201,7 +210,10 @@ impl Interaction {
                 let (first, last) = (c.first_unix * 1000.0, c.last_unix * 1000.0);
                 let span = (last - first).max(MIN_ZOOM_MS);
                 let margin = span * 0.02;
-                self.range = Range { from_ms: first - margin, to_ms: first + span + margin };
+                self.range = Range {
+                    from_ms: first - margin,
+                    to_ms: first + span + margin,
+                };
                 self.custom = true;
                 self.selected_cycle = Some(c);
             }
@@ -228,14 +240,6 @@ impl Interaction {
 
     pub(crate) fn scale(&self) -> Scale {
         make_scale(self.range, self.size.0, self.size.1, PAD)
-    }
-
-    fn visible(&self) -> Vec<Entry> {
-        self.entries
-            .iter()
-            .copied()
-            .filter(|e| e.ms >= self.range.from_ms && e.ms <= self.range.to_ms)
-            .collect()
     }
 
     pub fn set_size(&mut self, w: f64, h: f64) {
@@ -291,6 +295,10 @@ impl Interaction {
     /// Double-click: back to the preset's trailing window (frees `custom`
     /// and any cycle filter).
     pub fn reset(&mut self) {
+        // While measuring the range must hold still (macOS disables interaction).
+        if self.ruler {
+            return;
+        }
         self.range = preset_range(&self.preset, self.now_ms);
         self.custom = false;
         self.selected_cycle = None;
@@ -299,25 +307,26 @@ impl Interaction {
 
     pub fn view(&self, local_offset_ms: f64) -> View {
         let sc = self.scale();
-        let span = self.range.to_ms - self.range.from_ms;
         let max_ticks = ((sc.plot_width / 90.0) as usize).max(2);
         let (xs, ys) = axis_ticks(self.range, &sc, max_ticks, local_offset_ms);
-        let vis = self.visible();
         let empty = self.entries.is_empty();
         let mut cross = None;
         let mut tooltip = String::new();
+        // As macOS: the line follows the pointer; the card shows the time, the
+        // interpolated value and the local burn rate.
         if let Some((hx, hy)) = self.hover {
             let inside = hx >= sc.left && hx <= sc.right && hy >= sc.top && hy <= sc.bottom;
-            if inside {
-                if let Some(i) = nearest_entry(&vis, x_to_ms(hx, &sc)) {
-                    let e = vis[i];
-                    cross = Some((sc.x(e.ms), sc.y(e.value)));
-                    tooltip = format!(
-                        "{}  {:.0}%",
-                        format_tick(e.ms + local_offset_ms, span),
-                        e.value
-                    );
-                }
+            let ms = x_to_ms(hx, &sc);
+            if let (true, Some(value)) = (inside, interpolate(&self.entries, ms)) {
+                cross = Some((hx, sc.y(value)));
+                let rate = match rate_at(&self.entries, ms) {
+                    Some(r) => format!("{r:+.1}%/h"),
+                    None => "--".to_string(),
+                };
+                tooltip = format!(
+                    "{}\n{value:.0}%  {rate}",
+                    format_stamp(ms + local_offset_ms)
+                );
             }
         }
         let noon_x: Vec<f64> = noon_markers(self.range.from_ms, self.range.to_ms, local_offset_ms)
@@ -332,7 +341,10 @@ impl Interaction {
         let mut v = View {
             line_path: series_path(&vis_with_context(&self.entries, self.range), &sc),
             x_ticks: xs,
-            y_ticks: ys.into_iter().map(|(v, py)| (py, format!("{v:.0}%"))).collect(),
+            y_ticks: ys
+                .into_iter()
+                .map(|(v, py)| (py, format!("{v:.0}%")))
+                .collect(),
             cross,
             tooltip,
             empty,
@@ -361,8 +373,7 @@ impl Interaction {
                     format_stamp(s.ms + local_offset_ms),
                     format_stamp(e.ms + local_offset_ms)
                 );
-                v.measure_delta =
-                    format!("{delta:+.0}%: {:.0}% \u{2192} {:.0}%", s.value, e.value);
+                v.measure_delta = format!("{delta:+.0}%: {:.0}% \u{2192} {:.0}%", s.value, e.value);
                 v.measure_duration = format_duration(e.ms - s.ms);
                 v.measure_up = delta >= 0.0;
             }
@@ -388,7 +399,10 @@ pub(crate) fn vis_with_context(entries: &[Entry], r: Range) -> Vec<Entry> {
 }
 
 pub(crate) fn preset_range(preset: &str, now_ms: f64) -> Range {
-    Range { from_ms: now_ms - preset_span_ms(preset), to_ms: now_ms }
+    Range {
+        from_ms: now_ms - preset_span_ms(preset),
+        to_ms: now_ms,
+    }
 }
 
 pub(crate) fn now_ms() -> f64 {
@@ -406,7 +420,10 @@ pub(crate) fn to_state(v: &View) -> ChartState {
     let ticks = |t: &[(f64, String)]| -> slint::ModelRc<ChartTick> {
         let items: Vec<ChartTick> = t
             .iter()
-            .map(|(p, l)| ChartTick { pos: *p as f32, label: l.as_str().into() })
+            .map(|(p, l)| ChartTick {
+                pos: *p as f32,
+                label: l.as_str().into(),
+            })
             .collect();
         slint::ModelRc::new(slint::VecModel::from(items))
     };
@@ -457,9 +474,18 @@ mod tests {
         i.set_size(536.0, 336.0); // plot 464 x 264 with PAD 36
         i.loaded(
             vec![
-                Entry { ms: NOW - 4.0 * H, value: 10.0 },
-                Entry { ms: NOW - 2.0 * H, value: 40.0 },
-                Entry { ms: NOW - 1.0 * H, value: 60.0 },
+                Entry {
+                    ms: NOW - 4.0 * H,
+                    value: 10.0,
+                },
+                Entry {
+                    ms: NOW - 2.0 * H,
+                    value: 40.0,
+                },
+                Entry {
+                    ms: NOW - 1.0 * H,
+                    value: 60.0,
+                },
             ],
             NOW,
         );
@@ -476,14 +502,34 @@ mod tests {
     }
 
     #[test]
-    fn hover_inside_snaps_to_nearest_sample() {
+    fn hover_tooltip_is_time_interpolated_value_and_rate() {
         let mut i = loaded();
         let sc = i.scale();
-        i.hover_at(sc.x(NOW - 2.1 * H), sc.top + 10.0);
+        let hx = sc.x(NOW - 2.1 * H);
+        i.hover_at(hx, sc.top + 10.0);
         let v = i.view(0.0);
-        let (cx, _) = v.cross.expect("crosshair");
-        assert!((cx - sc.x(NOW - 2.0 * H)).abs() < 1e-6);
-        assert!(v.tooltip.ends_with("40%"), "{}", v.tooltip);
+        let (cx, cy) = v.cross.expect("crosshair");
+        // The line follows the pointer; the dot sits on the interpolated value.
+        assert!((cx - hx).abs() < 1e-6);
+        assert!((cy - sc.y(38.5)).abs() < 1e-6, "{cy}");
+        // 10 -> 40 over 2h = +15%/h.
+        let lines: Vec<&str> = v.tooltip.lines().collect();
+        assert_eq!(lines.len(), 2, "{}", v.tooltip);
+        assert_eq!(lines[0], "26 Sep 21:54");
+        assert_eq!(lines[1], "38%  +15.0%/h");
+    }
+
+    #[test]
+    fn reset_is_ignored_while_measuring() {
+        let mut i = loaded();
+        i.pan_by_px(40.0);
+        let panned = i.range;
+        i.set_ruler(true);
+        i.reset();
+        assert_eq!(i.range, panned);
+        i.set_ruler(false);
+        i.reset();
+        assert_ne!(i.range, panned);
     }
 
     #[test]
@@ -593,7 +639,11 @@ mod tests {
         assert!(i.custom);
         // Drag right = back in time, by 50 px of the plot's ms-per-px.
         let expect = 50.0 * span / i.scale().plot_width;
-        assert!((i.range.from_ms - (NOW - span - expect)).abs() < 1.0, "{:?}", i.range);
+        assert!(
+            (i.range.from_ms - (NOW - span - expect)).abs() < 1.0,
+            "{:?}",
+            i.range
+        );
         let frozen = i.range;
         assert!(!i.live_tick(NOW + H));
         assert_eq!(i.range, frozen);

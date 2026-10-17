@@ -479,6 +479,8 @@ pub struct UsageLogStore {
 pub struct SeriesPoint {
     pub t_unix: f64,
     pub utilization: f64,
+    /// The `rat` column (Unix seconds): when this window was due to reset.
+    pub resets_at_unix: f64,
     /// The `lim` column: the API reported this window as limited.
     pub is_limited: bool,
 }
@@ -664,12 +666,12 @@ impl UsageLogStore {
     pub fn series(&self, account_id: &str, window: i64, from_unix: f64, to_unix: f64) -> Vec<SeriesPoint> {
         let run = || -> rusqlite::Result<Vec<SeriesPoint>> {
             let mut stmt = self.conn.prepare(
-                "SELECT l.t, l.u, l.lim FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
+                "SELECT l.t, l.u, l.lim, l.rat FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
                  WHERE m.account_id = ?1 AND l.w = ?2 AND l.t BETWEEN ?3 AND ?4 \
                  ORDER BY l.t ASC, l.id ASC",
             )?;
             let rows = stmt.query_map(params![account_id, window, from_unix as i64, to_unix as i64], |row| {
-                Ok(SeriesPoint { t_unix: row.get::<_, i64>(0)? as f64, utilization: row.get::<_, i64>(1)? as f64 / 100.0, is_limited: row.get::<_, i64>(2)? != 0 })
+                Ok(SeriesPoint { t_unix: row.get::<_, i64>(0)? as f64, utilization: row.get::<_, i64>(1)? as f64 / 100.0, is_limited: row.get::<_, i64>(2)? != 0, resets_at_unix: row.get::<_, i64>(3)? as f64 })
             })?;
             rows.collect()
         };
@@ -681,14 +683,14 @@ impl UsageLogStore {
     pub fn series_all(&self, window: i64, from_unix: f64, to_unix: f64) -> HashMap<String, Vec<SeriesPoint>> {
         let run = || -> rusqlite::Result<HashMap<String, Vec<SeriesPoint>>> {
             let mut stmt = self.conn.prepare(
-                "SELECT m.account_id, l.t, l.u, l.lim FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
+                "SELECT m.account_id, l.t, l.u, l.lim, l.rat FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
                  WHERE l.w = ?1 AND l.t BETWEEN ?2 AND ?3 \
                  ORDER BY m.account_id, l.t ASC, l.id ASC",
             )?;
             let rows = stmt.query_map(params![window, from_unix as i64, to_unix as i64], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    SeriesPoint { t_unix: row.get::<_, i64>(1)? as f64, utilization: row.get::<_, i64>(2)? as f64 / 100.0, is_limited: row.get::<_, i64>(3)? != 0 },
+                    SeriesPoint { t_unix: row.get::<_, i64>(1)? as f64, utilization: row.get::<_, i64>(2)? as f64 / 100.0, is_limited: row.get::<_, i64>(3)? != 0, resets_at_unix: row.get::<_, i64>(4)? as f64 },
                 ))
             })?;
             let mut map: HashMap<String, Vec<SeriesPoint>> = HashMap::new();
@@ -859,9 +861,9 @@ mod tests {
         assert_eq!(
             pts,
             vec![
-                SeriesPoint { t_unix: 10.0, utilization: 42.0, is_limited: false },
-                SeriesPoint { t_unix: 20.0, utilization: 45.01, is_limited: false },
-                SeriesPoint { t_unix: 30.0, utilization: 10.0, is_limited: false },
+                SeriesPoint { t_unix: 10.0, utilization: 42.0, is_limited: false, resets_at_unix: 1000.0 },
+                SeriesPoint { t_unix: 20.0, utilization: 45.01, is_limited: false, resets_at_unix: 1000.0 },
+                SeriesPoint { t_unix: 30.0, utilization: 10.0, is_limited: false, resets_at_unix: 1000.0 },
             ]
         );
     }
@@ -881,7 +883,7 @@ mod tests {
         s.record_at("ACC", 1, 1000.0, 2.0, false, 10.0);
         s.record_at("OTHER", 0, 1000.0, 3.0, false, 10.0);
         let pts = s.series("ACC", 0, 0.0, 1e12);
-        assert_eq!(pts, vec![SeriesPoint { t_unix: 10.0, utilization: 1.0, is_limited: false }]);
+        assert_eq!(pts, vec![SeriesPoint { t_unix: 10.0, utilization: 1.0, is_limited: false, resets_at_unix: 1000.0 }]);
     }
 
     #[test]

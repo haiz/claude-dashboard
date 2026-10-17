@@ -5,6 +5,8 @@
 
 use std::collections::BTreeMap;
 
+use crate::store::SeriesPoint;
+
 pub const Y_MIN: f64 = 0.0;
 pub const Y_MAX: f64 = 100.0;
 pub const Y_TICKS: [f64; 5] = [0.0, 25.0, 50.0, 75.0, 100.0];
@@ -307,9 +309,103 @@ pub fn limit_points(entries: &[(Entry, bool)]) -> Vec<Entry> {
     entries.iter().filter(|(_, l)| *l).map(|(e, _)| *e).collect()
 }
 
+/// Port of macOS `[UsageLogEntry].withResetTransitions` (and chartWindow.js):
+/// between two consecutive points whose reset time changed and whose previous
+/// reset time has passed, insert a hold point at `rat - 1 s` with the old
+/// utilization (skipped when it is not after the previous sample) and a 0%
+/// point at `rat`, so the line shows the real drop. Input ascending by time.
+pub fn with_reset_transitions(points: &[SeriesPoint]) -> Vec<SeriesPoint> {
+    let mut out = Vec::with_capacity(points.len());
+    for (i, cur) in points.iter().enumerate() {
+        if i > 0 {
+            let prev = &points[i - 1];
+            if prev.resets_at_unix != cur.resets_at_unix
+                && prev.resets_at_unix > prev.t_unix
+                && prev.resets_at_unix <= cur.t_unix
+            {
+                let hold_t = prev.resets_at_unix - 1.0;
+                if hold_t > prev.t_unix {
+                    out.push(SeriesPoint { t_unix: hold_t, resets_at_unix: prev.resets_at_unix, ..*prev });
+                }
+                out.push(SeriesPoint {
+                    t_unix: prev.resets_at_unix,
+                    utilization: 0.0,
+                    is_limited: false,
+                    resets_at_unix: cur.resets_at_unix,
+                });
+            }
+        }
+        out.push(*cur);
+    }
+    out.sort_by(|a, b| a.t_unix.total_cmp(&b.t_unix));
+    out
+}
+
+/// Burn rate (%/h) at `ms`, port of macOS `computeRate`: the slope between the
+/// samples around `ms`, or of the last / first two at the edges. `None` for
+/// fewer than two samples or a gap of 0.01 h or less. `entries` ascending.
+pub fn rate_at(entries: &[Entry], ms: f64) -> Option<f64> {
+    if entries.len() < 2 {
+        return None;
+    }
+    let slope = |b: Entry, a: Entry| {
+        let dt = (a.ms - b.ms) / 3_600_000.0;
+        if dt > 0.01 { Some((a.value - b.value) / dt) } else { None }
+    };
+    let before = entries.iter().rposition(|e| e.ms <= ms);
+    let after = entries.iter().position(|e| e.ms > ms);
+    match (before, after) {
+        (Some(b), Some(a)) => slope(entries[b], entries[a]),
+        (Some(_), None) => slope(entries[entries.len() - 2], entries[entries.len() - 1]),
+        (None, Some(_)) => slope(entries[0], entries[1]),
+        (None, None) => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sp(t: f64, u: f64, rat: f64) -> SeriesPoint {
+        SeriesPoint { t_unix: t, utilization: u, is_limited: false, resets_at_unix: rat }
+    }
+
+    #[test]
+    fn reset_transition_inserts_hold_and_zero() {
+        // pre-reset 90 (due to reset at 1000), post-reset 30 under the next reset time.
+        let pts = [sp(900.0, 90.0, 1000.0), sp(1100.0, 30.0, 6000.0)];
+        let out = with_reset_transitions(&pts);
+        let got: Vec<(f64, f64)> = out.iter().map(|p| (p.t_unix, p.utilization)).collect();
+        assert_eq!(got, vec![(900.0, 90.0), (999.0, 90.0), (1000.0, 0.0), (1100.0, 30.0)]);
+        // The average counts the 0 -> 30 climb (and ignores the drop).
+        let es: Vec<Entry> = out.iter().map(|p| Entry { ms: p.t_unix * 1000.0, value: p.utilization }).collect();
+        let r = average_rate(&es, 900_000.0, 1_100_000.0).unwrap();
+        assert!((r - (0.0 + 0.0 + 30.0) / (200.0 / 3600.0)).abs() < 1e-6, "{r}");
+    }
+
+    #[test]
+    fn reset_transition_skips_hold_when_too_close_and_unchanged_rat() {
+        let close = with_reset_transitions(&[sp(999.5, 90.0, 1000.0), sp(1100.0, 30.0, 6000.0)]);
+        assert_eq!(close.len(), 3, "no hold point when rat-1s is not after prev");
+        let same = [sp(10.0, 1.0, 1000.0), sp(20.0, 2.0, 1000.0)];
+        assert_eq!(with_reset_transitions(&same), same.to_vec());
+        // reset time still in the future of the next sample: nothing inserted
+        let future = [sp(10.0, 1.0, 5000.0), sp(20.0, 2.0, 6000.0)];
+        assert_eq!(with_reset_transitions(&future).len(), 2);
+    }
+
+    #[test]
+    fn rate_at_matches_macos() {
+        let es = [e(0.0, 10.0), e(3_600_000.0, 40.0), e(7_200_000.0, 40.0)];
+        assert_eq!(rate_at(&es, 1_800_000.0), Some(30.0));
+        assert_eq!(rate_at(&es, 5_000_000.0), Some(0.0));
+        // edges: last two / first two samples
+        assert_eq!(rate_at(&es, 9_000_000.0), Some(0.0));
+        assert_eq!(rate_at(&es, -1.0), Some(30.0));
+        assert_eq!(rate_at(&es[..1], 0.0), None);
+        // sub-0.01h gap
+        assert_eq!(rate_at(&[e(0.0, 1.0), e(1000.0, 2.0)], 500.0), None);
+    }
 
     const T0: f64 = 1_700_000_000_000.0;
     fn e(ms: f64, value: f64) -> Entry {

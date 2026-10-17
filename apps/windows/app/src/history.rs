@@ -8,7 +8,7 @@
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use claude_dashboard_core::chart::{limit_points, Entry};
+use claude_dashboard_core::chart::{limit_points, with_reset_transitions, Entry};
 use claude_dashboard_core::colors::usage_color;
 use claude_dashboard_core::store::{ResetCycle, UsageLogStore};
 use slint::{ComponentHandle, ModelRc, VecModel};
@@ -76,7 +76,11 @@ impl History {
         self.inner.loaded(l.entries, now);
         // A selected cycle that no longer exists (the log was trimmed) is dropped.
         if let Some(c) = self.inner.selected_cycle {
-            if !self.cycles.iter().any(|x| x.resets_at_unix == c.resets_at_unix) {
+            if !self
+                .cycles
+                .iter()
+                .any(|x| x.resets_at_unix == c.resets_at_unix)
+            {
                 self.inner.select_cycle(None);
             }
         }
@@ -111,7 +115,12 @@ impl History {
             .collect();
         // macOS draws the 5h resets only while the 7d window is shown.
         let reset_xs: Vec<f64> = if self.inner.window == 1 {
-            self.five_h_resets.iter().copied().filter(|&ms| in_range(ms)).map(|ms| sc.x(ms)).collect()
+            self.five_h_resets
+                .iter()
+                .copied()
+                .filter(|&ms| in_range(ms))
+                .map(|ms| sc.x(ms))
+                .collect()
         } else {
             Vec::new()
         };
@@ -165,13 +174,19 @@ fn to_chart_state(v: &View, x: &Extras, window: i64) -> ChartState {
     st.reset_marks = ModelRc::new(VecModel::from(
         x.reset_xs
             .iter()
-            .map(|&p| ChartTick { pos: p as f32, label: "\u{21ba}".into() })
+            .map(|&p| ChartTick {
+                pos: p as f32,
+                label: "\u{21ba}".into(),
+            })
             .collect::<Vec<_>>(),
     ));
     st.limit_points = ModelRc::new(VecModel::from(
         x.limit_points
             .iter()
-            .map(|&(px, py)| ChartPoint { x: px as f32, y: py as f32 })
+            .map(|&(px, py)| ChartPoint {
+                x: px as f32,
+                y: py as f32,
+            })
             .collect::<Vec<_>>(),
     ));
     st.cycles = ModelRc::new(VecModel::from(
@@ -213,13 +228,25 @@ fn read_loaded(account_id: &str, window: i64, now: f64) -> Loaded {
         }
     };
     let from = (now - HISTORY_DAYS * 86_400_000.0) / 1000.0;
-    let points = store.series(account_id, window, from, now / 1000.0);
+    let points = with_reset_transitions(&store.series(account_id, window, from, now / 1000.0));
     let pairs: Vec<(Entry, bool)> = points
         .iter()
-        .map(|p| (Entry { ms: p.t_unix * 1000.0, value: p.utilization }, p.is_limited))
+        .map(|p| {
+            (
+                Entry {
+                    ms: p.t_unix * 1000.0,
+                    value: p.utilization,
+                },
+                p.is_limited,
+            )
+        })
         .collect();
     let five_h_resets = if window == 1 {
-        store.reset_cycles(account_id, 0).iter().map(|c| c.resets_at_unix * 1000.0).collect()
+        store
+            .reset_cycles(account_id, 0)
+            .iter()
+            .map(|c| c.resets_at_unix * 1000.0)
+            .collect()
     } else {
         Vec::new()
     };
@@ -258,7 +285,9 @@ fn load(app: &AppWindow) {
 /// A refresh finished: slide the live window to "now" and reload so fresh
 /// points show (macOS `handleLiveTick`). No-op when no chart is open.
 pub fn on_refresh(app: &AppWindow) {
-    if STATE.with(|s| s.borrow().is_none()) {
+    // Nothing open, or the ruler is armed: macOS `handleLiveTick` returns early
+    // (the measure anchors on absolute dates), so neither re-anchor nor reload.
+    if STATE.with(|s| s.borrow().as_ref().is_none_or(|h| h.inner.ruler)) {
         return;
     }
     update(app, |h| {
@@ -308,7 +337,11 @@ pub fn install(app: &AppWindow) {
         a.on_toggle_mode(move || {
             if let Some(app) = w.upgrade() {
                 update(&app, |h| {
-                    let next = if h.inner.mode == Mode::Pan { Mode::Zoom } else { Mode::Pan };
+                    let next = if h.inner.mode == Mode::Pan {
+                        Mode::Zoom
+                    } else {
+                        Mode::Pan
+                    };
                     h.inner.set_mode(next);
                 });
             }
@@ -409,21 +442,48 @@ pub fn install(app: &AppWindow) {
 /// account/window that already has a reset.
 pub fn seed_fake_history() {
     std::thread::spawn(|| {
-        let Ok(mut store) = UsageLogStore::open() else { return };
+        let Ok(mut store) = UsageLogStore::open() else {
+            return;
+        };
         let now = now_ms() / 1000.0;
         // 5h window, one point every 40 min for ~26h: climbs to a limit, resets, climbs again.
         let five_h: [(&str, [f64; 40]); 2] = [
-            ("f2", seed_5h(&[(0, 8.0), (5, 35.0), (11, 78.0), (13, 100.0), (14, 0.0), (24, 30.0), (39, 64.0)])),
-            ("f3", seed_5h(&[(0, 12.0), (7, 60.0), (14, 100.0), (16, 100.0), (17, 0.0), (28, 55.0), (39, 96.0)])),
+            (
+                "f2",
+                seed_5h(&[
+                    (0, 8.0),
+                    (5, 35.0),
+                    (11, 78.0),
+                    (13, 100.0),
+                    (14, 0.0),
+                    (24, 30.0),
+                    (39, 64.0),
+                ]),
+            ),
+            (
+                "f3",
+                seed_5h(&[
+                    (0, 12.0),
+                    (7, 60.0),
+                    (14, 100.0),
+                    (16, 100.0),
+                    (17, 0.0),
+                    (28, 55.0),
+                    (39, 96.0),
+                ]),
+            ),
         ];
         for (id, vals) in five_h {
             if store.reset_cycles(id, 0).len() >= 2 {
                 continue;
             }
             let n = vals.len() as f64;
+            let reset_k = vals.iter().position(|&x| x == 0.0).unwrap_or(0);
+            let reset_t = now - (n - 1.0 - reset_k as f64) * 2400.0;
             for (k, v) in vals.iter().enumerate() {
                 let t = now - (n - 1.0 - k as f64) * 2400.0;
-                store.record_at(id, 0, now + 7200.0, *v, *v >= 100.0, t);
+                let rat = if k < reset_k { reset_t } else { now + 7200.0 };
+                store.record_at(id, 0, rat, *v, *v >= 100.0, t);
             }
         }
         // 7d window, one point every 6h for 5 days: three small steps and a reset.
@@ -431,11 +491,17 @@ pub fn seed_fake_history() {
             if store.reset_cycles(id, 1).len() >= 2 {
                 continue;
             }
-            let vals: [f64; 20] = [5.0, 12.0, 20.0, 31.0, 44.0, 52.0, 60.0, 71.0, 83.0, 91.0, 0.0, 9.0, 18.0, 24.0, 30.0, 38.0, 45.0, 52.0, 58.0, 66.0];
+            let vals: [f64; 20] = [
+                5.0, 12.0, 20.0, 31.0, 44.0, 52.0, 60.0, 71.0, 83.0, 91.0, 0.0, 9.0, 18.0, 24.0,
+                30.0, 38.0, 45.0, 52.0, 58.0, 66.0,
+            ];
             let n = vals.len() as f64;
+            let reset_k = vals.iter().position(|&x| x == 0.0).unwrap_or(0);
+            let reset_t = now - (n - 1.0 - reset_k as f64) * 21_600.0;
             for (k, v) in vals.iter().enumerate() {
                 let t = now - (n - 1.0 - k as f64) * 21_600.0;
-                store.record_at(id, 1, now + 86_400.0, (v * scale).min(100.0), false, t);
+                let rat = if k < reset_k { reset_t } else { now + 86_400.0 };
+                store.record_at(id, 1, rat, (v * scale).min(100.0), false, t);
             }
         }
     });
@@ -449,7 +515,15 @@ fn seed_5h(knots: &[(usize, f64)]) -> [f64; 40] {
         let ((i0, v0), (i1, v1)) = (w[0], w[1]);
         for i in i0..=i1 {
             // The step right after a limit hit is the reset itself (no ramp).
-            out[i] = if i1 == i0 + 1 { if i == i0 { v0 } else { v1 } } else { v0 + (v1 - v0) * (i - i0) as f64 / (i1 - i0) as f64 };
+            out[i] = if i1 == i0 + 1 {
+                if i == i0 {
+                    v0
+                } else {
+                    v1
+                }
+            } else {
+                v0 + (v1 - v0) * (i - i0) as f64 / (i1 - i0) as f64
+            };
         }
     }
     out
@@ -463,7 +537,10 @@ mod tests {
     const NOW: f64 = 1_000.0 * 86_400_000.0;
 
     fn e(h_ago: f64, v: f64) -> Entry {
-        Entry { ms: NOW - h_ago * H, value: v }
+        Entry {
+            ms: NOW - h_ago * H,
+            value: v,
+        }
     }
 
     fn hist(window: i64) -> History {
@@ -475,8 +552,20 @@ mod tests {
                 entries: vec![e(30.0, 10.0), e(20.0, 100.0), e(10.0, 5.0), e(1.0, 20.0)],
                 limited: vec![e(20.0, 100.0), e(300.0, 100.0)],
                 cycles: vec![
-                    ResetCycle { resets_at_unix: (NOW - 10.0 * H) / 1000.0, first_unix: (NOW - 20.0 * H) / 1000.0, last_unix: (NOW - 1.0 * H) / 1000.0, peak: 100.0, points: 2 },
-                    ResetCycle { resets_at_unix: (NOW - 30.0 * H) / 1000.0, first_unix: (NOW - 40.0 * H) / 1000.0, last_unix: (NOW - 31.0 * H) / 1000.0, peak: 40.0, points: 4 },
+                    ResetCycle {
+                        resets_at_unix: (NOW - 10.0 * H) / 1000.0,
+                        first_unix: (NOW - 20.0 * H) / 1000.0,
+                        last_unix: (NOW - 1.0 * H) / 1000.0,
+                        peak: 100.0,
+                        points: 2,
+                    },
+                    ResetCycle {
+                        resets_at_unix: (NOW - 30.0 * H) / 1000.0,
+                        first_unix: (NOW - 40.0 * H) / 1000.0,
+                        last_unix: (NOW - 31.0 * H) / 1000.0,
+                        peak: 40.0,
+                        points: 4,
+                    },
                 ],
                 five_h_resets: vec![NOW - 12.0 * H, NOW - 400.0 * H],
             },

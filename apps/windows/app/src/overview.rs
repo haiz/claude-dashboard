@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use claude_dashboard_core::chart::{format_tick, nearest_entry, Entry};
+use claude_dashboard_core::chart::{format_tick, nearest_entry, with_reset_transitions, Entry};
 use claude_dashboard_core::store::UsageLogStore;
 use slint::{ComponentHandle, Model};
 
@@ -74,7 +74,10 @@ impl Overview {
             if self.hidden.contains(&a.id) {
                 return None;
             }
-            self.series.get(&a.id).filter(|v| !v.is_empty()).map(|v| (a, v))
+            self.series
+                .get(&a.id)
+                .filter(|v| !v.is_empty())
+                .map(|v| (a, v))
         })
     }
 
@@ -89,9 +92,10 @@ impl Overview {
         let sc = self.inner.scale();
         let range = self.inner.range;
         let span = range.to_ms - range.from_ms;
-        let hover = self.inner.hover_pos().filter(|&(hx, hy)| {
-            hx >= sc.left && hx <= sc.right && hy >= sc.top && hy <= sc.bottom
-        });
+        let hover = self
+            .inner
+            .hover_pos()
+            .filter(|&(hx, hy)| hx >= sc.left && hx <= sc.right && hy >= sc.top && hy <= sc.bottom);
         let hover_ms = hover.map(|(hx, _)| x_to_ms(hx, &sc));
 
         let mut lines = Vec::new();
@@ -110,7 +114,11 @@ impl Overview {
                 if let Some(i) = nearest_entry(&vis, ms) {
                     hits.push((
                         lines.len(),
-                        Hit { ms: vis[i].ms, value: vis[i].value, name: a.name.clone() },
+                        Hit {
+                            ms: vis[i].ms,
+                            value: vis[i].value,
+                            name: a.name.clone(),
+                        },
                     ));
                 }
             }
@@ -194,7 +202,11 @@ fn accounts_of(app: &AppWindow) -> Vec<Account> {
     let rows = app.get_account_rows();
     (0..rows.row_count())
         .filter_map(|i| rows.row_data(i))
-        .map(|r| Account { id: r.id.to_string(), name: r.name.to_string(), color: r.avatar_color })
+        .map(|r| Account {
+            id: r.id.to_string(),
+            name: r.name.to_string(),
+            color: r.avatar_color,
+        })
         .collect()
 }
 
@@ -202,9 +214,11 @@ fn accounts_of(app: &AppWindow) -> Vec<Account> {
 /// UI thread unless superseded.
 fn load(app: &AppWindow) {
     let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-    let Some((window, preset)) =
-        STATE.with(|s| s.borrow().as_ref().map(|o| (o.window.clone(), o.inner.preset.clone())))
-    else {
+    let Some((window, preset)) = STATE.with(|s| {
+        s.borrow()
+            .as_ref()
+            .map(|o| (o.window.clone(), o.inner.preset.clone()))
+    }) else {
         return;
     };
     let code = window_code(&window);
@@ -216,7 +230,7 @@ fn load(app: &AppWindow) {
             Ok(store) => store
                 .series_all(code, (now - span) / 1000.0, now / 1000.0)
                 .into_iter()
-                .map(|(id, pts)| (id, points_to_entries(&pts)))
+                .map(|(id, pts)| (id, points_to_entries(&with_reset_transitions(&pts))))
                 .filter(|(_, e)| !e.is_empty())
                 .collect(),
             Err(e) => {
@@ -348,7 +362,11 @@ mod tests {
     const NOW: f64 = 1_000.0 * 86_400_000.0;
 
     fn acct(id: &str) -> Account {
-        Account { id: id.into(), name: id.to_uppercase(), color: slint::Color::from_rgb_u8(1, 2, 3) }
+        Account {
+            id: id.into(),
+            name: id.to_uppercase(),
+            color: slint::Color::from_rgb_u8(1, 2, 3),
+        }
     }
 
     fn ov() -> Overview {
@@ -357,16 +375,34 @@ mod tests {
         let mut m = BTreeMap::new();
         m.insert(
             "a".to_string(),
-            vec![Entry { ms: NOW - 3.0 * H, value: 10.0 }, Entry { ms: NOW - 1.0 * H, value: 30.0 }],
+            vec![
+                Entry {
+                    ms: NOW - 3.0 * H,
+                    value: 10.0,
+                },
+                Entry {
+                    ms: NOW - 1.0 * H,
+                    value: 30.0,
+                },
+            ],
         );
-        m.insert("b".to_string(), vec![Entry { ms: NOW - 2.0 * H, value: 50.0 }]);
+        m.insert(
+            "b".to_string(),
+            vec![Entry {
+                ms: NOW - 2.0 * H,
+                value: 50.0,
+            }],
+        );
         o.loaded(m, NOW);
         o
     }
 
     #[test]
     fn window_codes() {
-        assert_eq!((window_code("5h"), window_code("7d"), window_code("fable")), (0, 1, 3));
+        assert_eq!(
+            (window_code("5h"), window_code("7d"), window_code("fable")),
+            (0, 1, 3)
+        );
     }
 
     #[test]
@@ -395,7 +431,11 @@ mod tests {
         o.inner.hover_at(sc.x(NOW - 2.0 * H), sc.top + 5.0);
         let (v, lines, _) = o.view(0.0);
         assert!(v.cross.is_some());
-        assert!(v.tooltip.contains("A  ") && v.tooltip.contains("B  50%"), "{}", v.tooltip);
+        assert!(
+            v.tooltip.contains("A  ") && v.tooltip.contains("B  50%"),
+            "{}",
+            v.tooltip
+        );
         assert!(lines.iter().all(|l| l.dot_visible));
     }
 

@@ -460,7 +460,11 @@ export component InteractiveChart inherits Rectangle {
         changed has-hover => {
             if !self.has-hover { root.hover(-1, -1); }
         }
-        double-clicked => { root.dragging = false; root.panning = false; root.reset(); }
+        double-clicked => {
+            root.dragging = false;
+            root.panning = false;
+            if !root.state.ruler { root.reset(); }
+        }
     }
 }
 
