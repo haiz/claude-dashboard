@@ -1,4 +1,4 @@
-﻿//! Overview pane: one line per selected account on shared axes. Reuses
+//! Overview pane: one line per selected account on shared axes. Reuses
 //! `chart::Interaction` for range/zoom/hover/size and `chart_model` for
 //! geometry; this module only adds the per-account series and the toggles.
 

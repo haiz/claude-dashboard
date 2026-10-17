@@ -276,7 +276,7 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
         });
     });
     // Settings > Accounts "Re-sync All": scanned accounts are re-read on a worker with
-    // "Re-syncingâ€¦ (n/total)" progress, then one Nudge::All refreshes everything.
+    // "Re-syncing… (n/total)" progress, then one Nudge::All refreshes everything.
     let (w, tx) = (app.as_weak(), nudge_tx.clone());
     app.on_resync_all(move || {
         use slint::Model;
@@ -403,7 +403,8 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         carol,
         expired("f4", "dave", AccountKind::PastedKey),
         expired("f5", "erin", AccountKind::Scanned { browser: Browser::Edge, profile: "Work".into() }),
-    ];    refresh::RefreshOutput { peak: 100.0, rows }
+    ];
+    refresh::RefreshOutput { peak: 100.0, rows }
 }
 
 /// Time after a focus-loss hide during which a tray click is treated as the
@@ -733,7 +734,7 @@ fn main() -> Result<(), slint::PlatformError> {
         };
         reload_muted();
         let (reload, tx) = (reload_muted.clone(), nudge_tx.clone());
-        // Settings > Accounts and the account page's "Remove Accountâ€¦" share one path.
+        // Settings > Accounts and the account page's "Remove Account…" share one path.
         let delete_w = app.as_weak();
         let delete = move |id: slint::SharedString| {
             let (reload, tx) = (reload.clone(), tx.clone());
