@@ -1,55 +1,433 @@
 import { Theme } from "theme.slint";
 
-// Local equivalents of app.slint's GroupHeader / SettingsCard (not exported
-// there; importing app.slint from here would be circular).
-component HelpHeader inherits Text {
+// Tools > Help (macOS HelpView + HelpBlocks): a topic grid that scrolls to one card per
+// topic. Topic ids and titles live in `src/help.rs` (TOPICS); the card for each id is
+// below. Keep the wording in step with the UI labels it names.
+
+export struct HelpTopic {
+    id: string,
+    title: string,
+}
+
+// ---- Blocks (macOS HelpBlocks.swift) -------------------------------------------------
+
+component HelpText inherits StyledText {
+    in property <styled-text> body;
+    text: root.body;
+    default-color: Theme.text-primary;
+    default-font-size: 13px;
+}
+
+component HelpSubheading inherits Text {
     color: Theme.text-secondary;
     font-size: 12px;
     font-weight: 600;
 }
 
-component HelpSection inherits VerticalLayout {
-    in property <string> title;
-    in property <string> body;
-    spacing: 6px;
-    HelpHeader { text: root.title; }
+// One legend row: a fixed-width visual on the left (icon glyph, text badge or dot), the
+// explanation on the right.
+component HelpRow inherits HorizontalLayout {
+    in property <string> glyph;
+    in property <string> glyph-font: "Segoe Fluent Icons";
+    in property <string> badge;
+    in property <color> tint: Theme.text-secondary;
+    in property <bool> dot: false;
+    in property <bool> gradient: false;
+    in property <styled-text> body;
+    spacing: 12px;
     Rectangle {
-        background: Theme.card-bg;
-        border-radius: 8px;
-        border-width: 1px;
-        border-color: Theme.card-border;
-        VerticalLayout {
-            padding: 14px;
-            Text {
-                text: root.body;
-                color: Theme.text-primary;
-                font-size: 13px;
-                wrap: word-wrap;
+        width: 44px;
+        if root.glyph != "": Text {
+            text: root.glyph;
+            font-family: root.glyph-font;
+            font-size: 15px;
+            color: root.tint;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        if root.badge != "": Rectangle {
+            width: bt.preferred-width + 12px;
+            height: 20px;
+            border-radius: 5px;
+            background: root.tint.with-alpha(0.15);
+            bt := Text {
+                text: root.badge;
+                color: root.tint;
+                font-size: 11px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
             }
+        }
+        if root.gradient: Rectangle {
+            width: 40px;
+            height: 8px;
+            border-radius: 4px;
+            background: @linear-gradient(90deg, #30d158 0%, #ffd60a 50%, #ff453a 100%);
+        }
+        if root.dot: Rectangle {
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
+            background: root.tint;
+        }
+    }
+    StyledText {
+        text: root.body;
+        default-color: Theme.text-primary;
+        default-font-size: 13px;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+    }
+}
+
+// A numbered step in an accent circle.
+component HelpStep inherits HorizontalLayout {
+    in property <int> n;
+    in property <styled-text> body;
+    spacing: 10px;
+    alignment: start;
+    Rectangle {
+        width: 18px;
+        height: 18px;
+        y: 1px;
+        border-radius: 9px;
+        background: Theme.accent;
+        Text {
+            text: root.n;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+    StyledText {
+        text: root.body;
+        default-color: Theme.text-primary;
+        default-font-size: 13px;
+        horizontal-stretch: 1;
+    }
+}
+
+// Tip / note / warning box. `kind`: "tip" | "note" | "warning".
+component HelpCallout inherits Rectangle {
+    in property <string> kind: "note";
+    in property <styled-text> body;
+    property <color> tint: root.kind == "tip" ? #30d158 : (root.kind == "warning" ? #ff9f0a : Theme.accent);
+    background: root.tint.with-alpha(0.12);
+    border-radius: 8px;
+    height: row.preferred-height;
+    row := HorizontalLayout {
+        padding: 10px;
+        spacing: 8px;
+        Text {
+            text: root.kind == "tip" ? "\u{E82F}" : (root.kind == "warning" ? "\u{E7BA}" : "\u{E946}");
+            font-family: "Segoe Fluent Icons";
+            font-size: 14px;
+            color: root.tint;
+            vertical-alignment: top;
+        }
+        StyledText {
+            text: root.body;
+            default-color: Theme.text-primary;
+            default-font-size: 13px;
+            horizontal-stretch: 1;
         }
     }
 }
 
+// A question (bold) over its answer.
+component HelpFAQ inherits VerticalLayout {
+    in property <string> question;
+    in property <styled-text> answer;
+    spacing: 3px;
+    Text {
+        text: root.question;
+        color: Theme.text-primary;
+        font-size: 13px;
+        font-weight: 600;
+        wrap: word-wrap;
+    }
+    StyledText {
+        text: root.answer;
+        default-color: Theme.text-primary;
+        default-font-size: 13px;
+    }
+}
+
+component HelpCard inherits Rectangle {
+    in property <string> topic-id;
+    in property <string> title;
+    in property <string> subtitle;
+    in property <string> glyph;
+    in property <color> tile;
+    background: Theme.card-bg;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    height: card.preferred-height;
+    card := VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 10px;
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 7px;
+                background: root.tile;
+                Text {
+                    text: root.glyph;
+                    font-family: "Segoe Fluent Icons";
+                    font-size: 16px;
+                    color: white;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 1px;
+                horizontal-stretch: 1;
+                Text { text: root.title; color: Theme.text-primary; font-size: 15px; font-weight: 600; }
+                Text { text: root.subtitle; color: Theme.text-secondary; font-size: 12px; }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.card-border; }
+        VerticalLayout {
+            spacing: 12px;
+            @children
+        }
+    }
+}
+
+// A tile in the topic grid; clicking scrolls to that topic's card.
+component TopicChip inherits Rectangle {
+    in property <string> title;
+    callback clicked();
+    height: 32px;
+    border-radius: 8px;
+    background: Theme.dark
+        ? (touch.has-hover ? #ffffff1a : #ffffff0a)
+        : (touch.has-hover ? #0000001a : #0000000a);
+    Text {
+        x: 10px;
+        width: parent.width - 20px;
+        text: root.title;
+        color: Theme.text-primary;
+        font-size: 13px;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// ---- The pane -------------------------------------------------------------------------
+
 export component HelpPane inherits Flickable {
+    in property <[HelpTopic]> topics;
+    // A topic id to scroll to (`open-help`); cleared once the pane has scrolled. Set before
+    // the pane exists or while it is open: the timer waits for the layout, then scrolls.
+    in-out property <string> focus-topic;
     content-height: col.preferred-height;
+
+    function target(id: string) -> length {
+        return id == "getting-started" ? c-start.y
+            : id == "reading-a-card" ? c-card.y
+            : id == "finding-your-way" ? c-way.y
+            : id == "charts" ? c-charts.y
+            : id == "managing-accounts" ? c-accounts.y
+            : id == "refresh-updates" ? c-refresh.y
+            : id == "troubleshooting" ? c-trouble.y
+            : 0px;
+    }
+    function scroll-to(id: string) {
+        root.content-y = -max(0px, min(root.target(id), col.preferred-height - root.height));
+    }
+
+    // Card heights settle over the first layout passes (wrapped text), so the scroll is
+    // re-aimed for a few ticks before the focus is released.
+    property <int> ticks;
+    Timer {
+        running: root.focus-topic != "";
+        interval: 60ms;
+        triggered => {
+            root.scroll-to(root.focus-topic);
+            root.ticks += 1;
+            if root.ticks >= 6 {
+                root.ticks = 0;
+                root.focus-topic = "";
+            }
+        }
+    }
+
     col := VerticalLayout {
         width: root.width;
         spacing: 16px;
-        HelpSection {
+        padding-bottom: 20px;
+
+        // Topic grid: three columns.
+        GridLayout {
+            spacing: 8px;
+            for t[i] in root.topics: TopicChip {
+                row: floor(i / 3);
+                col: mod(i, 3);
+                title: t.title;
+                clicked => { root.scroll-to(t.id); }
+            }
+        }
+
+        c-start := HelpCard {
+            topic-id: "getting-started";
             title: "Getting Started";
-            body: "Claude Dashboard shows your Claude.ai usage across several accounts from the system tray. Add an account from Settings › Accounts › Add Account. The browser extension is the easiest way: install it once per browser profile and it keeps the session key current. You can also scan a browser profile (Chrome may block this; the extension always works) or paste a session key.";
+            subtitle: "Add your first account in under a minute.";
+            glyph: "\u{E734}";
+            tile: #0a84ff;
+            HelpText { body: @markdown("Claude Dashboard reads your claude.ai sessions straight from your browser. No passwords, nothing to type."); }
+            VerticalLayout {
+                spacing: 8px;
+                HelpStep { n: 1; body: @markdown("Sign in to claude.ai in **Chrome, Chrome Dev, Edge, Brave or Arc**. Use one browser profile per account."); }
+                HelpStep { n: 2; body: @markdown("Open **Settings › Accounts** and click **Add Account…**"); }
+                HelpStep { n: 3; body: @markdown("Pick **Browser extension** (recommended, works with Chrome, Edge, Brave and Arc). In the browser's extensions page turn on Developer mode, click **Load unpacked** and select `%LOCALAPPDATA%\\claude-dashboard\\extension`. Then open claude.ai: the extension sends the key by itself."); }
+                HelpStep { n: 4; body: @markdown("Or pick **Scan browser** (Chrome, Chrome Dev, Edge and Brave), check the accounts it finds, then click **Add selected**."); }
+            }
+            HelpCallout { kind: "tip"; body: @markdown("Scan cannot read profiles that use Chrome's app-bound (`v20`) cookies. For those, use the **Browser extension**."); }
+            HelpCallout { kind: "note"; body: @markdown("No browser session? In the same window, open **Paste a session key** and paste the account's claude.ai `sessionKey` cookie."); }
         }
-        HelpSection {
-            title: "Reading Your Usage";
-            body: "Each card shows the 5-hour and 7-day windows, plus Fable where your plan has it. Color shows how much is left: green is plenty, yellow is halfway, red is nearly out. The countdown shows when the window resets. The animal shows your burn rate: a sloth is slow, a cheetah is fast. A green dot next to a name marks the account Claude Code is signed in to.";
+
+        c-card := HelpCard {
+            topic-id: "reading-a-card";
+            title: "Reading a Card";
+            subtitle: "What the rings, colors, animals and badges mean.";
+            glyph: "\u{E946}";
+            tile: #bf5af2;
+            VerticalLayout {
+                spacing: 8px;
+                HelpText { body: @markdown("**Big ring**: how much of the window you have used, with the percentage inside."); }
+                HelpText { body: @markdown("**Small ring**: time until the window resets. One segment per hour (5h) or per day (7d). It turns green as the reset gets close."); }
+                HelpText { body: @markdown("**Animal**: how fast you are burning (see below)."); }
+            }
+
+            HelpSubheading { text: "The windows"; }
+            HelpRow { badge: "5h"; body: @markdown("**5-hour window**: usage in the current 5-hour session."); }
+            HelpRow { badge: "7d"; body: @markdown("**7-day window**: your weekly usage across all models."); }
+            HelpRow { badge: "F"; body: @markdown("**Fable**: weekly Fable usage. Shown only when your plan has a Fable limit; it resets together with 7d."); }
+            HelpRow { gradient: true; body: @markdown("**Color** goes from green (plenty left) to red (almost out)."); }
+
+            HelpSubheading { text: "Burn rate: time until you hit 100% at the current pace"; }
+            HorizontalLayout {
+                spacing: 6px;
+                for lv in [
+                    { animal: "\u{1F40C}", range: "over 5h" },
+                    { animal: "\u{1F422}", range: "3-5h" },
+                    { animal: "\u{1F407}", range: "1.5-3h" },
+                    { animal: "\u{1F40E}", range: "30m-1.5h" },
+                    { animal: "\u{1F406}", range: "under 30m" },
+                ]: Rectangle {
+                    background: Theme.dark ? #ffffff0a : #0000000a;
+                    border-radius: 8px;
+                    height: 56px;
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        Text { text: lv.animal; font-size: 20px; horizontal-alignment: center; }
+                        Text { text: lv.range; color: Theme.text-secondary; font-size: 11px; font-family: "Consolas"; horizontal-alignment: center; }
+                    }
+                }
+            }
+
+            HelpSubheading { text: "Badges on a card"; }
+            HelpRow { dot: true; tint: Theme.ok; body: @markdown("**Active in Claude Code**: the account Claude Code is using right now."); }
+            HelpRow { badge: "Pro"; tint: #0a84ff; body: @markdown("**Plan**: Pro, Max 5x, Max 20x, or Max when the tier is unknown."); }
+            HelpRow { glyph: "\u{E718}"; body: @markdown("**Pinned**: always at the top of the list, and the account shown on the tray icon."); }
+            HelpRow { glyph: "\u{E7BA}"; tint: #ff9f0a; body: @markdown("**Session expired**: sign in again in the browser, then **Re-sync**."); }
+
+            HelpCallout { kind: "note"; body: @markdown("The tray icon shows the 5h usage of your pinned account, or the top account when none is pinned. Hover it for the time left until reset."); }
         }
-        HelpSection {
-            title: "Dashboard and Charts";
-            body: "Click a card to open the account. View chart shows its history; drag to zoom, double-click to reset. Overview compares all accounts. Left-click the tray icon for a quick summary; right-click it for Open Dashboard, Refresh and Quit. Closing the window keeps the app running in the tray.";
+
+        c-way := HelpCard {
+            topic-id: "finding-your-way";
+            title: "Finding Your Way";
+            subtitle: "The tray flyout and the main window.";
+            glyph: "\u{E707}";
+            tile: #8e8e93;
+            HelpSubheading { text: "Tray icon and flyout"; }
+            HelpRow { glyph: "\u{E8A7}"; body: @markdown("**Left-click** the tray icon to open the flyout: a compact card per account."); }
+            HelpRow { glyph: "\u{E72C}"; body: @markdown("**Refresh**: fetch the latest usage for every account."); }
+            HelpRow { glyph: "\u{E740}"; body: @markdown("**Open window**: the full dashboard."); }
+            HelpRow { glyph: "\u{E897}"; body: @markdown("**Help**: this page."); }
+            HelpRow { glyph: "\u{E713}"; body: @markdown("**Settings**: accounts, refresh, updates."); }
+            HelpRow { glyph: "\u{E7E8}"; body: @markdown("**Quit** (bottom left, asks first). **Right-click** the tray icon for **Open Dashboard**, **Refresh** and **Quit**. Closing the window keeps the app in the tray."); }
+
+            HelpSubheading { text: "Main window sidebar"; }
+            HelpRow { glyph: "\u{E80A}"; tint: #0a84ff; body: @markdown("**Usage**: Dashboard (all cards) and Overview (all accounts on one chart)."); }
+            HelpRow { glyph: "\u{E77B}"; tint: #40c8e0; body: @markdown("**Accounts**: one page per account, with its current usage next to the name."); }
+            HelpRow { glyph: "\u{E90F}"; tint: #5e5ce6; body: @markdown("**Tools**: Help."); }
+            HelpRow { glyph: "\u{E713}"; tint: #8e8e93; body: @markdown("**Settings**: Accounts and General."); }
+
+            HelpCallout { kind: "tip"; body: @markdown("Click any ring to open that account's page on that window's chart. **Right-click** a card to pin it to the top."); }
         }
-        HelpSection {
+
+        c-charts := HelpCard {
+            topic-id: "charts";
+            title: "Charts";
+            subtitle: "Look back at how each account was used.";
+            glyph: "\u{E9D2}";
+            tile: #ff9f0a;
+            HelpText { body: @markdown("Each account page has a **History** chart."); }
+            HelpRow { badge: "5h 7d F"; body: @markdown("**Window**: pick 5h, 7d or F (Fable)."); }
+            HelpRow { badge: "24h"; body: @markdown("**Range**: the last 5h, 24h, 3d, 7d or 30d. **Custom** shows after you pan, zoom or pick a cycle."); }
+            HelpRow { glyph: "\u{E759}"; body: @markdown("**Pan / zoom**: the **Zoom** / **Pan** button changes what a drag does. Drag to zoom into a range or, in Pan mode, to move through time; double-click to reset."); }
+            HelpRow { glyph: "\u{E8FD}"; body: @markdown("**Reset Cycles**: click one to show only that cycle; **Show All** brings back the rest."); }
+            HelpRow { badge: "Ruler"; body: @markdown("**Ruler**: click two points to see how much usage changed between them."); }
+            HelpRow { badge: "Avg"; body: @markdown("**Avg**: the average usage rate over the visible range, in % per hour. Orange above 0.1%/h, green below. On Overview it is weighted by plan."); }
+            HelpRow { glyph: "\u{21BA}"; glyph-font: "Segoe UI Symbol"; tint: #32ade6; body: @markdown("**Reset marker**: a 5h reset, along the top of the 7d chart."); }
+            HelpRow { glyph: "\u{26A0}"; glyph-font: "Segoe UI Symbol"; tint: #ff9f0a; body: @markdown("**Limit point**: the usage reached 100% here."); }
+            HelpCallout { kind: "tip"; body: @markdown("**Overview** puts every account on one chart. Click an account in the legend to show or hide it."); }
+        }
+
+        c-accounts := HelpCard {
+            topic-id: "managing-accounts";
+            title: "Managing Accounts";
+            subtitle: "Add, re-sync, pin and remove accounts.";
+            glyph: "\u{E716}";
+            tile: #30d158;
+            HelpRow { glyph: "\u{E710}"; tint: #30d158; body: @markdown("**Add**: **Settings › Accounts** → **Add Account…** (browser extension, scan or pasted key)."); }
+            HelpRow { glyph: "\u{E895}"; tint: #0a84ff; body: @markdown("**Re-sync**: read a fresh session key from the browser. One account from its page, or every account with **Re-sync All**. An account added by the extension cannot be re-read: open its browser and sign in to claude.ai, and the extension sends the new key. A pasted key cannot be re-synced: add it again."); }
+            HelpRow { glyph: "\u{E718}"; body: @markdown("**Pin to Top**: right-click a card, or the toggle on the account page."); }
+            HelpRow { glyph: "\u{E74D}"; tint: #ff453a; body: @markdown("**Remove**: **Delete** in **Settings › Accounts**, or **Remove Account…** on the account page. Removing an extension account mutes that browser install; **Unmute** it to add it again."); }
+            HelpCallout { kind: "note"; body: @markdown("Account names come from the account's email (or the browser profile name) and update on each sync."); }
+        }
+
+        c-refresh := HelpCard {
+            topic-id: "refresh-updates";
+            title: "Refresh & Updates";
+            subtitle: "Keep usage and the app up to date.";
+            glyph: "\u{E72C}";
+            tile: #32ade6;
+            HelpRow { glyph: "\u{E72C}"; body: @markdown("**Auto Refresh** (Settings › General): keeps usage current, every 1 to 60 minutes (5 by default)."); }
+            HelpRow { glyph: "\u{E896}"; body: @markdown("**Auto-update daily**: checks GitHub once a day and installs new releases (the MSI installed under `%LOCALAPPDATA%\\Programs\\ClaudeDashboard`). **Check for Updates** checks right now."); }
+            HelpRow { glyph: "\u{E7E8}"; body: @markdown("**Launch at startup** (Settings › General): starts the app in the tray when you sign in to Windows."); }
+        }
+
+        c-trouble := HelpCard {
+            topic-id: "troubleshooting";
             title: "Troubleshooting";
-            body: "An account marked Expired needs a fresh key: open claude.ai in that browser (extension) or paste the key again. If the extension shows a red !, the bridge (claude-dashboard-bridge.exe) is missing or reported an error; reinstall the app. If scanning says the cookie is app-bound, use the extension instead.";
+            subtitle: "Common problems and how to fix them.";
+            glyph: "\u{E90F}";
+            tile: #a2845e;
+            VerticalLayout {
+                spacing: 14px;
+                HelpFAQ { question: "\"No profiles found\" when adding"; answer: @markdown("Make sure you are signed in to claude.ai in that browser, then click **Scan** again. A profile that uses app-bound (`v20`) cookies cannot be read: use the **Browser extension** tab for it."); }
+                HelpFAQ { question: "A card says \"Session expired\""; answer: @markdown("Open the browser profile named on the card, sign in to claude.ai, then click **Re-sync**. For an extension account, the extension sends the new key once you are signed in. A pasted key can't be re-synced: add it again with **Paste a session key**."); }
+                HelpFAQ { question: "The extension shows a red !"; answer: @markdown("The bridge (`claude-dashboard-bridge.exe`) is missing or reported an error. Reinstall the app, then reload the extension."); }
+                HelpFAQ { question: "Usage is not updating"; answer: @markdown("Click **Refresh** and check **Auto Refresh** in Settings › General. Expired accounts are skipped until you re-sync them."); }
+                HelpFAQ { question: "The window is gone"; answer: @markdown("Closing the window keeps the app in the tray. Left-click the tray icon, or right-click it and choose **Open Dashboard**."); }
+            }
         }
     }
 }

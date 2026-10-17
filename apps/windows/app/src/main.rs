@@ -5,6 +5,7 @@ use slint::ComponentHandle;
 
 mod chart;
 mod chart_model;
+mod help;
 mod history;
 mod overview;
 mod instance;
@@ -774,6 +775,7 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     // Settings > General: settings/registry I/O on workers, results back on the UI thread.
     {
+        app.set_help_topics(help::topic_model());
         app.set_app_name(settings_general::APP_NAME.into());
         app.set_app_version(settings_general::APP_VERSION.into());
         let w = app.as_weak();
@@ -901,7 +903,7 @@ fn main() -> Result<(), slint::PlatformError> {
         });
         popover.on_open_help({
             let go = go.clone();
-            move || go(Box::new(|a| a.set_selection(Pane::Help)))
+            move || go(Box::new(|a| a.invoke_open_help("".into())))
         });
         popover.on_open_settings({
             let go = go.clone();

@@ -3,9 +3,9 @@ import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "compon
 import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
 import { OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartPoint, ChartCycle, ChartActions, HistoryData } from "chart.slint";
-import { HelpPane } from "help.slint";
+import { HelpPane, HelpTopic } from "help.slint";
 
-export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartPoint, ChartCycle, ChartActions, HistoryData }
+export { HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartPoint, ChartCycle, ChartActions, HistoryData }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
 export enum Pane { dashboard, overview, account, help, settings-accounts, general }
@@ -304,6 +304,14 @@ export component AppWindow inherits Window {
     in property <[UiRow]> account-rows;
     in-out property <Pane> selection: Pane.dashboard;
     in-out property <string> selected-account-id;
+    // Help pane: the topic grid, and the topic id to scroll to ("" = top). `open-help` selects
+    // the pane and sets the focus; the pane clears it once it has scrolled.
+    in property <[HelpTopic]> help-topics;
+    in-out property <string> help-focus;
+    public function open-help(topic: string) {
+        root.selection = Pane.help;
+        root.help-focus = topic;
+    }
     callback resync();
     callback resync-all();
     // True while a refresh runs (any scope); Rust raises it with the card spinners.
@@ -582,7 +590,7 @@ export component AppWindow inherits Window {
                 install-update => { root.install-update(); }
                 set-auto-update(on) => { root.set-auto-update(on); }
             }
-            if root.selection == Pane.help: HelpPane { vertical-stretch: 1; }
+            if root.selection == Pane.help: HelpPane { vertical-stretch: 1; topics: root.help-topics; focus-topic <=> root.help-focus; }
             if root.selection != Pane.dashboard && root.selection != Pane.account: Rectangle { }
         }
     }
