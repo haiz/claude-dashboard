@@ -264,6 +264,10 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
         ping_failed: false,
         switch_state: Default::default(),
         switch_help: Default::default(),
+        is_home: false,
+        can_tick_home: false,
+        critical_level: 0,
+        critical_help: Default::default(),
     }
 }
 

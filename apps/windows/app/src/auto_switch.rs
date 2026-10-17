@@ -319,6 +319,58 @@ pub fn log_points(series: &[SeriesPoint]) -> Vec<planner::LogPoint> {
         .collect()
 }
 
+/// What a card shows for auto switch: the bolt (ticked, or tickable) and the flame.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CardFields {
+    pub is_home: bool,
+    /// A tick needs the active account or one auto switch could move to, with usage loaded
+    /// (macOS `canTickPriority`).
+    pub can_tick: bool,
+    /// 0 none, 1 critical, 2 high critical.
+    pub critical_level: i32,
+    pub critical_help: String,
+}
+
+pub fn card_fields(
+    row: &DisplayRow,
+    home_id: Option<&str>,
+    availability: Option<Availability>,
+    params: &CriticalParameters,
+    now: f64,
+) -> CardFields {
+    let assessment = if row.error.is_none() && row.status == AccountStatus::Active {
+        claude_dashboard_core::critical::assess(row.seven_day.as_ref(), params, now)
+    } else {
+        CriticalAssessment::NONE
+    };
+    CardFields {
+        is_home: home_id == Some(row.account_id.as_str()),
+        can_tick: (availability == Some(Availability::Ready) || row.is_active_claude_code) && usage_of(row).is_some(),
+        critical_level: match assessment.level {
+            CriticalLevel::None => 0,
+            CriticalLevel::Critical => 1,
+            CriticalLevel::High => 2,
+        },
+        critical_help: claude_dashboard_core::critical::badge(&assessment, params).unwrap_or_default(),
+    }
+}
+
+/// The bolt's click (macOS `togglePriority`): unticks the home account, or ticks `row`
+/// (moving the tick off any other account) with its baseline: the window Claude Code uses
+/// when it is active, else its current 5h reset.
+pub fn toggled_priority(current: Option<&Priority>, row: &DisplayRow, now: f64) -> Option<Priority> {
+    if current.is_some_and(|p| p.account_id == row.account_id) {
+        return None;
+    }
+    let usage = usage_of(row);
+    let baseline = if row.is_active_claude_code {
+        usage.map(|u| planner::priority_baseline(&u, now))
+    } else {
+        usage.and_then(|u| u.five_hour.resets_at)
+    };
+    Some(Priority { account_id: row.account_id.clone(), baseline })
+}
+
 fn percent(v: f64) -> String {
     format!("{}%", v.round() as i64)
 }
@@ -676,6 +728,44 @@ mod tests {
         assert_eq!(points.len(), 20);
         assert_eq!((points[0].utilization, points[19].utilization), (5.0, 24.0));
         assert_eq!(points[0].resets_at, T0 + H);
+    }
+
+    #[test]
+    fn card_fields_for_bolt_and_flame() {
+        let params = CriticalParameters { x: 16.0, pace: 50.0, high_pace: 80.0, quiet: None };
+        let critical = row("a", None, Some(10.0), Some((55.0, T0 + 25.0 * H)));
+        let f = card_fields(&critical, Some("a"), Some(Availability::Ready), &params, T0);
+        assert!(f.is_home && f.can_tick);
+        assert_eq!(f.critical_level, 1);
+        assert_eq!(f.critical_help, "Critical: at 50% of 5h per window around the clock, 7d reaches 95% by its reset (5% unused)");
+        let high = row("b", None, Some(10.0), Some((60.0, T0 + 10.0 * H)));
+        assert_eq!(card_fields(&high, None, Some(Availability::Ready), &params, T0).critical_level, 2);
+        let calm = row("c", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
+        let f = card_fields(&calm, Some("a"), Some(Availability::NotCaptured), &params, T0);
+        assert_eq!((f.is_home, f.can_tick, f.critical_level, f.critical_help.as_str()), (false, false, 0, ""));
+        let mut active = calm.clone();
+        active.is_active_claude_code = true;
+        assert!(card_fields(&active, None, Some(Availability::Active), &params, T0).can_tick, "the active account can be ticked");
+        let no_usage = row("d", None, None, None);
+        assert!(!card_fields(&no_usage, None, Some(Availability::Ready), &params, T0).can_tick, "needs usage for the baseline");
+        let mut stale = critical.clone();
+        stale.error = Some("x".into());
+        assert_eq!(card_fields(&stale, None, None, &params, T0).critical_level, 0, "stale: no flame");
+    }
+
+    #[test]
+    fn toggled_priority_ticks_moves_and_unticks() {
+        let mut r = row("a", None, Some(30.0), Some((10.0, T0 + 86_400.0)));
+        assert_eq!(toggled_priority(None, &r, T0), Some(Priority { account_id: "a".into(), baseline: Some(T0 + H) }));
+        let other = Priority { account_id: "z".into(), baseline: None };
+        assert_eq!(toggled_priority(Some(&other), &r, T0).unwrap().account_id, "a", "the tick moves");
+        let mine = Priority { account_id: "a".into(), baseline: Some(1.0) };
+        assert_eq!(toggled_priority(Some(&mine), &r, T0), None, "a second click unticks");
+        r.is_active_claude_code = true;
+        r.five_hour.as_mut().unwrap().resets_at_unix = None;
+        assert_eq!(toggled_priority(None, &r, T0).unwrap().baseline, Some(T0 + FIVE_H), "active, not started: five hours");
+        r.is_active_claude_code = false;
+        assert_eq!(toggled_priority(None, &r, T0).unwrap().baseline, None, "not active, not started: no baseline");
     }
 
     #[test]

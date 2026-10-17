@@ -615,6 +615,8 @@ export component AppWindow inherits Window {
     in property <string> cc-prompt-title;
     in property <string> cc-prompt-text;
     callback switch-claude-code(string);
+    // The bolt on a card or the account page toggle: tick or untick the home account.
+    callback toggle-home(string);
     callback cc-prompt-ok();
     callback cc-prompt-cancel();
     // Tools > Ping Log: rows (Rust loads them on `ping-log-reload`), Clear All's prompt.
@@ -836,7 +838,7 @@ export component AppWindow inherits Window {
                     resync => { root.resync-account(acct.id); }
                     ping => { root.ping-account(acct.id); }
                     cc-switching: root.cc-switching;
-                    switch-cc => { root.switch-claude-code(acct.id); }
+                    switch-cc => { root.switch-claude-code(acct.id); } toggle-home => { root.toggle-home(acct.id); }
                     toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
                     remove => {
                         root.remove-account(acct.id);
@@ -879,6 +881,7 @@ export component AppWindow inherits Window {
                             resync => { root.resync-account(self.acct.id); }
                             cc-switching: root.cc-switching;
                             switch-cc => { root.switch-claude-code(self.acct.id); }
+                            toggle-home => { root.toggle-home(self.acct.id); }
                             open-window(w) => {
                                 root.select-account-page(self.acct.id);
                                 root.requested-window = w;
@@ -1020,6 +1023,8 @@ export component PopoverWindow inherits Window {
     in property <string> cc-prompt-title;
     in property <string> cc-prompt-text;
     callback switch-claude-code(string);
+    // The bolt on a card or the account page toggle: tick or untick the home account.
+    callback toggle-home(string);
     callback cc-prompt-ok();
     callback cc-prompt-cancel();
 
@@ -1100,7 +1105,7 @@ export component PopoverWindow inherits Window {
                     resync => { root.resync-account(acct.id); }
                     open-window(w) => { root.open-account-window(acct.id, w); }
                     cc-switching: root.cc-switching;
-                    switch-cc => { root.switch-claude-code(acct.id); }
+                    switch-cc => { root.switch-claude-code(acct.id); } toggle-home => { root.toggle-home(acct.id); }
                 }
             }
         }

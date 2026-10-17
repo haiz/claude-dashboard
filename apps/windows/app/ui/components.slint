@@ -285,6 +285,34 @@ export component WindowColumn inherits Rectangle {
     }
 }
 
+// macOS SF Symbols bolt / bolt.fill and flame / flame.fill, drawn as paths so the outline and
+// filled forms match (Segoe Fluent Icons has neither pair).
+export component BoltIcon inherits Path {
+    in property <bool> filled;
+    in property <color> tint;
+    width: 14px;
+    height: 14px;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    commands: "M13 2 L4.5 13.5 H11 L10 22 L19.5 10 H13 Z";
+    fill: root.filled ? root.tint : transparent;
+    stroke: root.tint;
+    stroke-width: 1.6px;
+}
+
+export component FlameIcon inherits Path {
+    in property <bool> filled;
+    in property <color> tint;
+    width: 14px;
+    height: 14px;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    commands: "M12 2 C13 5.5 11 7.5 9 10 C7 12.5 6 14.5 6 17 A6 6 0 0 0 18 17 C18 14 16.5 12 15 10.5 C15 12.5 14 13.5 13 13.5 C14 10.5 13 5.5 12 2 Z";
+    fill: root.filled ? root.tint : transparent;
+    stroke: root.tint;
+    stroke-width: 1.6px;
+}
+
 export component AccountCard inherits Rectangle {
     in property <UiRow> data;
     // Compact metrics for the flyout; the Dashboard passes false (full-size rings).
@@ -296,6 +324,7 @@ export component AccountCard inherits Rectangle {
     // Claude Code Switch (macOS AccountCard `onSwitchClaudeCode`); `cc-switching` disables it.
     in property <bool> cc-switching;
     callback switch-cc();
+    callback toggle-home();
     callback toggle-pin(bool /* new pinned state */);
     callback resync();
     // The card itself is not clickable (macOS passes no `onTap`); its rings open the charts.
@@ -360,6 +389,38 @@ export component AccountCard inherits Rectangle {
                 vertical-alignment: center;
             }
             Rectangle { horizontal-stretch: 1; }
+            // Critical flame: orange outline for critical, red filled for high critical.
+            if root.data.critical-level > 0: Rectangle {
+                width: 20px;
+                height: 22px;
+                y: (parent.height - self.height) / 2;
+                FlameIcon {
+                    filled: root.data.critical-level == 2;
+                    tint: root.data.critical-level == 2 ? #ff453a : #ff9f0a;
+                }
+                Tooltip { text: @markdown("\{root.data.critical-help}"); }
+            }
+            // Home after reset (bolt): Claude Code comes back here after each 5h reset.
+            if root.data.can-tick-home || root.data.is-home: Rectangle {
+                width: 26px;
+                height: 22px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 4px;
+                background: bolt-touch.has-hover ? Theme.text-primary.with-alpha(0.10) : transparent;
+                BoltIcon {
+                    filled: root.data.is-home;
+                    tint: root.data.is-home ? #ff9f0a : Theme.text-secondary;
+                }
+                bolt-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.toggle-home(); }
+                }
+                Tooltip {
+                    text: root.data.is-home
+                        ? @markdown("Ticked: Claude Code comes back here each time its 5h limit resets. Click to cancel")
+                        : @markdown("Switch Claude Code here each time its 5h limit resets");
+                }
+            }
             // Switch Claude Code here: hidden on the active account (the badge marks it).
             if root.data.switch-state != "" && root.data.switch-state != "active": Rectangle {
                 width: 26px;
@@ -615,6 +676,7 @@ export component AccountPane inherits VerticalLayout {
     callback ping();
     in property <bool> cc-switching;
     callback switch-cc();
+    callback toggle-home();
     callback toggle-pin(bool /* new pinned state */);
     callback remove();
     callback window-picked(string /* "5h" | "7d" | "fable" */);
@@ -804,6 +866,16 @@ export component AccountPane inherits VerticalLayout {
                         checked: root.data.pinned;
                         y: (parent.height - self.height) / 2;
                         toggled => { root.toggle-pin(!root.data.pinned); }
+                    }
+                }
+                if root.data.can-tick-home || root.data.is-home: Rectangle { height: 1px; background: Theme.card-border; }
+                if root.data.can-tick-home || root.data.is-home: ActionRow {
+                    title: "Switch here after 5h reset";
+                    PaneSwitch {
+                        checked: root.data.is-home;
+                        y: (parent.height - self.height) / 2;
+                        toggled => { root.toggle-home(); }
+                        Tooltip { text: @markdown("Switch Claude Code back to this account each time its 5h limit resets"); }
                     }
                 }
                 Rectangle { height: 1px; background: Theme.card-border; }

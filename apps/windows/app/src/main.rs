@@ -97,6 +97,7 @@ fn apply_output(
     let mut rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
     set_ping_fields(&mut rows);
     set_switch_fields(&mut rows);
+    set_auto_switch_fields(&mut rows, &out.rows, now);
     // Re-sync All failures ride this refresh into the cards' error lines (macOS setError).
     let failures = std::mem::take(&mut *RESYNC_FAILURES.lock().unwrap_or_else(|e| e.into_inner()));
     for r in rows.iter_mut().filter(|r| !r.expired) {
@@ -151,6 +152,64 @@ fn set_switch_fields(rows: &mut [UiRow]) {
         let (state, help) = cc_state::switch_fields(cc_state::availability(r.id.as_str()));
         r.switch_state = state.into();
         r.switch_help = help.into();
+    }
+}
+
+/// Copies each row's bolt and flame (macOS `isPriorityTarget`, `canTickPriority`,
+/// `criticalBadge`) from the settings, the Switch states and the current X.
+fn set_auto_switch_fields(rows: &mut [UiRow], display: &[claude_dashboard_core::rows::DisplayRow], now: f64) {
+    let settings = claude_dashboard_core::settings::load();
+    let params = claude_dashboard_core::critical::parameters_from(&settings, ratio::current().x);
+    for r in rows.iter_mut() {
+        let Some(d) = display.iter().find(|d| d.account_id == r.id.as_str()) else { continue };
+        let f = auto_switch::card_fields(d, settings.auto_switch_priority_id.as_deref(), cc_state::availability(&d.account_id), &params, now);
+        r.is_home = f.is_home;
+        r.can_tick_home = f.can_tick;
+        r.critical_level = f.critical_level;
+        r.critical_help = f.critical_help.into();
+    }
+}
+
+/// UI thread: redraws every card's bolt and flame in place (a tick, a settings change, a new X).
+fn refresh_auto_switch_ui() {
+    use slint::Model;
+    let Some((out, now)) = LAST_OUTPUT.with(|l| l.borrow().clone()) else { return };
+    let patch = |rows: slint::ModelRc<UiRow>| {
+        for i in 0..rows.row_count() {
+            let Some(mut r) = rows.row_data(i) else { continue };
+            let before = (r.is_home, r.can_tick_home, r.critical_level, r.critical_help.clone());
+            set_auto_switch_fields(std::slice::from_mut(&mut r), &out.rows, now);
+            if (r.is_home, r.can_tick_home, r.critical_level, r.critical_help.clone()) != before {
+                rows.set_row_data(i, r);
+            }
+        }
+    };
+    if let Some(a) = MAIN_APP.with(|m| m.borrow().as_ref().and_then(|w| w.upgrade())) {
+        patch(a.get_account_rows());
+        patch(a.get_pane_rows());
+    }
+    if let Some(p) = POPOVER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade())) {
+        patch(p.get_account_rows());
+    }
+}
+
+/// The bolt (macOS `togglePriority`): ticks `id` (moving the tick off any other account) or
+/// unticks it; a tick runs auto switch now, on the current rows.
+fn toggle_home(id: &str) {
+    let Some((out, _)) = LAST_OUTPUT.with(|l| l.borrow().clone()) else { return };
+    let Some(row) = out.rows.iter().find(|r| r.account_id == id) else { return };
+    let current = auto_switch::Config::from_settings(&claude_dashboard_core::settings::load()).priority;
+    let next = auto_switch::toggled_priority(current.as_ref(), row, unix_now());
+    let ticked = next.is_some();
+    let _ = claude_dashboard_core::settings::update(|s| {
+        s.auto_switch_priority_id = next.as_ref().map(|p| p.account_id.clone());
+        s.auto_switch_priority_baseline = next.and_then(|p| p.baseline);
+    });
+    refresh_auto_switch_ui();
+    if ticked {
+        if let Some(tx) = CC_NUDGE.get() {
+            let _ = tx.send(refresh::Nudge::Local);
+        }
     }
 }
 
@@ -1492,6 +1551,7 @@ fn main() -> Result<(), slint::PlatformError> {
     MAIN_APP.with(|m| *m.borrow_mut() = Some(app.as_weak()));
     let _ = CC_NUDGE.set(cc_nudge);
     app.on_switch_claude_code(|id| cc_request(id.to_string()));
+    app.on_toggle_home(|id| toggle_home(id.as_str()));
     app.on_cc_prompt_ok(cc_ok);
     app.on_cc_prompt_cancel(cc_cancel);
     // macOS opens the window by itself only on the very first launch (`hasLaunchedBefore`);
@@ -1510,6 +1570,7 @@ fn main() -> Result<(), slint::PlatformError> {
     popover.set_app_version(settings_general::APP_VERSION.into());
     POPOVER.with(|p| *p.borrow_mut() = Some(popover.as_weak()));
     popover.on_switch_claude_code(|id| cc_request(id.to_string()));
+    popover.on_toggle_home(|id| toggle_home(id.as_str()));
     popover.on_cc_prompt_ok(cc_ok);
     popover.on_cc_prompt_cancel(cc_cancel);
     popover.on_refresh(move || {
