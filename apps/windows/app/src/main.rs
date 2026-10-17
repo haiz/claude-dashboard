@@ -3,6 +3,7 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
+mod auto_switch;
 mod cc_login;
 mod cc_flow;
 mod cc_state;
