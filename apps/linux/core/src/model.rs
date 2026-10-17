@@ -27,12 +27,38 @@ pub enum Browser {
     #[default]
     #[serde(rename = "chrome")]
     Chrome,
+    #[serde(rename = "chromeDev")]
+    ChromeDev,
     #[serde(rename = "arc")]
     Arc,
     #[serde(rename = "brave")]
     Brave,
     #[serde(rename = "edge")]
     Edge,
+}
+
+impl Browser {
+    /// Human-readable name; the strings of `apps/macos/Shared/Browser.swift`.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Browser::Chrome => "Google Chrome",
+            Browser::ChromeDev => "Google Chrome Dev",
+            Browser::Arc => "Arc",
+            Browser::Brave => "Brave",
+            Browser::Edge => "Microsoft Edge",
+        }
+    }
+
+    /// Parses the browser string of an extension binding.
+    pub fn from_extension_key(s: &str) -> Option<Browser> {
+        match s {
+            "chrome" => Some(Browser::Chrome),
+            "edge" => Some(Browser::Edge),
+            "brave" => Some(Browser::Brave),
+            "arc" => Some(Browser::Arc),
+            _ => None,
+        }
+    }
 }
 
 /// Where the record's session key comes from. Mirrors Swift's `AccountSource`;
@@ -99,6 +125,23 @@ impl Account {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chrome_dev_wire_value_is_camel_case() {
+        assert_eq!(serde_json::to_string(&Browser::ChromeDev).unwrap(), "\"chromeDev\"");
+        assert_eq!(serde_json::from_str::<Browser>("\"chromeDev\"").unwrap(), Browser::ChromeDev);
+    }
+
+    #[test]
+    fn display_names_match_macos() {
+        assert_eq!(Browser::Chrome.display_name(), "Google Chrome");
+        assert_eq!(Browser::ChromeDev.display_name(), "Google Chrome Dev");
+        assert_eq!(Browser::Arc.display_name(), "Arc");
+        assert_eq!(Browser::Brave.display_name(), "Brave");
+        assert_eq!(Browser::Edge.display_name(), "Microsoft Edge");
+        assert_eq!(Browser::from_extension_key("edge"), Some(Browser::Edge));
+        assert_eq!(Browser::from_extension_key("nope"), None);
+    }
 
     #[test]
     fn plan_wire_values() {

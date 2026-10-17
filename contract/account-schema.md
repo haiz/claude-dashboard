@@ -88,7 +88,7 @@ from this raw value.
 `"arc"`, `"brave"`, `"edge"` (same default-synthesis rule — the enum has no
 explicit `= "..."` per case, so each case's raw value is its case name, verbatim;
 `"chromeDev"` keeps its capital `D`). `"chromeDev"` (Google Chrome Dev) is
-macOS-only; Linux and Windows never write it.
+scanned on macOS and Windows; Linux never writes it.
 
 `AccountSource` wire values are `"browser"` and `"manual"`.
 
