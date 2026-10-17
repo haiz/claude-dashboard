@@ -1,4 +1,4 @@
-//! Overview pane: one line per selected account on shared axes. Reuses
+﻿//! Overview pane: one line per selected account on shared axes. Reuses
 //! `chart::Interaction` for range/zoom/hover/size and `chart_model` for
 //! geometry; this module only adds the per-account series and the toggles.
 
@@ -535,7 +535,7 @@ mod tests {
         let mut o = ov();
         let sc = o.inner.scale();
         o.inner.hover_at(sc.x(NOW - 2.0 * H), sc.top + 5.0);
-        let (v, lines, _, _) = o.view(0.0);
+        let (v, _lines, _, _) = o.view(0.0);
         assert!(v.cross.is_some());
         assert!(
             v.tooltip.contains("A  ") && v.tooltip.contains("B  50%"),

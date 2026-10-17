@@ -295,3 +295,22 @@ covered by the handler's unit tests):
 2. Load `apps/windows/extension/` as an unpacked extension.
 3. Open claude.ai logged in. The extension popup should show
    "Synced <email>", and the account should appear in `accounts.json`.
+
+### UI smoke test
+
+`CLAUDE_DASHBOARD_FAKE_ROWS=1 cargo run -p claude-dashboard` (stop any installed copy first; it holds the
+single-instance mutex). Check each pane:
+
+- **Dashboard:** five cards: alice (pinned, Pro), bob (Max 5x, green Claude Code dot, Fable ring at 40%),
+  carol (5h at 100%), dave (expired, pasted-key hint), erin (expired, scanned-browser hint).
+- **Account page (bob):** summary gauges, History chart with a reset inside the last 24 h and a limited
+  point, Reset Cycles list, Pin / Re-sync / Remove with inline confirmation.
+- **Overview:** one line per account with data, `(no data)` chips for alice, dave and erin, hover card,
+  pan and window chips.
+- **Settings > Accounts:** Add Account wizard (extension / scan / paste), Re-sync All progress `(n/5)`,
+  Delete with Confirm / Cancel, kind labels (Default, Browser extension (Microsoft Edge), Pasted key, Work).
+- **Settings > General:** About header, info tips on Enable auto refresh and Interval, interval stepper,
+  Launch at startup, Updates card, Reset All Settings with confirmation (accounts, logs and launch at
+  startup kept). The stepper and Reset write the real `settings.json`, even under FAKE_ROWS.
+- **Help:** the seven topic chips and their cards.
+- **Tray flyout:** left-click the tray icon; cards fit, Quit confirmation.

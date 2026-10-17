@@ -711,7 +711,7 @@ export component OverviewPane inherits VerticalLayout {
                 Text {
                     x: parent.width - self.preferred-width - 8px;
                     y: (parent.height - self.height) / 2;
-                    text: item.animal != "" ? item.animal : "{2014}";
+                    text: item.animal != "" ? item.animal : "\u{2014}";
                     color: Theme.text-secondary;
                     font-size: 13px;
                 }

@@ -276,7 +276,7 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
         });
     });
     // Settings > Accounts "Re-sync All": scanned accounts are re-read on a worker with
-    // "Re-syncing… (n/total)" progress, then one Nudge::All refreshes everything.
+    // "Re-syncingâ€¦ (n/total)" progress, then one Nudge::All refreshes everything.
     let (w, tx) = (app.as_weak(), nudge_tx.clone());
     app.on_resync_all(move || {
         use slint::Model;
@@ -388,23 +388,22 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         expired_hint: kind.expired_hint(),
         ..mk(id, name, AccountPlan::Pro, 0.0, 0.0, None)
     };
-    let mut dave = mk("f4", "dave", AccountPlan::Max20x, 38.0, 22.0, Some(7000.0));
-    dave.fable = Some(win(55.0, 259200.0));
-    dave.burn_projected_seconds_fable = Some(1800.0);
-    dave.peak_utilization = 55.0;
-    let mut gina = mk("f7", "gina", AccountPlan::Max5x, 20.0, 15.0, None);
-    gina.is_extension_sourced = true;
-    gina.kind_label = AccountKind::Extension { browser: Browser::Brave }.settings_label();
+    let mut bob = mk("f2", "bob", AccountPlan::Max5x, 64.0, 48.0, Some(3600.0));
+    bob.fable = Some(win(40.0, 259200.0));
+    bob.burn_projected_seconds_fable = Some(5400.0);
+    bob.is_extension_sourced = true;
+    bob.kind_label = AccountKind::Extension { browser: Browser::Edge }.settings_label();
+    let mut carol = mk("f3", "carol", AccountPlan::Max20x, 100.0, 91.0, Some(600.0));
+    if let Some(w) = carol.five_hour.as_mut() {
+        w.is_limited = true;
+    }
     let rows = vec![
         mk("f1", "alice", AccountPlan::Pro, 12.0, 30.0, None),
-        mk("f2", "bob", AccountPlan::Max5x, 64.0, 48.0, Some(3600.0)),
-        mk("f3", "carol", AccountPlan::Max20x, 100.0, 91.0, Some(600.0)),
-        dave,
+        bob,
+        carol,
+        expired("f4", "dave", AccountKind::PastedKey),
         expired("f5", "erin", AccountKind::Scanned { browser: Browser::Edge, profile: "Work".into() }),
-        expired("f6", "frank", AccountKind::PastedKey),
-        gina,
-    ];
-    refresh::RefreshOutput { peak: 100.0, rows }
+    ];    refresh::RefreshOutput { peak: 100.0, rows }
 }
 
 /// Time after a focus-loss hide during which a tray click is treated as the
@@ -734,7 +733,7 @@ fn main() -> Result<(), slint::PlatformError> {
         };
         reload_muted();
         let (reload, tx) = (reload_muted.clone(), nudge_tx.clone());
-        // Settings > Accounts and the account page's "Remove Account…" share one path.
+        // Settings > Accounts and the account page's "Remove Accountâ€¦" share one path.
         let delete_w = app.as_weak();
         let delete = move |id: slint::SharedString| {
             let (reload, tx) = (reload.clone(), tx.clone());

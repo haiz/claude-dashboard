@@ -187,6 +187,12 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
     checks and the detached relauncher, over `core::update` and the `autoUpdate` /
     `lastAutoUpdateCheck` settings; installed copy only, `DISABLE_AUTOUPDATER=1` disables) and
     the `release-windows.yml` workflow. See `contract/windows.md`, "Installer", "Updates", "Release".
+  - **macOS parity, part 1** — Run Command and the Command Log are removed (leftover files are deleted at
+    launch, `app/src/migration.rs`); accounts carry a `core::account_kind::AccountKind` (scanned / extension /
+    pasted key) that drives the Settings label and the expired-card hint; `settings.json` keys are
+    `autoRefreshEnabled`, `autoRefreshMinutes`, `launchAtStartup`, `autoUpdate`, `lastAutoUpdateCheck`
+    (+ `preferredScanBrowser`); the dev seed (`CLAUDE_DASHBOARD_FAKE_ROWS=1`) shows alice/bob/carol/dave/erin,
+    covering every card state.
   - **apps/windows/bridge/** — `claude-dashboard-bridge.exe`, a native-messaging host for the
     browser extension. `handler.rs` runs the key intake over an injected `Environment` trait
     (so tests touch no network/store/pipe); `real_env.rs` is the production wiring; `framing.rs`
