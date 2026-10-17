@@ -110,12 +110,19 @@ pub fn passed_resets(rows: &[DisplayRow], now_unix_s: f64) -> Vec<(String, i64, 
     out
 }
 
-/// `Nudge::Local`: copies the pin flags from `accounts` onto `prev` and re-sorts. No fetch.
+/// `Nudge::Local`: copies the pin flags from `accounts` and the Claude Code badge from
+/// `.claude.json` onto `prev`, and re-sorts. No fetch.
 pub fn relabel(prev: &[DisplayRow], accounts: &[Account], now_unix_s: f64) -> RefreshOutput {
+    let active = claude_dashboard_core::claude_code::active_email();
+    relabel_with(prev, accounts, active.as_deref(), now_unix_s)
+}
+
+pub fn relabel_with(prev: &[DisplayRow], accounts: &[Account], active_email: Option<&str>, now_unix_s: f64) -> RefreshOutput {
     let mut rows = prev.to_vec();
     for r in rows.iter_mut() {
         if let Some(a) = accounts.iter().find(|a| a.id == r.account_id) {
             r.is_pinned = a.is_pinned;
+            r.is_active_claude_code = active_email.is_some_and(|e| a.email.as_deref().is_some_and(|m| m.eq_ignore_ascii_case(e)));
         }
     }
     sort_rows(&mut rows, now_unix_s);
@@ -731,6 +738,16 @@ mod tests {
         let mut got = passed_resets(&rs, NOW);
         got.sort();
         assert_eq!(got, vec![("a".into(), 0, (NOW - 11.0) as i64), ("b".into(), 0, (NOW - 11.0) as i64)]);
+    }
+
+    #[test]
+    fn relabel_moves_the_claude_code_badge() {
+        let prev = rows(&[]);
+        let mut accts = vec![acct("a"), acct("b"), acct("c")];
+        accts[1].email = Some("b@x.com".into());
+        let out = relabel_with(&prev, &accts, Some("B@X.com"), NOW);
+        assert!(out.rows.iter().find(|r| r.account_id == "b").unwrap().is_active_claude_code);
+        assert_eq!(out.rows.iter().filter(|r| r.is_active_claude_code).count(), 1);
     }
 
     #[test]

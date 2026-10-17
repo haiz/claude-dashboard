@@ -4,6 +4,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
 mod cc_login;
+mod cc_flow;
 mod cc_state;
 mod chart;
 mod chart_model;
@@ -328,6 +329,180 @@ fn load_ping_log(weak: &slint::Weak<AppWindow>) {
             }
         });
     });
+}
+
+// ---- Claude Code Switch flow (macOS `requestSwitchClaudeCode` / `switchClaudeCode`) ----
+
+/// UI thread only: the confirmation waiting for the user, the running switch, the browser
+/// wait it can cancel, and which prompt is up (`CcPrompt` kind).
+#[derive(Default)]
+struct CcFlow {
+    pending: Option<String>,
+    switching: bool,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    kind: i32,
+}
+
+thread_local! {
+    static CC_FLOW: std::cell::RefCell<CcFlow> = std::cell::RefCell::new(CcFlow::default());
+    static MAIN_APP: std::cell::RefCell<Option<slint::Weak<AppWindow>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Refreshes after a switch (`Nudge::Local`: the badge moves and the rows re-sort at once).
+static CC_NUDGE: std::sync::OnceLock<std::sync::mpsc::Sender<refresh::Nudge>> = std::sync::OnceLock::new();
+
+/// Applies `f` to the main window and `g` to the flyout, whichever exist.
+fn cc_ui(f: impl Fn(&AppWindow), g: impl Fn(&PopoverWindow)) {
+    if let Some(a) = MAIN_APP.with(|m| m.borrow().as_ref().and_then(|w| w.upgrade())) {
+        f(&a);
+    }
+    if let Some(p) = POPOVER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade())) {
+        g(&p);
+    }
+}
+
+/// Shows prompt `kind` (0 hides it) in both windows.
+fn cc_prompt(kind: i32, title: &str, text: &str) {
+    CC_FLOW.with(|f| f.borrow_mut().kind = kind);
+    let (t, x) = (slint::SharedString::from(title), slint::SharedString::from(text));
+    cc_ui(
+        |a| {
+            a.set_cc_prompt_title(t.clone());
+            a.set_cc_prompt_text(x.clone());
+            a.set_cc_prompt_kind(kind);
+        },
+        |p| {
+            p.set_cc_prompt_title(t.clone());
+            p.set_cc_prompt_text(x.clone());
+            p.set_cc_prompt_kind(kind);
+        },
+    );
+}
+
+fn cc_set_switching(on: bool) {
+    CC_FLOW.with(|f| f.borrow_mut().switching = on);
+    cc_ui(|a| a.set_cc_switching(on), |p| p.set_cc_switching(on));
+}
+
+fn row_name(r: &claude_dashboard_core::rows::DisplayRow) -> String {
+    r.email.clone().filter(|e| !e.is_empty()).unwrap_or_else(|| r.name.clone())
+}
+
+/// Every Switch button: while the account Claude Code uses now still has quota left, ask
+/// first; otherwise switch straight away.
+fn cc_request(id: String) {
+    let rows = LAST_OUTPUT.with(|l| l.borrow().as_ref().map(|(o, _)| o.rows.clone())).unwrap_or_default();
+    let active = rows.iter().find(|r| r.is_active_claude_code);
+    if let (Some(active), Some(target)) = (active, rows.iter().find(|r| r.account_id == id)) {
+        let usage = active.five_hour.as_ref().zip(active.seven_day.as_ref()).map(|(f, s)| (f.utilization, s.utilization));
+        if active.account_id != id && cc_flow::needs_confirm(usage) {
+            let (five, seven) = usage.unwrap_or_default();
+            let text = cc_flow::confirm_message(&row_name(active), five, seven, &row_name(target));
+            CC_FLOW.with(|f| f.borrow_mut().pending = Some(id));
+            cc_prompt(1, cc_flow::CONFIRM_TITLE, &text);
+            return;
+        }
+    }
+    cc_start(id);
+}
+
+fn cc_start(id: String) {
+    use claude_dashboard_core::cc_switch::switcher::Availability;
+    if cc_state::switcher().is_none() || CC_FLOW.with(|f| f.borrow().switching) {
+        return;
+    }
+    if cc_state::availability(&id) == Some(Availability::NeedsLogin) {
+        let rows = LAST_OUTPUT.with(|l| l.borrow().as_ref().map(|(o, _)| o.rows.clone())).unwrap_or_default();
+        let name = rows.iter().find(|r| r.account_id == id).map(row_name).unwrap_or_default();
+        cc_prompt(2, cc_flow::MESSAGE_TITLE, &cc_flow::needs_login_message(&name));
+        return;
+    }
+    cc_set_switching(true);
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    CC_FLOW.with(|f| f.borrow_mut().cancel = Some(cancel.clone()));
+    std::thread::spawn(move || {
+        let message = cc_run(&id, &cancel);
+        let _ = slint::invoke_from_event_loop(move || cc_finish(message));
+    });
+}
+
+/// Worker: signs the account in first when its vault copy is missing or expired, then
+/// switches. The message to show, or `None` (the user cancelled the browser wait).
+fn cc_run(id: &str, cancel: &std::sync::atomic::AtomicBool) -> Option<String> {
+    use claude_dashboard_core::cc_switch::switcher::{Availability, SwitchAccount};
+    let switcher = cc_state::switcher()?;
+    let accounts = claude_dashboard_core::store::load_accounts().unwrap_or_default();
+    let account = accounts.iter().find(|a| a.id == id)?;
+    let name = account.email.clone().unwrap_or_else(|| account.name.clone());
+    if matches!(cc_state::availability(id), Some(Availability::NotCaptured | Availability::LoginExpired)) {
+        let sources = claude_dashboard_core::extension_sources::load(&claude_dashboard_core::extension_sources::sources_path())
+            .unwrap_or_default();
+        let Some(input) = cc_flow::provision_input(account, &sources) else {
+            return Some(cc_flow::resync_first_message(&name));
+        };
+        let on_awaiting = || {
+            let _ = slint::invoke_from_event_loop(|| cc_prompt(3, cc_flow::WAITING_TITLE, cc_flow::WAITING_TEXT));
+        };
+        match cc_login::provision(&input, cancel, on_awaiting, &cc_login::RealDeps, cc_login::BROWSER_TIMEOUT) {
+            Ok(entry) => {
+                if switcher.store(id, &entry).is_err() {
+                    return Some(cc_flow::store_failed_message(&name));
+                }
+            }
+            Err(e) => return e.message(&name),
+        }
+    }
+    let target = SwitchAccount { id: account.id.clone(), email: account.email.clone() };
+    let message = match switcher.switch_to(&target, &cc_state::switch_accounts(&accounts)) {
+        Ok(_) => cc_flow::success_message(&name),
+        Err(e) => e.message(&name),
+    };
+    cc_state::refresh(&accounts);
+    if let Some(tx) = CC_NUDGE.get() {
+        let _ = tx.send(refresh::Nudge::Local);
+    }
+    Some(message)
+}
+
+fn cc_finish(message: Option<String>) {
+    cc_set_switching(false);
+    CC_FLOW.with(|f| f.borrow_mut().cancel = None);
+    match message {
+        Some(m) => cc_prompt(2, cc_flow::MESSAGE_TITLE, &m),
+        None => cc_prompt(0, "", ""),
+    }
+}
+
+/// The prompt's main button: Switch on the confirmation, OK on a message.
+fn cc_ok() {
+    match CC_FLOW.with(|f| f.borrow().kind) {
+        1 => {
+            let pending = CC_FLOW.with(|f| f.borrow_mut().pending.take());
+            cc_prompt(0, "", "");
+            if let Some(id) = pending {
+                cc_start(id);
+            }
+        }
+        2 => cc_prompt(0, "", ""),
+        _ => {}
+    }
+}
+
+/// Cancel: drops a pending confirmation, or stops waiting for the browser.
+fn cc_cancel() {
+    match CC_FLOW.with(|f| f.borrow().kind) {
+        1 => {
+            CC_FLOW.with(|f| f.borrow_mut().pending = None);
+            cc_prompt(0, "", "");
+        }
+        3 => {
+            if let Some(c) = CC_FLOW.with(|f| f.borrow().cancel.clone()) {
+                c.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            cc_prompt(0, "", "");
+        }
+        _ => {}
+    }
 }
 
 /// What a manual ping needs for account `id`: an active stored account with an org and a
@@ -922,6 +1097,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let pop_nudge = nudge_tx.clone();
     let clock_nudge = nudge_tx.clone();
     let ping_nudge = nudge_tx.clone();
+    let cc_nudge = nudge_tx.clone();
 
     let dark = system_is_dark();
     // Add Account wizard (hidden until opened); its poll timer stops on close.
@@ -1206,6 +1382,11 @@ fn main() -> Result<(), slint::PlatformError> {
     OPEN_WIZARD.with(|o| *o.borrow_mut() = Some(open_wizard.clone()));
     // The Claude Code switcher reads and writes Claude Code's own files: never in dev runs.
     cc_state::init(!dev_run());
+    MAIN_APP.with(|m| *m.borrow_mut() = Some(app.as_weak()));
+    let _ = CC_NUDGE.set(cc_nudge);
+    app.on_switch_claude_code(|id| cc_request(id.to_string()));
+    app.on_cc_prompt_ok(cc_ok);
+    app.on_cc_prompt_cancel(cc_cancel);
     // macOS opens the window by itself only on the very first launch (`hasLaunchedBefore`);
     // later launches, launch at startup included, start in the tray. Dev runs always show it.
     let first_launch = !dev_run() && !claude_dashboard_core::settings::load().has_launched_before;
@@ -1221,6 +1402,9 @@ fn main() -> Result<(), slint::PlatformError> {
     popover.global::<Theme>().set_dark(dark);
     popover.set_app_version(settings_general::APP_VERSION.into());
     POPOVER.with(|p| *p.borrow_mut() = Some(popover.as_weak()));
+    popover.on_switch_claude_code(|id| cc_request(id.to_string()));
+    popover.on_cc_prompt_ok(cc_ok);
+    popover.on_cc_prompt_cancel(cc_cancel);
     popover.on_refresh(move || {
         let _ = pop_nudge.send(refresh::Nudge::All);
     });
