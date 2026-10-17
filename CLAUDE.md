@@ -169,7 +169,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   untouched. Sub-project 1 delivers the bridge and extension; sub-project 2 the Slint app:
   - **apps/windows/app/** — `claude-dashboard`, the Slint UI binary: main window with Mica and
     system light/dark theme, sidebar, Dashboard card grid with core-driven ring gauges,
-    per-account page, tray ring icon (peak usage) with a Mica flyout popover, a background
+    per-account page, tray ring icon (the menu-bar row's 5h usage) with a Mica flyout popover, a background
     refresh loop, a single-instance mutex, and the consumer of the `\\.\pipe\claude-dashboard`
     reload pipe. Closing the window hides it; the app lives in the tray. GUI rendering is
     verified by run-checks, not CI. Sub-project 3 adds the Add Account wizard (extension / scan /

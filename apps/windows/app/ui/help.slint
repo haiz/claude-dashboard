@@ -224,6 +224,7 @@ component TopicChip inherits Rectangle {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
+    Tooltip { text: @markdown("Jump to \{root.title}"); }
 }
 
 // ---- The pane -------------------------------------------------------------------------

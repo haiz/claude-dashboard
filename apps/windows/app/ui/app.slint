@@ -22,6 +22,7 @@ component GroupHeader inherits Text {
 component EmptyState inherits VerticalLayout {
     in property <string> title: "No Accounts";
     in property <string> subtitle: "Sync your Claude accounts from your browser to get started.";
+    in property <string> tip: "Add a Claude account from your browser or a pasted session key";
     callback add-account();
     alignment: center;
     spacing: 10px;
@@ -38,6 +39,7 @@ component EmptyState inherits VerticalLayout {
             border-color: Theme.card-border;
             add-text := Text { text: "Add Account"; color: Theme.accent; horizontal-alignment: center; vertical-alignment: center; }
             add-touch := TouchArea { clicked => { root.add-account(); } }
+            Tooltip { text: @markdown("\{root.tip}"); }
         }
     }
 }
@@ -46,6 +48,8 @@ component PaneButton inherits Rectangle {
     in property <string> label;
     in property <color> tint: Theme.accent;
     in property <bool> enabled: true;
+    // Hover tooltip (macOS `.help`); empty shows none.
+    in property <string> tip;
     callback clicked();
     height: 32px;
     width: t.preferred-width + 28px;
@@ -56,10 +60,11 @@ component PaneButton inherits Rectangle {
     border-color: Theme.card-border;
     t := Text { text: root.label; color: root.enabled ? root.tint : Theme.text-secondary; horizontal-alignment: center; vertical-alignment: center; }
     touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+    if root.tip != "": Tooltip { text: @markdown("\{root.tip}"); }
 }
 
-// Settings > Accounts (macOS AccountsSettingsPane): list, delete (inline
-// confirm), Add Account, Re-sync All, and the muted extension sources.
+// Settings > Accounts (macOS AccountsSettingsPane): the account list with trash buttons,
+// Add Account and Re-sync All under it, and the muted extension sources.
 component AccountsSettingsPane inherits VerticalLayout {
     in property <[UiRow]> rows;
     in property <[string]> muted;
@@ -69,71 +74,108 @@ component AccountsSettingsPane inherits VerticalLayout {
     callback resync();
     callback delete-account(string);
     callback unmute(string);
-    property <string> confirming-id;
     spacing: 12px;
 
-    HorizontalLayout {
-        spacing: 8px;
-        alignment: start;
-        PaneButton { label: "Add Account\u{2026}"; clicked => { root.add-account(); } }
-        PaneButton {
-            label: root.resyncing ? root.resync-progress : "Re-sync All";
-            enabled: !root.resyncing && root.rows.length > 0;
-            clicked => { root.resync(); }
-        }
-    }
     Flickable {
         content-height: list.preferred-height;
         list := VerticalLayout {
             spacing: 8px;
             alignment: start;
-            if root.rows.length == 0: Text { text: "No accounts."; color: Theme.text-secondary; }
-            for acct in root.rows: Rectangle {
-                height: 64px;
+            // macOS grouped Form section: one box, rows split by dividers.
+            Rectangle {
+                height: rows-box.preferred-height;
                 background: Theme.card-bg;
-                border-radius: 8px;
+                border-radius: 10px;
                 border-width: 1px;
                 border-color: Theme.card-border;
-                HorizontalLayout {
-                    padding: 8px;
-                    spacing: 10px;
-                    Avatar { size: 32px; initial: acct.initial; tint: acct.avatar-color; y: (parent.height - self.height) / 2; }
-                    VerticalLayout {
-                        alignment: center;
-                        Text { text: acct.name; color: Theme.text-primary; font-weight: 600; overflow: elide; }
-                        Text {
-                            text: (acct.email != "" ? acct.email + "  \u{b7}  " : "") + acct.plan;
-                            color: Theme.text-secondary;
-                            font-size: 11px;
-                            overflow: elide;
-                        }
-                        Text {
-                            text: acct.kind-label;
-                            color: Theme.text-secondary;
-                            font-size: 11px;
-                            overflow: elide;
-                        }
-                    }
-                    if acct.expired: Text {
-                        text: "\u{26a0}";
-                        color: #ff9f0a;
+                rows-box := VerticalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    padding-top: 4px;
+                    padding-bottom: 4px;
+                    if root.rows.length == 0: Text {
+                        height: 40px;
+                        text: "No accounts yet.";
+                        color: Theme.text-secondary;
                         vertical-alignment: center;
                     }
-                    if root.confirming-id != acct.id: PaneButton {
-                        label: "Delete"; tint: Theme.danger;
-                        y: (parent.height - self.height) / 2;
-                        clicked => { root.confirming-id = acct.id; }
+                    for acct[i] in root.rows: VerticalLayout {
+                        if i > 0: Rectangle { height: 1px; background: Theme.card-border; }
+                        HorizontalLayout {
+                            padding-top: 8px;
+                            padding-bottom: 8px;
+                            spacing: 10px;
+                            Avatar { size: 28px; initial: acct.initial; tint: acct.avatar-color; y: (parent.height - self.height) / 2; }
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+                                Text { text: acct.name; color: Theme.text-primary; overflow: elide; }
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    alignment: start;
+                                    // Plan capsule in the secondary tint, then where the key comes from.
+                                    Rectangle {
+                                        width: plan-text.preferred-width + 12px;
+                                        height: 16px;
+                                        border-radius: 8px;
+                                        background: Theme.text-secondary.with-alpha(0.15);
+                                        plan-text := Text { text: acct.plan; color: Theme.text-primary; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                                    }
+                                    Text { text: acct.kind-label; color: Theme.text-secondary; font-size: 11px; vertical-alignment: center; overflow: elide; }
+                                }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                            if acct.expired: Rectangle {
+                                width: warn.preferred-width;
+                                warn := Text {
+                                    height: parent.height;
+                                    text: "\u{E7BA}";
+                                    font-family: "Segoe Fluent Icons";
+                                    font-size: 14px;
+                                    color: #ff9f0a;
+                                    vertical-alignment: center;
+                                }
+                                Tooltip { text: @markdown("Session expired"); }
+                            }
+                            // macOS removes at once from the red trash button.
+                            Rectangle {
+                                width: 28px;
+                                height: 24px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 5px;
+                                background: trash.has-hover ? Theme.text-primary.with-alpha(0.10) : transparent;
+                                Text {
+                                    text: "\u{E74D}";
+                                    font-family: "Segoe Fluent Icons";
+                                    font-size: 14px;
+                                    color: Theme.danger;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                                trash := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.delete-account(acct.id); }
+                                }
+                                Tooltip { text: @markdown("Remove account"); }
+                            }
+                        }
                     }
-                    if root.confirming-id == acct.id: PaneButton {
-                        label: "Confirm delete"; tint: Theme.danger;
-                        y: (parent.height - self.height) / 2;
-                        clicked => { root.confirming-id = ""; root.delete-account(acct.id); }
-                    }
-                    if root.confirming-id == acct.id: PaneButton {
-                        label: "Cancel"; tint: Theme.text-secondary;
-                        y: (parent.height - self.height) / 2;
-                        clicked => { root.confirming-id = ""; }
-                    }
+                }
+            }
+            // Section footer, right-aligned (System Settings list actions).
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                PaneButton {
+                    label: "Add Account\u{2026}";
+                    tip: "Add a Claude account from your browser or a pasted session key";
+                    clicked => { root.add-account(); }
+                }
+                PaneButton {
+                    label: root.resyncing ? root.resync-progress : "Re-sync All";
+                    enabled: !root.resyncing && root.rows.length > 0;
+                    tip: "Read fresh session keys from the browser for every account";
+                    clicked => { root.resync(); }
                 }
             }
             if root.muted.length > 0: GroupHeader { text: "Muted sources"; }
@@ -341,12 +383,37 @@ component GeneralSettingsPane inherits Flickable {
 
         SettingsCard {
             height: rst.preferred-height + 24px;
+            // While the reset asks to confirm: Esc cancels, Enter resets (macOS dialog keys).
+            reset-keys := FocusScope {
+                enabled: root.confirming-reset;
+                width: 0px;
+                height: 0px;
+                key-pressed(e) => {
+                    if e.text == Key.Escape {
+                        root.confirming-reset = false;
+                        return accept;
+                    }
+                    if e.text == Key.Return {
+                        root.confirming-reset = false;
+                        root.reset-all-settings();
+                        return accept;
+                    }
+                    reject
+                }
+            }
             rst := VerticalLayout {
                 padding: 12px;
                 spacing: 8px;
                 if !root.confirming-reset: HorizontalLayout {
                     alignment: end;
-                    PaneButton { label: "Reset All Settings\u{2026}"; tint: Theme.danger; clicked => { root.confirming-reset = true; } }
+                    PaneButton {
+                        label: "Reset All Settings\u{2026}"; tint: Theme.danger;
+                        tip: "Restore every setting on this page to its default";
+                        clicked => {
+                            root.confirming-reset = true;
+                            reset-keys.focus();
+                        }
+                    }
                 }
                 if root.confirming-reset: Text {
                     text: "Reset all settings to their defaults?";
@@ -370,10 +437,10 @@ component GeneralSettingsPane inherits Flickable {
 
 export component AppWindow inherits Window {
     title: "Claude Dashboard";
-    min-width: 640px;
-    min-height: 400px;
-    preferred-width: 960px;
-    preferred-height: 660px;
+    min-width: 900px;
+    min-height: 560px;
+    preferred-width: 1200px;
+    preferred-height: 800px;
     default-font-family: Theme.font-family;
     default-font-size: 14px;
     // Transparent so Mica shows through; the solid fill below is used only
@@ -569,6 +636,7 @@ export component AppWindow inherits Window {
                 Rectangle { horizontal-stretch: 1; }
                 if root.selection == Pane.dashboard && root.account-rows.length > 0: PaneButton {
                     label: "Refresh";
+                    tip: "Refresh usage for all accounts";
                     enabled: !root.refreshing;
                     y: (parent.height - self.height) / 2;
                     clicked => { root.resync(); }
@@ -624,7 +692,6 @@ export component AppWindow inherits Window {
                             data: self.acct;
                             compact: false;
                             width: scroll.card-w;
-                            clicked => { root.select-account-page(self.acct.id); }
                             toggle-pin(pinned) => { root.toggle-pin(self.acct.id, pinned); }
                             resync => { root.resync-account(self.acct.id); }
                             open-window(w) => {
@@ -690,6 +757,8 @@ export component AppWindow inherits Window {
 component FlyoutIconButton inherits Rectangle {
     in property <string> glyph;
     in property <bool> enabled: true;
+    // Hover tooltip (macOS `.help`).
+    in property <string> tip;
     callback clicked();
     // macOS HeaderIconButton: 24 pt square, caption-size glyph.
     width: 24px;
@@ -710,6 +779,7 @@ component FlyoutIconButton inherits Rectangle {
         mouse-cursor: root.enabled ? pointer : default;
         clicked => { root.clicked(); }
     }
+    Tooltip { text: @markdown("\{root.tip}"); }
 }
 
 // Tray flyout (macOS MenuBarPopover + PopoverFooter): update banner, header with icon
@@ -740,8 +810,7 @@ export component PopoverWindow inherits Window {
     callback add-account();
     callback toggle-pin(string, bool);
     callback resync-account(string);
-    // A card click opens that account's page; a gauge click its chart window ("5h" | "7d" | "fable").
-    callback open-account(string);
+    // A gauge click opens that account's page on its chart window ("5h" | "7d" | "fable").
     callback open-account-window(string, string);
 
     // The list is as tall as its cards (they size themselves), capped; the empty state has a fixed height.
@@ -788,17 +857,19 @@ export component PopoverWindow inherits Window {
             Rectangle { }
             if root.account-rows.length > 0: FlyoutIconButton {
                 glyph: "\u{E72C}";
+                tip: "Refresh usage for all accounts";
                 enabled: !root.refreshing;
                 clicked => { root.refresh(); }
             }
-            FlyoutIconButton { glyph: "\u{E740}"; clicked => { root.expand(); } }
-            FlyoutIconButton { glyph: "\u{E897}"; clicked => { root.open-help(); } }
-            FlyoutIconButton { glyph: "\u{E713}"; clicked => { root.open-settings(); } }
+            FlyoutIconButton { glyph: "\u{E740}"; tip: "Open the main window"; clicked => { root.expand(); } }
+            FlyoutIconButton { glyph: "\u{E897}"; tip: "Help"; clicked => { root.open-help(); } }
+            FlyoutIconButton { glyph: "\u{E713}"; tip: "Open Settings"; clicked => { root.open-settings(); } }
         }
         Rectangle { height: 1px; background: Theme.card-border; }
         if root.account-rows.length == 0: EmptyState {
             title: "No accounts configured";
             subtitle: "";
+            tip: "Open the main window to add a Claude account";
             vertical-stretch: 1;
             add-account => { root.add-account(); }
         }
@@ -811,9 +882,9 @@ export component PopoverWindow inherits Window {
                 padding: 12px;
                 spacing: 8px;
                 alignment: start;
+                // As on macOS, only the gauges open anything; the card itself is not clickable.
                 for acct in root.account-rows: AccountCard {
                     data: acct;
-                    clicked => { root.open-account(acct.id); }
                     toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
                     resync => { root.resync-account(acct.id); }
                     open-window(w) => { root.open-account-window(acct.id, w); }
@@ -833,7 +904,8 @@ export component PopoverWindow inherits Window {
                     x: 0px;
                     width: quit-row.preferred-width + 16px;
                     border-radius: 6px;
-                    background: quit-touch.has-hover ? Theme.danger.with-alpha(0.15) : transparent;
+                    // macOS HoverableButtonStyle: a neutral wash, not red.
+                    background: quit-touch.has-hover ? Theme.text-primary.with-alpha(0.10) : transparent;
                     quit-row := HorizontalLayout {
                         padding-left: 8px;
                         padding-right: 8px;
@@ -849,18 +921,45 @@ export component PopoverWindow inherits Window {
                     }
                     quit-touch := TouchArea {
                         mouse-cursor: pointer;
-                        clicked => { root.confirming-quit = true; }
+                        clicked => {
+                            root.confirming-quit = true;
+                            prompt-keys.focus();
+                        }
                     }
+                    Tooltip { text: @markdown("Quit the app and stop monitoring usage"); }
                 }
             }
-            Text {
-                text: "v" + root.app-version;
-                color: Theme.text-secondary.with-alpha(0.7);
-                font-size: 11px;
-                vertical-alignment: center;
-                horizontal-alignment: center;
+            Rectangle {
+                width: version.preferred-width;
+                version := Text {
+                    text: "v" + root.app-version;
+                    color: Theme.text-secondary.with-alpha(0.7);
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+                Tooltip { text: @markdown("Claude Dashboard \{root.app-version}"); }
             }
             Rectangle { horizontal-stretch: 1; }
+        }
+    }
+
+    // Esc cancels and Enter quits while the prompt is up (macOS `.cancelAction` /
+    // `.defaultAction`). Always present so the Quit click can focus it.
+    prompt-keys := FocusScope {
+        enabled: root.confirming-quit;
+        width: 0px;
+        height: 0px;
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                root.confirming-quit = false;
+                return accept;
+            }
+            if e.text == Key.Return {
+                root.quit();
+                return accept;
+            }
+            reject
         }
     }
 
@@ -887,8 +986,8 @@ export component PopoverWindow inherits Window {
                 HorizontalLayout {
                     spacing: 8px;
                     padding-top: 4px;
-                    PaneButton { horizontal-stretch: 1; label: "Cancel"; tint: Theme.text-secondary; clicked => { root.confirming-quit = false; } }
-                    PaneButton { horizontal-stretch: 1; label: "Quit"; tint: Theme.danger; clicked => { root.quit(); } }
+                    PaneButton { horizontal-stretch: 1; label: "Cancel"; tint: Theme.text-secondary; tip: "Close without continuing"; clicked => { root.confirming-quit = false; } }
+                    PaneButton { horizontal-stretch: 1; label: "Quit"; tint: Theme.danger; tip: "Quit the app and stop monitoring usage"; clicked => { root.quit(); } }
                 }
             }
         }

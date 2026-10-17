@@ -126,6 +126,8 @@ removed `shell` key is dropped the same way.
 Changes take effect without a restart. An Auto Refresh change only re-arms the
 refresh timer with the new interval (as macOS reschedules its timer); it never
 starts a fetch. Writes from the Settings pane run one at a time, in click order.
+`hasLaunchedBefore` (default false) is set on the first launch and survives Reset
+All Settings.
 
 ## Launch at startup
 
@@ -189,6 +191,11 @@ pipe means the app is not running and is not an error.
 - **Single instance:** the app holds the named mutex
   `Local\ClaudeDashboardSingleInstance` for its lifetime; a second launch fails
   to acquire it and exits.
+- **Main window:** as on macOS it opens by itself only on the first launch
+  (`hasLaunchedBefore`); later launches, Launch at startup included, start in the
+  tray. Showing it with no accounts opens the Add Account wizard. Closing it hides
+  it and returns it to the Dashboard. The tray menu's Quit asks first, with the
+  flyout's Quit prompt text.
 - **Reload pipe consumer:** the app is the *reader* of `\\.\pipe\claude-dashboard`
   and refreshes on each `reload` line; the bridge (sub-project 1) is the writer.
 

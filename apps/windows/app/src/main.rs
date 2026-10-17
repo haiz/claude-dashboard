@@ -562,9 +562,38 @@ fn toggle_flyout(pop: &PopoverWindow, tray_rect: popover::Rect) {
     FLYOUT.with(|f| f.borrow_mut().shown_at = Some(std::time::Instant::now()));
 }
 
+thread_local! {
+    /// The Add Account wizard opener, for `show_main`.
+    static OPEN_WIZARD: std::cell::RefCell<Option<std::rc::Rc<dyn Fn()>>> = const { std::cell::RefCell::new(None) };
+    /// Mica is applied the first time the main window shows (it may start hidden).
+    static MAIN_STYLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Shows the main window. Like macOS `MainWindow.onAppear`, a store with no accounts
+/// opens the Add Account wizard over it.
 fn show_main(app: &AppWindow) {
     let _ = app.show();
     app.window().set_minimized(false);
+    if !MAIN_STYLED.with(|s| s.replace(true)) && !apply_mica(app.window()) {
+        app.set_use_solid_background(true);
+    }
+    let no_accounts = !dev_run() && claude_dashboard_core::store::load_accounts().is_ok_and(|a| a.is_empty());
+    if no_accounts {
+        if let Some(open) = OPEN_WIZARD.with(|o| o.borrow().clone()) {
+            open();
+        }
+    }
+}
+
+/// The tray menu's Quit confirmation: a system message box with the flyout prompt's text.
+fn confirm_quit() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONQUESTION, MB_OKCANCEL, MB_SETFOREGROUND};
+    let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let (text, title) = (wide("Usage monitoring stops until you open the app again."), wide("Quit Claude Dashboard?"));
+    let r = unsafe {
+        MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), MB_OKCANCEL | MB_ICONQUESTION | MB_SETFOREGROUND)
+    };
+    r == IDOK
 }
 
 /// Best-effort: bring the window to the foreground (needs the second instance's
@@ -1006,9 +1035,15 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = nudge_tx.send(refresh::Nudge::All);
     });
     app.global::<Theme>().set_dark(dark);
-    app.show()?;
-    if !apply_mica(app.window()) {
-        app.set_use_solid_background(true);
+    OPEN_WIZARD.with(|o| *o.borrow_mut() = Some(open_wizard.clone()));
+    // macOS opens the window by itself only on the very first launch (`hasLaunchedBefore`);
+    // later launches, launch at startup included, start in the tray. Dev runs always show it.
+    let first_launch = !dev_run() && !claude_dashboard_core::settings::load().has_launched_before;
+    if first_launch {
+        let _ = claude_dashboard_core::settings::update(|s| s.has_launched_before = true);
+    }
+    if first_launch || dev_run() {
+        show_main(&app);
     }
 
     // Tray flyout (created hidden; shown on tray left-click).
@@ -1057,16 +1092,6 @@ fn main() -> Result<(), slint::PlatformError> {
         popover.on_open_settings({
             let go = go.clone();
             move || go(Box::new(|a| a.set_selection(Pane::General)))
-        });
-        popover.on_open_account({
-            let go = go.clone();
-            move |id| {
-                let id = id.to_string();
-                go(Box::new(move |a| {
-                    a.set_selected_account_id(id.into());
-                    a.set_selection(Pane::Account);
-                }))
-            }
         });
         popover.on_open_account_window({
             let go = go.clone();
@@ -1132,15 +1157,19 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                     if let Some(a) = a.upgrade() {
                         show_main(&a);
+                        raise_to_foreground(a.window());
                     }
                 });
             }),
             refresh: Box::new(move || {
                 let _ = tray_nudge.send(refresh::Nudge::All);
             }),
+            // Asks first, with the flyout's Quit prompt text (macOS has a confirmed Quit only).
             quit: Box::new(|| {
                 let _ = slint::invoke_from_event_loop(|| {
-                    let _ = slint::quit_event_loop();
+                    if confirm_quit() {
+                        let _ = slint::quit_event_loop();
+                    }
                 });
             }),
         };
@@ -1186,8 +1215,14 @@ fn main() -> Result<(), slint::PlatformError> {
     let _clock = start_clock(app.as_weak(), popover.as_weak(), clock_nudge);
     // Closing the main window hides it; the app lives in the tray and quits
     // only via the tray/flyout "Quit" (or the smoke timer) -> quit_event_loop.
-    app.window()
-        .on_close_requested(|| slint::CloseRequestResponse::HideWindow);
+    // Like macOS dropping the window's views, it reopens on the Dashboard.
+    let close_w = app.as_weak();
+    app.window().on_close_requested(move || {
+        if let Some(a) = close_w.upgrade() {
+            a.set_selection(Pane::Dashboard);
+        }
+        slint::CloseRequestResponse::HideWindow
+    });
     // Hidden windows do not end this loop; only quit_event_loop does.
     // Dropping `_tray` on return removes the icon.
     let result = slint::run_event_loop_until_quit();

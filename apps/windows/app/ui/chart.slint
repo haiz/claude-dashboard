@@ -117,6 +117,8 @@ component PresetChip inherits Rectangle {
     in property <bool> active;
     in property <bool> enabled: true;
     in property <bool> compact: false;
+    // Hover tooltip (macOS `.help`); empty shows none.
+    in property <string> tip;
     callback clicked();
     height: root.compact ? 24px : 28px;
     width: t.preferred-width + (root.compact ? 16px : 24px);
@@ -133,6 +135,7 @@ component PresetChip inherits Rectangle {
         vertical-alignment: center;
     }
     touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+    if root.tip != "": Tooltip { text: @markdown("\{root.tip}"); }
 }
 
 // The plot. Pointer x/y are forwarded in px; Rust decides what they mean.
@@ -505,12 +508,14 @@ export component HistoryBox inherits VerticalLayout {
                 PresetChip {
                     compact: true;
                     label: root.st.pan-mode ? "Pan" : "Zoom";
+                    tip: root.st.pan-mode ? "Switch to zoom mode" : "Switch to pan mode";
                     enabled: !root.st.ruler;
                     clicked => { ChartActions.toggle-mode(); }
                 }
                 for p in ["5h", "24h", "3d", "7d", "30d"]: PresetChip {
                     compact: true;
                     label: p;
+                    tip: "Show the last " + p;
                     active: !root.st.custom && root.st.preset == p;
                     enabled: !root.st.ruler;
                     clicked => { ChartActions.preset(p); }
@@ -532,17 +537,20 @@ export component HistoryBox inherits VerticalLayout {
                 for w[i] in ["5h", "7d", "fable"]: PresetChip {
                     compact: true;
                     label: i == 2 ? "F" : w;
+                    tip: "Show the " + (i == 0 ? "5-hour" : i == 1 ? "7-day" : "Fable") + " usage window";
                     active: root.st.window == w;
                     clicked => { root.window-picked(w); }
                 }
                 if root.st.has-cycle: PresetChip {
                     compact: true;
                     label: "Show All";
+                    tip: "Show every reset cycle on the chart";
                     clicked => { ChartActions.show-all(); }
                 }
                 PresetChip {
                     compact: true;
                     label: "Ruler";
+                    tip: root.st.ruler ? "Turn off measure tool" : "Measure tool: click 2 points to see Δ%";
                     active: root.st.ruler;
                     clicked => { ChartActions.toggle-ruler(); }
                 }
@@ -588,6 +596,7 @@ export component HistoryBox inherits VerticalLayout {
                     }
                 }
                 head-touch := TouchArea { clicked => { root.cycles-open = !root.cycles-open; } }
+                Tooltip { text: @markdown("\{root.cycles-open ? "Hide the reset cycles" : "Show the reset cycles"}"); }
             }
             if root.st.cycles.length > 0 && root.cycles-open: Flickable {
                 height: min(150px, rows.preferred-height);
@@ -620,6 +629,7 @@ export component HistoryBox inherits VerticalLayout {
                             Text { text: c.points; color: Theme.text-secondary.with-alpha(0.7); font-size: 11px; vertical-alignment: center; }
                         }
                         row-touch := TouchArea { clicked => { ChartActions.select-cycle(i); } }
+                        Tooltip { text: @markdown("Show only this cycle on the chart"); }
                     }
                 }
             }
@@ -648,11 +658,13 @@ export component OverviewPane inherits VerticalLayout {
         PresetChip {
             compact: true;
             label: root.state.pan-mode ? "Pan" : "Zoom";
+            tip: root.state.pan-mode ? "Switch to zoom mode" : "Switch to pan mode";
             clicked => { root.toggle-mode(); }
         }
         for p in ["5h", "24h", "3d", "7d", "30d"]: PresetChip {
             compact: true;
             label: p;
+            tip: "Show the last " + p;
             active: !root.state.custom && root.state.preset == p;
             clicked => { root.preset(p); }
         }
@@ -673,6 +685,7 @@ export component OverviewPane inherits VerticalLayout {
         for w[i] in ["5h", "7d", "fable"]: PresetChip {
             compact: true;
             label: i == 2 ? "F" : w;
+            tip: "Show the " + (i == 0 ? "5-hour" : i == 1 ? "7-day" : "Fable") + " usage window";
             active: root.state.window == w;
             clicked => { root.window(w); }
         }
@@ -716,6 +729,7 @@ export component OverviewPane inherits VerticalLayout {
                     font-size: 13px;
                 }
                 lt-touch := TouchArea { clicked => { root.toggle(item.id); } }
+                Tooltip { text: @markdown("\{item.on ? "Hide this account on the chart" : "Show this account on the chart"}"); }
             }
         }
     }
