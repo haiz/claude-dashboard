@@ -1,5 +1,5 @@
 import { Theme, UiWindow } from "theme.slint";
-import { WindowColumn } from "components.slint";
+import { WindowColumn, BoltIcon, FlameIcon } from "components.slint";
 
 // Tools > Help (macOS HelpView + HelpBlocks): a topic grid that scrolls to one card per
 // topic. Topic ids and titles live in `src/help.rs` (TOPICS); the card for each id is
@@ -29,6 +29,8 @@ component HelpSubheading inherits Text {
 // explanation on the right.
 component HelpRow inherits HorizontalLayout {
     in property <string> glyph;
+    // A drawn symbol instead of a glyph: "flame", "flame-fill", "bolt", "bolt-fill".
+    in property <string> icon;
     in property <string> glyph-font: "Segoe Fluent Icons";
     in property <string> badge;
     in property <color> tint: Theme.text-secondary;
@@ -38,6 +40,18 @@ component HelpRow inherits HorizontalLayout {
     spacing: 12px;
     Rectangle {
         width: 44px;
+        if root.icon == "flame" || root.icon == "flame-fill": FlameIcon {
+            width: 16px;
+            height: 16px;
+            filled: root.icon == "flame-fill";
+            tint: root.tint;
+        }
+        if root.icon == "bolt" || root.icon == "bolt-fill": BoltIcon {
+            width: 16px;
+            height: 16px;
+            filled: root.icon == "bolt-fill";
+            tint: root.tint;
+        }
         if root.glyph != "": Text {
             text: root.glyph;
             font-family: root.glyph-font;
@@ -162,6 +176,8 @@ component HelpCard inherits Rectangle {
     in property <string> title;
     in property <string> subtitle;
     in property <string> glyph;
+    // "flame" draws the Critical Accounts symbol instead of a glyph.
+    in property <string> icon;
     in property <color> tile;
     background: Theme.card-bg;
     border-radius: 12px;
@@ -178,6 +194,7 @@ component HelpCard inherits Rectangle {
                 height: 30px;
                 border-radius: 7px;
                 background: root.tile;
+                if root.icon == "flame": FlameIcon { width: 18px; height: 18px; tint: white; }
                 Text {
                     text: root.glyph;
                     font-family: "Segoe Fluent Icons";
@@ -214,6 +231,8 @@ component TopicChip inherits Rectangle {
         : root.topic-id == "finding-your-way" ? "\u{E707}"
         : root.topic-id == "charts" ? "\u{E9D2}"
         : root.topic-id == "switch-claude-code" ? "\u{E8AB}"
+        : root.topic-id == "auto-switch" ? "\u{E895}"
+        : root.topic-id == "critical-accounts" ? ""
         : root.topic-id == "ping" ? "\u{E701}"
         : root.topic-id == "managing-accounts" ? "\u{E716}"
         : root.topic-id == "refresh-updates" ? "\u{E72C}"
@@ -223,6 +242,8 @@ component TopicChip inherits Rectangle {
         : root.topic-id == "finding-your-way" ? #8e8e93
         : root.topic-id == "charts" ? #ff9f0a
         : root.topic-id == "switch-claude-code" ? #ff375f
+        : root.topic-id == "auto-switch" ? #40c8e0
+        : root.topic-id == "critical-accounts" ? #ff453a
         : root.topic-id == "ping" ? #5e5ce6
         : root.topic-id == "managing-accounts" ? #30d158
         : root.topic-id == "refresh-updates" ? #32ade6
@@ -242,6 +263,7 @@ component TopicChip inherits Rectangle {
             y: (parent.height - self.height) / 2;
             border-radius: 5px;
             background: root.tile;
+            if root.topic-id == "critical-accounts": FlameIcon { width: 13px; height: 13px; tint: white; }
             Text {
                 text: root.glyph;
                 font-family: "Segoe Fluent Icons";
@@ -287,6 +309,8 @@ export component HelpPane inherits Flickable {
             : id == "finding-your-way" ? c-way.y
             : id == "charts" ? c-charts.y
             : id == "switch-claude-code" ? c-switch.y
+            : id == "auto-switch" ? c-auto.y
+            : id == "critical-accounts" ? c-critical.y
             : id == "ping" ? c-ping.y
             : id == "managing-accounts" ? c-accounts.y
             : id == "refresh-updates" ? c-refresh.y
@@ -411,6 +435,9 @@ export component HelpPane inherits Flickable {
             HelpRow { dot: true; tint: Theme.ok; body: @markdown("**Active in Claude Code**: the account Claude Code is using right now."); }
             HelpRow { badge: "Pro"; tint: #0a84ff; body: @markdown("**Plan**: Pro, Max 5x, Max 20x, or Max when the tier is unknown."); }
             HelpRow { glyph: "\u{E718}"; body: @markdown("**Pinned**: always at the top of the list, and the account shown on the tray icon."); }
+            HelpRow { icon: "bolt-fill"; tint: #ff9f0a; body: @markdown("**Home after reset**: Claude Code comes back here each time this account's 5h limit resets."); }
+            HelpRow { icon: "flame-fill"; tint: #ff453a; body: @markdown("**Flame**: orange when the account is critical, red when high critical: its weekly quota will go unused. Hover for the numbers."); }
+            HelpRow { glyph: "\u{E9D2}"; tint: #ff9f0a; body: @markdown("**X** (Dashboard header): what a full 5h window costs of the 7d quota. Click for its history."); }
             HelpRow { glyph: "\u{E7BA}"; tint: #ff9f0a; body: @markdown("**Session expired**: sign in again in the browser, then **Re-sync**."); }
 
             HelpCallout { kind: "note"; body: @markdown("The tray icon shows the 5h usage of your pinned account, or the top account when none is pinned. Hover it for the time left until reset."); }
@@ -427,13 +454,13 @@ export component HelpPane inherits Flickable {
             HelpRow { glyph: "\u{E72C}"; body: @markdown("**Refresh**: fetch the latest usage for every account."); }
             HelpRow { glyph: "\u{E740}"; body: @markdown("**Open window**: the full dashboard."); }
             HelpRow { glyph: "\u{E897}"; body: @markdown("**Help**: this page."); }
-            HelpRow { glyph: "\u{E713}"; body: @markdown("**Settings**: accounts, refresh, Auto Ping, updates."); }
-            HelpRow { glyph: "\u{E7E8}"; body: @markdown("**Quit** (bottom left, asks first). **Right-click** the tray icon for **Open Dashboard**, **Refresh** and **Quit**. Closing the window keeps the app in the tray."); }
+            HelpRow { glyph: "\u{E713}"; body: @markdown("**Settings**: accounts, refresh, Auto Ping, Auto Switch, updates."); }
+            HelpRow { glyph: "\u{E7E8}"; body: @markdown("**Quit** (bottom left, asks first). **Right-click** the tray icon for **Open Dashboard**, **Refresh** and **Quit**. Closing the window keeps the app in the tray. The **Auto switch** toggle sits bottom right with its latest event."); }
 
             HelpSubheading { text: "Main window sidebar"; }
             HelpRow { glyph: "\u{E80A}"; tint: #0a84ff; body: @markdown("**Usage**: Dashboard (all cards) and Overview (all accounts on one chart)."); }
             HelpRow { glyph: "\u{E77B}"; tint: #40c8e0; body: @markdown("**Accounts**: one page per account, with its current usage next to the name."); }
-            HelpRow { glyph: "\u{E90F}"; tint: #5e5ce6; body: @markdown("**Tools**: Ping Log and Help."); }
+            HelpRow { glyph: "\u{E90F}"; tint: #5e5ce6; body: @markdown("**Tools**: Ping Log, Switch Log and Help."); }
             HelpRow { glyph: "\u{E713}"; tint: #8e8e93; body: @markdown("**Settings**: Accounts and General."); }
 
             HelpCallout { kind: "tip"; body: @markdown("Click any ring to open that account's page on that window's chart. **Right-click** a card to pin it to the top."); }
@@ -471,7 +498,53 @@ export component HelpPane inherits Flickable {
                 HelpStep { n: 2; body: @markdown("Sign in and click **Authorize**."); }
                 HelpStep { n: 3; body: @markdown("The switch finishes by itself. From then on it is instant, no browser, for about 30 days."); }
             }
+            HelpRow { icon: "bolt"; tint: #ff9f0a; body: @markdown("**Switch after reset**: tick the bolt on a card (or the toggle on its page) to move Claude Code there each time its 5h limit resets. The tick stays until you untick it, and the active account can be ticked too. Only one account can be ticked."); }
             HelpCallout { kind: "warning"; body: @markdown("Don't also use the same account through another `CLAUDE_CONFIG_DIR`. Two copies of one login sign each other out."); }
+        }
+
+        c-auto := HelpCard {
+            topic-id: "auto-switch";
+            title: "Auto Switch";
+            subtitle: "Let the app switch before you hit a limit.";
+            glyph: "\u{E895}";
+            tile: #40c8e0;
+            HelpText { body: @markdown("Auto Switch is **on by default**. When the account Claude Code uses reaches a limit, Claude Code moves to another account without a click."); }
+            HelpRow { glyph: "\u{EC4A}"; tint: #ff9f0a; body: @markdown("**When**: 5h usage reaches **95%** or 7d usage reaches **99%**. Change both in **Settings › General › Auto Switch**."); }
+            HelpRow { glyph: "\u{E707}"; tint: #40c8e0; body: @markdown("**Where to**: the account whose weekly quota is closest to going unused, so nothing is wasted. Near-equal choices are picked at random."); }
+            HelpRow { icon: "flame"; tint: #ff453a; body: @markdown("**First, critical accounts**: a high critical account takes Claude Code from any account that is not high critical, the home account (bolt) included; the home account comes back after its 5h reset; and a critical account takes Claude Code from an ordinary account that is not the home account. See **Critical Accounts**."); }
+            HelpRow { glyph: "\u{E916}"; tint: #0a84ff; body: @markdown("**Near a 5h reset**: on the home account or the most critical account, 5h at 95% with 5 minutes or less to its reset waits for the reset when your pace of the last few minutes would not reach 100%, so Claude Code does not leave and come straight back."); }
+            HelpRow { glyph: "\u{E73E}"; tint: #30d158; body: @markdown("**Which accounts**: only ones already signed in to Claude Code (through Switch or `/login`), so the switch is instant. It never opens a browser."); }
+            HelpRow { glyph: "\u{E823}"; body: @markdown("**On failure**: that account is skipped for 10 minutes."); }
+            HelpCallout { kind: "tip"; body: @markdown("**Switch Log** (Tools) lists every switch and every failed attempt, and why nothing happened when no account was available."); }
+        }
+
+        c-critical := HelpCard {
+            topic-id: "critical-accounts";
+            title: "Critical Accounts";
+            subtitle: "Spend weekly quota before it expires unused.";
+            icon: "flame";
+            tile: #ff453a;
+            HelpText { body: @markdown("An account is **critical** when its weekly (7d) quota will expire unused even if you keep using it steadily. The app marks it with a flame and, with **Auto Switch** on, moves Claude Code to it as soon as its 5h window is free."); }
+            HelpSubheading { text: "X: what a 5h window costs"; }
+            HelpText { body: @markdown("**X** (Dashboard header) is the share of the 7d quota one full 5h window uses, measured every hour from the last 3 days of usage across all accounts. Click it for its history. Until enough history exists it shows **16% (default)**."); }
+            HelpSubheading { text: "The two levels"; }
+            HelpRow { icon: "flame"; tint: #ff9f0a; body: @markdown("**Critical** (orange flame): using **Critical pace** (default 50%) of every 5h window from now to the weekly reset, skipping **Quiet hours** (default 00:00 to 07:00, Asia/Ho_Chi_Minh), the account still ends at or under 100% of 7d."); }
+            HelpRow { icon: "flame-fill"; tint: #ff453a; body: @markdown("**High critical** (red flame): even **High critical pace** (default 80%) around the clock, quiet hours included, ends at or under 100%."); }
+            HelpCallout { kind: "note"; body: @markdown("Formula: 7d now + (usable hours left / 5) x pace x X. Usable hours leave out quiet hours for Critical only."); }
+            HelpSubheading { text: "Who wins"; }
+            VerticalLayout {
+                spacing: 8px;
+                HelpStep { n: 1; body: @markdown("**High critical**: takes Claude Code from any account that is not high critical, the home account (bolt) included."); }
+                HelpStep { n: 2; body: @markdown("**Home account**: comes back after its 5h reset, unless Claude Code is on a high critical account."); }
+                HelpStep { n: 3; body: @markdown("**Critical**: takes Claude Code from an ordinary account that is not the home account."); }
+                HelpStep { n: 4; body: @markdown("**Thresholds**: the usual 5h/7d switch."); }
+            }
+            HelpCallout { kind: "note"; body: @markdown("After a critical switch or a manual **Switch**, Claude Code stays on that account until its 5h window resets, unless a 5h/7d limit or the home account's reset moves it."); }
+            HelpSubheading { text: "Examples (X = 16%)"; }
+            HelpText { body: @markdown("**1.** 7d at 55%, 25 usable hours left (5 windows). Critical pace 50% costs 8% per window: 55 + 40 = **95**, so critical, 5% would go unused."); }
+            HelpText { body: @markdown("**2.** 7d at 60%, reset in 48 hours from 10:00, quiet 00:00 to 07:00: 34 usable hours (6.8 windows) x 8% = 54.4, so 60 + 54.4 = **114.4**: not critical. At 7d 40% it is 94.4: critical."); }
+            HelpText { body: @markdown("**3.** 7d at 60%, reset in 10 hours. High critical pace 80% costs 12.8% per window: 60 + 25.6 = **85.6**, so high critical. If Claude Code is on the home account, it moves here when this account's 5h window is free."); }
+            HelpCallout { kind: "tip"; body: @markdown("Change the paces, quiet hours and time zone in **Settings › General › Critical Accounts**. Each setting's ⓘ shows another example."); }
         }
 
         c-ping := HelpCard {
@@ -521,6 +594,9 @@ export component HelpPane inherits Flickable {
                 HelpFAQ { question: "\"No profiles found\" when adding"; answer: @markdown("Make sure you are signed in to claude.ai in that browser, then click **Retry Scan**. A profile that uses app-bound (`v20`) cookies cannot be read: use the **Browser extension** tab for it."); }
                 HelpFAQ { question: "A card says \"Session expired\""; answer: @markdown("Open the browser profile named on the card, sign in to claude.ai, then click **Re-sync**. For an extension account, the extension sends the new key once you are signed in. A pasted key can't be re-synced: add it again with **Paste a session key**."); }
                 HelpFAQ { question: "The extension shows a red !"; answer: @markdown("The bridge (`claude-dashboard-bridge.exe`) is missing or reported an error. Reinstall the app, then reload the extension."); }
+                HelpFAQ { question: "Switch asks me to run /login"; answer: @markdown("Claude Code lost that login. Run `/login` in Claude Code and sign in with that account."); }
+                HelpFAQ { question: "Switch is refused"; answer: @markdown("Claude Code is signed in to an account that is not on the dashboard. Add that account first so its login is kept safe."); }
+                HelpFAQ { question: "Auto Switch did nothing"; answer: @markdown("Check **Switch Log**. Usually no account was ready: switch to each account once by hand, or every other account is also at its limit. Within 5 minutes of a 5h reset, the home or most critical account waits for the reset on purpose."); }
                 HelpFAQ { question: "Usage is not updating"; answer: @markdown("Click **Refresh** and check **Auto Refresh** in Settings › General. Expired accounts are skipped until you re-sync them."); }
                 HelpFAQ { question: "The window is gone"; answer: @markdown("Closing the window keeps the app in the tray. Left-click the tray icon, or right-click it and choose **Open Dashboard**."); }
             }

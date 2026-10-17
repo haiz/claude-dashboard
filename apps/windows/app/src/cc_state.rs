@@ -58,6 +58,7 @@ pub fn end_switch() {
     BUSY.store(false, std::sync::atomic::Ordering::SeqCst);
 }
 
+#[cfg(test)]
 pub fn is_switching() -> bool {
     BUSY.load(std::sync::atomic::Ordering::SeqCst)
 }

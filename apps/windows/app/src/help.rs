@@ -9,6 +9,8 @@ pub const TOPICS: &[(&str, &str)] = &[
     ("finding-your-way", "Finding Your Way"),
     ("charts", "Charts"),
     ("switch-claude-code", "Switch Claude Code"),
+    ("auto-switch", "Auto Switch"),
+    ("critical-accounts", "Critical Accounts"),
     ("ping", "Ping"),
     ("managing-accounts", "Managing Accounts"),
     ("refresh-updates", "Refresh & Updates"),
@@ -41,6 +43,8 @@ mod tests {
                 ("finding-your-way", "Finding Your Way"),
                 ("charts", "Charts"),
                 ("switch-claude-code", "Switch Claude Code"),
+                ("auto-switch", "Auto Switch"),
+                ("critical-accounts", "Critical Accounts"),
                 ("ping", "Ping"),
                 ("managing-accounts", "Managing Accounts"),
                 ("refresh-updates", "Refresh & Updates"),
@@ -52,8 +56,30 @@ mod tests {
     #[test]
     fn finding_your_way_names_ping_log_and_auto_ping() {
         let ui = include_str!("../ui/help.slint");
-        assert!(ui.contains("**Tools**: Ping Log and Help."));
-        assert!(ui.contains("**Settings**: accounts, refresh, Auto Ping, updates."));
+        assert!(ui.contains("**Tools**: Ping Log, Switch Log and Help."));
+        assert!(ui.contains("**Settings**: accounts, refresh, Auto Ping, Auto Switch, updates."));
+        assert!(ui.contains("The **Auto switch** toggle sits bottom right with its latest event."));
+    }
+
+    #[test]
+    fn auto_switch_and_critical_cards_match_macos() {
+        let ui = include_str!("../ui/help.slint");
+        for text in [
+            "Auto Switch is **on by default**.",
+            "**First, critical accounts**",
+            "**Near a 5h reset**",
+            "**On failure**: that account is skipped for 10 minutes.",
+            "An account is **critical** when its weekly (7d) quota will expire unused",
+            "Formula: 7d now + (usable hours left / 5) x pace x X.",
+            "**3.** 7d at 60%, reset in 10 hours.",
+            "**Home after reset**",
+            "**Flame**: orange when the account is critical, red when high critical",
+            "**X** (Dashboard header)",
+            "**Switch after reset**",
+            "Auto Switch did nothing",
+        ] {
+            assert!(ui.contains(text), "{text}");
+        }
     }
 
     #[test]
