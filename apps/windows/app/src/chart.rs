@@ -5,18 +5,24 @@
 //! `chart_model`; the `.slint` only draws what this module computes.
 
 use claude_dashboard_core::chart::{
-    average_rate, make_scale, noon_markers, rate_at, Entry, Range, Scale,
+    average_rate, make_scale, noon_markers, rate_at, Entry, Range, Scale, Y_MAX,
 };
 use claude_dashboard_core::store::ResetCycle;
 
 use crate::chart_model::{
-    axis_ticks, dashed_vlines, format_duration, format_stamp, interpolate, preset_span_ms,
-    series_path, x_to_ms,
+    axis_ticks, dashed_hlines, dashed_vlines, format_duration, format_stamp, interpolate,
+    preset_span_ms, series_path, tip_on_left, x_to_ms,
 };
-use crate::{ChartState, ChartTick};
+use crate::{ChartState, ChartTick, ChartTipRow};
 
-/// Uniform padding (px) around the plot; holds the axis labels.
-pub(crate) const PAD: f64 = 36.0;
+/// Space (px) around the plot frame. As macOS: no frame border, the plot runs
+/// to the left edge and the y labels sit on the right; x labels go below.
+pub(crate) const PAD_LEFT: f64 = 2.0;
+pub(crate) const PAD_TOP: f64 = 4.0;
+pub(crate) const PAD_RIGHT: f64 = 40.0;
+pub(crate) const PAD_BOTTOM: f64 = 20.0;
+/// macOS `.chartYScale(domain: 0...105)`: headroom so 100% is not the top edge.
+const Y_DOMAIN_MAX: f64 = 105.0;
 pub const DEFAULT_PRESET: &str = "24h";
 /// The smallest zoom span (macOS `InteractiveChartContainer`: 5 minutes).
 const MIN_ZOOM_MS: f64 = 5.0 * 60_000.0;
@@ -28,14 +34,38 @@ pub enum Mode {
     Zoom,
 }
 
+/// One line of the hover card: the History card has a single unnamed row;
+/// the Overview card one per shown account, with its palette slot.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TipRow {
+    pub name: String,
+    pub slot: i32,
+    pub value: Option<f64>,
+    pub rate: Option<f64>,
+}
+
+/// The hover card (macOS `hoverTooltip`): the time, then the rows.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Tip {
+    pub time: String,
+    pub rows: Vec<TipRow>,
+}
+
 /// What the UI should show; plain data so it is testable without Slint.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct View {
     pub line_path: String,
     pub x_ticks: Vec<(f64, String)>,
     pub y_ticks: Vec<(f64, String)>,
+    /// Dashed vertical gridlines at the x ticks (macOS `AxisGridLine`).
+    pub grid_path: String,
+    /// The pointer (px) while it is over the plot.
     pub cross: Option<(f64, f64)>,
-    pub tooltip: String,
+    /// Dashed hover rule, plus the ruler's horizontal crosshair while armed.
+    pub cross_path: String,
+    pub tip: Option<Tip>,
+    /// The hover / measure card sits top-left (pointer on the right half).
+    pub tip_left: bool,
     pub empty: bool,
     pub loading: bool,
     pub preset: String,
@@ -76,6 +106,9 @@ pub struct Interaction {
     pub range: Range,
     size: (f64, f64),
     hover: Option<(f64, f64)>,
+    /// The last pointer x: picks the card corner, and like macOS the measure
+    /// card keeps it after the pointer leaves.
+    last_hover_x: f64,
     loading: bool,
     now_ms: f64,
 }
@@ -94,6 +127,7 @@ impl Interaction {
             range: preset_range(preset, now_ms),
             size: (640.0, 320.0),
             hover: None,
+            last_hover_x: 0.0,
             loading: true,
             now_ms,
         }
@@ -239,7 +273,12 @@ impl Interaction {
     }
 
     pub(crate) fn scale(&self) -> Scale {
-        make_scale(self.range, self.size.0, self.size.1, PAD)
+        plot_scale(self.range, self.size.0, self.size.1)
+    }
+
+    /// The loaded series (ascending).
+    pub(crate) fn entries(&self) -> &[Entry] {
+        &self.entries
     }
 
     pub fn set_size(&mut self, w: f64, h: f64) {
@@ -270,10 +309,7 @@ impl Interaction {
 
     pub fn hover_at(&mut self, x: f64, y: f64) {
         self.hover = Some((x, y));
-    }
-
-    pub(crate) fn hover_pos(&self) -> Option<(f64, f64)> {
-        self.hover
+        self.last_hover_x = x;
     }
 
     pub fn hover_off(&mut self) {
@@ -303,25 +339,37 @@ impl Interaction {
         let max_ticks = ((sc.plot_width / 90.0) as usize).max(2);
         let (xs, ys) = axis_ticks(self.range, &sc, max_ticks, local_offset_ms);
         let empty = self.entries.is_empty();
+        let top = frame_top(&sc);
         let mut cross = None;
-        let mut tooltip = String::new();
-        // As macOS: the line follows the pointer; the card shows the time, the
-        // interpolated value and the local burn rate.
+        let mut cross_path = String::new();
+        let mut tip = None;
+        // As macOS: a dashed rule follows the pointer; the card shows the time,
+        // the interpolated value and the local burn rate.
         if let Some((hx, hy)) = self.hover {
-            let inside = hx >= sc.left && hx <= sc.right && hy >= sc.top && hy <= sc.bottom;
-            let ms = x_to_ms(hx, &sc);
-            if let (true, Some(value)) = (inside, interpolate(&self.entries, ms)) {
-                cross = Some((hx, sc.y(value)));
-                let rate = match rate_at(&self.entries, ms) {
-                    Some(r) => format!("{r:+.1}%/h"),
-                    None => "--".to_string(),
-                };
-                tooltip = format!(
-                    "{}\n{value:.0}%  {rate}",
-                    format_stamp(ms + local_offset_ms)
-                );
+            let inside = hx >= sc.left && hx <= sc.right && hy >= top && hy <= sc.bottom;
+            if inside {
+                let ms = x_to_ms(hx, &sc);
+                cross = Some((hx, hy));
+                cross_path = dashed_vlines(&[hx], top, sc.bottom, 4.0, 4.0);
+                // Ruler armed, no B yet: a horizontal crosshair at the pointer.
+                if self.ruler && !matches!(self.measure, Some((_, Some(_)))) {
+                    cross_path.push(' ');
+                    cross_path.push_str(&dashed_hlines(&[hy], sc.left, sc.right, 4.0, 4.0));
+                }
+                if let Some(value) = interpolate(&self.entries, ms) {
+                    tip = Some(Tip {
+                        time: format_stamp(ms + local_offset_ms),
+                        rows: vec![TipRow {
+                            name: String::new(),
+                            slot: 0,
+                            value: Some(value),
+                            rate: rate_at(&self.entries, ms),
+                        }],
+                    });
+                }
             }
         }
+        let grid_x: Vec<f64> = xs.iter().map(|t| t.0).collect();
         let noon_x: Vec<f64> = noon_markers(self.range.from_ms, self.range.to_ms, local_offset_ms)
             .into_iter()
             .map(|ms| sc.x(ms))
@@ -338,16 +386,19 @@ impl Interaction {
                 .into_iter()
                 .map(|(v, py)| (py, format!("{v:.0}%")))
                 .collect(),
+            grid_path: dashed_vlines(&grid_x, top, sc.bottom, 2.0, 3.0),
             cross,
-            tooltip,
+            cross_path,
+            tip,
+            tip_left: tip_on_left(self.last_hover_x, sc.left, sc.right),
             empty,
             loading: self.loading,
             preset: self.preset.clone(),
-            plot: (sc.left, sc.top, sc.plot_width, sc.plot_height),
+            plot: (sc.left, top, sc.plot_width, sc.bottom - top),
             custom: self.custom,
             pan_mode: self.mode == Mode::Pan,
             ruler: self.ruler,
-            noon_path: dashed_vlines(&noon_x, sc.top, sc.bottom, 3.0, 4.0),
+            noon_path: dashed_vlines(&noon_x, top, sc.bottom, 3.0, 4.0),
             avg_text,
             avg_hot,
             ..View::default()
@@ -355,9 +406,10 @@ impl Interaction {
         if let Some((a, b)) = self.measure {
             v.measure_a_x = Some(sc.x(a.ms));
             if let Some(b) = b {
-                // As macOS: the hover tooltip steps aside while the Δ card shows.
+                // As macOS: the hover rule and card step aside while the Δ card shows.
                 v.cross = None;
-                v.tooltip.clear();
+                v.cross_path.clear();
+                v.tip = None;
                 v.measure_b_x = Some(sc.x(b.ms));
                 let (s, e) = if a.ms <= b.ms { (a, b) } else { (b, a) };
                 let delta = e.value - s.value;
@@ -391,6 +443,26 @@ pub(crate) fn vis_with_context(entries: &[Entry], r: Range) -> Vec<Entry> {
     }
 }
 
+/// The value scale of a `w` x `h` chart: the frame inside the PAD_* margins,
+/// with 0% at its bottom and `Y_DOMAIN_MAX` at its top, so `scale.top` is the
+/// 100% line and `frame_top` the frame's real top.
+pub(crate) fn plot_scale(range: Range, w: f64, h: f64) -> Scale {
+    let fw = (w - PAD_LEFT - PAD_RIGHT).max(1.0);
+    let fh = (h - PAD_TOP - PAD_BOTTOM).max(1.0);
+    let head = fh * (Y_DOMAIN_MAX - Y_MAX) / Y_DOMAIN_MAX;
+    let mut sc = make_scale(range, fw, fh - head, 0.0);
+    sc.left += PAD_LEFT;
+    sc.right += PAD_LEFT;
+    sc.top += PAD_TOP + head;
+    sc.bottom += PAD_TOP + head;
+    sc
+}
+
+/// The plot frame's top (px): above the 100% line by the y-domain headroom.
+pub(crate) fn frame_top(sc: &Scale) -> f64 {
+    sc.top - sc.plot_height * (Y_DOMAIN_MAX - Y_MAX) / Y_MAX
+}
+
 pub(crate) fn preset_range(preset: &str, now_ms: f64) -> Range {
     Range {
         from_ms: now_ms - preset_span_ms(preset),
@@ -420,16 +492,38 @@ pub(crate) fn to_state(v: &View) -> ChartState {
             .collect();
         slint::ModelRc::new(slint::VecModel::from(items))
     };
-    let (cx, cy) = v.cross.unwrap_or((0.0, 0.0));
+    let tip = v.tip.clone().unwrap_or_default();
+    let tip_rows: Vec<ChartTipRow> = tip
+        .rows
+        .iter()
+        .map(|r| ChartTipRow {
+            name: r.name.as_str().into(),
+            slot: r.slot,
+            value: r
+                .value
+                .map(|u| format!("{u:.0}%"))
+                .unwrap_or_default()
+                .into(),
+            rate: r
+                .rate
+                .map(|x| format!("{x:+.1}%/h"))
+                .unwrap_or_else(|| "--".to_string())
+                .into(),
+            has_rate: r.rate.is_some(),
+            rate_up: r.rate.is_some_and(|x| x > 0.0),
+        })
+        .collect();
     ChartState {
         line_path: v.line_path.as_str().into(),
         x_ticks: ticks(&v.x_ticks),
         y_ticks: ticks(&v.y_ticks),
+        grid_path: v.grid_path.as_str().into(),
         cross_visible: v.cross.is_some(),
-        cross_dot: true,
-        cross_x: cx as f32,
-        cross_y: cy as f32,
-        tooltip: v.tooltip.as_str().into(),
+        cross_path: v.cross_path.as_str().into(),
+        tip_visible: v.tip.is_some(),
+        tip_left: v.tip_left,
+        tip_time: tip.time.as_str().into(),
+        tip_rows: slint::ModelRc::new(slint::VecModel::from(tip_rows)),
         empty: v.empty,
         loading: v.loading,
         preset: v.preset.as_str().into(),
@@ -465,7 +559,7 @@ mod tests {
 
     fn loaded() -> Interaction {
         let mut i = Interaction::new("5h", NOW);
-        i.set_size(536.0, 336.0); // plot 464 x 264 with PAD 36
+        i.set_size(536.0, 336.0); // frame 494 x 312 inside the PAD_* margins
         i.loaded(
             vec![
                 Entry {
@@ -492,7 +586,7 @@ mod tests {
         i.loaded(Vec::new(), NOW);
         i.hover_at(200.0, 100.0);
         let v = i.view(0.0);
-        assert!(v.empty && v.cross.is_none() && v.line_path.is_empty());
+        assert!(v.empty && v.tip.is_none() && v.line_path.is_empty());
     }
 
     #[test]
@@ -502,15 +596,61 @@ mod tests {
         let hx = sc.x(NOW - 2.1 * H);
         i.hover_at(hx, sc.top + 10.0);
         let v = i.view(0.0);
-        let (cx, cy) = v.cross.expect("crosshair");
-        // The line follows the pointer; the dot sits on the interpolated value.
+        let (cx, _) = v.cross.expect("crosshair");
+        // The dashed rule follows the pointer.
         assert!((cx - hx).abs() < 1e-6);
-        assert!((cy - sc.y(38.5)).abs() < 1e-6, "{cy}");
+        assert!(
+            v.cross_path.starts_with(&format!("M {hx:.2} ")),
+            "{}",
+            v.cross_path
+        );
         // 10 -> 40 over 2h = +15%/h.
-        let lines: Vec<&str> = v.tooltip.lines().collect();
-        assert_eq!(lines.len(), 2, "{}", v.tooltip);
-        assert_eq!(lines[0], "26 Sep 21:54");
-        assert_eq!(lines[1], "38%  +15.0%/h");
+        let tip = v.tip.expect("card");
+        assert_eq!(tip.time, "26 Sep 21:54");
+        assert_eq!(tip.rows.len(), 1);
+        assert!((tip.rows[0].value.unwrap() - 38.5).abs() < 1e-6);
+        assert_eq!(tip.rows[0].rate, Some(15.0));
+        // Pointer on the right half (2.9h into 5h): the card is pinned top-left,
+        // and top-right for a pointer on the left half.
+        assert!(v.tip_left);
+        i.hover_at(sc.left + 5.0, sc.top + 10.0);
+        assert!(!i.view(0.0).tip_left);
+    }
+
+    #[test]
+    fn y_domain_has_headroom_above_100() {
+        let i = loaded();
+        let sc = i.scale();
+        let v = i.view(0.0);
+        let (_, top, _, height) = v.plot;
+        assert_eq!(top, PAD_TOP);
+        assert!((top + height - (336.0 - PAD_BOTTOM)).abs() < 1e-9);
+        // 100% sits 5/105 of the frame below its top; 0% on the bottom.
+        assert!((sc.y(100.0) - (top + height * 5.0 / 105.0)).abs() < 1e-9);
+        assert!((sc.y(0.0) - (top + height)).abs() < 1e-9);
+        assert!((frame_top(&sc) - top).abs() < 1e-9);
+        // The hover reaches into the headroom.
+        let mut i = i;
+        i.hover_at(sc.x(NOW - 2.0 * H), top + 1.0);
+        assert!(i.view(0.0).cross.is_some());
+    }
+
+    #[test]
+    fn ruler_adds_horizontal_crosshair_until_b() {
+        let mut i = loaded();
+        let sc = i.scale();
+        let (hx, hy) = (sc.x(NOW - 2.0 * H), sc.y(50.0));
+        i.hover_at(hx, hy);
+        // Horizontal dashes all start at y = hy (a vertical one may, once).
+        let rows = |p: &str| p.matches(&format!(" {hy:.2} L ")).count();
+        assert!(rows(&i.view(0.0).cross_path) <= 1);
+        i.set_ruler(true);
+        assert!(rows(&i.view(0.0).cross_path) > 1);
+        i.measure_click(sc.x(NOW - 4.0 * H), hy);
+        assert!(rows(&i.view(0.0).cross_path) > 1, "still armed with only A");
+        i.measure_click(sc.x(NOW - 1.0 * H), hy);
+        let v = i.view(0.0);
+        assert!(v.cross_path.is_empty() && v.tip.is_none() && v.measure_b_x.is_some());
     }
 
     #[test]
@@ -529,7 +669,7 @@ mod tests {
     #[test]
     fn hover_off_plot_hides_crosshair() {
         let mut i = loaded();
-        i.hover_at(5.0, 5.0); // inside padding, outside plot
+        i.hover_at(1.0, 1.0); // inside padding, outside plot
         assert!(i.view(0.0).cross.is_none());
         let sc = i.scale();
         i.hover_at(sc.right + 1.0, sc.top + 5.0);

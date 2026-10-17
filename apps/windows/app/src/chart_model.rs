@@ -1,5 +1,6 @@
-//! Pure chart model for the Slint UI: Path strings, axis ticks and hover
-//! hit-testing. All geometry comes from `claude_dashboard_core::chart`.
+//! Pure chart model for the Slint UI: Path strings (monotone series, dashed
+//! rules, day bands), axis ticks and hover hit-testing. All geometry comes
+//! from `claude_dashboard_core::chart`.
 
 use claude_dashboard_core::chart::{segments, Entry, Range, Scale, Y_TICKS};
 use claude_dashboard_core::store::SeriesPoint;
@@ -156,18 +157,152 @@ pub fn dashed_vlines(xs: &[f64], top: f64, bottom: f64, dash: f64, gap: f64) -> 
     out
 }
 
-/// Slint Path commands for one series: one "M x y" subpath per
-/// `core::chart::segments` segment, points joined with "L". Empty -> "".
-pub fn series_path(entries: &[Entry], scale: &Scale) -> String {
+/// Slint Path commands for dashed horizontal rules at the given y positions
+/// (the 100% limit rule, the ruler crosshair).
+pub fn dashed_hlines(ys: &[f64], left: f64, right: f64, dash: f64, gap: f64) -> String {
     let mut out = String::new();
-    for seg in segments(entries) {
-        for (i, p) in seg.iter().enumerate() {
+    for &y in ys {
+        let mut x = left;
+        while x < right {
             if !out.is_empty() {
                 out.push(' ');
             }
-            out.push_str(if i == 0 { "M" } else { "L" });
-            out.push_str(&format!(" {:.2} {:.2}", scale.x(p.ms), scale.y(p.value)));
+            out.push_str(&format!(
+                "M {x:.2} {y:.2} L {:.2} {y:.2}",
+                (x + dash).min(right)
+            ));
+            x += dash + gap;
         }
+    }
+    out
+}
+
+/// Slint Path commands for full-height rectangles over the x spans (px).
+pub fn rects_path(spans: &[(f64, f64)], top: f64, bottom: f64) -> String {
+    spans
+        .iter()
+        .map(|&(x0, x1)| {
+            format!(
+                "M {x0:.2} {top:.2} L {x1:.2} {top:.2} L {x1:.2} {bottom:.2} L {x0:.2} {bottom:.2} Z"
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// macOS `chartDayBands`: local days from the one holding the first sample
+/// up to the last sample, numbered from 0; only the odd ones are shaded, so
+/// those are returned as (start ms, end ms).
+pub fn day_bands(first_ms: f64, last_ms: f64, local_offset_ms: f64) -> Vec<(f64, f64)> {
+    let mut out = Vec::new();
+    let mut day = ((first_ms + local_offset_ms) / DAY_MS).floor() * DAY_MS - local_offset_ms;
+    let mut index = 0;
+    while day < last_ms {
+        if index % 2 == 1 {
+            out.push((day, day + DAY_MS));
+        }
+        day += DAY_MS;
+        index += 1;
+    }
+    out
+}
+
+/// Number of line colours in the Overview palette (macOS `lineColors`).
+pub const PALETTE_LEN: usize = 10;
+
+/// The Overview palette slot of the account at `index` in the account list
+/// (macOS `lineColors[index % count]`); the colours live in `chart.slint`.
+pub fn palette_slot(index: usize) -> i32 {
+    (index % PALETTE_LEN) as i32
+}
+
+/// Whether the hover card goes in the top-left corner: macOS pins it to the
+/// top corner away from the pointer (`hoverX > chartWidth / 2` -> leading).
+pub fn tip_on_left(hover_x: f64, left: f64, right: f64) -> bool {
+    hover_x > (left + right) / 2.0
+}
+
+/// Append one smooth subpath through `pts` (px, ascending x): a monotone
+/// cubic (Fritsch-Carlson), as SwiftUI Charts' `.monotone` interpolation, so
+/// the curve never overshoots between samples. Equal x falls back to "L".
+fn push_monotone(out: &mut String, pts: &[(f64, f64)]) {
+    let n = pts.len();
+    if n == 0 {
+        return;
+    }
+    if !out.is_empty() {
+        out.push(' ');
+    }
+    out.push_str(&format!("M {:.2} {:.2}", pts[0].0, pts[0].1));
+    if n == 1 {
+        return;
+    }
+    // Secant slopes, then tangents: zero at a local extremum, else the mean
+    // of the neighbouring secants; the end points take their own secant.
+    let d: Vec<f64> = pts
+        .windows(2)
+        .map(|w| {
+            let h = w[1].0 - w[0].0;
+            if h > 0.0 {
+                (w[1].1 - w[0].1) / h
+            } else {
+                0.0
+            }
+        })
+        .collect();
+    let mut m = vec![0.0; n];
+    m[0] = d[0];
+    m[n - 1] = d[n - 2];
+    for k in 1..n - 1 {
+        m[k] = if d[k - 1] * d[k] <= 0.0 {
+            0.0
+        } else {
+            (d[k - 1] + d[k]) / 2.0
+        };
+    }
+    // Fritsch-Carlson: a flat secant flattens both ends; otherwise keep
+    // (alpha, beta) inside the circle of radius 3.
+    for k in 0..n - 1 {
+        if d[k] == 0.0 {
+            m[k] = 0.0;
+            m[k + 1] = 0.0;
+            continue;
+        }
+        let (a, b) = (m[k] / d[k], m[k + 1] / d[k]);
+        let s = a * a + b * b;
+        if s > 9.0 {
+            let t = 3.0 / s.sqrt();
+            m[k] = t * a * d[k];
+            m[k + 1] = t * b * d[k];
+        }
+    }
+    for k in 0..n - 1 {
+        let ((x0, y0), (x1, y1)) = (pts[k], pts[k + 1]);
+        let h = x1 - x0;
+        if h <= 0.0 {
+            out.push_str(&format!(" L {x1:.2} {y1:.2}"));
+            continue;
+        }
+        out.push_str(&format!(
+            " C {:.2} {:.2} {:.2} {:.2} {x1:.2} {y1:.2}",
+            x0 + h / 3.0,
+            y0 + m[k] * h / 3.0,
+            x1 - h / 3.0,
+            y1 - m[k + 1] * h / 3.0
+        ));
+    }
+}
+
+/// Slint Path commands for one series: one monotone-cubic subpath per
+/// `core::chart::segments` segment (it breaks at resets). Empty -> "".
+pub fn series_path(entries: &[Entry], scale: &Scale) -> String {
+    let mut out = String::new();
+    for seg in segments(entries) {
+        let pts: Vec<(f64, f64)> = seg
+            .iter()
+            .map(|p| (scale.x(p.ms), scale.y(p.value)))
+            .collect();
+        push_monotone(&mut out, &pts);
     }
     out
 }
@@ -269,8 +404,104 @@ mod tests {
         let (_, s) = scale();
         let p = series_path(&[e(1.0, 10.0), e(2.0, 20.0)], &s);
         assert!(p.starts_with("M "));
-        assert_eq!(p.matches(" L ").count(), 1);
+        assert_eq!(p.matches(" C ").count(), 1);
         assert_eq!(p.matches("M ").count(), 1);
+    }
+
+    /// The numbers of every "C" command in a path, as (c1x, c1y, c2x, c2y, x, y).
+    fn cubics(p: &str) -> Vec<[f64; 6]> {
+        p.split(" C ")
+            .skip(1)
+            .map(|c| {
+                let v: Vec<f64> = c
+                    .split_whitespace()
+                    .take(6)
+                    .map(|t| t.parse().unwrap())
+                    .collect();
+                [v[0], v[1], v[2], v[3], v[4], v[5]]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn monotone_path_never_overshoots() {
+        // A steep drop then a plateau: control points stay inside each
+        // segment's y span, and the plateau stays flat.
+        let mut out = String::new();
+        let pts = [
+            (0.0, 100.0),
+            (10.0, 90.0),
+            (20.0, 20.0),
+            (30.0, 20.0),
+            (40.0, 20.0),
+        ];
+        push_monotone(&mut out, &pts);
+        let cs = cubics(&out);
+        assert_eq!(cs.len(), 4, "{out}");
+        for (k, c) in cs.iter().enumerate() {
+            let (lo, hi) = (pts[k].1.min(pts[k + 1].1), pts[k].1.max(pts[k + 1].1));
+            assert!(c[1] >= lo - 1e-6 && c[1] <= hi + 1e-6, "{k}: {c:?}");
+            assert!(c[3] >= lo - 1e-6 && c[3] <= hi + 1e-6, "{k}: {c:?}");
+        }
+        assert_eq!(cs[2][1], 20.0);
+        assert_eq!(cs[3][3], 20.0);
+    }
+
+    #[test]
+    fn monotone_path_flattens_at_extremum_and_handles_equal_x() {
+        // A dip at the middle point: its tangent is horizontal.
+        let mut out = String::new();
+        push_monotone(&mut out, &[(0.0, 50.0), (10.0, 10.0), (20.0, 50.0)]);
+        let cs = cubics(&out);
+        assert_eq!(cs[0][3], 10.0);
+        assert_eq!(cs[1][1], 10.0);
+        // Two samples at the same x are joined straight.
+        let mut out = String::new();
+        push_monotone(&mut out, &[(0.0, 10.0), (5.0, 80.0), (5.0, 100.0)]);
+        assert!(out.ends_with(" L 5.00 100.00"), "{out}");
+        let mut one = String::new();
+        push_monotone(&mut one, &[(1.0, 2.0)]);
+        assert_eq!(one, "M 1.00 2.00");
+    }
+
+    #[test]
+    fn day_bands_shade_every_other_local_day() {
+        let day = 1_792_195_200_000.0; // 2026-10-17 00:00 UTC
+                                       // 3.5 days of samples from 06:00: days 0..3, shaded 1 and 3.
+        let b = day_bands(day + 6.0 * HOUR_MS, day + 3.5 * DAY_MS, 0.0);
+        assert_eq!(
+            b,
+            vec![
+                (day + DAY_MS, day + 2.0 * DAY_MS),
+                (day + 3.0 * DAY_MS, day + 4.0 * DAY_MS)
+            ]
+        );
+        // The local offset moves the day boundary (UTC+2: midnight at 22:00 UTC).
+        let off = 2.0 * HOUR_MS;
+        let b = day_bands(day, day + 2.0 * DAY_MS, off);
+        assert_eq!(b[0].0, day + DAY_MS - off);
+        // Within one day nothing is shaded.
+        assert!(day_bands(day + HOUR_MS, day + 2.0 * HOUR_MS, 0.0).is_empty());
+    }
+
+    #[test]
+    fn rects_and_horizontal_dashes() {
+        let p = rects_path(&[(1.0, 2.0), (5.0, 6.0)], 0.0, 10.0);
+        assert_eq!(p.matches('Z').count(), 2);
+        assert!(rects_path(&[], 0.0, 1.0).is_empty());
+        let h = dashed_hlines(&[5.0], 0.0, 20.0, 5.0, 5.0);
+        assert_eq!(h, "M 0.00 5.00 L 5.00 5.00 M 10.00 5.00 L 15.00 5.00");
+    }
+
+    #[test]
+    fn palette_wraps_and_tip_flips() {
+        assert_eq!(palette_slot(0), 0);
+        assert_eq!(palette_slot(9), 9);
+        assert_eq!(palette_slot(10), 0);
+        assert_eq!(palette_slot(23), 3);
+        // Pointer on the left half: card top-right; right half: top-left.
+        assert!(!tip_on_left(10.0, 0.0, 100.0));
+        assert!(tip_on_left(60.0, 0.0, 100.0));
     }
 
     #[test]

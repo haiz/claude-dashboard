@@ -8,23 +8,33 @@ export struct ChartTick {
     label: string,
 }
 
-// One extra line on a multi-series plot (Overview), plus its hover dot.
+// One extra line on a multi-series plot (Overview); `slot` indexes
+// `ChartColors.lines` (macOS colours by list position).
 export struct ChartLine {
     path: string,
-    color: color,
-    dot-visible: bool,
-    dot-x: float,
-    dot-y: float,
+    slot: int,
 }
 
 export struct ChartLegendItem {
     id: string,
     name: string,
-    color: color,
+    // "" when the name already is the email.
+    email: string,
+    slot: int,
     on: bool,
-    has-data: bool,
     // Burn animal for the selected window ("" = unknown, shown as a dash).
     animal: string,
+}
+
+// One row of the hover card: History has one unnamed row, the Overview one
+// per shown account. `rate` is "--" when there is none.
+export struct ChartTipRow {
+    name: string,
+    slot: int,
+    value: string,
+    rate: string,
+    has-rate: bool,
+    rate-up: bool,
 }
 
 export struct ChartPoint {
@@ -59,8 +69,24 @@ export global ChartActions {
     callback show-all();
 }
 
+// macOS system colours (light / dark) the charts use.
+export global ChartColors {
+    // OverviewChartView.lineColors: orange, cyan, green, purple, pink, blue,
+    // yellow, mint, indigo, red.
+    out property <[color]> lines: Theme.dark
+        ? [#ff9f0a, #64d2ff, #30d158, #bf5af2, #ff375f, #0a84ff, #ffd60a, #63e6e2, #5e5ce6, #ff453a]
+        : [#ff9500, #32ade6, #34c759, #af52de, #ff2d55, #007aff, #ffcc00, #00c7be, #5856d6, #ff3b30];
+    out property <color> blue: Theme.dark ? #0a84ff : #007aff;
+    out property <color> orange: Theme.dark ? #ff9f0a : #ff9500;
+    out property <color> green: Theme.dark ? #30d158 : #34c759;
+    out property <color> red: Theme.dark ? #ff453a : #ff3b30;
+    out property <color> cyan: Theme.dark ? #64d2ff : #32ade6;
+    // SwiftUI `.tertiary` text.
+    out property <color> tertiary: Theme.text-secondary.with-alpha(0.6);
+}
+
 export struct ChartState {
-    // Container state shared by the History box (and, later, the Overview).
+    // Container state shared by the History box and the Overview.
     custom: bool,
     pan-mode: bool,
     ruler: bool,
@@ -77,7 +103,10 @@ export struct ChartState {
     measure-up: bool,
     // Empty-state second line.
     hint: string,
-    // History only: dashed 5h-reset rules, their markers, limit points, cycles.
+    // History only: day bands, the 100% rule, dashed 5h-reset rules, their
+    // markers, limit points, cycles.
+    band-path: string,
+    limit-path: string,
     reset-path: string,
     reset-marks: [ChartTick],
     limit-points: [ChartPoint],
@@ -92,16 +121,20 @@ export struct ChartState {
     line-path: string,
     x-ticks: [ChartTick],
     y-ticks: [ChartTick],
+    // Dashed vertical gridlines at the x ticks.
+    grid-path: string,
+    // Pointer over the plot: the dashed hover rule (+ ruler crosshair) and the card,
+    // pinned to the top corner away from the pointer.
     cross-visible: bool,
-    // A dot on the crosshair (History); the Overview dots each line instead.
-    cross-dot: bool,
-    cross-x: float,
-    cross-y: float,
-    tooltip: string,
+    cross-path: string,
+    tip-visible: bool,
+    tip-left: bool,
+    tip-time: string,
+    tip-rows: [ChartTipRow],
     empty: bool,
     loading: bool,
     preset: string,
-    // Plot rectangle (px) so the frame matches core::chart's scale.
+    // Plot frame (px), 0..105% tall, so it matches chart.rs's scale.
     plot-left: float,
     plot-top: float,
     plot-width: float,
@@ -112,36 +145,214 @@ export global HistoryData {
     in-out property <ChartState> state;
 }
 
-component PresetChip inherits Rectangle {
+// macOS HoverableButtonStyle as a text toggle (range presets, Show All).
+component RangeButton inherits VerticalLayout {
     in property <string> label;
     in property <bool> active;
     in property <bool> enabled: true;
-    in property <bool> compact: false;
+    in property <bool> bold: true;
+    in property <length> pad: 6px;
     // Hover tooltip (macOS `.help`); empty shows none.
     in property <string> tip;
     callback clicked();
-    height: root.compact ? 24px : 28px;
-    width: t.preferred-width + (root.compact ? 16px : 24px);
-    border-radius: 6px;
-    opacity: root.enabled ? 1.0 : 0.4;
-    background: root.active ? Theme.accent : (touch.has-hover && root.enabled ? Theme.accent.with-alpha(0.15) : transparent);
-    border-width: 1px;
-    border-color: root.active ? Theme.accent : Theme.card-border;
-    t := Text {
-        text: root.label;
-        color: root.active ? #ffffff : Theme.text-primary;
-        font-size: root.compact ? 12px : 14px;
-        horizontal-alignment: center;
+    alignment: center;
+    Rectangle {
+        width: t.preferred-width + 2 * root.pad;
+        height: t.preferred-height + 6px;
+        border-radius: 4px;
+        opacity: root.enabled ? 1.0 : 0.45;
+        background: !root.enabled ? transparent
+            : touch.pressed ? Theme.text-primary.with-alpha(0.18)
+            : root.active ? Theme.accent.with-alpha(touch.has-hover ? 0.28 : 0.2)
+            : touch.has-hover ? Theme.text-primary.with-alpha(0.10) : transparent;
+        t := Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: 12px;
+            font-weight: root.bold ? 700 : 400;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+        if root.tip != "": Tooltip { text: @markdown("\{root.tip}"); }
+    }
+}
+
+// A 20 px Segoe Fluent Icons button (macOS icon buttons: pan / zoom, ruler).
+component IconButton inherits VerticalLayout {
+    in property <string> glyph;
+    in property <color> color: Theme.text-primary;
+    in property <bool> enabled: true;
+    in property <string> tip;
+    callback clicked();
+    alignment: center;
+    Rectangle {
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        opacity: root.enabled ? 1.0 : 0.45;
+        background: !root.enabled ? transparent
+            : touch.pressed ? Theme.text-primary.with-alpha(0.18)
+            : touch.has-hover ? Theme.text-primary.with-alpha(0.10) : transparent;
+        Text {
+            text: root.glyph;
+            font-family: "Segoe Fluent Icons";
+            font-size: 14px;
+            color: root.color;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+        if root.tip != "": Tooltip { text: @markdown("\{root.tip}"); }
+    }
+}
+
+component ToolDivider inherits VerticalLayout {
+    alignment: center;
+    Rectangle { width: 1px; height: 16px; background: Theme.card-border; }
+}
+
+// macOS UsageWindowPicker: a segmented 5h / 7d / F control, 180 px wide.
+component WindowPicker inherits VerticalLayout {
+    in property <string> value;
+    callback picked(string);
+    alignment: center;
+    Rectangle {
+        width: 180px;
+        height: 26px;
+        border-radius: 7px;
+        background: Theme.text-primary.with-alpha(0.06);
+        HorizontalLayout {
+            padding: 2px;
+            spacing: 2px;
+            for w[i] in ["5h", "7d", "fable"]: Rectangle {
+                horizontal-stretch: 1;
+                border-radius: 5px;
+                background: seg.pressed ? Theme.text-primary.with-alpha(0.18)
+                    : root.value == w ? Theme.accent.with-alpha(seg.has-hover ? 0.28 : 0.2)
+                    : seg.has-hover ? Theme.text-primary.with-alpha(0.10) : transparent;
+                Text {
+                    text: i == 2 ? "F" : w;
+                    color: Theme.text-primary;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                seg := TouchArea { clicked => { root.picked(w); } }
+                Tooltip { text: @markdown("Show the \{i == 0 ? "5-hour" : i == 1 ? "7-day" : "Fable"} usage window"); }
+            }
+        }
+    }
+}
+
+// macOS InteractiveChartContainer toolbar: mode, presets, Custom, Avg, then the
+// window picker and (History) Show All and the ruler.
+component ChartToolbar inherits HorizontalLayout {
+    in property <ChartState> state;
+    in property <bool> history: false;
+    callback toggle-mode();
+    callback preset(string);
+    callback window(string);
+    callback show-all();
+    callback toggle-ruler();
+    spacing: 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+
+    // Hand = pan, magnifier = zoom (the glyph shows the current mode).
+    IconButton {
+        glyph: root.state.pan-mode ? "\u{E7C9}" : "\u{E71E}";
+        tip: root.state.pan-mode ? "Switch to zoom mode" : "Switch to pan mode";
+        enabled: !root.state.ruler;
+        clicked => { root.toggle-mode(); }
+    }
+    ToolDivider { }
+    for p in ["5h", "24h", "3d", "7d", "30d"]: RangeButton {
+        label: p;
+        tip: "Show the last " + p;
+        active: !root.state.custom && root.state.preset == p;
+        enabled: !root.state.ruler;
+        clicked => { root.preset(p); }
+    }
+    if root.state.custom: Text {
+        text: "Custom";
+        color: Theme.text-secondary;
+        font-size: 10px;
         vertical-alignment: center;
     }
-    touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
-    if root.tip != "": Tooltip { text: @markdown("\{root.tip}"); }
+    Rectangle { horizontal-stretch: 1; }
+    VerticalLayout {
+        alignment: center;
+        Rectangle {
+            width: avg.preferred-width + 12px;
+            height: avg.preferred-height + 8px;
+            border-radius: 4px;
+            background: Theme.text-primary.with-alpha(0.05);
+            avg := Text {
+                text: root.state.avg-text;
+                color: root.state.avg-text == "Avg: --" ? Theme.text-secondary
+                    : (root.state.avg-hot ? ChartColors.orange : ChartColors.green);
+                font-size: 11px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+    Rectangle { horizontal-stretch: 1; }
+    WindowPicker {
+        value: root.state.window;
+        picked(w) => { root.window(w); }
+    }
+    if root.history && root.state.has-cycle: RangeButton {
+        label: "Show All";
+        bold: false;
+        pad: 10px;
+        tip: "Show every reset cycle on the chart";
+        clicked => { root.show-all(); }
+    }
+    if root.history: ToolDivider { }
+    if root.history: IconButton {
+        glyph: "\u{ED5E}";
+        color: root.state.ruler ? Theme.accent : Theme.text-primary;
+        tip: root.state.ruler ? "Turn off measure tool" : "Measure tool: click 2 points to see Δ%";
+        clicked => { root.toggle-ruler(); }
+    }
+}
+
+// macOS "No data yet" state: a chart glyph and the text, in place of the chart.
+component EmptyChart inherits VerticalLayout {
+    in property <string> hint;
+    alignment: center;
+    spacing: 8px;
+    Text {
+        text: "\u{EB0F}";
+        font-family: "Segoe Fluent Icons";
+        font-size: 36px;
+        color: Theme.text-secondary;
+        horizontal-alignment: center;
+    }
+    Text {
+        text: "No data yet";
+        color: Theme.text-secondary;
+        font-size: 12px;
+        horizontal-alignment: center;
+    }
+    if root.hint != "": Text {
+        text: root.hint;
+        color: ChartColors.tertiary;
+        font-size: 11px;
+        horizontal-alignment: center;
+    }
 }
 
 // The plot. Pointer x/y are forwarded in px; Rust decides what they mean.
 export component InteractiveChart inherits Rectangle {
     in property <ChartState> state;
-    in property <color> line-color: Theme.accent;
+    // History: one fixed blue line (macOS); the Overview draws `state.lines`.
+    in property <color> line-color: ChartColors.blue;
+    in property <length> line-width: 2px;
     callback size-changed(float, float);
     callback hover(float, float);
     callback select(float, float);
@@ -157,117 +368,144 @@ export component InteractiveChart inherits Rectangle {
     property <bool> dragging;
     property <bool> panning;
     property <bool> armed;
+    // The plot frame (no border, as macOS).
+    property <length> fl: root.state.plot-left * 1px;
+    property <length> ft: root.state.plot-top * 1px;
+    property <length> fw: root.state.plot-width * 1px;
+    property <length> fh: root.state.plot-height * 1px;
 
     // `changed` does not fire for the first layout, so report the size on init too.
     init => { root.size-changed(self.width / 1px, self.height / 1px); }
     changed width => { root.size-changed(self.width / 1px, self.height / 1px); }
     changed height => { root.size-changed(self.width / 1px, self.height / 1px); }
 
-    // Plot frame.
+    // Under the line: day bands, gridlines, noon / 5h-reset rules, the 100% rule.
     Rectangle {
-        x: root.state.plot-left * 1px;
-        y: root.state.plot-top * 1px;
-        width: root.state.plot-width * 1px;
-        height: root.state.plot-height * 1px;
-        border-width: 1px;
-        border-color: Theme.card-border;
-    }
-
-    // Dashed local-noon rules (under the line).
-    Rectangle {
-        x: root.state.plot-left * 1px;
-        y: root.state.plot-top * 1px;
-        width: root.state.plot-width * 1px;
-        height: root.state.plot-height * 1px;
+        x: root.fl;
+        y: root.ft;
+        width: root.fw;
+        height: root.fh;
         clip: true;
         Path {
-            x: -root.state.plot-left * 1px;
-            y: -root.state.plot-top * 1px;
+            x: -root.fl;
+            y: -root.ft;
+            width: root.width;
+            height: root.height;
+            viewbox-width: root.width / 1px;
+            viewbox-height: root.height / 1px;
+            commands: root.state.band-path;
+            fill: Theme.text-primary.with-alpha(0.04);
+            stroke: transparent;
+        }
+        for t in root.state.y-ticks: Rectangle {
+            x: 0;
+            // The 0% line sits on the frame's bottom edge: keep it inside the clip.
+            y: min(t.pos * 1px - root.ft, root.fh - 1px);
+            width: root.fw;
+            height: 1px;
+            background: Theme.card-border;
+        }
+        Path {
+            x: -root.fl;
+            y: -root.ft;
+            width: root.width;
+            height: root.height;
+            viewbox-width: root.width / 1px;
+            viewbox-height: root.height / 1px;
+            commands: root.state.grid-path;
+            stroke: Theme.card-border;
+            stroke-width: 1px;
+            fill: transparent;
+        }
+        Path {
+            x: -root.fl;
+            y: -root.ft;
             width: root.width;
             height: root.height;
             viewbox-width: root.width / 1px;
             viewbox-height: root.height / 1px;
             commands: root.state.noon-path;
-            stroke: Theme.text-secondary.with-alpha(0.35);
+            stroke: Theme.text-secondary.with-alpha(0.15);
             stroke-width: 1px;
             fill: transparent;
         }
         Path {
-            x: -root.state.plot-left * 1px;
-            y: -root.state.plot-top * 1px;
+            x: -root.fl;
+            y: -root.ft;
             width: root.width;
             height: root.height;
             viewbox-width: root.width / 1px;
             viewbox-height: root.height / 1px;
             commands: root.state.reset-path;
-            stroke: #32ade6.with-alpha(0.7);
+            stroke: ChartColors.cyan.with-alpha(0.4);
+            stroke-width: 1px;
+            fill: transparent;
+        }
+        Path {
+            x: -root.fl;
+            y: -root.ft;
+            width: root.width;
+            height: root.height;
+            viewbox-width: root.width / 1px;
+            viewbox-height: root.height / 1px;
+            commands: root.state.limit-path;
+            stroke: ChartColors.red.with-alpha(0.3);
             stroke-width: 1px;
             fill: transparent;
         }
     }
 
-    // Y gridlines + labels.
-    for t in root.state.y-ticks: Rectangle {
-        x: root.state.plot-left * 1px;
-        y: t.pos * 1px;
-        width: root.state.plot-width * 1px;
-        height: 1px;
-        background: Theme.card-border;
-        Text {
-            x: -34px;
-            y: -8px;
-            width: 30px;
-            height: 16px;
-            text: t.label;
-            color: Theme.text-secondary;
-            font-size: 10px;
-            horizontal-alignment: right;
-            vertical-alignment: center;
-        }
-    }
-
-    // X labels.
-    for t in root.state.x-ticks: Text {
-        x: t.pos * 1px - 36px;
-        y: (root.state.plot-top + root.state.plot-height) * 1px + 6px;
-        width: 72px;
+    // Y labels on the right (macOS).
+    for t in root.state.y-ticks: Text {
+        x: root.fl + root.fw + 6px;
+        y: t.pos * 1px - 8px;
+        height: 16px;
         text: t.label;
         color: Theme.text-secondary;
         font-size: 10px;
-        horizontal-alignment: center;
+        vertical-alignment: center;
     }
 
-    // The line (clipped to the plot frame).
+    // X labels, leading-aligned at their gridline.
+    for t in root.state.x-ticks: Text {
+        x: t.pos * 1px + 3px;
+        y: root.ft + root.fh + 4px;
+        text: t.label;
+        color: Theme.text-secondary;
+        font-size: 10px;
+    }
+
+    // The lines (clipped to the plot frame).
     Rectangle {
-        x: root.state.plot-left * 1px;
-        y: root.state.plot-top * 1px;
-        width: root.state.plot-width * 1px;
-        height: root.state.plot-height * 1px;
+        x: root.fl;
+        y: root.ft;
+        width: root.fw;
+        height: root.fh;
         clip: true;
         Path {
-            x: -root.state.plot-left * 1px;
-            y: -root.state.plot-top * 1px;
+            x: -root.fl;
+            y: -root.ft;
             width: root.width;
             height: root.height;
             viewbox-width: root.width / 1px;
             viewbox-height: root.height / 1px;
             commands: root.state.line-path;
             stroke: root.line-color;
-            stroke-width: 2px;
+            stroke-width: root.line-width;
             stroke-line-join: round;
             stroke-line-cap: round;
             fill: transparent;
         }
         for ln in root.state.lines: Path {
-            x: -root.state.plot-left * 1px;
-            y: -root.state.plot-top * 1px;
+            x: -root.fl;
+            y: -root.ft;
             width: root.width;
             height: root.height;
             viewbox-width: root.width / 1px;
             viewbox-height: root.height / 1px;
             commands: ln.path;
-            stroke: ln.color;
-            stroke-width: 2px;
+            stroke: ChartColors.lines[ln.slot];
+            stroke-width: root.line-width;
             stroke-line-join: round;
             stroke-line-cap: round;
             fill: transparent;
@@ -277,9 +515,9 @@ export component InteractiveChart inherits Rectangle {
     // 5h reset markers (7d window) along the top edge.
     for m in root.state.reset-marks: Text {
         x: m.pos * 1px - 5px;
-        y: root.state.plot-top * 1px + 1px;
+        y: root.ft + 1px;
         text: m.label;
-        color: #32ade6;
+        color: ChartColors.cyan.with-alpha(0.7);
         font-family: "Segoe UI Symbol";
         font-size: 11px;
     }
@@ -291,12 +529,12 @@ export component InteractiveChart inherits Rectangle {
         width: 6px;
         height: 6px;
         border-radius: 3px;
-        background: #ff3b30;
+        background: ChartColors.red;
         Text {
             x: -4px;
             y: -17px;
             text: "\u{26A0}";
-            color: #ff9f0a;
+            color: Theme.text-primary;
             font-size: 11px;
         }
     }
@@ -304,124 +542,126 @@ export component InteractiveChart inherits Rectangle {
     // Ruler: points A / B and the band between them.
     if root.state.measure-a-visible && root.state.measure-b-visible: Rectangle {
         x: min(root.state.measure-a-x, root.state.measure-b-x) * 1px;
-        y: root.state.plot-top * 1px;
+        y: root.ft;
         width: abs(root.state.measure-b-x - root.state.measure-a-x) * 1px;
-        height: root.state.plot-height * 1px;
+        height: root.fh;
         background: Theme.accent.with-alpha(0.12);
     }
     if root.state.measure-a-visible: Rectangle {
         x: root.state.measure-a-x * 1px;
-        y: root.state.plot-top * 1px;
+        y: root.ft;
         width: 1px;
-        height: root.state.plot-height * 1px;
+        height: root.fh;
         background: Theme.accent.with-alpha(0.8);
     }
     if root.state.measure-b-visible: Rectangle {
         x: root.state.measure-b-x * 1px;
-        y: root.state.plot-top * 1px;
+        y: root.ft;
         width: 1px;
-        height: root.state.plot-height * 1px;
+        height: root.fh;
         background: Theme.accent.with-alpha(0.8);
     }
-    if root.state.measure-b-visible: Rectangle {
-        width: card.preferred-width + 16px;
-        height: card.preferred-height + 12px;
-        x: root.state.plot-left * 1px + root.state.plot-width * 1px - self.width - 8px;
-        y: root.state.plot-top * 1px + 8px;
+
+    // Drag selection (macOS zoomSelectionHighlight).
+    if root.dragging: Rectangle {
+        x: min(root.drag-x0, touch.mouse-x);
+        y: root.ft;
+        width: abs(touch.mouse-x - root.drag-x0);
+        height: root.fh;
+        background: Theme.accent.with-alpha(0.15);
+        border-width: 1px;
+        border-color: Theme.accent.with-alpha(0.5);
+    }
+
+    // Dashed hover rule (+ the ruler's horizontal crosshair).
+    if root.state.cross-visible && !root.dragging && !root.panning: Path {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
+        commands: root.state.cross-path;
+        stroke: Theme.text-secondary.with-alpha(0.5);
+        stroke-width: 1px;
+        fill: transparent;
+    }
+
+    // Hover card, pinned to the top corner away from the pointer.
+    if root.state.tip-visible && !root.dragging && !root.panning: Rectangle {
+        width: tip-box.preferred-width;
+        height: tip-box.preferred-height;
+        x: root.state.tip-left ? root.fl + 8px : root.fl + root.fw - self.width - 8px;
+        y: root.ft + 8px;
         border-radius: 6px;
-        background: Theme.card-bg;
+        background: Theme.card-bg.with-alpha(0.94);
+        border-width: 1px;
+        border-color: Theme.card-border;
+        tip-box := VerticalLayout {
+            padding: 8px;
+            spacing: 3px;
+            Text {
+                text: root.state.tip-time;
+                color: Theme.text-secondary;
+                font-size: 10px;
+                font-weight: 700;
+            }
+            for r in root.state.tip-rows: HorizontalLayout {
+                spacing: r.name == "" ? 6px : 4px;
+                if r.name != "": VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 3px;
+                        background: ChartColors.lines[r.slot];
+                    }
+                }
+                if r.name != "": Text {
+                    text: r.name;
+                    color: Theme.text-primary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+                if r.name != "": Rectangle { min-width: 8px; horizontal-stretch: 1; }
+                if r.value != "": Text {
+                    text: r.value;
+                    color: Theme.text-primary;
+                    font-size: r.name == "" ? 12px : 11px;
+                    font-weight: r.name == "" ? 700 : 400;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: r.rate;
+                    color: !r.has-rate ? ChartColors.tertiary : (r.rate-up ? ChartColors.orange : ChartColors.green);
+                    font-size: r.name == "" ? 12px : 11px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+
+    // Ruler result card, in the same corner as the hover card.
+    if root.state.measure-b-visible: Rectangle {
+        width: card.preferred-width;
+        height: card.preferred-height;
+        x: root.state.tip-left ? root.fl + 8px : root.fl + root.fw - self.width - 8px;
+        y: root.ft + 8px;
+        border-radius: 6px;
+        background: Theme.card-bg.with-alpha(0.94);
         border-width: 1px;
         border-color: Theme.card-border;
         card := VerticalLayout {
-            padding: 6px;
-            padding-left: 8px;
-            padding-right: 8px;
+            padding: 8px;
             spacing: 3px;
             Text { text: root.state.measure-range; color: Theme.text-secondary; font-size: 10px; }
             Text {
                 text: root.state.measure-delta;
-                color: root.state.measure-up ? #ff9f0a : #34c759;
+                color: root.state.measure-up ? ChartColors.orange : ChartColors.green;
                 font-size: 12px;
                 font-weight: 700;
             }
             Text { text: root.state.measure-duration; color: Theme.text-secondary; font-size: 10px; }
-        }
-    }
-
-    // Drag selection.
-    if root.dragging: Rectangle {
-        x: min(root.drag-x0, touch.mouse-x);
-        y: root.state.plot-top * 1px;
-        width: abs(touch.mouse-x - root.drag-x0);
-        height: root.state.plot-height * 1px;
-        background: Theme.accent.with-alpha(0.18);
-    }
-
-    // Crosshair + tooltip (hidden when the pointer is off the plot).
-    if root.state.cross-visible && !root.dragging && !root.panning: Rectangle {
-        x: root.state.cross-x * 1px;
-        y: root.state.plot-top * 1px;
-        width: 1px;
-        height: root.state.plot-height * 1px;
-        background: Theme.text-secondary;
-    }
-    if root.state.cross-visible && root.state.cross-dot && !root.dragging && !root.panning: Rectangle {
-        x: root.state.cross-x * 1px - 4px;
-        y: root.state.cross-y * 1px - 4px;
-        width: 8px;
-        height: 8px;
-        border-radius: 4px;
-        background: root.line-color;
-        border-width: 1px;
-        border-color: Theme.card-bg;
-    }
-    for ln in root.state.lines: Rectangle {
-        visible: ln.dot-visible && !root.dragging && !root.panning;
-        x: ln.dot-x * 1px - 4px;
-        y: ln.dot-y * 1px - 4px;
-        width: 8px;
-        height: 8px;
-        border-radius: 4px;
-        background: ln.color;
-        border-width: 1px;
-        border-color: Theme.card-bg;
-    }
-    if root.state.cross-visible && !root.dragging && !root.panning: Rectangle {
-        width: tip.preferred-width + 16px;
-        height: tip.preferred-height + 8px;
-        x: min(root.state.cross-x * 1px + 10px, root.width - self.width - 4px);
-        y: max(root.state.plot-top * 1px + 4px, min(root.state.cross-y * 1px - 34px, root.height - self.height - 4px));
-        border-radius: 4px;
-        background: Theme.card-bg;
-        border-width: 1px;
-        border-color: Theme.card-border;
-        tip := Text {
-            text: root.state.tooltip;
-            color: Theme.text-primary;
-            font-size: 12px;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-        }
-    }
-
-    if root.state.empty && !root.state.loading: VerticalLayout {
-        x: root.state.plot-left * 1px;
-        y: root.state.plot-top * 1px;
-        width: root.state.plot-width * 1px;
-        height: root.state.plot-height * 1px;
-        alignment: center;
-        spacing: 4px;
-        Text {
-            text: "No data yet";
-            color: Theme.text-secondary;
-            font-size: 14px;
-            horizontal-alignment: center;
-        }
-        if root.state.hint != "": Text {
-            text: root.state.hint;
-            color: Theme.text-secondary.with-alpha(0.7);
-            font-size: 11px;
-            horizontal-alignment: center;
         }
     }
 
@@ -477,14 +717,17 @@ export component InteractiveChart inherits Rectangle {
 
 // The account page's History box (macOS AccountDetailView + InteractiveChartContainer):
 // toolbar (pan/zoom, presets, Custom, Avg, window picker, Show All, ruler), the chart and
-// the collapsible Reset Cycles list. State comes from `HistoryData`, input goes to
-// `ChartActions`; picking a window is reported to the page (`window-picked`) so the gauges
-// and the picker share one path.
+// the collapsible Reset Cycles list; with no data, the "No data yet" state replaces the
+// toolbar and chart. State comes from `HistoryData`, input goes to `ChartActions`; picking
+// a window is reported to the page (`window-picked`) so the gauges and the picker share
+// one path.
 export component HistoryBox inherits VerticalLayout {
-    in property <color> line-color: Theme.accent;
+    // Ignored: macOS draws the History line in a fixed blue (`ChartColors.blue`).
+    in property <color> line-color;
     callback window-picked(string);
     property <ChartState> st: HistoryData.state;
     property <bool> cycles-open: false;
+    property <bool> no-data: root.st.empty && !root.st.loading;
     spacing: 8px;
 
     Text {
@@ -503,66 +746,22 @@ export component HistoryBox inherits VerticalLayout {
             padding: 12px;
             spacing: 8px;
 
-            HorizontalLayout {
-                spacing: 6px;
-                PresetChip {
-                    compact: true;
-                    label: root.st.pan-mode ? "Pan" : "Zoom";
-                    tip: root.st.pan-mode ? "Switch to zoom mode" : "Switch to pan mode";
-                    enabled: !root.st.ruler;
-                    clicked => { ChartActions.toggle-mode(); }
-                }
-                for p in ["5h", "24h", "3d", "7d", "30d"]: PresetChip {
-                    compact: true;
-                    label: p;
-                    tip: "Show the last " + p;
-                    active: !root.st.custom && root.st.preset == p;
-                    enabled: !root.st.ruler;
-                    clicked => { ChartActions.preset(p); }
-                }
-                if root.st.custom: Text {
-                    text: "Custom";
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-                Rectangle { horizontal-stretch: 1; }
-                Text {
-                    text: root.st.avg-text;
-                    color: root.st.avg-text == "Avg: --" ? Theme.text-secondary : (root.st.avg-hot ? #ff9f0a : #34c759);
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-                Rectangle { horizontal-stretch: 1; }
-                for w[i] in ["5h", "7d", "fable"]: PresetChip {
-                    compact: true;
-                    label: i == 2 ? "F" : w;
-                    tip: "Show the " + (i == 0 ? "5-hour" : i == 1 ? "7-day" : "Fable") + " usage window";
-                    active: root.st.window == w;
-                    clicked => { root.window-picked(w); }
-                }
-                if root.st.has-cycle: PresetChip {
-                    compact: true;
-                    label: "Show All";
-                    tip: "Show every reset cycle on the chart";
-                    clicked => { ChartActions.show-all(); }
-                }
-                PresetChip {
-                    compact: true;
-                    label: "Ruler";
-                    tip: root.st.ruler ? "Turn off measure tool" : "Measure tool: click 2 points to see Δ%";
-                    active: root.st.ruler;
-                    clicked => { ChartActions.toggle-ruler(); }
-                }
+            if !root.no-data: ChartToolbar {
+                state: root.st;
+                history: true;
+                toggle-mode => { ChartActions.toggle-mode(); }
+                preset(p) => { ChartActions.preset(p); }
+                window(w) => { root.window-picked(w); }
+                show-all => { ChartActions.show-all(); }
+                toggle-ruler => { ChartActions.toggle-ruler(); }
             }
 
-            Rectangle {
+            if !root.no-data: Rectangle {
                 height: 250px;
                 InteractiveChart {
                     width: parent.width;
                     height: parent.height;
                     state: root.st;
-                    line-color: root.line-color;
                     size-changed(w, h) => { ChartActions.size(w, h); }
                     hover(x, y) => { ChartActions.hover(x, y); }
                     select(a, b) => { ChartActions.select(a, b); }
@@ -570,6 +769,10 @@ export component HistoryBox inherits VerticalLayout {
                     click(x, y) => { ChartActions.click(x, y); }
                     reset => { ChartActions.reset(); }
                 }
+            }
+            if root.no-data: EmptyChart {
+                min-height: 200px;
+                hint: root.st.hint;
             }
 
             if root.st.cycles.length > 0: Rectangle { height: 1px; background: Theme.card-border; }
@@ -637,8 +840,9 @@ export component HistoryBox inherits VerticalLayout {
     }
 }
 
-// Overview (macOS OverviewChartView): window selector, range presets, account
-// toggles and one line per selected account on shared axes.
+// Overview (macOS OverviewChartView): the toolbar and a 300 px chart with one line
+// per selected account on shared axes, then the account list (click to show / hide a
+// line). Double-click on the chart resets the range (Windows only).
 export component OverviewPane inherits VerticalLayout {
     in property <ChartState> state;
     callback window(string);
@@ -650,101 +854,22 @@ export component OverviewPane inherits VerticalLayout {
     callback pan(float);
     callback toggle-mode();
     callback reset();
-    spacing: 12px;
+    property <bool> no-data: root.state.empty && !root.state.loading;
+    spacing: 0;
 
-    // Same container row as the History box: mode, presets, Custom, Avg, window.
-    HorizontalLayout {
-        spacing: 6px;
-        PresetChip {
-            compact: true;
-            label: root.state.pan-mode ? "Pan" : "Zoom";
-            tip: root.state.pan-mode ? "Switch to zoom mode" : "Switch to pan mode";
-            clicked => { root.toggle-mode(); }
-        }
-        for p in ["5h", "24h", "3d", "7d", "30d"]: PresetChip {
-            compact: true;
-            label: p;
-            tip: "Show the last " + p;
-            active: !root.state.custom && root.state.preset == p;
-            clicked => { root.preset(p); }
-        }
-        if root.state.custom: Text {
-            text: "Custom";
-            color: Theme.text-secondary;
-            font-size: 11px;
-            vertical-alignment: center;
-        }
-        Rectangle { horizontal-stretch: 1; }
-        Text {
-            text: root.state.avg-text;
-            color: root.state.avg-text == "Avg: --" ? Theme.text-secondary : (root.state.avg-hot ? #ff9f0a : #34c759);
-            font-size: 11px;
-            vertical-alignment: center;
-        }
-        Rectangle { horizontal-stretch: 1; }
-        for w[i] in ["5h", "7d", "fable"]: PresetChip {
-            compact: true;
-            label: i == 2 ? "F" : w;
-            tip: "Show the " + (i == 0 ? "5-hour" : i == 1 ? "7-day" : "Fable") + " usage window";
-            active: root.state.window == w;
-            clicked => { root.window(w); }
-        }
+    if !root.no-data: ChartToolbar {
+        state: root.state;
+        toggle-mode => { root.toggle-mode(); }
+        preset(p) => { root.preset(p); }
+        window(w) => { root.window(w); }
     }
-    Flickable {
-        height: 30px;
-        content-width: legend-row.preferred-width;
-        legend-row := HorizontalLayout {
-            spacing: 8px;
-            alignment: start;
-            for item in root.state.legend: Rectangle {
-                height: 28px;
-                width: lt.preferred-width + 38px + 24px;
-                border-radius: 6px;
-                border-width: 1px;
-                border-color: item.on ? item.color : Theme.card-border;
-                background: lt-touch.has-hover ? item.color.with-alpha(0.15) : transparent;
-                opacity: item.on && item.has-data ? 1.0 : 0.5;
-                Rectangle {
-                    x: 10px;
-                    y: (parent.height - self.height) / 2;
-                    width: 10px;
-                    height: 10px;
-                    border-radius: 5px;
-                    background: item.on ? item.color : transparent;
-                    border-width: 2px;
-                    border-color: item.color;
-                }
-                lt := Text {
-                    x: 28px;
-                    y: (parent.height - self.height) / 2;
-                    text: item.has-data ? item.name : item.name + " (no data)";
-                    color: Theme.text-primary;
-                    font-size: 12px;
-                }
-                Text {
-                    x: parent.width - self.preferred-width - 8px;
-                    y: (parent.height - self.height) / 2;
-                    text: item.animal != "" ? item.animal : "\u{2014}";
-                    color: Theme.text-secondary;
-                    font-size: 13px;
-                }
-                lt-touch := TouchArea { clicked => { root.toggle(item.id); } }
-                Tooltip { text: @markdown("\{item.on ? "Hide this account on the chart" : "Show this account on the chart"}"); }
-            }
-        }
-    }
-    Rectangle {
-        background: Theme.card-bg;
-        border-radius: 8px;
-        border-width: 1px;
-        border-color: Theme.card-border;
-        vertical-stretch: 1;
+    if !root.no-data: Rectangle {
+        height: 300px;
         InteractiveChart {
-            x: 6px;
-            y: 6px;
-            width: parent.width - 12px;
-            height: parent.height - 12px;
+            width: parent.width;
+            height: parent.height;
             state: root.state;
+            line-width: 1.5px;
             size-changed(w, h) => { root.size-changed(w, h); }
             hover(x, y) => { root.hover(x, y); }
             select(a, b) => { root.select(a, b); }
@@ -752,11 +877,58 @@ export component OverviewPane inherits VerticalLayout {
             reset => { root.reset(); }
         }
     }
-    Text {
-        text: root.state.pan-mode
-            ? "Click an account to show or hide its line \u{b7} drag to pan \u{b7} double-click to reset"
-            : "Click an account to show or hide its line \u{b7} drag to zoom \u{b7} double-click to reset";
-        color: Theme.text-secondary;
-        font-size: 11px;
+    if root.no-data: EmptyChart { height: 300px; }
+    Rectangle { height: 1px; background: Theme.card-border; }
+    Flickable {
+        vertical-stretch: 1;
+        content-height: legend.preferred-height;
+        legend := VerticalLayout {
+            alignment: start;
+            spacing: 4px;
+            padding-top: 4px;
+            padding-bottom: 4px;
+            for item in root.state.legend: Rectangle {
+                height: row.preferred-height;
+                background: item.on ? Theme.accent.with-alpha(0.12)
+                    : (lt-touch.has-hover ? Theme.text-primary.with-alpha(0.07) : transparent);
+                row := HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    padding-top: 4px;
+                    padding-bottom: 4px;
+                    spacing: 8px;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 8px;
+                            height: 8px;
+                            border-radius: 4px;
+                            background: item.on ? ChartColors.lines[item.slot] : Theme.text-secondary.with-alpha(0.3);
+                        }
+                    }
+                    Text {
+                        text: item.name;
+                        color: item.on ? Theme.text-primary : Theme.text-secondary;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                    if item.email != "": Text {
+                        text: item.email;
+                        color: ChartColors.tertiary;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    Text {
+                        text: item.animal != "" ? item.animal : "\u{2014}";
+                        color: item.animal != "" ? Theme.text-primary : ChartColors.tertiary;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                }
+                lt-touch := TouchArea { clicked => { root.toggle(item.id); } }
+                Tooltip { text: @markdown("\{item.on ? "Hide this account on the chart" : "Show this account on the chart"}"); }
+            }
+        }
     }
 }
