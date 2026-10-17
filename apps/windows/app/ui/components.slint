@@ -87,7 +87,8 @@ export component UsageGauge inherits Rectangle {
         y: self.x;
         border-radius: self.width / 2;
         border-width: root.win.line-width * root.zoom * 1px;
-        border-color: Theme.dark ? #ffffff22 : #00000014;
+        // macOS track: `Color.primary.opacity(0.2)`.
+        border-color: Theme.dark ? #ffffff33 : #00000033;
     }
     Path {
         width: parent.width;
@@ -101,13 +102,29 @@ export component UsageGauge inherits Rectangle {
         fill: transparent;
         animate stroke { duration: 300ms; easing: ease-out; }
     }
-    Text {
-        text: round(root.win.percent) + "%";
-        color: Theme.text-primary;
-        font-size: root.win.diameter * root.zoom * 0.24px;
-        font-weight: 600;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    // macOS: the number at 0.33 x diameter (semibold) and a smaller "%" at 0.20 x diameter
+    // on its baseline (core::geometry::percent_font_size / percent_sign_font_size).
+    property <length> d: root.win.diameter * root.zoom * 1px;
+    HorizontalLayout {
+        alignment: center;
+        Text {
+            text: floor(root.win.percent);
+            color: Theme.text-primary;
+            // macOS `minimumScaleFactor(0.7)`: three digits shrink to stay inside the ring.
+            font-size: root.d * 0.33 * (root.win.percent >= 100 ? 0.8 : 1.0);
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            // Drop the sign to the number's baseline: half the gap between the two cap heights.
+            padding-top: root.d * (0.33 - 0.20) * 0.5;
+            Text {
+                text: "%";
+                color: Theme.text-primary;
+                font-size: root.d * 0.20;
+            }
+        }
     }
 }
 
@@ -201,20 +218,23 @@ component WindowColumn inherits Rectangle {
                 Rectangle {
                     width: root.small-d;
                     height: root.small-d;
-                    Rectangle {
-                        width: parent.width - root.small-stroke;
-                        height: self.width;
-                        x: root.small-stroke / 2;
-                        y: root.small-stroke / 2;
-                        border-radius: self.width / 2;
-                        border-width: root.small-stroke;
-                        border-color: Theme.dark ? #ffffff14 : #0000000d;
-                    }
-                    for seg in root.win.segments: Path {
+                    // Segmented track (macOS `Color.primary.opacity(0.08)`), then the live
+                    // segments; both are built in Rust at this ring's size, so the viewbox is 1:1.
+                    for p in root.compact ? root.win.track-compact : root.win.track: Path {
                         width: parent.width;
                         height: parent.height;
-                        viewbox-width: root.win.diameter;
-                        viewbox-height: root.win.diameter;
+                        viewbox-width: root.small-d / 1px;
+                        viewbox-height: root.small-d / 1px;
+                        commands: p;
+                        stroke: Theme.dark ? #ffffff14 : #00000014;
+                        stroke-width: root.small-stroke;
+                        fill: transparent;
+                    }
+                    for seg in root.compact ? root.win.segments-compact : root.win.segments: Path {
+                        width: parent.width;
+                        height: parent.height;
+                        viewbox-width: root.small-d / 1px;
+                        viewbox-height: root.small-d / 1px;
                         commands: seg.path;
                         stroke: seg.color;
                         stroke-width: root.small-stroke;
@@ -289,11 +309,11 @@ export component AccountCard inherits Rectangle {
                 HorizontalLayout {
                     spacing: 6px;
                     alignment: start;
+                    // macOS `.title3`: 15 pt, regular weight.
                     Text {
                         text: root.data.name;
                         color: Theme.text-primary;
                         font-size: 15px;
-                        font-weight: 600;
                         overflow: elide;
                     }
                     if root.data.claude-code: Rectangle {
@@ -395,7 +415,8 @@ export component AccountCard inherits Rectangle {
             wrap: word-wrap;
         }
         if !root.data.expired: HorizontalLayout {
-            spacing: 20px;
+            // macOS UsageGaugeRow: 20 pt apart compact, 30 pt regular.
+            spacing: root.compact ? 20px : 30px;
             alignment: center;
             if root.data.five-hour.present: WindowColumn {
                 label: "5h"; win: root.data.five-hour; compact: root.compact;
@@ -418,7 +439,7 @@ export component AccountCard inherits Rectangle {
 export component UsageGaugeRow inherits HorizontalLayout {
     in property <UiRow> data;
     callback open-window(string /* "5h" | "7d" | "fable" */);
-    spacing: 20px;
+    spacing: 30px;
     alignment: end;
     if root.data.five-hour.present: WindowColumn {
         label: "5h"; win: root.data.five-hour; compact: false;

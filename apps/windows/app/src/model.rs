@@ -6,7 +6,7 @@ use claude_dashboard_core::burn_rate::BurnRateResult;
 use claude_dashboard_core::colors::{avatar_color, countdown_color, usage_color, Rgb};
 use claude_dashboard_core::geometry::{
     countdown_segments, fill_fraction, progress_arc, ring_center, ring_radius, segment_count_for,
-    to_angle, METRICS_REGULAR, TAU,
+    segment_range, to_angle, Metrics, METRICS, METRICS_REGULAR, TAU,
 };
 use claude_dashboard_core::format::{format_reset_time, formatted_countdown};
 use claude_dashboard_core::model::{AccountPlan, AccountStatus};
@@ -117,6 +117,34 @@ pub fn countdown_ring(remaining_s: f64, total_s: f64, diameter: f64, line_width:
         .collect()
 }
 
+/// The countdown ring's grey track: every segment, with the same 2 px gaps as the fill
+/// (macOS `CircularCountdownView` draws the track segmented too).
+pub fn countdown_track(total_s: f64, diameter: f64, line_width: f64) -> Vec<slint::SharedString> {
+    let n = segment_count_for(total_s);
+    (0..n)
+        .map(|i| {
+            let (a, b) = segment_range(i, diameter, n);
+            arc_path(a, b, diameter, line_width).into()
+        })
+        .collect()
+}
+
+/// Countdown fill and track for one ring size, or nothing when the window has no reset.
+fn countdown_models(
+    remaining_s: Option<f64>,
+    total_s: f64,
+    m: &Metrics,
+) -> (slint::ModelRc<UiSegment>, slint::ModelRc<slint::SharedString>) {
+    let (fill, track) = match remaining_s {
+        Some(rem) => (
+            countdown_ring(rem, total_s, m.small_diameter, m.small_line_width),
+            countdown_track(total_s, m.small_diameter, m.small_line_width),
+        ),
+        None => (Vec::new(), Vec::new()),
+    };
+    (slint::ModelRc::new(slint::VecModel::from(fill)), slint::ModelRc::new(slint::VecModel::from(track)))
+}
+
 fn animal_for(projected: Option<f64>) -> &'static str {
     projected.map(|s| BurnRateResult::from_projected_time(s).animal).unwrap_or("")
 }
@@ -147,6 +175,9 @@ fn window(
                 }
                 None => (String::new(), String::new(), slint::Color::from_rgb_u8(128, 128, 128)),
             };
+            let remaining = v.resets_at_unix.filter(|_| countdown_ring_shown).map(|r| r - now);
+            let (segments, track) = countdown_models(remaining, total_s, &METRICS_REGULAR);
+            let (segments_compact, track_compact) = countdown_models(remaining, total_s, &METRICS);
             UiWindow {
                 present: true,
                 percent: v.utilization as f32,
@@ -159,10 +190,10 @@ fn window(
                 reset_label: reset_label.into(),
                 countdown: countdown.into(),
                 countdown_color: cd_color,
-                segments: slint::ModelRc::new(slint::VecModel::from(match v.resets_at_unix {
-                    Some(r) if countdown_ring_shown => countdown_ring(r - now, total_s, GAUGE_DIAMETER, GAUGE_LINE_WIDTH),
-                    _ => Vec::new(),
-                })),
+                segments,
+                segments_compact,
+                track,
+                track_compact,
                 animal: animal.into(),
             }
         }
@@ -331,6 +362,20 @@ mod tests {
         assert!(blue.len() >= green.len());
         assert!(blue[0].path.starts_with("M "));
         assert!(countdown_ring(0.0, total, GAUGE_DIAMETER, GAUGE_LINE_WIDTH).is_empty());
+    }
+
+    #[test]
+    fn countdown_track_has_one_path_per_segment_at_the_shown_size() {
+        assert_eq!(countdown_track(FIVE_HOUR_S, 34.0, 4.0).len(), 5);
+        assert_eq!(countdown_track(SEVEN_DAY_S, 44.0, 5.0).len(), 7);
+        let mut r = row();
+        r.five_hour = Some(WindowView { utilization: 10.0, resets_at_unix: Some(1e9 + 3600.0), is_limited: false });
+        let ui = to_ui_row(&r, 1e9);
+        assert_eq!(ui.five_hour.track.row_count(), 5);
+        assert_eq!(ui.five_hour.track_compact.row_count(), 5);
+        // Gaps are 2 px at the drawn diameter, so the two sizes differ.
+        assert_ne!(ui.five_hour.track.row_data(0), ui.five_hour.track_compact.row_data(0));
+        assert!(ui.five_hour.segments_compact.row_count() > 0);
     }
 
     #[test]

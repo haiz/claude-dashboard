@@ -691,15 +691,16 @@ component FlyoutIconButton inherits Rectangle {
     in property <string> glyph;
     in property <bool> enabled: true;
     callback clicked();
-    width: 28px;
-    height: 28px;
+    // macOS HeaderIconButton: 24 pt square, caption-size glyph.
+    width: 24px;
+    height: 24px;
     border-radius: 6px;
     opacity: root.enabled ? 1.0 : 0.4;
     background: touch.has-hover && root.enabled ? Theme.accent.with-alpha(0.15) : (Theme.dark ? #ffffff12 : #00000010);
     Text {
         text: root.glyph;
         font-family: "Segoe Fluent Icons";
-        font-size: 14px;
+        font-size: 12px;
         color: Theme.text-primary;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -745,20 +746,19 @@ export component PopoverWindow inherits Window {
 
     // The list is as tall as its cards (they size themselves), capped; the empty state has a fixed height.
     property <length> list-h: root.account-rows.length == 0 ? 170px : min(list.preferred-height, 560px);
-    // padding 2x12 + header 28 + separator 1 + footer 28 + the 3 gaps between those four
-    // (+ the banner 24 and its gap 8).
-    property <length> chrome: 24px + 28px + 1px + 28px + 24px + (root.update-banner != "" ? 32px : 0px);
+    // header 24 + 2x12 padding, two full-width dividers, footer 28 + 2x4 padding
+    // (+ the full-width banner 26).
+    property <length> chrome: 48px + 2px + 36px + (root.update-banner != "" ? 26px : 0px);
 
     Rectangle {
         background: root.use-solid-background ? Theme.window-bg : (Theme.dark ? #20202080 : #f3f3f380);
     }
 
+    // macOS layout: banner, header (16 x 12 padding), divider, card list (12 padding),
+    // divider, footer (16 x 4); the dividers run the full width.
     VerticalLayout {
-        padding: 12px;
-        spacing: 8px;
         if root.update-banner != "": Rectangle {
-            height: 24px;
-            border-radius: 6px;
+            height: 26px;
             background: #fce10026;
             HorizontalLayout {
                 alignment: center;
@@ -773,6 +773,10 @@ export component PopoverWindow inherits Window {
             }
         }
         HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            padding-top: 12px;
+            padding-bottom: 12px;
             spacing: 4px;
             Text {
                 text: "Claude Dashboard";
@@ -791,6 +795,7 @@ export component PopoverWindow inherits Window {
             FlyoutIconButton { glyph: "\u{E897}"; clicked => { root.open-help(); } }
             FlyoutIconButton { glyph: "\u{E713}"; clicked => { root.open-settings(); } }
         }
+        Rectangle { height: 1px; background: Theme.card-border; }
         if root.account-rows.length == 0: EmptyState {
             title: "No accounts configured";
             subtitle: "";
@@ -803,6 +808,7 @@ export component PopoverWindow inherits Window {
             max-height: root.account-rows.length > 0 ? 100000px : 0px;
             content-height: list.preferred-height;
             list := VerticalLayout {
+                padding: 12px;
                 spacing: 8px;
                 alignment: start;
                 for acct in root.account-rows: AccountCard {
@@ -816,7 +822,11 @@ export component PopoverWindow inherits Window {
         }
         Rectangle { height: 1px; background: Theme.card-border; }
         HorizontalLayout {
-            height: 28px;
+            height: 36px;
+            padding-left: 16px;
+            padding-right: 16px;
+            padding-top: 4px;
+            padding-bottom: 4px;
             Rectangle {
                 horizontal-stretch: 1;
                 Rectangle {

@@ -36,8 +36,13 @@ export struct UiWindow {
     // Ring diameter / stroke width (core::geometry metrics), in logical px.
     diameter: float,
     line-width: float,
-    // Countdown ring segments (core::geometry::countdown_segments), blue -> green under 30% left.
+    // Countdown ring segments (core::geometry::countdown_segments), blue -> green under 30% left,
+    // and the segmented grey track; each built at the ring's drawn size (regular 44 px, compact
+    // 34 px) so the gaps stay 2 px as on macOS.
     segments: [UiSegment],
+    segments-compact: [UiSegment],
+    track: [string],
+    track-compact: [string],
     // Burn-rate animal placed on the ring ("" when unknown).
     animal: string,
 }
