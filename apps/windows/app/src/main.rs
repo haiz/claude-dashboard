@@ -19,6 +19,7 @@ mod model;
 mod pin;
 mod ping;
 mod ping_log_view;
+mod switch_log_view;
 mod pipe;
 mod popover;
 mod refresh;
@@ -495,6 +496,27 @@ fn load_ping_log(weak: &slint::Weak<AppWindow>) {
             if let Some(a) = w.upgrade() {
                 let rows = ping_log_view::rows(&entries, &names, offset);
                 a.set_ping_log_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+            }
+        });
+    });
+}
+
+/// UI thread: reads the Switch Log on a worker and shows it. Dev runs show none.
+fn load_switch_log(weak: &slint::Weak<AppWindow>) {
+    let w = weak.clone();
+    std::thread::spawn(move || {
+        let entries = if dev_run() {
+            Vec::new()
+        } else {
+            claude_dashboard_core::auto_switch_log::AutoSwitchLogStore::open()
+                .map(|log| log.fetch(claude_dashboard_core::auto_switch_log::MAX_ENTRIES))
+                .unwrap_or_default()
+        };
+        let offset = model::local_offset_s();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(a) = w.upgrade() {
+                let rows = switch_log_view::rows(&entries, offset);
+                a.set_switch_log_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
             }
         });
     });
@@ -1542,6 +1564,21 @@ fn main() -> Result<(), slint::PlatformError> {
             });
         });
         // Tools > Ping Log: load on open and on Refresh; Clear All also forgets the captions.
+        // Tools > Switch Log: load on open and on Refresh.
+        let w = app.as_weak();
+        app.on_switch_log_reload(move || load_switch_log(&w));
+        let w = app.as_weak();
+        app.on_switch_log_clear(move || {
+            let w = w.clone();
+            std::thread::spawn(move || {
+                if !dev_run() {
+                    if let Ok(log) = claude_dashboard_core::auto_switch_log::AutoSwitchLogStore::open() {
+                        log.clear();
+                    }
+                }
+                let _ = slint::invoke_from_event_loop(move || load_switch_log(&w));
+            });
+        });
         let w = app.as_weak();
         app.on_ping_log_reload(move || load_ping_log(&w));
         let w = app.as_weak();

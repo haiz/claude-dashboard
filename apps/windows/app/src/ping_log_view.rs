@@ -27,7 +27,7 @@ pub fn rows(entries: &[PingLogEntry], names: &HashMap<String, String>, local_off
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /// macOS `.medium` date and time ("Oct 17, 2026 at 10:44:03 AM") for local seconds.
-fn medium_date_time(local_unix: f64) -> String {
+pub fn medium_date_time(local_unix: f64) -> String {
     let secs = local_unix.floor() as i64;
     let (days, day_s) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
     let (y, m, d) = civil_from_days(days);

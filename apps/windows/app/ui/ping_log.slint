@@ -11,6 +11,17 @@ export struct UiPingRow {
     detail: string,
 }
 
+// One Switch Log row, built in Rust (`switch_log_view::rows`); `kind` 0 switched (green),
+// 1 failed (red), 2 no candidate (orange).
+export struct UiSwitchRow {
+    time: string,
+    accounts: string,
+    reason: string,
+    detail: string,
+    outcome: string,
+    kind: int,
+}
+
 component ConfirmButton inherits Rectangle {
     in property <string> label;
     in property <color> tint;
@@ -127,6 +138,107 @@ export component PingLogPane inherits VerticalLayout {
                         alignment: start;
                         Text { text: r.outcome; color: r.ok ? Theme.ok : Theme.danger; font-size: 11px; font-weight: 600; horizontal-alignment: right; }
                         Text { text: r.duration; color: Theme.text-secondary; font-size: 10px; horizontal-alignment: right; }
+                    }
+                }
+                Rectangle { height: 1px; background: Theme.card-border; }
+            }
+        }
+    }
+}
+
+// Tools > Switch Log (macOS AutoSwitchLogView): every auto switch, failed attempt and
+// no-candidate stretch, newest first. Refresh and Clear All live in the pane header.
+export component SwitchLogPane inherits VerticalLayout {
+    in property <[UiSwitchRow]> rows;
+    in-out property <bool> confirming-clear;
+    callback clear();
+    spacing: 8px;
+
+    if root.confirming-clear: Rectangle {
+        height: confirm.preferred-height + 20px;
+        border-radius: 8px;
+        background: Theme.card-bg;
+        border-width: 1px;
+        border-color: Theme.card-border;
+        keys := FocusScope {
+            width: 0px;
+            height: 0px;
+            init => { self.focus(); }
+            key-pressed(e) => {
+                if e.text == Key.Escape {
+                    root.confirming-clear = false;
+                    return accept;
+                }
+                if e.text == Key.Return {
+                    root.confirming-clear = false;
+                    root.clear();
+                    return accept;
+                }
+                reject
+            }
+        }
+        confirm := HorizontalLayout {
+            padding: 10px;
+            spacing: 8px;
+            Text { text: "Clear the switch log?"; color: Theme.text-primary; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+            ConfirmButton { label: "Cancel"; tint: Theme.text-primary; clicked => { root.confirming-clear = false; } }
+            ConfirmButton { label: "Clear All"; tint: Theme.danger; clicked => { root.confirming-clear = false; root.clear(); } }
+        }
+    }
+
+    Rectangle { height: 1px; background: Theme.card-border; }
+
+    if root.rows.length == 0: VerticalLayout {
+        vertical-stretch: 1;
+        alignment: center;
+        spacing: 12px;
+        Text {
+            text: "\u{E8AB}";
+            font-family: "Segoe Fluent Icons";
+            font-size: 40px;
+            color: Theme.text-secondary;
+            horizontal-alignment: center;
+        }
+        Text { text: "No auto switches yet."; color: Theme.text-secondary; horizontal-alignment: center; }
+    }
+
+    if root.rows.length > 0: Flickable {
+        vertical-stretch: 1;
+        content-height: list.preferred-height;
+        list := VerticalLayout {
+            alignment: start;
+            for r in root.rows: VerticalLayout {
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    padding-top: 10px;
+                    padding-bottom: 10px;
+                    spacing: 12px;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 4px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            Text { text: r.time; color: Theme.text-secondary; font-size: 11px; vertical-alignment: center; }
+                            Text { text: r.accounts; color: Theme.text-primary; font-size: 11px; font-weight: 500; vertical-alignment: center; }
+                        }
+                        Text { text: r.reason; color: Theme.text-secondary; font-size: 13px; wrap: word-wrap; }
+                        if r.detail != "": Text {
+                            text: r.detail;
+                            color: Theme.text-secondary;
+                            font-size: 13px;
+                            wrap: word-wrap;
+                            max-height: 2 * 18px;
+                            overflow: elide;
+                        }
+                    }
+                    Text {
+                        text: r.outcome;
+                        color: r.kind == 0 ? Theme.ok : r.kind == 1 ? Theme.danger : #ff9f0a;
+                        font-size: 11px;
+                        font-weight: 600;
+                        horizontal-alignment: right;
                     }
                 }
                 Rectangle { height: 1px; background: Theme.card-border; }
