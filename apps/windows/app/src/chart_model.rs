@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn points_convert() {
-        let v = points_to_entries(&[SeriesPoint { t_unix: 2.0, utilization: 7.0 }]);
+        let v = points_to_entries(&[SeriesPoint { t_unix: 2.0, utilization: 7.0, is_limited: false }]);
         assert_eq!(v, vec![Entry { ms: 2000.0, value: 7.0 }]);
     }
 }

@@ -479,6 +479,18 @@ pub struct UsageLogStore {
 pub struct SeriesPoint {
     pub t_unix: f64,
     pub utilization: f64,
+    /// The `lim` column: the API reported this window as limited.
+    pub is_limited: bool,
+}
+
+/// One reset cycle of a window (see [`UsageLogStore::reset_cycles`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ResetCycle {
+    pub resets_at_unix: f64,
+    pub first_unix: f64,
+    pub last_unix: f64,
+    pub peak: f64,
+    pub points: usize,
 }
 
 impl UsageLogStore {
@@ -652,12 +664,12 @@ impl UsageLogStore {
     pub fn series(&self, account_id: &str, window: i64, from_unix: f64, to_unix: f64) -> Vec<SeriesPoint> {
         let run = || -> rusqlite::Result<Vec<SeriesPoint>> {
             let mut stmt = self.conn.prepare(
-                "SELECT l.t, l.u FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
+                "SELECT l.t, l.u, l.lim FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
                  WHERE m.account_id = ?1 AND l.w = ?2 AND l.t BETWEEN ?3 AND ?4 \
                  ORDER BY l.t ASC, l.id ASC",
             )?;
             let rows = stmt.query_map(params![account_id, window, from_unix as i64, to_unix as i64], |row| {
-                Ok(SeriesPoint { t_unix: row.get::<_, i64>(0)? as f64, utilization: row.get::<_, i64>(1)? as f64 / 100.0 })
+                Ok(SeriesPoint { t_unix: row.get::<_, i64>(0)? as f64, utilization: row.get::<_, i64>(1)? as f64 / 100.0, is_limited: row.get::<_, i64>(2)? != 0 })
             })?;
             rows.collect()
         };
@@ -669,14 +681,14 @@ impl UsageLogStore {
     pub fn series_all(&self, window: i64, from_unix: f64, to_unix: f64) -> HashMap<String, Vec<SeriesPoint>> {
         let run = || -> rusqlite::Result<HashMap<String, Vec<SeriesPoint>>> {
             let mut stmt = self.conn.prepare(
-                "SELECT m.account_id, l.t, l.u FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
+                "SELECT m.account_id, l.t, l.u, l.lim FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
                  WHERE l.w = ?1 AND l.t BETWEEN ?2 AND ?3 \
                  ORDER BY m.account_id, l.t ASC, l.id ASC",
             )?;
             let rows = stmt.query_map(params![window, from_unix as i64, to_unix as i64], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    SeriesPoint { t_unix: row.get::<_, i64>(1)? as f64, utilization: row.get::<_, i64>(2)? as f64 / 100.0 },
+                    SeriesPoint { t_unix: row.get::<_, i64>(1)? as f64, utilization: row.get::<_, i64>(2)? as f64 / 100.0, is_limited: row.get::<_, i64>(3)? != 0 },
                 ))
             })?;
             let mut map: HashMap<String, Vec<SeriesPoint>> = HashMap::new();
@@ -687,6 +699,57 @@ impl UsageLogStore {
             Ok(map)
         };
         run().unwrap_or_default()
+    }
+
+    /// Reset cycles for one account + window, newest first. Port of macOS
+    /// `UsageLogStore.resetCycles`: `rat` is a rolling `now + 5h`, so cycles are
+    /// detected by `u` dropping from > 0 to 0; the reset row is not counted in
+    /// either cycle; the last cycle's reset is its last row's `rat`.
+    pub fn reset_cycles(&self, account_id: &str, window: i64) -> Vec<ResetCycle> {
+        let run = || -> rusqlite::Result<Vec<(i64, i64, i64)>> {
+            let mut stmt = self.conn.prepare(
+                "SELECT l.t, l.u, l.rat FROM usage_logs l JOIN accounts_map m ON m.aid = l.aid \
+                 WHERE m.account_id = ?1 AND l.w = ?2 ORDER BY l.t ASC, l.id ASC",
+            )?;
+            let rows = stmt.query_map(params![account_id, window], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+            rows.collect()
+        };
+        let rows = run().unwrap_or_default();
+        if rows.is_empty() {
+            return Vec::new();
+        }
+        let mut cycles: Vec<ResetCycle> = Vec::new();
+        let mut start = rows[0].0;
+        let mut peak = rows[0].1;
+        let mut count = 1usize;
+        for i in 1..rows.len() {
+            let (prev, curr) = (rows[i - 1], rows[i]);
+            if prev.1 > 0 && curr.1 == 0 {
+                cycles.push(ResetCycle {
+                    resets_at_unix: curr.0 as f64,
+                    first_unix: start as f64,
+                    last_unix: prev.0 as f64,
+                    peak: peak as f64 / 100.0,
+                    points: count,
+                });
+                start = curr.0;
+                peak = 0;
+                count = 0;
+            } else {
+                peak = peak.max(curr.1);
+                count += 1;
+            }
+        }
+        let last = rows[rows.len() - 1];
+        cycles.push(ResetCycle {
+            resets_at_unix: last.2 as f64,
+            first_unix: start as f64,
+            last_unix: last.0 as f64,
+            peak: peak as f64 / 100.0,
+            points: count,
+        });
+        cycles.reverse();
+        cycles
     }
 }
 
@@ -796,9 +859,9 @@ mod tests {
         assert_eq!(
             pts,
             vec![
-                SeriesPoint { t_unix: 10.0, utilization: 42.0 },
-                SeriesPoint { t_unix: 20.0, utilization: 45.01 },
-                SeriesPoint { t_unix: 30.0, utilization: 10.0 },
+                SeriesPoint { t_unix: 10.0, utilization: 42.0, is_limited: false },
+                SeriesPoint { t_unix: 20.0, utilization: 45.01, is_limited: false },
+                SeriesPoint { t_unix: 30.0, utilization: 10.0, is_limited: false },
             ]
         );
     }
@@ -818,7 +881,7 @@ mod tests {
         s.record_at("ACC", 1, 1000.0, 2.0, false, 10.0);
         s.record_at("OTHER", 0, 1000.0, 3.0, false, 10.0);
         let pts = s.series("ACC", 0, 0.0, 1e12);
-        assert_eq!(pts, vec![SeriesPoint { t_unix: 10.0, utilization: 1.0 }]);
+        assert_eq!(pts, vec![SeriesPoint { t_unix: 10.0, utilization: 1.0, is_limited: false }]);
     }
 
     #[test]
@@ -1247,5 +1310,32 @@ mod tests {
 
         assert!(result.is_err(), "an I/O failure must not be served as no accounts");
         assert!(quarantined_copies().is_empty(), "nothing may be moved aside");
+    }
+
+    #[test]
+    fn reset_cycles_split_on_drop_to_zero() {
+        let mut s = mem_store();
+        for (t, u, rat) in [(10.0, 10.0, 100.0), (20.0, 40.0, 100.0), (30.0, 0.0, 200.0), (40.0, 5.0, 200.0), (50.0, 20.0, 300.0)] {
+            s.record_at("ACC", 0, rat, u, false, t);
+        }
+        let c = s.reset_cycles("ACC", 0);
+        assert_eq!(c.len(), 2);
+        assert_eq!(c[0], ResetCycle { resets_at_unix: 300.0, first_unix: 30.0, last_unix: 50.0, peak: 20.0, points: 2 });
+        assert_eq!(c[1], ResetCycle { resets_at_unix: 30.0, first_unix: 10.0, last_unix: 20.0, peak: 40.0, points: 2 });
+    }
+
+    #[test]
+    fn reset_cycles_empty_log_is_empty() {
+        assert!(mem_store().reset_cycles("ACC", 0).is_empty());
+    }
+
+    #[test]
+    fn series_carries_is_limited() {
+        let mut s = mem_store();
+        s.record_at("ACC", 0, 1000.0, 50.0, false, 10.0);
+        s.record_at("ACC", 0, 1000.0, 100.0, true, 20.0);
+        let pts = s.series("ACC", 0, 0.0, 1e12);
+        assert_eq!(pts.iter().map(|p| p.is_limited).collect::<Vec<_>>(), vec![false, true]);
+        assert!(s.series_all(0, 0.0, 1e12)["ACC"][1].is_limited);
     }
 }
