@@ -177,11 +177,10 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
     launch at startup) panes. Sub-project 4 adds charts: the per-account interactive usage chart
     (`ui/chart.slint`, `src/chart.rs`, pure helpers in `chart_model.rs`), opened by the "View
     chart" button, and the Overview multi-account chart opened from the sidebar "Overview" item. Sub-project 5 adds
-    the Command Log pane (Tools), the per-account Run Command panel (saved command, Open in
-    Terminal toggle, classifier-driven default), auto-run on reset (hidden, once per episode), the
-    shell picker (Settings > General > Commands), the green Claude Code badge, and the Help pane
-    (`log_view.rs`, `run_command.rs`); the sidebar "Coming soon" placeholder is gone. See
-    `contract/windows.md`, "Command Log". Sub-project 6 adds release: a per-user MSI
+    the green Claude Code badge (`core::claude_code`) and the Help pane. Run Command and the
+    Command Log were later removed, as on macOS; the app deletes their leftover files at launch
+    (`app/src/migration.rs`; see `contract/windows.md`, "Launch cleanup"). Sub-project 6 adds
+    release: a per-user MSI
     (`app/wix/main.wxs`, built by `scripts/build-msi.ps1`; relative-path host manifest, fixed
     UpgradeCode and component GUIDs, uninstall keeps user data), the extension zip
     (`scripts/pack-extension.ps1`), auto-update (`app/src/updater.rs` for guards, MSI download
@@ -212,17 +211,6 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 - **Chart `core` modules:** `chart` (chart math ported from `apps/linux/lib/chart.js`: scale, ticks,
   zoom, reset-split segments) and the `UsageLogStore::series`/`series_all` read of the usage log
   that feeds it. See `contract/usage-log.md`.
-- **Command `core` modules:** `command_log` (SQLite `command_logs.db`: trigger/status vocabulary
-  with fixed raw values, newest 500 rows by id, 4096-byte output tail), `command_classifier`
-  (Open-in-Terminal default from the leading token, claude print mode, TUI list, ssh walk),
-  `auto_run` (`should_run_saved_command` plus the once-per-episode latch, armed only for accounts
-  with a saved command), `claude_code` (active email from `%USERPROFILE%\.claude.json`) and
-  `run_commands` (`run-commands.json`, keyed by account id, dropped on account delete).
-- **App process control:** `shell.rs` (shell discovery, the `settings.json` `shell` choice, hidden-run
-  and resolver invocations per shell), `terminal.rs` (interactive launch via `wt.exe new-tab`, else
-  `conhost.exe`; cmd's `/k` tail passed raw, `;` escaped under wt), `runner.rs` (Job Object runner:
-  spawn suspended, assign to a `KILL_ON_JOB_CLOSE` job, resume; 60 s timeout, cancel, background
-  leftovers ended when the shell exits) and `commands.rs` (glues resolve, classify, run and log).
 
 ## Key Technical Details
 

@@ -40,29 +40,6 @@ pub fn set_auto_update(on: bool) -> Result<(), String> {
     settings::update(|s| s.auto_update = on)
 }
 
-/// (key, label) for each shell installed on this machine.
-pub fn shells() -> Vec<(String, String)> {
-    crate::shell::detect_available()
-        .into_iter()
-        .map(|s| (s.kind.setting_key().to_string(), s.kind.label().to_string()))
-        .collect()
-}
-
-/// The shell that runs will actually use (saved choice, else auto), or "".
-pub fn current_shell_key() -> String {
-    crate::shell::detect(settings::load().shell.as_deref())
-        .map(|s| s.kind.setting_key().to_string())
-        .unwrap_or_default()
-}
-
-/// Persists the shell choice; an unknown key is rejected.
-pub fn set_shell(key: &str) -> Result<(), String> {
-    if crate::shell::ShellKind::from_setting(key).is_none() {
-        return Err(format!("unknown shell: {key}"));
-    }
-    settings::update(|s| s.shell = Some(key.to_string()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,18 +68,5 @@ mod tests {
         set_auto_update(false).unwrap();
         assert!(!auto_update_enabled());
         assert!(!settings::load().auto_update);
-    }
-
-    #[test]
-    fn set_shell_persists_known_keys_only() {
-        let _env = crate::testenv::lock();
-        let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("APPDATA", dir.path());
-        std::env::set_var("LOCALAPPDATA", dir.path());
-        set_shell("cmd").unwrap();
-        assert_eq!(settings::load().shell.as_deref(), Some("cmd"));
-        assert!(set_shell("zsh").is_err());
-        assert_eq!(settings::load().shell.as_deref(), Some("cmd"));
-        assert_eq!(current_shell_key(), "cmd", "cmd.exe always exists on Windows");
     }
 }

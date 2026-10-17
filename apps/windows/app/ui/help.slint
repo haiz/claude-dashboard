@@ -48,10 +48,6 @@ export component HelpPane inherits Flickable {
             body: "Click a card to open the account. View chart shows its history; drag to zoom, double-click to reset. Overview compares all accounts. Left-click the tray icon for a quick summary; right-click it for Open Dashboard, Refresh and Quit. Closing the window keeps the app running in the tray.";
         }
         HelpSection {
-            title: "Commands";
-            body: "Run Command (the terminal button on a card, or on the account page) saves one command per account and runs it. Programs that need a terminal, like claude, vim or ssh, open in Windows Terminal; others run hidden, and their output goes to the Command Log. A hidden run stops after 60 seconds. The saved command also runs on its own when a usage window resets. Choose the shell under Settings › General › Commands. It starts with your profile, so your functions and aliases work.";
-        }
-        HelpSection {
             title: "Troubleshooting";
             body: "An account marked Expired needs a fresh key: open claude.ai in that browser (extension) or paste the key again. If the extension shows a red !, the bridge (claude-dashboard-bridge.exe) is missing or reported an error; reinstall the app. If scanning says the cookie is app-bound, use the extension instead.";
         }

@@ -3,15 +3,12 @@ import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "compon
 import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
 import { ChartPanel, OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem } from "chart.slint";
-import { CommandLogPane, UiLogEntry } from "command_log.slint";
-import { RunCommandPanel } from "run_command.slint";
 import { HelpPane } from "help.slint";
-export struct UiShell { key: string, label: string }
 
-export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, UiLogEntry, ChartState, ChartTick, ChartLine, ChartLegendItem }
+export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
-export enum Pane { dashboard, overview, account, command-log, help, settings-accounts, general }
+export enum Pane { dashboard, overview, account, help, settings-accounts, general }
 
 component GroupHeader inherits Text {
     color: Theme.text-secondary;
@@ -175,9 +172,6 @@ component GeneralSettingsPane inherits Flickable {
     in property <bool> launch-at-startup;
     callback set-auto-refresh(int);
     callback set-launch-at-startup(bool);
-    in property <[UiShell]> shells;
-    in property <string> shell-key;
-    callback set-shell(string);
     in property <string> update-status;
     in property <bool> update-can-install;
     in property <bool> update-busy;
@@ -220,30 +214,6 @@ component GeneralSettingsPane inherits Flickable {
                         active: root.auto-refresh-seconds == p.s;
                         clicked => { root.set-auto-refresh(p.s); }
                     }
-                }
-            }
-        }
-
-        GroupHeader { text: "Commands"; }
-        SettingsCard {
-            height: 96px;
-            VerticalLayout {
-                padding: 12px;
-                spacing: 8px;
-                Text { text: "Run commands in"; color: Theme.text-primary; }
-                HorizontalLayout {
-                    spacing: 6px;
-                    alignment: start;
-                    for s in root.shells: IntervalChip {
-                        label: s.label;
-                        active: root.shell-key == s.key;
-                        clicked => { root.set-shell(s.key); }
-                    }
-                }
-                Text {
-                    text: "Started with your profile, so functions and aliases resolve.";
-                    color: Theme.text-secondary;
-                    font-size: 11px;
                 }
             }
         }
@@ -341,25 +311,10 @@ export component AppWindow inherits Window {
     callback overview-hover(float, float);
     callback overview-select(float, float);
     callback overview-reset();
-    in property <[UiLogEntry]> command-log;
-    callback command-log-open();
-    callback command-log-clear();
-    in-out property <bool> run-open: false;
-    in property <string> run-account-name;
-    in-out property <string> run-command-text;
-    in-out property <bool> run-in-terminal;
-    in property <bool> run-running;
-    in property <[string]> run-lines;
-    callback open-run-command(string);
-    callback run-command-edited(string);
-    callback run-terminal-toggled(bool);
-    callback run-command-start();
-    callback run-command-cancel();
     changed selection => {
         root.chart-open = false;
         root.chart-close();
         if root.selection == Pane.overview { root.overview-open(); } else { root.overview-close(); }
-        if root.selection == Pane.command-log { root.command-log-open(); }
     }
     changed selected-account-id => { root.chart-open = false; root.chart-close(); }
 
@@ -369,9 +324,6 @@ export component AppWindow inherits Window {
     in-out property <bool> launch-at-startup;
     callback set-auto-refresh(int);
     callback set-launch-at-startup(bool);
-    in property <[UiShell]> shells;
-    in-out property <string> shell-key;
-    callback set-shell(string);
     in property <string> update-status;
     in property <bool> update-can-install;
     in property <bool> update-busy;
@@ -382,7 +334,6 @@ export component AppWindow inherits Window {
 
     property <string> pane-title: root.selection == Pane.dashboard ? "Dashboard"
         : root.selection == Pane.overview ? "Overview"
-        : root.selection == Pane.command-log ? "Command Log"
         : root.selection == Pane.help ? "Help"
         : root.selection == Pane.settings-accounts ? "Accounts"
         : root.selection == Pane.general ? "General"
@@ -436,12 +387,6 @@ export component AppWindow inherits Window {
 
                     GroupHeader { text: "Tools"; }
                     SidebarRow {
-                        label: "Command Log"; glyph: "\u{E756}"; tile: #5e5ce6;
-                        text-color: Theme.text-primary;
-                        selected: root.selection == Pane.command-log;
-                        clicked => { root.selection = Pane.command-log; }
-                    }
-                    SidebarRow {
                         label: "Help"; glyph: "\u{E897}"; tile: #30d158;
                         text-color: Theme.text-primary;
                         selected: root.selection == Pane.help;
@@ -489,7 +434,6 @@ export component AppWindow inherits Window {
                         root.chart-open = true;
                         root.view-chart(acct.id);
                     }
-                    run-command => { root.open-run-command(acct.id); }
                 }
             }
             if root.selection == Pane.dashboard && root.account-rows.length == 0: EmptyState {
@@ -514,7 +458,6 @@ export component AppWindow inherits Window {
                         root.selected-account-id = acct.id;
                         root.selection = Pane.account;
                     }
-                    run-command => { root.open-run-command(acct.id); }
                 }
             }
             if root.selection == Pane.overview: OverviewPane {
@@ -545,9 +488,6 @@ export component AppWindow inherits Window {
                 launch-at-startup: root.launch-at-startup;
                 set-auto-refresh(s) => { root.set-auto-refresh(s); }
                 set-launch-at-startup(on) => { root.set-launch-at-startup(on); }
-                shells: root.shells;
-                shell-key: root.shell-key;
-                set-shell(k) => { root.set-shell(k); }
                 update-status: root.update-status;
                 update-can-install: root.update-can-install;
                 update-busy: root.update-busy;
@@ -555,12 +495,6 @@ export component AppWindow inherits Window {
                 check-updates => { root.check-updates(); }
                 install-update => { root.install-update(); }
                 set-auto-update(on) => { root.set-auto-update(on); }
-            }
-            if root.selection == Pane.command-log: CommandLogPane {
-                vertical-stretch: 1;
-                entries: root.command-log;
-                reload => { root.command-log-open(); }
-                clear => { root.command-log-clear(); }
             }
             if root.selection == Pane.help: HelpPane { vertical-stretch: 1; }
             if root.selection != Pane.dashboard: Rectangle { }
@@ -580,19 +514,6 @@ export component AppWindow inherits Window {
         hover(x, y) => { root.chart-hover(x, y); }
         select(a, b) => { root.chart-select(a, b); }
         reset => { root.chart-reset(); }
-    }
-
-    if root.run-open: RunCommandPanel {
-        width: parent.width; height: parent.height;
-        account-name: root.run-account-name;
-        command <=> root.run-command-text;
-        open-in-terminal <=> root.run-in-terminal;
-        running: root.run-running;
-        lines: root.run-lines;
-        edited(t) => { root.run-command-edited(t); }
-        toggle-terminal(on) => { root.run-terminal-toggled(on); }
-        run => { root.run-command-start(); }
-        cancel => { root.run-command-cancel(); }
     }
 }
 
