@@ -4,6 +4,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
 mod cc_login;
+mod cc_state;
 mod chart;
 mod chart_model;
 mod help;
@@ -92,6 +93,7 @@ fn apply_output(
     eprintln!("refresh: {} rows, peak {:.0}%", out.rows.len(), out.peak);
     let mut rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
     set_ping_fields(&mut rows);
+    set_switch_fields(&mut rows);
     // Re-sync All failures ride this refresh into the cards' error lines (macOS setError).
     let failures = std::mem::take(&mut *RESYNC_FAILURES.lock().unwrap_or_else(|e| e.into_inner()));
     for r in rows.iter_mut().filter(|r| !r.expired) {
@@ -137,6 +139,15 @@ fn set_ping_fields(rows: &mut [UiRow]) {
         r.pinging = pinging;
         r.ping_caption = caption.into();
         r.ping_failed = failed;
+    }
+}
+
+/// Copies each row's Claude Code Switch state from the last capture.
+fn set_switch_fields(rows: &mut [UiRow]) {
+    for r in rows.iter_mut() {
+        let (state, help) = cc_state::switch_fields(cc_state::availability(r.id.as_str()));
+        r.switch_state = state.into();
+        r.switch_help = help.into();
     }
 }
 
@@ -232,6 +243,13 @@ fn spawn_refresh_loop(
                     }
                 };
                 out.peak = claude_dashboard_core::rows::peak_utilization(&out.rows);
+                // Claude Code: copy the active login into the vault, recompute Switch states
+                // (macOS `refreshClaudeCodeSwitchState`, part of every refresh).
+                if cc_state::switcher().is_some() {
+                    if let Ok(accounts) = claude_dashboard_core::store::load_accounts() {
+                        cc_state::refresh(&accounts);
+                    }
+                }
                 // Auto Ping on this refresh's own fetches (macOS `refreshAll`); never in dev runs.
                 let enabled = !dev_run() && claude_dashboard_core::settings::load().auto_ping_enabled;
                 let targets = ping::controller().claim_targets(&out.candidates, enabled, now);
@@ -969,6 +987,10 @@ fn main() -> Result<(), slint::PlatformError> {
             std::thread::spawn(move || {
                 match settings_accounts::delete_account(&id) {
                     Ok(_) => {
+                        // No refresh token outlives its account (macOS `forgetClaudeCodeLogins`).
+                        if let Some(s) = cc_state::switcher() {
+                            s.forget(&id);
+                        }
                         let _ = tx.send(refresh::Nudge::All);
                     }
                     Err(e) => eprintln!("delete account failed: {e}"),
@@ -1182,6 +1204,8 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     app.global::<Theme>().set_dark(dark);
     OPEN_WIZARD.with(|o| *o.borrow_mut() = Some(open_wizard.clone()));
+    // The Claude Code switcher reads and writes Claude Code's own files: never in dev runs.
+    cc_state::init(!dev_run());
     // macOS opens the window by itself only on the very first launch (`hasLaunchedBefore`);
     // later launches, launch at startup included, start in the tray. Dev runs always show it.
     let first_launch = !dev_run() && !claude_dashboard_core::settings::load().has_launched_before;

@@ -79,4 +79,8 @@ export struct UiRow {
     pinging: bool,
     ping-caption: string,
     ping-failed: bool,
+    // Claude Code Switch (macOS SwitchAvailability): "" (no switcher) | active | ready |
+    // not-captured | login-expired | needs-login, and its tooltip.
+    switch-state: string,
+    switch-help: string,
 }
