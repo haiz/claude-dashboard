@@ -96,6 +96,20 @@ pub fn load_latest() {
     }
 }
 
+/// `h:mm AM` for a Unix time shifted by `local_offset_s` (the reset labels' clock format).
+fn clock(unix: f64, local_offset_s: f64) -> String {
+    let secs = (unix + local_offset_s).floor() as i64;
+    let day = secs.rem_euclid(86_400);
+    let (h, m) = (day / 3600, (day % 3600) / 60);
+    let h12 = if h % 12 == 0 { 12 } else { h % 12 };
+    format!("{h12}:{m:02} {}", if h < 12 { "AM" } else { "PM" })
+}
+
+/// The line under the Ping button for `e`, and whether it reports a failure (red).
+pub fn caption_for(e: &PingLogEntry, local_offset_s: f64) -> (String, bool) {
+    (e.caption(&clock(e.finished_unix, local_offset_s)), e.outcome != PingOutcome::Ok)
+}
+
 /// A window is not running when the API reports no reset time for it.
 pub fn window_not_running(u: &UsageData) -> bool {
     u.five_hour.resets_at.is_none() || u.seven_day.resets_at.is_none()
@@ -164,6 +178,12 @@ impl PingController {
                 session_key: c.session_key.clone(),
             })
             .collect()
+    }
+
+    /// The account page's Ping row: (running, caption, caption is a failure).
+    pub fn ui_fields(&self, id: &str, local_offset_s: f64) -> (bool, String, bool) {
+        let (caption, failed) = self.latest(id).map(|e| caption_for(e, local_offset_s)).unwrap_or_default();
+        (self.is_in_flight(id), caption, failed)
     }
 
     pub fn is_in_flight(&self, id: &str) -> bool {
@@ -318,6 +338,31 @@ mod tests {
         let t = c.claim_targets(&[cand("a", usage(None, Some(1))), cand("b", running())], true, T);
         assert_eq!(t, vec![PingTarget { account_id: "a".into(), org_id: "o".into(), session_key: "k".into() }]);
         assert!(c.claim_targets(&[cand("a", usage(None, Some(1)))], true, T + 1.0).is_empty(), "latched");
+    }
+
+    #[test]
+    fn caption_for_formats_local_time() {
+        // 1_000_000 s = 1970-01-12 13:46:40 UTC.
+        let mut e = entry("a", PingTrigger::Manual, PingOutcome::Ok);
+        e.finished_unix = 1_000_000.0;
+        assert_eq!(caption_for(&e, 0.0), ("Pinged at 1:46 PM".to_string(), false));
+        assert_eq!(caption_for(&e, 7.0 * 3600.0).0, "Pinged at 8:46 PM");
+        e.outcome = PingOutcome::Expired;
+        assert_eq!(caption_for(&e, -14.0 * 3600.0), ("Ping failed at 11:46 PM: Session expired".to_string(), true));
+        e.finished_unix = 1_000_000.0 - 13.0 * 3600.0 - 46.0 * 60.0; // 00:00:40 UTC
+        assert_eq!(caption_for(&e, 0.0).0, "Ping failed at 12:00 AM: Session expired");
+    }
+
+    #[test]
+    fn ui_fields_report_running_and_latest() {
+        let mut c = PingController::default();
+        assert_eq!(c.ui_fields("a", 0.0), (false, String::new(), false));
+        assert!(c.begin("a"));
+        assert!(c.ui_fields("a", 0.0).0);
+        let mut e = entry("a", PingTrigger::Manual, PingOutcome::Failed);
+        e.finished_unix = 1_000_000.0;
+        c.finish(e, T);
+        assert_eq!(c.ui_fields("a", 0.0), (false, "Ping failed at 1:46 PM: Failed".to_string(), true));
     }
 
     #[test]

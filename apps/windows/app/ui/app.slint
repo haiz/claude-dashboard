@@ -534,6 +534,8 @@ export component AppWindow inherits Window {
     callback resync-account(string);
     // Refresh one account only (the account page header).
     callback refresh-account(string);
+    // The account page's Ping button.
+    callback ping-account(string);
     // Remove an account (the account page Actions box); same path as Settings > Accounts delete.
     callback remove-account(string);
     // An account page was opened (sidebar row, card, flyout); the chart window resets to 5h.
@@ -717,6 +719,7 @@ export component AppWindow inherits Window {
                     height: parent.height;
                     refresh => { root.refresh-account(acct.id); }
                     resync => { root.resync-account(acct.id); }
+                    ping => { root.ping-account(acct.id); }
                     toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
                     remove => {
                         root.remove-account(acct.id);
