@@ -483,10 +483,13 @@ fn run_auto_switch(out: &mut refresh::RefreshOutput, now: f64) -> Option<String>
             active.five_hour_log = auto_switch::log_points(&log.series(&active.id, 0, now - 3600.0, now + 1.0));
         }
     }
-    if cc_state::try_begin_switch() {
-        let stored = claude_dashboard_core::store::load_accounts().unwrap_or_default();
+    // An unreadable store is no evidence of anything: skip this evaluation.
+    let stored = claude_dashboard_core::store::load_accounts().ok();
+    if let Some(stored) = stored.filter(|_| cc_state::try_begin_switch()) {
+        let ids: Vec<String> = stored.iter().map(|a| a.id.clone()).collect();
+        auto_switch::drop_deleted_home(&mut cfg, &ids);
         let log_store = claude_dashboard_core::auto_switch_log::AutoSwitchLogStore::open().ok();
-        let before = cfg.priority.clone();
+        let before = auto_switch::Config::from_settings(&settings).priority;
         // Evaluate on a copy: a switch can block for seconds, and the UI reads the footer event.
         let mut c = auto_switch::controller().clone();
         let switched = c.evaluate(

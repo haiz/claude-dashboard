@@ -3,8 +3,10 @@
 //! active account turns off the two critical rules until it ends. The thresholds wait out
 //! the last minutes of the home or most critical account's 5h window (`waits_for_reset`).
 //!
-//!     let d = decide(&snapshot, |n| rand_index(n));
-//!     if let Decision::SwitchTo(id, _) = d { ... }
+//! ```text
+//! let d = decide(&snapshot, |n| rand_index(n));
+//! if let Decision::SwitchTo(id, _) = d { ... }
+//! ```
 
 use std::collections::HashSet;
 

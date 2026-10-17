@@ -252,14 +252,19 @@ fn updated_hold(hold: Option<Hold>, active: Option<&Account>, now: f64) -> Optio
     Some(hold)
 }
 
-/// Drops a tick on a removed account. While the ticked account is active, moves its
-/// baseline to the window Claude Code uses, so leaving it waits for that window's reset.
+/// Drops a tick on an account the store no longer has (macOS `updatePriority`'s removed-account
+/// rule). Decided against the store, not the rows: a refresh that read no rows is not a removal.
+pub fn drop_deleted_home(cfg: &mut Config, stored_ids: &[String]) {
+    if cfg.priority.as_ref().is_some_and(|p| !stored_ids.contains(&p.account_id)) {
+        cfg.priority = None;
+    }
+}
+
+/// While the ticked account is active, moves its baseline to the window Claude Code uses, so
+/// leaving it waits for that window's reset.
 fn update_priority(cfg: &mut Config, accounts: &[Account], now: f64) {
     let Some(p) = &cfg.priority else { return };
-    let Some(home) = accounts.iter().find(|a| a.id == p.account_id) else {
-        cfg.priority = None;
-        return;
-    };
+    let Some(home) = accounts.iter().find(|a| a.id == p.account_id) else { return };
     let Some(u) = home.usage.filter(|_| home.is_active && home.is_fresh) else { return };
     let baseline = planner::priority_baseline(&u, now);
     if p.baseline != Some(baseline) {
@@ -282,7 +287,8 @@ pub fn accounts_from(
 ) -> Vec<Account> {
     rows.iter()
         .map(|r| {
-            let is_fresh = r.error.is_none();
+            // macOS keeps `error = "expired"` on an expired account: its numbers are stale.
+            let is_fresh = r.error.is_none() && r.status != AccountStatus::Expired;
             let is_usable = r.status == AccountStatus::Active;
             let critical = if is_fresh && is_usable {
                 claude_dashboard_core::critical::assess(r.seven_day.as_ref(), params, now)
@@ -603,7 +609,7 @@ mod tests {
         run(&mut c, &mut cfg, &[stale], T0, Ok(()));
         assert_eq!(cfg.priority.unwrap().baseline, Some(T0 - 9000.0), "stale usage keeps the baseline");
         let mut cfg = disabled(Some(Priority { account_id: "gone".into(), baseline: None }));
-        run(&mut c, &mut cfg, &[account("a", 10.0, 10.0, None, true, T0)], T0, Ok(()));
+        drop_deleted_home(&mut cfg, &["a".to_string()]);
         assert_eq!(cfg.priority, None);
     }
 
@@ -820,6 +826,39 @@ mod tests {
         assert_eq!(f.event, "Could not switch to b@x.com: x \u{00B7} 1:46 PM");
         assert!(f.failed);
         assert!(!footer(&Settings::default(), &[], None, 0.0).near, "no active account: not near");
+    }
+
+    /// macOS keeps `error = "expired"` on an expired account, so its last numbers are stale:
+    /// auto switch must not act on them (review finding 2).
+    #[test]
+    fn an_expired_active_account_is_not_fresh() {
+        use claude_dashboard_core::model::AccountStatus;
+        let params = CriticalParameters { x: 16.0, pace: 50.0, high_pace: 80.0, quiet: None };
+        let mut expired = row("a", None, Some(96.0), Some((10.0, T0 + 86_400.0)));
+        expired.is_active_claude_code = true;
+        expired.status = AccountStatus::Expired;
+        let accounts = accounts_from(&[expired, row("b", None, Some(0.0), Some((10.0, T0 + 86_400.0)))], |id| {
+            Some(if id == "a" { Availability::Active } else { Availability::Ready })
+        }, &params, T0);
+        assert!(!accounts[0].is_fresh);
+        let mut c = Controller::default();
+        let r = run(&mut c, &mut cfg(), &accounts, T0, Ok(()));
+        assert_eq!(r.result, None, "no switch on frozen numbers");
+        assert!(!c.should_fast_poll(&cfg(), &accounts), "no endless poll of an account never fetched");
+    }
+
+    /// A refresh that read no rows (the store could not be read) must not drop the tick
+    /// (review finding 3): only an account gone from the store drops it.
+    #[test]
+    fn the_home_account_is_dropped_only_when_the_store_no_longer_has_it() {
+        let mut c = Controller::default();
+        let mut cfg = Config { priority: Some(Priority { account_id: "h".into(), baseline: None }), ..cfg() };
+        run(&mut c, &mut cfg, &[], T0, Ok(()));
+        assert!(cfg.priority.is_some(), "no rows: kept");
+        drop_deleted_home(&mut cfg, &["h".to_string(), "x".to_string()]);
+        assert!(cfg.priority.is_some());
+        drop_deleted_home(&mut cfg, &["x".to_string()]);
+        assert_eq!(cfg.priority, None);
     }
 
     #[test]

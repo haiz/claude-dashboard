@@ -1,8 +1,10 @@
 //! Whether an account's 7d quota will go unused. Pure port of macOS `CriticalPlanner`
 //! (`docs/superpowers/specs/2026-10-16-critical-accounts-design.md`, "Assessment").
 //!
-//!     let a = assess(row.seven_day.as_ref(), &parameters_from(&settings, 16.3), now);
-//!     a.level   // CriticalLevel::Critical
+//! ```text
+//! let a = assess(row.seven_day.as_ref(), &parameters_from(&settings, 16.3), now);
+//! a.level   // CriticalLevel::Critical
+//! ```
 
 use chrono::{Duration, NaiveDate, TimeZone};
 use chrono_tz::Tz;
