@@ -209,7 +209,7 @@ component GeneralSettingsPane inherits Flickable {
                 HorizontalLayout {
                     spacing: 6px;
                     alignment: start;
-                    for p[i] in [{l: "30s", s: 30}, {l: "1 min", s: 60}, {l: "2 min", s: 120}, {l: "5 min", s: 300}, {l: "15 min", s: 900}]: IntervalChip {
+                    for p[i] in [{l: "1 min", s: 60}, {l: "2 min", s: 120}, {l: "5 min", s: 300}, {l: "15 min", s: 900}]: IntervalChip {
                         label: p.l;
                         active: root.auto-refresh-seconds == p.s;
                         clicked => { root.set-auto-refresh(p.s); }

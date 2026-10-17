@@ -170,27 +170,33 @@ pub fn refresh_once(now_unix_s: f64) -> Result<RefreshOutput, String> {
 }
 
 /// How long the refresh loop waits between cycles: the user's Auto Refresh
-/// setting, clamped/defaulted by `effective_refresh_seconds`.
-pub fn loop_timeout(s: &claude_dashboard_core::settings::Settings) -> std::time::Duration {
-    std::time::Duration::from_secs(s.effective_refresh_seconds())
+/// setting in minutes (clamped), or `None` when disabled, meaning wait only
+/// for a nudge.
+pub fn loop_timeout(s: &claude_dashboard_core::settings::Settings) -> Option<std::time::Duration> {
+    s.auto_refresh_enabled
+        .then(|| std::time::Duration::from_secs(s.effective_refresh_minutes() * 60))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn timeout_for(secs: u64) -> std::time::Duration {
-        let s = claude_dashboard_core::settings::Settings { auto_refresh_seconds: secs, ..Default::default() };
+    fn timeout_for(enabled: bool, minutes: u64) -> Option<std::time::Duration> {
+        let s = claude_dashboard_core::settings::Settings {
+            auto_refresh_enabled: enabled,
+            auto_refresh_minutes: minutes,
+            ..Default::default()
+        };
         loop_timeout(&s)
     }
 
     #[test]
-    fn loop_timeout_uses_effective_refresh_seconds() {
+    fn loop_timeout_uses_minutes_and_none_when_disabled() {
         use std::time::Duration;
-        assert_eq!(timeout_for(0), Duration::from_secs(60));
-        assert_eq!(timeout_for(5), Duration::from_secs(30));
-        assert_eq!(timeout_for(99999), Duration::from_secs(3600));
-        assert_eq!(timeout_for(120), Duration::from_secs(120));
+        assert_eq!(timeout_for(false, 5), None);
+        assert_eq!(timeout_for(true, 5), Some(Duration::from_secs(300)));
+        assert_eq!(timeout_for(true, 0), Some(Duration::from_secs(60)));
+        assert_eq!(timeout_for(true, 999), Some(Duration::from_secs(3600)));
     }
     use claude_dashboard_core::model::Account;
 

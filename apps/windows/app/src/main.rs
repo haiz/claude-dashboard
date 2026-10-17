@@ -101,9 +101,17 @@ fn spawn_refresh_loop(
             prev = out.rows.clone();
             let (weak, pop_weak) = (weak.clone(), pop_weak.clone());
             let _ = slint::invoke_from_event_loop(move || apply_output(&weak, &pop_weak, &out, now));
-            match rx.recv_timeout(refresh::loop_timeout(&claude_dashboard_core::settings::load())) {
-                Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+            match refresh::loop_timeout(&claude_dashboard_core::settings::load()) {
+                Some(t) => match rx.recv_timeout(t) {
+                    Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+                },
+                // Auto refresh off: wait for a nudge only.
+                None => {
+                    if rx.recv().is_err() {
+                        return;
+                    }
+                }
             }
         }
     });
@@ -486,7 +494,9 @@ fn main() -> Result<(), slint::PlatformError> {
         app.set_app_version(settings_general::APP_VERSION.into());
         let w = app.as_weak();
         std::thread::spawn(move || {
-            let secs = settings_general::current_auto_refresh() as i32;
+            // The chips still speak seconds until the toggle + stepper UI lands; 0 = off.
+            let (enabled, minutes) = settings_general::current_auto_refresh();
+            let secs = if enabled { (minutes * 60) as i32 } else { 0 };
             let launch = settings_general::launch_is_enabled();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(a) = w.upgrade() {
@@ -503,7 +513,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 a.set_auto_refresh_seconds(secs);
             }
             std::thread::spawn(move || {
-                match settings_general::set_auto_refresh(secs.max(0) as u64) {
+                let minutes = (secs.max(0) as u64 / 60).max(1);
+                let saved = settings_general::set_auto_refresh_enabled(true)
+                    .and_then(|()| settings_general::set_auto_refresh_minutes(minutes));
+                match saved {
                     // Nudge: the loop wakes and re-reads the interval right away.
                     Ok(()) => {
                         let _ = tx.send(());

@@ -122,7 +122,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   `five_hour` or `seven_day` `resets_at: null` and neither window at 100%, latched until both windows run again, with a
   10-minute retry after a failed auto ping. `PingLogStore` keeps the newest 500 pings in
   `ping_logs.db` (Tools > Ping Log). `PingMigration` deletes Run Command leftovers
-  (`command_logs.db`, `runCommand_*` keys) at launch. macOS only: Windows keeps Run Command.
+  (`command_logs.db`, `runCommand_*` keys) at launch. Windows removed Run Command too and deletes its leftovers at launch (`apps/windows/app/src/migration.rs`).
   Spec: `docs/superpowers/specs/2026-10-14-ping-design.md`.
 
 ### ViewModel

@@ -115,10 +115,14 @@ extension-sourced accounts are stored with `source: "manual"`.
 
 `%APPDATA%\claude-dashboard\settings.json`:
 
-    { "autoRefreshSeconds": 60, "preferredScanBrowser": "chrome", "launchAtStartup": false }
+    { "autoRefreshEnabled": true, "autoRefreshMinutes": 5, "preferredScanBrowser": "chrome", "launchAtStartup": false }
 
 Settings are **non-critical**: a missing or corrupt file yields defaults and never
-blocks startup. `autoRefreshSeconds` is clamped to [30, 3600] (default 60).
+blocks startup. `autoRefreshEnabled` defaults to true and `autoRefreshMinutes` to 5 (as on macOS),
+clamped to [1, 60]; when disabled the app refreshes only on demand. A legacy
+`autoRefreshSeconds` (no `autoRefreshMinutes` present) migrates on load to
+`round(seconds / 60)` clamped to [1, 60] (0 means 5) and is not written back. The
+removed `shell` key is dropped the same way.
 Changes take effect without a restart.
 
 ## Launch at startup
