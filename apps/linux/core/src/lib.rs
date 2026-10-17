@@ -23,6 +23,7 @@ pub mod startup;
 pub mod claude_code;
 pub mod cc_switch;
 pub mod cc_oauth;
+pub mod critical;
 
 #[cfg(windows)]
 pub mod userprotect;
