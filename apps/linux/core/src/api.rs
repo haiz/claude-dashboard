@@ -69,7 +69,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 /// Headers sent on every request, per `contract/README.md`'s "Session-key
 /// refresh and auth expiry" section. `Cookie` is added separately since its
 /// value is per-call.
-const REQUEST_HEADERS: [(&str, &str); 3] = [
+pub(crate) const REQUEST_HEADERS: [(&str, &str); 3] = [
     ("accept", "*/*"),
     ("content-type", "application/json"),
     ("anthropic-client-platform", "web_claude_ai"),
@@ -115,7 +115,7 @@ fn resolve_origin(raw: Option<&str>) -> String {
 }
 
 /// The prefix every call site composes paths onto, e.g. `https://claude.ai/api`.
-fn api_root() -> String {
+pub(crate) fn api_root() -> String {
     format!("{}/api", resolve_origin(std::env::var(BASE_URL_OVERRIDE_VAR).ok().as_deref()))
 }
 
@@ -192,7 +192,7 @@ fn is_timeout_kind(kind: std::io::ErrorKind) -> bool {
 
 /// Classifies a transport-level (non-HTTP-status) ureq error into
 /// [`ApiError::Timeout`] or [`ApiError::Network`].
-fn classify_transport_error(err: ureq::Transport) -> ApiError {
+pub(crate) fn classify_transport_error(err: ureq::Transport) -> ApiError {
     let is_timeout = err
         .source()
         .and_then(|s| s.downcast_ref::<std::io::Error>())

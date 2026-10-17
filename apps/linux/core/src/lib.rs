@@ -5,6 +5,7 @@ pub mod burn_rate;
 pub mod colors;
 pub mod cookie;
 pub mod api;
+pub mod ping;
 pub mod store;
 pub mod settings;
 pub mod update;
