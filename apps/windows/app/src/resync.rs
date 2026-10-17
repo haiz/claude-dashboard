@@ -154,6 +154,7 @@ pub fn resync(account_id: &str, env: &dyn ResyncEnv) -> ResyncOutcome {
 
 /// Re-syncs every id in order. `progress(done, total)` is called after each
 /// *scanned* account finishes; `total` counts scanned accounts only.
+#[allow(dead_code)] // wired to Re-sync All in a later task
 pub fn resync_all(
     ids: &[String],
     env: &dyn ResyncEnv,

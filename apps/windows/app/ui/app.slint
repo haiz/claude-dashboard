@@ -284,6 +284,13 @@ export component AppWindow inherits Window {
     in-out property <Pane> selection: Pane.dashboard;
     in-out property <string> selected-account-id;
     callback resync();
+    // Account card actions (ids are account ids).
+    callback toggle-pin(string, bool);
+    callback resync-account(string);
+    // A gauge click: "5h" | "7d" | "fable". The pane is selected here; the chart reads
+    // `requested-window` to pick its window.
+    callback open-account-window(string, string);
+    in-out property <string> requested-window;
     in property <[string]> muted-sources;
     callback delete-account(string);
     callback unmute(string);
@@ -442,8 +449,8 @@ export component AppWindow inherits Window {
             }
             if root.selection == Pane.dashboard: Flickable {
                 // Responsive wrap: as many fixed-width cards per row as fit.
-                property <length> card-w: 300px;
-                property <length> card-h: 280px;
+                property <length> card-w: 340px;
+                property <length> card-h: 176px;
                 property <length> gap: 14px;
                 property <int> cols: max(1, floor((self.width + self.gap) / (self.card-w + self.gap)));
                 property <int> nrows: ceil(root.account-rows.length / self.cols);
@@ -457,6 +464,14 @@ export component AppWindow inherits Window {
                     clicked => {
                         root.selected-account-id = acct.id;
                         root.selection = Pane.account;
+                    }
+                    toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
+                    resync => { root.resync-account(acct.id); }
+                    open-window(w) => {
+                        root.selected-account-id = acct.id;
+                        root.selection = Pane.account;
+                        root.requested-window = w;
+                        root.open-account-window(acct.id, w);
                     }
                 }
             }

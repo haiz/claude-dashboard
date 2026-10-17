@@ -4,7 +4,6 @@
 use claude_dashboard_core::store;
 
 /// Pins or unpins `account_id`. Pinning clears the flag on every other account.
-#[allow(dead_code)] // wired to the card/account-page pin button in a later task
 pub fn set_pinned(account_id: &str, pinned: bool) -> Result<(), String> {
     let _lock = store::lock_store().map_err(|e| e.to_string())?;
     let (mut accounts, _) = store::load_accounts_for_write().map_err(|e| e.to_string())?;

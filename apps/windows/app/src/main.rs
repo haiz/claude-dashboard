@@ -13,8 +13,6 @@ mod pin;
 mod pipe;
 mod popover;
 mod refresh;
-// Logic only for now; the Re-sync buttons (later tasks) call into it.
-#[allow(dead_code)]
 mod resync;
 mod settings_accounts;
 mod settings_general;
@@ -129,10 +127,87 @@ fn spawn_refresh_loop(
 }
 
 
-/// Dev-only: `CLAUDE_DASHBOARD_FAKE_ROWS=1` seeds sample cards (no network).
+/// True for dev runs (`FAKE_ROWS`, `SMOKE`) that must never touch the real store.
+fn dev_run() -> bool {
+    std::env::var_os("CLAUDE_DASHBOARD_FAKE_ROWS").is_some()
+        || std::env::var_os("CLAUDE_DASHBOARD_SMOKE").is_some()
+}
+
+/// UI thread: sets `f` on the row `id` of the main window's model.
+fn patch_row(weak: &slint::Weak<AppWindow>, id: &str, f: impl FnOnce(&mut UiRow)) {
+    use slint::Model;
+    let Some(app) = weak.upgrade() else { return };
+    let rows = app.get_account_rows();
+    if let Some(i) = (0..rows.row_count()).find(|&i| rows.row_data(i).is_some_and(|r| r.id == id)) {
+        if let Some(mut row) = rows.row_data(i) {
+            f(&mut row);
+            rows.set_row_data(i, row);
+        }
+    }
+}
+
+/// Card pin toggle and per-card Re-sync. Store I/O runs on a worker; a successful
+/// pin or re-sync nudges a refresh, a failed re-sync shows its text in that card's
+/// error line until the next refresh replaces the rows.
+fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<()>) {
+    let (w, tx) = (app.as_weak(), nudge_tx.clone());
+    app.on_toggle_pin(move |id, pinned| {
+        let id = id.to_string();
+        if dev_run() {
+            // Fake rows: flip the flags locally, the real store is left alone.
+            use slint::Model;
+            if let Some(app) = w.upgrade() {
+                let rows = app.get_account_rows();
+                for i in 0..rows.row_count() {
+                    if let Some(mut r) = rows.row_data(i) {
+                        let now_pinned = if r.id == id.as_str() { pinned } else { r.pinned && !pinned };
+                        if r.pinned != now_pinned {
+                            r.pinned = now_pinned;
+                            rows.set_row_data(i, r);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        let tx = tx.clone();
+        std::thread::spawn(move || match pin::set_pinned(&id, pinned) {
+            Ok(()) => {
+                let _ = tx.send(());
+            }
+            Err(e) => eprintln!("pin failed: {e}"),
+        });
+    });
+    let w = app.as_weak();
+    app.on_resync_account(move |id| {
+        let id = id.to_string();
+        if dev_run() {
+            eprintln!("resync {id}: skipped in a dev run");
+            return;
+        }
+        let (w, tx) = (w.clone(), nudge_tx.clone());
+        std::thread::spawn(move || {
+            match resync::resync(&id, &resync::RealResyncEnv) {
+                resync::ResyncOutcome::Updated | resync::ResyncOutcome::Refreshed => {
+                    let _ = tx.send(());
+                }
+                resync::ResyncOutcome::Failed(msg) => {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        patch_row(&w, &id, |r| r.error = msg.into());
+                    });
+                }
+            }
+        });
+    });
+}
+
+/// Dev-only: `CLAUDE_DASHBOARD_FAKE_ROWS=1` seeds sample cards (no network): a pinned
+/// account, a Fable account, an extension account, and an expired one of each kind.
 fn fake_rows(now: f64) -> refresh::RefreshOutput {
-    use claude_dashboard_core::model::{AccountPlan, AccountStatus};
+    use claude_dashboard_core::account_kind::AccountKind;
+    use claude_dashboard_core::model::{AccountPlan, AccountStatus, Browser};
     use claude_dashboard_core::rows::{DisplayRow, WindowView};
+    let win = |u: f64, resets_in: f64| WindowView { utilization: u, resets_at_unix: Some(now + resets_in), is_limited: false };
     let mk = |id: &str, name: &str, plan, u5: f64, u7: f64, burn: Option<f64>| DisplayRow {
         is_active_claude_code: name == "bob",
         account_id: id.into(),
@@ -140,8 +215,8 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         email: Some(format!("{name}@example.com")),
         plan,
         status: AccountStatus::Active,
-        five_hour: Some(WindowView { utilization: u5, resets_at_unix: Some(now + 7200.0), is_limited: false }),
-        seven_day: Some(WindowView { utilization: u7, resets_at_unix: Some(now + 259200.0), is_limited: false }),
+        five_hour: Some(win(u5, 7200.0)),
+        seven_day: Some(win(u7, 259200.0)),
         fable: None,
         peak_utilization: u5.max(u7),
         burn_projected_seconds: burn,
@@ -151,13 +226,34 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         error: None,
         last_synced_unix: Some(now),
         is_pinned: name == "alice",
-        kind_label: "Default".into(),
+        kind_label: AccountKind::Scanned { browser: Browser::Chrome, profile: "Default".into() }.settings_label(),
         expired_hint: String::new(),
     };
+    let expired = |id: &str, name: &str, kind: AccountKind| DisplayRow {
+        status: AccountStatus::Expired,
+        five_hour: None,
+        seven_day: None,
+        peak_utilization: 0.0,
+        is_extension_sourced: matches!(kind, AccountKind::Extension { .. }),
+        kind_label: kind.settings_label(),
+        expired_hint: kind.expired_hint(),
+        ..mk(id, name, AccountPlan::Pro, 0.0, 0.0, None)
+    };
+    let mut dave = mk("f4", "dave", AccountPlan::Max20x, 38.0, 22.0, Some(7000.0));
+    dave.fable = Some(win(55.0, 259200.0));
+    dave.burn_projected_seconds_fable = Some(1800.0);
+    dave.peak_utilization = 55.0;
+    let mut gina = mk("f7", "gina", AccountPlan::Max5x, 20.0, 15.0, None);
+    gina.is_extension_sourced = true;
+    gina.kind_label = AccountKind::Extension { browser: Browser::Brave }.settings_label();
     let rows = vec![
         mk("f1", "alice", AccountPlan::Pro, 12.0, 30.0, None),
         mk("f2", "bob", AccountPlan::Max5x, 64.0, 48.0, Some(3600.0)),
         mk("f3", "carol", AccountPlan::Max20x, 100.0, 91.0, Some(600.0)),
+        dave,
+        expired("f5", "erin", AccountKind::Scanned { browser: Browser::Edge, profile: "Work".into() }),
+        expired("f6", "frank", AccountKind::PastedKey),
+        gina,
     ];
     refresh::RefreshOutput { peak: 100.0, rows }
 }
@@ -558,6 +654,7 @@ fn main() -> Result<(), slint::PlatformError> {
             });
         });
     }
+    install_card_actions(&app, nudge_tx.clone());
     // Re-sync button: same nudge the reload pipe sends (refreshes all accounts).
     install_updates(&app);
     chart::install(&app);

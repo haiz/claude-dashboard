@@ -126,56 +126,140 @@ export component Avatar inherits Rectangle {
     }
 }
 
-component WindowColumn inherits VerticalLayout {
+// One gauge column on the card (macOS UsageBar, compact): mono label, usage ring with the
+// burn-rate animal at its bottom-right, then the segmented countdown ring beside it with the
+// reset label above. The whole column opens that window's chart.
+component WindowColumn inherits Rectangle {
     in property <string> label;
     in property <UiWindow> win;
-    spacing: 4px;
-    alignment: start;
-    Text {
-        text: root.label;
-        color: Theme.text-secondary;
-        font-size: 12px;
-        horizontal-alignment: center;
+    // Fable has no countdown column (it resets in lockstep with 7d).
+    in property <bool> countdown: true;
+    callback clicked();
+    // Compact metrics (macOS isCompact): 52 / 34 px rings.
+    property <float> big-zoom: 52.0 / root.win.diameter;
+    property <length> small-d: 34px;
+    width: col.preferred-width;
+    height: col.preferred-height;
+
+    col := VerticalLayout {
+        spacing: 5px;
+        Text {
+            text: root.label;
+            color: Theme.text-secondary;
+            font-family: "Consolas";
+            font-size: 10px;
+            horizontal-alignment: center;
+        }
+        HorizontalLayout {
+            spacing: 5px;
+            alignment: center;
+            Rectangle {
+                width: 52px;
+                height: 52px;
+                UsageGauge { win: root.win; zoom: root.big-zoom; }
+                if root.win.animal != "": Text {
+                    x: parent.width - self.preferred-width + 4px;
+                    y: parent.height - self.preferred-height + 4px;
+                    text: root.win.animal;
+                    font-size: 10px;
+                }
+            }
+            if root.countdown && root.win.reset-label != "": VerticalLayout {
+                alignment: end;
+                spacing: 2px;
+                Text {
+                    text: root.win.reset-label;
+                    color: Theme.text-secondary;
+                    font-family: "Consolas";
+                    font-size: 8px;
+                    horizontal-alignment: center;
+                }
+                Rectangle {
+                    width: root.small-d;
+                    height: root.small-d;
+                    Rectangle {
+                        width: parent.width - 4px;
+                        height: self.width;
+                        x: 2px;
+                        y: 2px;
+                        border-radius: self.width / 2;
+                        border-width: 4px;
+                        border-color: Theme.dark ? #ffffff14 : #0000000d;
+                    }
+                    for seg in root.win.segments: Path {
+                        width: parent.width;
+                        height: parent.height;
+                        viewbox-width: root.win.diameter;
+                        viewbox-height: root.win.diameter;
+                        commands: seg.path;
+                        stroke: seg.color;
+                        stroke-width: 4px;
+                        fill: transparent;
+                    }
+                    Text {
+                        text: root.win.countdown;
+                        color: Theme.text-primary.with-alpha(0.85);
+                        font-family: "Consolas";
+                        font-size: 8px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
     }
-    HorizontalLayout {
-        alignment: center;
-        UsageGauge { win: root.win; }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
     }
-    Text {
-        text: root.win.countdown;
-        color: root.win.countdown-color;
-        font-size: 11px;
-        horizontal-alignment: center;
-    }
-    UsageBar { fraction: root.win.fraction; fill-color: root.win.color; }
 }
 
 export component AccountCard inherits Rectangle {
     in property <UiRow> data;
+    // Plan capsule colour (macOS badgeColor): Pro blue, Max 5x purple, Max 20x orange, Max purple.
+    property <color> plan-tint: root.data.plan == "Pro" ? #0a84ff
+        : root.data.plan == "Max 20x" ? #ff9f0a
+        : #bf5af2;
     callback clicked();
+    callback toggle-pin(bool /* new pinned state */);
+    callback resync();
+    callback open-window(string /* "5h" | "7d" | "fable" */);
     background: Theme.card-bg;
     border-radius: 8px;
     border-width: 1px;
     border-color: touch.has-hover ? Theme.accent : Theme.card-border;
     animate border-color { duration: 120ms; }
 
-    // Declared first so it sits below the content; the glyph's own TouchArea (inside
-    // the layout, declared later) is on top and wins its clicks.
+    // Declared first so it sits below the content; the gauge columns' own TouchAreas
+    // (inside the layout, declared later) are on top and win their clicks.
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
 
+    ContextMenuArea {
+        Menu {
+            MenuItem {
+                title: root.data.pinned ? "Unpin" : "Pin to Top";
+                activated => { root.toggle-pin(!root.data.pinned); }
+            }
+        }
+    }
+
     VerticalLayout {
         padding: 14px;
-        spacing: 10px;
+        spacing: 12px;
+        alignment: start;
+        // Header: name (+ active dot) over email, pin icon, plan capsule, expired triangle.
         HorizontalLayout {
-            spacing: 10px;
-            Avatar { initial: root.data.initial; tint: root.data.avatar-color; }
+            spacing: 6px;
             VerticalLayout {
                 alignment: center;
+                spacing: 2px;
                 HorizontalLayout {
                     spacing: 6px;
+                    alignment: start;
                     Text {
                         text: root.data.name;
                         color: Theme.text-primary;
@@ -189,50 +273,101 @@ export component AccountCard inherits Rectangle {
                         background: Theme.ok;
                     }
                 }
-                Text {
-                    text: root.data.email != "" ? root.data.email : root.data.plan;
+                if root.data.email != "" && root.data.email != root.data.name: Text {
+                    text: root.data.email;
                     color: Theme.text-secondary;
                     font-size: 11px;
                     overflow: elide;
                 }
             }
-            Text {
-                text: root.data.animal;
-                font-size: 18px;
+            if root.data.pinned: Text {
+                text: "\u{E718}";
+                font-family: "Segoe Fluent Icons";
+                font-size: 12px;
+                color: Theme.text-secondary;
                 vertical-alignment: center;
             }
+            Rectangle { horizontal-stretch: 1; }
             Rectangle {
                 width: plan.preferred-width + 12px;
                 height: 20px;
-                y: 6px;
+                y: (parent.height - self.height) / 2;
                 border-radius: 10px;
-                background: Theme.accent.with-alpha(0.15);
+                background: root.plan-tint.with-alpha(0.15);
                 plan := Text {
                     text: root.data.plan;
-                    color: Theme.accent;
+                    color: root.plan-tint;
                     font-size: 11px;
                     font-weight: 600;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
             }
+            if root.data.expired: Text {
+                text: "\u{E7BA}";
+                font-family: "Segoe Fluent Icons";
+                font-size: 14px;
+                color: #ff9f0a;
+                vertical-alignment: center;
+            }
         }
-        if root.data.error != "": Text {
+        if root.data.expired: VerticalLayout {
+            spacing: 8px;
+            Text {
+                text: "Session expired.";
+                color: Theme.text-secondary;
+                font-size: 11px;
+            }
+            if root.data.expired-hint != "": Text {
+                text: root.data.expired-hint;
+                color: Theme.text-secondary;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: start;
+                Rectangle {
+                    height: 24px;
+                    width: rs.preferred-width + 20px;
+                    border-radius: 5px;
+                    border-width: 1px;
+                    border-color: Theme.card-border;
+                    background: rs-touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent;
+                    rs := Text {
+                        text: "Re-sync";
+                        color: Theme.accent;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    rs-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.resync(); }
+                    }
+                }
+            }
+        }
+        if !root.data.expired && root.data.error != "": Text {
             text: root.data.error;
             color: Theme.danger;
             font-size: 12px;
             wrap: word-wrap;
         }
-        HorizontalLayout {
-            spacing: 14px;
+        if !root.data.expired: HorizontalLayout {
+            spacing: 20px;
             alignment: center;
-            if root.data.five-hour.present: WindowColumn { label: "5h"; win: root.data.five-hour; }
-            if root.data.seven-day.present: WindowColumn { label: "7d"; win: root.data.seven-day; }
-        }
-        Text {
-            text: root.data.staleness;
-            color: Theme.text-secondary;
-            font-size: 11px;
+            if root.data.five-hour.present: WindowColumn {
+                label: "5h"; win: root.data.five-hour;
+                clicked => { root.open-window("5h"); }
+            }
+            if root.data.seven-day.present: WindowColumn {
+                label: "7d"; win: root.data.seven-day;
+                clicked => { root.open-window("7d"); }
+            }
+            if root.data.fable.present: WindowColumn {
+                label: "F"; win: root.data.fable; countdown: false;
+                clicked => { root.open-window("fable"); }
+            }
         }
     }
 }
