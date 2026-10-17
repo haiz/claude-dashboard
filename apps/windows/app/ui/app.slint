@@ -1,17 +1,15 @@
-import { AboutSlint } from "std-widgets.slint";
+import { AboutSlint, Spinner } from "std-widgets.slint";
 import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "components.slint";
 import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
-import { ChartPanel, OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem } from "chart.slint";
-import { CommandLogPane, UiLogEntry } from "command_log.slint";
-import { RunCommandPanel } from "run_command.slint";
-import { HelpPane } from "help.slint";
-export struct UiShell { key: string, label: string }
+import { OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartPoint, ChartCycle, ChartActions, HistoryData } from "chart.slint";
+import { HelpPane, HelpTopic } from "help.slint";
+import { InfoTip, TipStore, TipData } from "info_tip.slint";
 
-export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, UiLogEntry, ChartState, ChartTick, ChartLine, ChartLegendItem }
+export { TipStore, TipData, HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartPoint, ChartCycle, ChartActions, HistoryData }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
-export enum Pane { dashboard, overview, account, command-log, help, settings-accounts, general }
+export enum Pane { dashboard, overview, account, help, settings-accounts, general }
 
 component GroupHeader inherits Text {
     color: Theme.text-secondary;
@@ -22,11 +20,13 @@ component GroupHeader inherits Text {
 // Shown in the Dashboard pane and the flyout when no accounts exist. The
 // button opens the Add Account wizard.
 component EmptyState inherits VerticalLayout {
+    in property <string> title: "No Accounts";
+    in property <string> subtitle: "Sync your Claude accounts from your browser to get started.";
     callback add-account();
     alignment: center;
     spacing: 10px;
-    Text { text: "No accounts yet"; color: Theme.text-primary; font-size: 16px; font-weight: 600; horizontal-alignment: center; }
-    Text { text: "Add an account to start tracking usage."; color: Theme.text-secondary; horizontal-alignment: center; wrap: word-wrap; }
+    Text { text: root.title; color: Theme.text-primary; font-size: 16px; font-weight: 600; horizontal-alignment: center; }
+    if root.subtitle != "": Text { text: root.subtitle; color: Theme.text-secondary; horizontal-alignment: center; wrap: word-wrap; }
     HorizontalLayout {
         alignment: center;
         Rectangle {
@@ -45,15 +45,17 @@ component EmptyState inherits VerticalLayout {
 component PaneButton inherits Rectangle {
     in property <string> label;
     in property <color> tint: Theme.accent;
+    in property <bool> enabled: true;
     callback clicked();
     height: 32px;
     width: t.preferred-width + 28px;
     border-radius: 6px;
-    background: touch.has-hover ? root.tint.with-alpha(0.15) : Theme.card-bg;
+    opacity: root.enabled ? 1.0 : 0.45;
+    background: touch.has-hover && root.enabled ? root.tint.with-alpha(0.15) : Theme.card-bg;
     border-width: 1px;
     border-color: Theme.card-border;
-    t := Text { text: root.label; color: root.tint; horizontal-alignment: center; vertical-alignment: center; }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    t := Text { text: root.label; color: root.enabled ? root.tint : Theme.text-secondary; horizontal-alignment: center; vertical-alignment: center; }
+    touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
 }
 
 // Settings > Accounts (macOS AccountsSettingsPane): list, delete (inline
@@ -61,6 +63,8 @@ component PaneButton inherits Rectangle {
 component AccountsSettingsPane inherits VerticalLayout {
     in property <[UiRow]> rows;
     in property <[string]> muted;
+    in property <string> resync-progress;
+    in property <bool> resyncing;
     callback add-account();
     callback resync();
     callback delete-account(string);
@@ -71,8 +75,12 @@ component AccountsSettingsPane inherits VerticalLayout {
     HorizontalLayout {
         spacing: 8px;
         alignment: start;
-        PaneButton { label: "Add Account"; clicked => { root.add-account(); } }
-        PaneButton { label: "Re-sync All"; clicked => { root.resync(); } }
+        PaneButton { label: "Add Account\u{2026}"; clicked => { root.add-account(); } }
+        PaneButton {
+            label: root.resyncing ? root.resync-progress : "Re-sync All";
+            enabled: !root.resyncing && root.rows.length > 0;
+            clicked => { root.resync(); }
+        }
     }
     Flickable {
         content-height: list.preferred-height;
@@ -81,7 +89,7 @@ component AccountsSettingsPane inherits VerticalLayout {
             alignment: start;
             if root.rows.length == 0: Text { text: "No accounts."; color: Theme.text-secondary; }
             for acct in root.rows: Rectangle {
-                height: 56px;
+                height: 64px;
                 background: Theme.card-bg;
                 border-radius: 8px;
                 border-width: 1px;
@@ -99,6 +107,17 @@ component AccountsSettingsPane inherits VerticalLayout {
                             font-size: 11px;
                             overflow: elide;
                         }
+                        Text {
+                            text: acct.kind-label;
+                            color: Theme.text-secondary;
+                            font-size: 11px;
+                            overflow: elide;
+                        }
+                    }
+                    if acct.expired: Text {
+                        text: "\u{26a0}";
+                        color: #ff9f0a;
+                        vertical-alignment: center;
                     }
                     if root.confirming-id != acct.id: PaneButton {
                         label: "Delete"; tint: Theme.danger;
@@ -166,18 +185,50 @@ component IntervalChip inherits Rectangle {
     touch := TouchArea { clicked => { root.clicked(); } }
 }
 
-// Settings > General (macOS GeneralSettingsPane): About, Auto Refresh,
-// Launch at startup, Updates.
+// Pill switch used by the Settings > General rows.
+component SwitchKnob inherits Rectangle {
+    in property <bool> on;
+    callback toggled(bool);
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: root.on ? Theme.accent : Theme.card-border;
+    Rectangle {
+        width: 16px; height: 16px; border-radius: 8px; background: #ffffff;
+        y: 3px;
+        x: root.on ? parent.width - self.width - 3px : 3px;
+    }
+    TouchArea { clicked => { root.toggled(!root.on); } }
+}
+
+// Square stepper button for the Auto Refresh interval.
+component StepButton inherits Rectangle {
+    in property <string> glyph;
+    in property <bool> enabled: true;
+    callback clicked();
+    width: 26px;
+    height: 24px;
+    border-radius: 5px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    opacity: root.enabled ? 1.0 : 0.4;
+    background: touch.has-hover && root.enabled ? Theme.accent.with-alpha(0.15) : transparent;
+    Text { text: root.glyph; color: Theme.text-primary; horizontal-alignment: center; vertical-alignment: center; }
+    touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+// Settings > General (macOS GeneralSettingsPane): About, Auto Refresh (switch + 1-60 min
+// stepper), Launch at startup, Updates, Reset All Settings.
 component GeneralSettingsPane inherits Flickable {
     in property <string> app-name;
     in property <string> app-version;
-    in property <int> auto-refresh-seconds;
+    in property <string> release-date;
+    in property <bool> auto-refresh-enabled;
+    in property <int> auto-refresh-minutes;
     in property <bool> launch-at-startup;
-    callback set-auto-refresh(int);
+    callback set-auto-refresh-enabled(bool);
+    callback set-auto-refresh-minutes(int);
     callback set-launch-at-startup(bool);
-    in property <[UiShell]> shells;
-    in property <string> shell-key;
-    callback set-shell(string);
     in property <string> update-status;
     in property <bool> update-can-install;
     in property <bool> update-busy;
@@ -185,21 +236,31 @@ component GeneralSettingsPane inherits Flickable {
     callback check-updates();
     callback install-update();
     callback set-auto-update(bool);
+    callback reset-all-settings();
+    property <bool> confirming-reset;
     content-height: col.preferred-height;
     col := VerticalLayout {
         spacing: 12px;
         alignment: start;
 
-        GroupHeader { text: "About"; }
         SettingsCard {
             height: about-col.preferred-height + 24px;
             about-col := VerticalLayout {
                 padding: 12px;
                 spacing: 4px;
-                Text { text: root.app-name + "  v" + root.app-version; color: Theme.text-primary; font-weight: 600; }
+                Text { text: root.app-name; color: Theme.text-primary; font-size: 18px; font-weight: 700; horizontal-alignment: center; }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 8px;
+                    Text { text: "Version " + root.app-version; color: Theme.text-secondary; }
+                    if root.release-date != "": Text {
+                        text: "(" + root.release-date + ")";
+                        color: Theme.text-secondary; font-size: 12px; vertical-alignment: bottom;
+                    }
+                }
                 Text {
                     text: "Monitors Claude.ai token usage across your accounts from the system tray.";
-                    color: Theme.text-secondary; font-size: 12px; wrap: word-wrap;
+                    color: Theme.text-secondary; font-size: 12px; wrap: word-wrap; horizontal-alignment: center;
                 }
                 AboutSlint { height: 120px; }
             }
@@ -207,43 +268,36 @@ component GeneralSettingsPane inherits Flickable {
 
         GroupHeader { text: "Auto Refresh"; }
         SettingsCard {
-            height: 76px;
-            VerticalLayout {
+            height: ar.preferred-height + 24px;
+            ar := VerticalLayout {
                 padding: 12px;
-                spacing: 8px;
-                Text { text: "Refresh usage every"; color: Theme.text-primary; }
+                spacing: 10px;
                 HorizontalLayout {
-                    spacing: 6px;
-                    alignment: start;
-                    for p[i] in [{l: "30s", s: 30}, {l: "1 min", s: 60}, {l: "2 min", s: 120}, {l: "5 min", s: 300}, {l: "15 min", s: 900}]: IntervalChip {
-                        label: p.l;
-                        active: root.auto-refresh-seconds == p.s;
-                        clicked => { root.set-auto-refresh(p.s); }
-                    }
+                    spacing: 4px;
+                    Text { text: "Enable auto refresh"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "auto-refresh"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    SwitchKnob { on: root.auto-refresh-enabled; toggled(v) => { root.set-auto-refresh-enabled(v); } }
                 }
-            }
-        }
-
-        GroupHeader { text: "Commands"; }
-        SettingsCard {
-            height: 96px;
-            VerticalLayout {
-                padding: 12px;
-                spacing: 8px;
-                Text { text: "Run commands in"; color: Theme.text-primary; }
-                HorizontalLayout {
-                    spacing: 6px;
-                    alignment: start;
-                    for s in root.shells: IntervalChip {
-                        label: s.label;
-                        active: root.shell-key == s.key;
-                        clicked => { root.set-shell(s.key); }
+                if root.auto-refresh-enabled: HorizontalLayout {
+                    spacing: 4px;
+                    Text { text: "Interval"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "refresh-interval"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        StepButton {
+                            glyph: "\u{2212}";
+                            enabled: root.auto-refresh-minutes > 1;
+                            clicked => { root.set-auto-refresh-minutes(root.auto-refresh-minutes - 1); }
+                        }
+                        Text { text: root.auto-refresh-minutes + " min"; color: Theme.text-primary; vertical-alignment: center; horizontal-alignment: center; min-width: 52px; }
+                        StepButton {
+                            glyph: "+";
+                            enabled: root.auto-refresh-minutes < 60;
+                            clicked => { root.set-auto-refresh-minutes(root.auto-refresh-minutes + 1); }
+                        }
                     }
-                }
-                Text {
-                    text: "Started with your profile, so functions and aliases resolve.";
-                    color: Theme.text-secondary;
-                    font-size: 11px;
                 }
             }
         }
@@ -254,17 +308,7 @@ component GeneralSettingsPane inherits Flickable {
             HorizontalLayout {
                 padding: 12px;
                 Text { text: "Launch at startup"; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; }
-                Rectangle {
-                    width: 40px; height: 22px; y: (parent.height - self.height) / 2;
-                    border-radius: 11px;
-                    background: root.launch-at-startup ? Theme.accent : Theme.card-border;
-                    Rectangle {
-                        width: 16px; height: 16px; border-radius: 8px; background: #ffffff;
-                        y: 3px;
-                        x: root.launch-at-startup ? parent.width - self.width - 3px : 3px;
-                    }
-                    TouchArea { clicked => { root.set-launch-at-startup(!root.launch-at-startup); } }
-                }
+                SwitchKnob { y: (parent.height - self.height) / 2; on: root.launch-at-startup; toggled(v) => { root.set-launch-at-startup(v); } }
             }
         }
 
@@ -282,19 +326,45 @@ component GeneralSettingsPane inherits Flickable {
                                    clicked => { if !root.update-busy { root.check-updates(); } } }
                 }
                 HorizontalLayout {
-                    Text { text: "Install updates automatically"; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; }
-                    Rectangle {
-                        width: 40px; height: 22px;
-                        border-radius: 11px;
-                        background: root.auto-update ? Theme.accent : Theme.card-border;
-                        Rectangle { width: 16px; height: 16px; border-radius: 8px; background: #ffffff; y: 3px;
-                                    x: root.auto-update ? parent.width - self.width - 3px : 3px; }
-                        TouchArea { clicked => { root.set-auto-update(!root.auto-update); } }
-                    }
+                    spacing: 4px;
+                    Text { text: "Auto-update daily"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "auto-update"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    SwitchKnob { on: root.auto-update; toggled(v) => { root.set-auto-update(v); } }
                 }
-                Text { text: "Checks GitHub once a day and installs new releases."; color: Theme.text-secondary; font-size: 11px; }
+                if root.auto-update: Text {
+                    text: "Checks GitHub once a day and installs new releases automatically.";
+                    color: Theme.text-secondary; font-size: 11px;
+                }
             }
         }
+
+        SettingsCard {
+            height: rst.preferred-height + 24px;
+            rst := VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                if !root.confirming-reset: HorizontalLayout {
+                    alignment: end;
+                    PaneButton { label: "Reset All Settings\u{2026}"; tint: Theme.danger; clicked => { root.confirming-reset = true; } }
+                }
+                if root.confirming-reset: Text {
+                    text: "Reset all settings to their defaults?";
+                    color: Theme.text-primary; font-weight: 600; wrap: word-wrap;
+                }
+                if root.confirming-reset: Text {
+                    text: "Auto refresh and Updates go back to their defaults.";
+                    color: Theme.text-secondary; font-size: 12px; wrap: word-wrap;
+                }
+                if root.confirming-reset: HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    PaneButton { label: "Cancel"; tint: Theme.text-secondary; clicked => { root.confirming-reset = false; } }
+                    PaneButton { label: "Reset All Settings"; tint: Theme.danger; clicked => { root.confirming-reset = false; root.reset-all-settings(); } }
+                }
+            }
+        }
+        Text { text: "Accounts, logs and Launch at startup are kept."; color: Theme.text-secondary; font-size: 11px; }
     }
 }
 
@@ -311,26 +381,44 @@ export component AppWindow inherits Window {
     background: transparent;
     in property <bool> use-solid-background: false;
     in property <[UiRow]> account-rows;
+    // The same rows in a stable order (a re-sort never moves them), so the account
+    // pages' components, and their local state, survive a refresh. Set from Rust.
+    in property <[UiRow]> pane-rows;
     in-out property <Pane> selection: Pane.dashboard;
     in-out property <string> selected-account-id;
+    // Help pane: the topic grid, and the topic id to scroll to ("" = top). `open-help` selects
+    // the pane and sets the focus; the pane clears it once it has scrolled.
+    in property <[HelpTopic]> help-topics;
+    in-out property <string> help-focus;
+    public function open-help(topic: string) {
+        root.selection = Pane.help;
+        root.help-focus = topic;
+    }
     callback resync();
+    callback resync-all();
+    // True while a refresh runs (any scope); Rust raises it with the card spinners.
+    in property <bool> refreshing: false;
+    // Settings > Accounts Re-sync All: "Re-syncing… (n/total)" while running, else empty.
+    in property <string> resync-progress;
+    in property <bool> resyncing;
+    // Account card and account page actions (ids are account ids).
+    callback toggle-pin(string, bool);
+    callback resync-account(string);
+    // Refresh one account only (the account page header).
+    callback refresh-account(string);
+    // Remove an account (the account page Actions box); same path as Settings > Accounts delete.
+    callback remove-account(string);
+    // An account page was opened (sidebar row, card, flyout); the chart window resets to 5h.
+    callback select-account(string);
+    // A gauge click: "5h" | "7d" | "fable". The pane is selected here; the chart reads
+    // `requested-window` to pick its window.
+    callback open-account-window(string, string);
+    in-out property <string> requested-window;
     in property <[string]> muted-sources;
     callback delete-account(string);
     callback unmute(string);
     callback add-account();
 
-    // Per-account usage chart overlay (state is computed in Rust, chart.rs).
-    in property <ChartState> chart;
-    in-out property <bool> chart-open: false;
-    in-out property <string> chart-title;
-    in-out property <color> chart-color: Theme.accent;
-    callback view-chart(string);
-    callback chart-preset(string);
-    callback chart-close();
-    callback chart-size(float, float);
-    callback chart-hover(float, float);
-    callback chart-select(float, float);
-    callback chart-reset();
     in-out property <ChartState> overview;
     callback overview-open();
     callback overview-close();
@@ -340,38 +428,36 @@ export component AppWindow inherits Window {
     callback overview-size(float, float);
     callback overview-hover(float, float);
     callback overview-select(float, float);
+    callback overview-pan(float);
+    callback overview-toggle-mode();
     callback overview-reset();
-    in property <[UiLogEntry]> command-log;
-    callback command-log-open();
-    callback command-log-clear();
-    in-out property <bool> run-open: false;
-    in property <string> run-account-name;
-    in-out property <string> run-command-text;
-    in-out property <bool> run-in-terminal;
-    in property <bool> run-running;
-    in property <[string]> run-lines;
-    callback open-run-command(string);
-    callback run-command-edited(string);
-    callback run-terminal-toggled(bool);
-    callback run-command-start();
-    callback run-command-cancel();
     changed selection => {
-        root.chart-open = false;
-        root.chart-close();
         if root.selection == Pane.overview { root.overview-open(); } else { root.overview-close(); }
-        if root.selection == Pane.command-log { root.command-log-open(); }
     }
-    changed selected-account-id => { root.chart-open = false; root.chart-close(); }
+    // The account page's History chart: opened with the page's account and the requested
+    // window (a gauge click, the History window picker, or "5h" from a sidebar click) and
+    // closed (empty key) when the page is left. One key, so a burst of property writes
+    // (select account, then requested window) opens the chart once with the final values.
+    property <string> chart-key: root.selection == Pane.account && root.selected-account-id != ""
+        ? root.selected-account-id + "|" + root.requested-window : "";
+    changed chart-key => {
+        if root.chart-key == "" {
+            ChartActions.open("", "");
+        } else {
+            ChartActions.open(root.selected-account-id, root.requested-window);
+        }
+    }
 
     in property <string> app-name;
     in property <string> app-version;
-    in-out property <int> auto-refresh-seconds: 60;
+    in property <string> release-date;
+    in-out property <bool> auto-refresh-enabled: true;
+    in-out property <int> auto-refresh-minutes: 5;
     in-out property <bool> launch-at-startup;
-    callback set-auto-refresh(int);
+    callback set-auto-refresh-enabled(bool);
+    callback set-auto-refresh-minutes(int);
+    callback reset-all-settings();
     callback set-launch-at-startup(bool);
-    in property <[UiShell]> shells;
-    in-out property <string> shell-key;
-    callback set-shell(string);
     in property <string> update-status;
     in property <bool> update-can-install;
     in property <bool> update-busy;
@@ -380,9 +466,16 @@ export component AppWindow inherits Window {
     callback install-update();
     callback set-auto-update(bool);
 
+    // Opens an account's page on the 5h window (macOS `selectFromSidebar` resets the window).
+    function select-account-page(id: string) {
+        root.requested-window = "5h";
+        root.selected-account-id = id;
+        root.selection = Pane.account;
+        root.select-account(id);
+    }
+
     property <string> pane-title: root.selection == Pane.dashboard ? "Dashboard"
         : root.selection == Pane.overview ? "Overview"
-        : root.selection == Pane.command-log ? "Command Log"
         : root.selection == Pane.help ? "Help"
         : root.selection == Pane.settings-accounts ? "Accounts"
         : root.selection == Pane.general ? "General"
@@ -423,24 +516,18 @@ export component AppWindow inherits Window {
                         clicked => { root.selection = Pane.overview; }
                     }
 
-                    GroupHeader { text: "Accounts"; }
+                    if root.account-rows.length > 0: GroupHeader { text: "Accounts"; }
                     for acct in root.account-rows: SidebarRow {
                         label: acct.name; initial: acct.initial; tile: acct.avatar-color;
                         text-color: Theme.text-primary;
+                        warning: acct.expired;
+                        trailing: acct.has-sidebar-percent ? floor(acct.sidebar-percent) + "%" : "";
+                        trailing-color: acct.sidebar-color;
                         selected: root.selection == Pane.account && root.selected-account-id == acct.id;
-                        clicked => {
-                            root.selected-account-id = acct.id;
-                            root.selection = Pane.account;
-                        }
+                        clicked => { root.select-account-page(acct.id); }
                     }
 
                     GroupHeader { text: "Tools"; }
-                    SidebarRow {
-                        label: "Command Log"; glyph: "\u{E756}"; tile: #5e5ce6;
-                        text-color: Theme.text-primary;
-                        selected: root.selection == Pane.command-log;
-                        clicked => { root.selection = Pane.command-log; }
-                    }
                     SidebarRow {
                         label: "Help"; glyph: "\u{E897}"; tile: #30d158;
                         text-color: Theme.text-primary;
@@ -469,52 +556,84 @@ export component AppWindow inherits Window {
         VerticalLayout {
             padding: 24px;
             spacing: 12px;
-            Text {
-                text: root.pane-title;
-                color: Theme.text-primary;
-                font-size: 24px;
-                font-weight: 600;
+            // PaneHeader (the account page draws its own, with the account's name).
+            if root.selection != Pane.account: HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    text: root.pane-title;
+                    color: Theme.text-primary;
+                    font-size: 24px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Rectangle { horizontal-stretch: 1; }
+                if root.selection == Pane.dashboard && root.account-rows.length > 0: PaneButton {
+                    label: "Refresh";
+                    enabled: !root.refreshing;
+                    y: (parent.height - self.height) / 2;
+                    clicked => { root.resync(); }
+                }
             }
             if root.selection == Pane.account: Rectangle {
+                vertical-stretch: 1;
                 // Non-layout container: one pane per row, only the selected one visible.
-                for acct in root.account-rows: AccountPane {
+                for acct in root.pane-rows: AccountPane {
                     visible: root.selected-account-id == acct.id;
+                    active: root.selected-account-id == acct.id;
                     data: acct;
+                    refreshing: root.refreshing;
                     width: parent.width;
                     height: parent.height;
-                    resync => { root.resync(); }
-                    view-chart => {
-                        root.chart-title = acct.name;
-                        root.chart-color = acct.avatar-color;
-                        root.chart-open = true;
-                        root.view-chart(acct.id);
+                    refresh => { root.refresh-account(acct.id); }
+                    resync => { root.resync-account(acct.id); }
+                    toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
+                    remove => {
+                        root.remove-account(acct.id);
+                        root.selection = Pane.dashboard;
                     }
-                    run-command => { root.open-run-command(acct.id); }
+                    open-window(w) => { root.requested-window = w; }
+                    window-picked(w) => { root.requested-window = w; }
                 }
             }
             if root.selection == Pane.dashboard && root.account-rows.length == 0: EmptyState {
                 vertical-stretch: 1;
                 add-account => { root.add-account(); }
             }
-            if root.selection == Pane.dashboard: Flickable {
-                // Responsive wrap: as many fixed-width cards per row as fit.
-                property <length> card-w: 300px;
-                property <length> card-h: 280px;
-                property <length> gap: 14px;
-                property <int> cols: max(1, floor((self.width + self.gap) / (self.card-w + self.gap)));
+            if root.selection == Pane.dashboard && root.account-rows.length > 0: scroll := Flickable {
+                // macOS adaptive grid: columns 420-480 pt wide, 12 pt apart; a row is as tall
+                // as its tallest card (cards size themselves).
+                property <length> gap: 12px;
+                // Width from the window, not from this Flickable: its own width would loop through the grid it sizes.
+                property <length> avail: root.width - 240px - 48px;
+                property <int> cols: max(1, floor((self.avail + self.gap) / (420px + self.gap)));
                 property <int> nrows: ceil(root.account-rows.length / self.cols);
-                content-height: self.nrows * (self.card-h + self.gap);
-                for acct[i] in root.account-rows: AccountCard {
-                    data: acct;
-                    x: mod(i, parent.cols) * (parent.card-w + parent.gap);
-                    y: floor(i / parent.cols) * (parent.card-h + parent.gap);
-                    width: parent.card-w;
-                    height: parent.card-h;
-                    clicked => {
-                        root.selected-account-id = acct.id;
-                        root.selection = Pane.account;
+                property <length> card-w: min(480px, (self.avail - (self.cols - 1) * self.gap) / self.cols);
+                content-height: grid.preferred-height;
+                grid := VerticalLayout {
+                    // Explicit so the cards (sized from the window width) are not read back as a size constraint.
+                    min-width: 0px;
+                    preferred-width: 0px;
+                    max-width: 100000px;
+                    spacing: scroll.gap;
+                    alignment: start;
+                    for r in scroll.nrows: HorizontalLayout {
+                        spacing: scroll.gap;
+                        alignment: start;
+                        for c in min(scroll.cols, root.account-rows.length - r * scroll.cols): AccountCard {
+                            property <UiRow> acct: root.account-rows[r * scroll.cols + c];
+                            data: self.acct;
+                            compact: false;
+                            width: scroll.card-w;
+                            clicked => { root.select-account-page(self.acct.id); }
+                            toggle-pin(pinned) => { root.toggle-pin(self.acct.id, pinned); }
+                            resync => { root.resync-account(self.acct.id); }
+                            open-window(w) => {
+                                root.select-account-page(self.acct.id);
+                                root.requested-window = w;
+                                root.open-account-window(self.acct.id, w);
+                            }
+                        }
                     }
-                    run-command => { root.open-run-command(acct.id); }
                 }
             }
             if root.selection == Pane.overview: OverviewPane {
@@ -526,14 +645,18 @@ export component AppWindow inherits Window {
                 size-changed(w, h) => { root.overview-size(w, h); }
                 hover(x, y) => { root.overview-hover(x, y); }
                 select(a, b) => { root.overview-select(a, b); }
+                pan(dx) => { root.overview-pan(dx); }
+                toggle-mode => { root.overview-toggle-mode(); }
                 reset => { root.overview-reset(); }
             }
             if root.selection == Pane.settings-accounts: AccountsSettingsPane {
                 vertical-stretch: 1;
                 rows: root.account-rows;
                 muted: root.muted-sources;
+                resync-progress: root.resync-progress;
+                resyncing: root.resyncing;
                 add-account => { root.add-account(); }
-                resync => { root.resync(); }
+                resync => { root.resync-all(); }
                 delete-account(id) => { root.delete-account(id); }
                 unmute(id) => { root.unmute(id); }
             }
@@ -541,13 +664,14 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
                 app-name: root.app-name;
                 app-version: root.app-version;
-                auto-refresh-seconds: root.auto-refresh-seconds;
+                release-date: root.release-date;
+                auto-refresh-enabled: root.auto-refresh-enabled;
+                auto-refresh-minutes: root.auto-refresh-minutes;
                 launch-at-startup: root.launch-at-startup;
-                set-auto-refresh(s) => { root.set-auto-refresh(s); }
+                set-auto-refresh-enabled(on) => { root.set-auto-refresh-enabled(on); }
+                set-auto-refresh-minutes(m) => { root.set-auto-refresh-minutes(m); }
+                reset-all-settings => { root.reset-all-settings(); }
                 set-launch-at-startup(on) => { root.set-launch-at-startup(on); }
-                shells: root.shells;
-                shell-key: root.shell-key;
-                set-shell(k) => { root.set-shell(k); }
                 update-status: root.update-status;
                 update-can-install: root.update-can-install;
                 update-busy: root.update-busy;
@@ -556,54 +680,22 @@ export component AppWindow inherits Window {
                 install-update => { root.install-update(); }
                 set-auto-update(on) => { root.set-auto-update(on); }
             }
-            if root.selection == Pane.command-log: CommandLogPane {
-                vertical-stretch: 1;
-                entries: root.command-log;
-                reload => { root.command-log-open(); }
-                clear => { root.command-log-clear(); }
-            }
-            if root.selection == Pane.help: HelpPane { vertical-stretch: 1; }
-            if root.selection != Pane.dashboard: Rectangle { }
+            if root.selection == Pane.help: HelpPane { vertical-stretch: 1; topics: root.help-topics; focus-topic <=> root.help-focus; }
+            if root.selection != Pane.dashboard && root.selection != Pane.account: Rectangle { }
         }
-    }
-
-    if root.chart-open && root.selection == Pane.account: ChartPanel {
-        x: 240px;
-        width: parent.width - 240px;
-        height: parent.height;
-        title: root.chart-title;
-        state: root.chart;
-        line-color: root.chart-color;
-        preset(p) => { root.chart-preset(p); }
-        close => { root.chart-open = false; root.chart-close(); }
-        size-changed(w, h) => { root.chart-size(w, h); }
-        hover(x, y) => { root.chart-hover(x, y); }
-        select(a, b) => { root.chart-select(a, b); }
-        reset => { root.chart-reset(); }
-    }
-
-    if root.run-open: RunCommandPanel {
-        width: parent.width; height: parent.height;
-        account-name: root.run-account-name;
-        command <=> root.run-command-text;
-        open-in-terminal <=> root.run-in-terminal;
-        running: root.run-running;
-        lines: root.run-lines;
-        edited(t) => { root.run-command-edited(t); }
-        toggle-terminal(on) => { root.run-terminal-toggled(on); }
-        run => { root.run-command-start(); }
-        cancel => { root.run-command-cancel(); }
     }
 }
 
 
 component FlyoutIconButton inherits Rectangle {
     in property <string> glyph;
+    in property <bool> enabled: true;
     callback clicked();
     width: 28px;
     height: 28px;
     border-radius: 6px;
-    background: touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent;
+    opacity: root.enabled ? 1.0 : 0.4;
+    background: touch.has-hover && root.enabled ? Theme.accent.with-alpha(0.15) : (Theme.dark ? #ffffff12 : #00000010);
     Text {
         text: root.glyph;
         font-family: "Segoe Fluent Icons";
@@ -612,24 +704,50 @@ component FlyoutIconButton inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
 }
 
-// Tray flyout (macOS MenuBarPopover): header, compact account rows, footer.
-// Borderless; Rust applies Mica + rounded corners and places it at the tray.
+// Tray flyout (macOS MenuBarPopover + PopoverFooter): update banner, header with icon
+// buttons, compact account cards, footer (Quit | version | empty). Borderless; Rust
+// applies Mica + rounded corners and places it at the tray. Height follows the card
+// count (macOS sizes the popover to its content, list capped and scrolling).
 export component PopoverWindow inherits Window {
     no-frame: true;
-    width: 340px;
-    height: 420px;
+    width: 372px;
+    height: clamp(root.chrome + root.list-h, 240px, 700px);
     default-font-family: Theme.font-family;
     default-font-size: 14px;
     background: transparent;
     in property <bool> use-solid-background: false;
     in property <[UiRow]> account-rows;
+    // True while a refresh is running (disables the header Refresh button).
+    in property <bool> refreshing: false;
+    // Yellow banner text while an update downloads or installs; empty hides it.
+    in property <string> update-banner;
+    in property <string> app-version;
+    // Inline Quit confirmation (macOS `confirmingQuit`); Rust clears it when the flyout hides.
+    in-out property <bool> confirming-quit: false;
     callback expand();
     callback refresh();
+    callback open-help();
+    callback open-settings();
     callback quit();
     callback add-account();
+    callback toggle-pin(string, bool);
+    callback resync-account(string);
+    // A card click opens that account's page; a gauge click its chart window ("5h" | "7d" | "fable").
+    callback open-account(string);
+    callback open-account-window(string, string);
+
+    // The list is as tall as its cards (they size themselves), capped; the empty state has a fixed height.
+    property <length> list-h: root.account-rows.length == 0 ? 170px : min(list.preferred-height, 560px);
+    // padding 2x12 + header 28 + separator 1 + footer 28 + the 3 gaps between those four
+    // (+ the banner 24 and its gap 8).
+    property <length> chrome: 24px + 28px + 1px + 28px + 24px + (root.update-banner != "" ? 32px : 0px);
 
     Rectangle {
         background: root.use-solid-background ? Theme.window-bg : (Theme.dark ? #20202080 : #f3f3f380);
@@ -638,6 +756,22 @@ export component PopoverWindow inherits Window {
     VerticalLayout {
         padding: 12px;
         spacing: 8px;
+        if root.update-banner != "": Rectangle {
+            height: 24px;
+            border-radius: 6px;
+            background: #fce10026;
+            HorizontalLayout {
+                alignment: center;
+                spacing: 6px;
+                Spinner { width: 14px; height: 14px; y: (parent.height - self.height) / 2; indeterminate: true; }
+                Text {
+                    text: root.update-banner;
+                    color: Theme.text-secondary;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+        }
         HorizontalLayout {
             spacing: 4px;
             Text {
@@ -648,60 +782,104 @@ export component PopoverWindow inherits Window {
                 vertical-alignment: center;
             }
             Rectangle { }
-            FlyoutIconButton { glyph: "\u{E72C}"; clicked => { root.refresh(); } }
+            if root.account-rows.length > 0: FlyoutIconButton {
+                glyph: "\u{E72C}";
+                enabled: !root.refreshing;
+                clicked => { root.refresh(); }
+            }
             FlyoutIconButton { glyph: "\u{E740}"; clicked => { root.expand(); } }
+            FlyoutIconButton { glyph: "\u{E897}"; clicked => { root.open-help(); } }
+            FlyoutIconButton { glyph: "\u{E713}"; clicked => { root.open-settings(); } }
         }
-        if root.account-rows.length == 0: EmptyState { vertical-stretch: 1; add-account => { root.add-account(); } }
+        if root.account-rows.length == 0: EmptyState {
+            title: "No accounts configured";
+            subtitle: "";
+            vertical-stretch: 1;
+            add-account => { root.add-account(); }
+        }
+        // Always present (so the window height can follow `list`); zero-height when empty.
         Flickable {
+            vertical-stretch: 1;
+            max-height: root.account-rows.length > 0 ? 100000px : 0px;
             content-height: list.preferred-height;
             list := VerticalLayout {
-                spacing: 6px;
+                spacing: 8px;
                 alignment: start;
-                for acct in root.account-rows: Rectangle {
-                    height: 60px;
-                    background: Theme.card-bg;
-                    border-radius: 8px;
-                    border-width: 1px;
-                    border-color: Theme.card-border;
-                    HorizontalLayout {
-                        padding: 8px;
-                        spacing: 10px;
-                        Avatar { size: 32px; initial: acct.initial; tint: acct.avatar-color; y: (parent.height - self.height) / 2; }
-                        VerticalLayout {
-                            alignment: center;
-                            Text { text: acct.name; color: Theme.text-primary; font-weight: 600; overflow: elide; }
-                            Text {
-                                text: acct.error != "" ? acct.error : acct.plan;
-                                color: acct.error != "" ? Theme.danger : Theme.text-secondary;
-                                font-size: 11px;
-                                overflow: elide;
-                            }
-                        }
-                        if acct.five-hour.present: UsageGauge { win: acct.five-hour; zoom: 0.55; y: (parent.height - self.height) / 2; }
-                        if acct.seven-day.present: UsageGauge { win: acct.seven-day; zoom: 0.55; y: (parent.height - self.height) / 2; }
-                    }
+                for acct in root.account-rows: AccountCard {
+                    data: acct;
+                    clicked => { root.open-account(acct.id); }
+                    toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
+                    resync => { root.resync-account(acct.id); }
+                    open-window(w) => { root.open-account-window(acct.id, w); }
                 }
             }
         }
+        Rectangle { height: 1px; background: Theme.card-border; }
         HorizontalLayout {
-            alignment: space-between;
+            height: 28px;
             Rectangle {
-                height: 32px;
-                width: expand-text.preferred-width + 28px;
-                border-radius: 6px;
-                background: expand-touch.has-hover ? Theme.accent.with-alpha(0.15) : Theme.card-bg;
-                border-width: 1px;
-                border-color: Theme.card-border;
-                expand-text := Text { text: "Expand"; color: Theme.accent; horizontal-alignment: center; vertical-alignment: center; }
-                expand-touch := TouchArea { clicked => { root.expand(); } }
+                horizontal-stretch: 1;
+                Rectangle {
+                    x: 0px;
+                    width: quit-row.preferred-width + 16px;
+                    border-radius: 6px;
+                    background: quit-touch.has-hover ? Theme.danger.with-alpha(0.15) : transparent;
+                    quit-row := HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 6px;
+                        Text {
+                            text: "\u{E7E8}";
+                            font-family: "Segoe Fluent Icons";
+                            font-size: 12px;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                        Text { text: "Quit"; color: Theme.text-secondary; font-size: 12px; vertical-alignment: center; }
+                    }
+                    quit-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.confirming-quit = true; }
+                    }
+                }
             }
-            Rectangle {
-                height: 32px;
-                width: quit-text.preferred-width + 28px;
-                border-radius: 6px;
-                background: quit-touch.has-hover ? Theme.danger.with-alpha(0.15) : transparent;
-                quit-text := Text { text: "Quit"; color: Theme.text-secondary; horizontal-alignment: center; vertical-alignment: center; }
-                quit-touch := TouchArea { clicked => { root.quit(); } }
+            Text {
+                text: "v" + root.app-version;
+                color: Theme.text-secondary.with-alpha(0.7);
+                font-size: 11px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+    }
+
+    // Inline Quit confirmation (macOS InlinePrompt): dim the flyout, centred card.
+    if root.confirming-quit: Rectangle {
+        background: #00000059;
+        TouchArea { }
+        Rectangle {
+            width: 260px;
+            height: prompt.preferred-height + 32px;
+            border-radius: 12px;
+            background: Theme.dark ? #2b2b2b : #ffffff;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            prompt := VerticalLayout {
+                padding: 16px;
+                spacing: 10px;
+                Text { text: "Quit Claude Dashboard?"; color: Theme.text-primary; font-size: 15px; font-weight: 600; }
+                Text {
+                    text: "Usage monitoring stops until you open the app again.";
+                    color: Theme.text-primary;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    padding-top: 4px;
+                    PaneButton { horizontal-stretch: 1; label: "Cancel"; tint: Theme.text-secondary; clicked => { root.confirming-quit = false; } }
+                    PaneButton { horizontal-stretch: 1; label: "Quit"; tint: Theme.danger; clicked => { root.quit(); } }
+                }
             }
         }
     }

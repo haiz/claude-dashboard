@@ -2,12 +2,13 @@
 //!
 //! Ports `apps/linux/lib/model.js` `buildRows` and `contract/README.md`
 //! "Sort order": (1) pinned first; (2) active Claude Code account next, only
-//! when nothing is pinned -- that signal is absent in this sub-project, so the
-//! tier never fires; (3) burn rate (5-hour utilization / time remaining)
+//! when nothing is pinned; (3) burn rate (5-hour utilization / time remaining)
 //! descending, with sentinel -1 for non-active or no-usage accounts.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
+use crate::account_kind::kind_of;
+use crate::extension_sources::ExtensionSources;
 use crate::model::{Account, AccountPlan, AccountStatus};
 use crate::usage::{UsageData, UsageLimit};
 
@@ -35,17 +36,25 @@ pub struct DisplayRow {
     /// The projection needs poll history (`BurnRateTracker`), which a pure
     /// row builder does not have; the caller fills this in.
     pub burn_projected_seconds: Option<f64>,
+    /// Same projection for the 7-day and Fable windows (macOS shows an animal on each gauge).
+    pub burn_projected_seconds_7d: Option<f64>,
+    pub burn_projected_seconds_fable: Option<f64>,
     pub is_extension_sourced: bool,
     pub error: Option<String>,
     pub last_synced_unix: Option<f64>,
     pub is_active_claude_code: bool,
+    pub is_pinned: bool,
+    /// `AccountKind::settings_label()`: profile name, "Browser extension (X)" or "Pasted key".
+    pub kind_label: String,
+    /// `AccountKind::expired_hint()`, shown under "Session expired.".
+    pub expired_hint: String,
 }
 
 pub struct BuildInput<'a> {
     pub accounts: &'a [Account],
     pub usage_by_account: &'a HashMap<String, UsageData>,
     pub errors: &'a HashMap<String, String>,
-    pub extension_install_account_ids: &'a HashSet<String>,
+    pub sources: &'a ExtensionSources,
     pub now_unix_s: f64,
     pub active_claude_code_email: Option<&'a str>,
 }
@@ -58,21 +67,43 @@ fn view(l: &UsageLimit) -> WindowView {
     }
 }
 
-/// Port of `sortKey`: 5-hour utilization over time remaining.
-fn sort_key(usage: Option<&UsageData>, status: &AccountStatus, now: f64) -> f64 {
-    let Some(u) = usage else { return -1.0 };
-    if *status != AccountStatus::Active {
+/// Port of `sortKey`: 5-hour utilization over time remaining. Read from the row, so it
+/// also holds for a row spliced into an existing list; an errored row had no usage when
+/// it was built, so it keys -1 whatever last-good windows it was backfilled with.
+fn row_sort_key(row: &DisplayRow, now: f64) -> f64 {
+    let Some(w) = row.five_hour.as_ref() else { return -1.0 };
+    if row.status != AccountStatus::Active || row.error.is_some() {
         return -1.0;
     }
-    let remaining = match u.five_hour.resets_at {
+    let remaining = match w.resets_at_unix {
         None => FIVE_HOUR_SECONDS,
-        Some(r) => (r as f64 - now).max(60.0),
+        Some(r) => (r - now).max(60.0),
     };
-    u.five_hour.utilization / remaining
+    w.utilization / remaining
+}
+
+/// The display order: 1 pinned, 2 active Claude Code (only when nothing is pinned),
+/// 3 burn key. Stable.
+pub fn sort_rows(rows: &mut [DisplayRow], now: f64) {
+    let any_pinned = rows.iter().any(|r| r.is_pinned);
+    let keys: HashMap<String, f64> =
+        rows.iter().map(|r| (r.account_id.clone(), row_sort_key(r, now))).collect();
+    rows.sort_by(|a, b| {
+        b.is_pinned
+            .cmp(&a.is_pinned)
+            .then_with(|| {
+                if any_pinned {
+                    std::cmp::Ordering::Equal
+                } else {
+                    b.is_active_claude_code.cmp(&a.is_active_claude_code)
+                }
+            })
+            .then(keys[&b.account_id].partial_cmp(&keys[&a.account_id]).unwrap_or(std::cmp::Ordering::Equal))
+    });
 }
 
 pub fn build_rows(input: BuildInput<'_>) -> Vec<DisplayRow> {
-    let mut keyed: Vec<(bool, f64, DisplayRow)> = input
+    let mut rows: Vec<DisplayRow> = input
         .accounts
         .iter()
         .map(|a| {
@@ -85,7 +116,7 @@ pub fn build_rows(input: BuildInput<'_>) -> Vec<DisplayRow> {
                 .flatten()
                 .map(|w| w.utilization)
                 .fold(0.0, f64::max);
-            let key = sort_key(usage, &a.status, input.now_unix_s);
+            let kind = kind_of(a, input.sources);
             let row = DisplayRow {
                 account_id: a.id.clone(),
                 name: a.name.clone(),
@@ -97,30 +128,44 @@ pub fn build_rows(input: BuildInput<'_>) -> Vec<DisplayRow> {
                 fable,
                 peak_utilization: peak,
                 burn_projected_seconds: None,
-                is_extension_sourced: input.extension_install_account_ids.contains(&a.id),
+                burn_projected_seconds_7d: None,
+                burn_projected_seconds_fable: None,
+                is_extension_sourced: input.sources.bindings.values().any(|b| b.account_id == a.id),
                 error: input.errors.get(&a.id).cloned(),
                 last_synced_unix: a.last_synced_unix(),
                 is_active_claude_code: input
                     .active_claude_code_email
                     .is_some_and(|e| a.email.as_deref() == Some(e)),
+                is_pinned: a.is_pinned,
+                kind_label: kind.settings_label(),
+                expired_hint: kind.expired_hint(),
             };
-            (a.is_pinned, key, row)
+            row
         })
         .collect();
-    let any_pinned = keyed.iter().any(|k| k.0);
-    // 1 pinned, 2 active Claude Code (only when nothing is pinned), 3 burn key. Stable.
-    keyed.sort_by(|a, b| {
-        b.0.cmp(&a.0)
-            .then_with(|| {
-                if any_pinned {
-                    std::cmp::Ordering::Equal
-                } else {
-                    b.2.is_active_claude_code.cmp(&a.2.is_active_claude_code)
-                }
-            })
-            .then(b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal))
-    });
-    keyed.into_iter().map(|(_, _, r)| r).collect()
+    sort_rows(&mut rows, input.now_unix_s);
+    rows
+}
+
+/// Port of `DashboardViewModel.menuBarPercentText`'s row choice: the pinned
+/// row when it has usage, else the first row (in sort order) that has a 5-hour reading.
+pub fn menu_bar_row(rows: &[DisplayRow]) -> Option<&DisplayRow> {
+    rows.iter()
+        .find(|r| r.is_pinned && r.five_hour.is_some())
+        .or_else(|| rows.iter().find(|r| r.five_hour.is_some()))
+}
+
+/// The sidebar's per-account percent: `None` when expired; the 7-day figure
+/// once it reaches 100, else the 5-hour figure.
+pub fn sidebar_percent(row: &DisplayRow) -> Option<f64> {
+    if row.status == AccountStatus::Expired {
+        return None;
+    }
+    let five = row.five_hour.as_ref().map(|w| w.utilization);
+    match row.seven_day.as_ref() {
+        Some(w) if w.utilization >= 100.0 => Some(w.utilization),
+        _ => five,
+    }
 }
 
 pub fn peak_utilization(rows: &[DisplayRow]) -> f64 {
@@ -163,12 +208,15 @@ mod tests {
             usage.iter().map(|(k, v)| (k.to_string(), v.clone())).collect();
         let e: HashMap<String, String> =
             errors.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
-        let x: HashSet<String> = ext.iter().map(|s| s.to_string()).collect();
+        let mut x = ExtensionSources::default();
+        for (i, id) in ext.iter().enumerate() {
+            x.bind(&format!("inst-{i}"), id, "chrome");
+        }
         build_rows(BuildInput {
             accounts,
             usage_by_account: &u,
             errors: &e,
-            extension_install_account_ids: &x,
+            sources: &x,
             now_unix_s: NOW,
             active_claude_code_email: None,
         })
@@ -181,7 +229,7 @@ mod tests {
             accounts,
             usage_by_account: &u,
             errors: &HashMap::new(),
-            extension_install_account_ids: &HashSet::new(),
+            sources: &ExtensionSources::default(),
             now_unix_s: NOW,
             active_claude_code_email: active,
         })
@@ -310,5 +358,65 @@ mod tests {
         let b = rows.iter().find(|r| r.account_id == "b").unwrap();
         assert!(b.fable.as_ref().unwrap().is_limited);
         assert!(!b.five_hour.as_ref().unwrap().is_limited);
+    }
+
+    fn plain(id: &str, pinned: bool, status: AccountStatus, five: Option<f64>, seven: Option<f64>) -> DisplayRow {
+        let a = acct(id, pinned, status);
+        let mut rows = run(&[a], &[], &[], &[]);
+        let mut r = rows.remove(0);
+        let w = |u: f64| WindowView { utilization: u, resets_at_unix: None, is_limited: u >= 100.0 };
+        r.five_hour = five.map(w);
+        r.seven_day = seven.map(w);
+        r
+    }
+
+    #[test]
+    fn menu_bar_row_prefers_pinned() {
+        let rows = vec![
+            plain("a", false, AccountStatus::Active, Some(90.0), None),
+            plain("b", true, AccountStatus::Active, Some(10.0), None),
+        ];
+        assert_eq!(menu_bar_row(&rows).unwrap().account_id, "b");
+    }
+
+    #[test]
+    fn menu_bar_row_ignores_pinned_row_without_usage() {
+        let rows = vec![
+            plain("a", true, AccountStatus::Active, None, None),
+            plain("b", false, AccountStatus::Active, Some(10.0), None),
+        ];
+        assert_eq!(menu_bar_row(&rows).unwrap().account_id, "b");
+    }
+
+    #[test]
+    fn menu_bar_row_skips_rows_without_usage() {
+        let rows = vec![
+            plain("a", false, AccountStatus::Active, None, None),
+            plain("b", false, AccountStatus::Active, Some(10.0), None),
+        ];
+        assert_eq!(menu_bar_row(&rows).unwrap().account_id, "b");
+        assert!(menu_bar_row(&rows[..1]).is_none());
+        assert!(menu_bar_row(&[]).is_none());
+    }
+
+    #[test]
+    fn sidebar_percent_uses_7d_at_limit() {
+        let r = plain("a", false, AccountStatus::Active, Some(40.0), Some(100.0));
+        assert_eq!(sidebar_percent(&r), Some(100.0));
+        let r = plain("a", false, AccountStatus::Active, Some(40.0), Some(99.0));
+        assert_eq!(sidebar_percent(&r), Some(40.0));
+    }
+
+    #[test]
+    fn sidebar_percent_none_when_expired() {
+        let r = plain("a", false, AccountStatus::Expired, Some(40.0), Some(100.0));
+        assert_eq!(sidebar_percent(&r), None);
+    }
+
+    #[test]
+    fn row_carries_pin_and_kind_texts() {
+        let rows = run(&[acct("a", true, AccountStatus::Active)], &[], &[], &[]);
+        assert!(rows[0].is_pinned);
+        assert!(!rows[0].expired_hint.is_empty());
     }
 }

@@ -16,9 +16,6 @@ pub fn delete_account(account_id: &str) -> Result<Option<String>, String> {
         return Ok(None);
     }
     store::save_accounts(&accounts).map_err(|e| e.to_string())?;
-    if let Err(e) = claude_dashboard_core::run_commands::remove(account_id) {
-        eprintln!("drop run command failed: {e}");
-    }
 
     let path = extension_sources::sources_path();
     let mut sources = extension_sources::load(&path)?;
@@ -52,9 +49,21 @@ pub fn muted_sources() -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The Re-sync All button label while running (macOS wording).
+pub fn progress_text(done: usize, total: usize) -> String {
+    format!("Re-syncing\u{2026} ({done}/{total})")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn progress_text_wording() {
+        assert_eq!(progress_text(0, 3), "Re-syncing\u{2026} (0/3)");
+        assert_eq!(progress_text(2, 3), "Re-syncing\u{2026} (2/3)");
+    }
+
     use claude_dashboard_core::extension_sources::{load, save, sources_path, ExtensionSources};
     use claude_dashboard_core::model::Account;
 
@@ -63,21 +72,6 @@ mod tests {
             r#"{{"id":"{id}","name":"n","chromeProfilePath":"","plan":"Pro","status":"active"}}"#
         ))
         .unwrap()
-    }
-
-    #[test]
-    fn delete_drops_the_saved_run_command() {
-        let _env = crate::testenv::lock();
-        let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("APPDATA", dir.path());
-        std::env::set_var("LOCALAPPDATA", dir.path());
-        store::save_accounts(&[account("a"), account("b")]).unwrap();
-        use claude_dashboard_core::run_commands::{get, set, RunCommand};
-        set("a", &RunCommand { command: "ccbf".into(), open_in_terminal: false }).unwrap();
-        set("b", &RunCommand { command: "echo".into(), open_in_terminal: false }).unwrap();
-        delete_account("a").unwrap();
-        assert!(get("a").is_none());
-        assert!(get("b").is_some(), "other account untouched");
     }
 
     #[test]
@@ -93,7 +87,11 @@ mod tests {
         save(&sources_path(), &s).unwrap();
 
         assert_eq!(delete_account("ACC-1").unwrap(), Some("inst-1".to_string()));
-        let ids: Vec<String> = store::load_accounts().unwrap().into_iter().map(|a| a.id).collect();
+        let ids: Vec<String> = store::load_accounts()
+            .unwrap()
+            .into_iter()
+            .map(|a| a.id)
+            .collect();
         assert_eq!(ids, vec!["ACC-2".to_string()]);
         assert!(load(&sources_path()).unwrap().is_muted("inst-1"));
         assert_eq!(muted_sources(), vec!["inst-1".to_string()]);

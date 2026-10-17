@@ -5,6 +5,8 @@
 
 use std::collections::BTreeMap;
 
+use crate::store::SeriesPoint;
+
 pub const Y_MIN: f64 = 0.0;
 pub const Y_MAX: f64 = 100.0;
 pub const Y_TICKS: [f64; 5] = [0.0, 25.0, 50.0, 75.0, 100.0];
@@ -243,9 +245,167 @@ pub fn total_series(by_account: &BTreeMap<String, Vec<Entry>>) -> Vec<Entry> {
         .collect()
 }
 
+/// Average burn rate (%/h) over `[from_ms, to_ms]`: sum of positive deltas
+/// between consecutive visible points (drops are resets, skipped) divided by
+/// the range in hours. Port of macOS `computeAverageRate`; needs >= 2 points.
+pub fn average_rate(entries: &[Entry], from_ms: f64, to_ms: f64) -> Option<f64> {
+    let mut visible: Vec<Entry> = entries.iter().copied().filter(|e| e.ms >= from_ms && e.ms <= to_ms).collect();
+    if visible.len() < 2 {
+        return None;
+    }
+    visible.sort_by(|a, b| a.ms.total_cmp(&b.ms));
+    let sum: f64 = visible.windows(2).map(|w| (w[1].value - w[0].value).max(0.0)).sum();
+    let hours = (to_ms - from_ms) / 3_600_000.0;
+    if hours > 0.0 { Some(sum / hours) } else { None }
+}
+
+/// Plan-weighted mean burn rate across accounts, port of macOS
+/// `OverviewChartView.weightedAverageRate`. Each account is `(entries, plan
+/// weight)` (pro 1, max5x 5, max20x 20, max200 10); entries are ascending.
+/// Only accounts with at least one point in range contribute (a lone point
+/// contributes 0 delta but still counts its weight). `None` when the range is
+/// <= 0.01 h or no account has a point in range.
+pub fn weighted_average_rate(accounts: &[(&[Entry], f64)], from_ms: f64, to_ms: f64) -> Option<f64> {
+    let hours = (to_ms - from_ms) / 3_600_000.0;
+    if hours <= 0.01 {
+        return None;
+    }
+    let mut weighted = 0.0;
+    let mut total_weight = 0.0;
+    for (entries, weight) in accounts {
+        let mut last: Option<f64> = None;
+        let mut delta = 0.0;
+        for e in entries.iter().filter(|e| e.ms >= from_ms && e.ms <= to_ms) {
+            if let Some(p) = last {
+                delta += (e.value - p).max(0.0);
+            }
+            last = Some(e.value);
+        }
+        if last.is_some() {
+            weighted += delta * weight;
+            total_weight += weight;
+        }
+    }
+    if total_weight > 0.0 { Some(weighted / total_weight / hours) } else { None }
+}
+
+/// Local-noon instants (ms) inside `[from_ms, to_ms]`, one per local day.
+/// `local_offset_ms` is the local UTC offset (UTC+7 = 25_200_000).
+pub fn noon_markers(from_ms: f64, to_ms: f64, local_offset_ms: f64) -> Vec<f64> {
+    let mut out = Vec::new();
+    let mut day = ((from_ms + local_offset_ms) / DAY_MS).floor() * DAY_MS - local_offset_ms;
+    while day <= to_ms {
+        let noon = day + 12.0 * 3_600_000.0;
+        if noon >= from_ms && noon <= to_ms {
+            out.push(noon);
+        }
+        day += DAY_MS;
+    }
+    out
+}
+
+/// The entries flagged limited (macOS draws a red point for each `isLimited` log).
+pub fn limit_points(entries: &[(Entry, bool)]) -> Vec<Entry> {
+    entries.iter().filter(|(_, l)| *l).map(|(e, _)| *e).collect()
+}
+
+/// Port of macOS `[UsageLogEntry].withResetTransitions` (and chartWindow.js):
+/// between two consecutive points whose reset time changed and whose previous
+/// reset time has passed, insert a hold point at `rat - 1 s` with the old
+/// utilization (skipped when it is not after the previous sample) and a 0%
+/// point at `rat`, so the line shows the real drop. Input ascending by time.
+pub fn with_reset_transitions(points: &[SeriesPoint]) -> Vec<SeriesPoint> {
+    let mut out = Vec::with_capacity(points.len());
+    for (i, cur) in points.iter().enumerate() {
+        if i > 0 {
+            let prev = &points[i - 1];
+            if prev.resets_at_unix != cur.resets_at_unix
+                && prev.resets_at_unix > prev.t_unix
+                && prev.resets_at_unix <= cur.t_unix
+            {
+                let hold_t = prev.resets_at_unix - 1.0;
+                if hold_t > prev.t_unix {
+                    out.push(SeriesPoint { t_unix: hold_t, resets_at_unix: prev.resets_at_unix, ..*prev });
+                }
+                out.push(SeriesPoint {
+                    t_unix: prev.resets_at_unix,
+                    utilization: 0.0,
+                    is_limited: false,
+                    resets_at_unix: cur.resets_at_unix,
+                });
+            }
+        }
+        out.push(*cur);
+    }
+    out.sort_by(|a, b| a.t_unix.total_cmp(&b.t_unix));
+    out
+}
+
+/// Burn rate (%/h) at `ms`, port of macOS `computeRate`: the slope between the
+/// samples around `ms`, or of the last / first two at the edges. `None` for
+/// fewer than two samples or a gap of 0.01 h or less. `entries` ascending.
+pub fn rate_at(entries: &[Entry], ms: f64) -> Option<f64> {
+    if entries.len() < 2 {
+        return None;
+    }
+    let slope = |b: Entry, a: Entry| {
+        let dt = (a.ms - b.ms) / 3_600_000.0;
+        if dt > 0.01 { Some((a.value - b.value) / dt) } else { None }
+    };
+    let before = entries.iter().rposition(|e| e.ms <= ms);
+    let after = entries.iter().position(|e| e.ms > ms);
+    match (before, after) {
+        (Some(b), Some(a)) => slope(entries[b], entries[a]),
+        (Some(_), None) => slope(entries[entries.len() - 2], entries[entries.len() - 1]),
+        (None, Some(_)) => slope(entries[0], entries[1]),
+        (None, None) => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sp(t: f64, u: f64, rat: f64) -> SeriesPoint {
+        SeriesPoint { t_unix: t, utilization: u, is_limited: false, resets_at_unix: rat }
+    }
+
+    #[test]
+    fn reset_transition_inserts_hold_and_zero() {
+        // pre-reset 90 (due to reset at 1000), post-reset 30 under the next reset time.
+        let pts = [sp(900.0, 90.0, 1000.0), sp(1100.0, 30.0, 6000.0)];
+        let out = with_reset_transitions(&pts);
+        let got: Vec<(f64, f64)> = out.iter().map(|p| (p.t_unix, p.utilization)).collect();
+        assert_eq!(got, vec![(900.0, 90.0), (999.0, 90.0), (1000.0, 0.0), (1100.0, 30.0)]);
+        // The average counts the 0 -> 30 climb (and ignores the drop).
+        let es: Vec<Entry> = out.iter().map(|p| Entry { ms: p.t_unix * 1000.0, value: p.utilization }).collect();
+        let r = average_rate(&es, 900_000.0, 1_100_000.0).unwrap();
+        assert!((r - (0.0 + 0.0 + 30.0) / (200.0 / 3600.0)).abs() < 1e-6, "{r}");
+    }
+
+    #[test]
+    fn reset_transition_skips_hold_when_too_close_and_unchanged_rat() {
+        let close = with_reset_transitions(&[sp(999.5, 90.0, 1000.0), sp(1100.0, 30.0, 6000.0)]);
+        assert_eq!(close.len(), 3, "no hold point when rat-1s is not after prev");
+        let same = [sp(10.0, 1.0, 1000.0), sp(20.0, 2.0, 1000.0)];
+        assert_eq!(with_reset_transitions(&same), same.to_vec());
+        // reset time still in the future of the next sample: nothing inserted
+        let future = [sp(10.0, 1.0, 5000.0), sp(20.0, 2.0, 6000.0)];
+        assert_eq!(with_reset_transitions(&future).len(), 2);
+    }
+
+    #[test]
+    fn rate_at_matches_macos() {
+        let es = [e(0.0, 10.0), e(3_600_000.0, 40.0), e(7_200_000.0, 40.0)];
+        assert_eq!(rate_at(&es, 1_800_000.0), Some(30.0));
+        assert_eq!(rate_at(&es, 5_000_000.0), Some(0.0));
+        // edges: last two / first two samples
+        assert_eq!(rate_at(&es, 9_000_000.0), Some(0.0));
+        assert_eq!(rate_at(&es, -1.0), Some(30.0));
+        assert_eq!(rate_at(&es[..1], 0.0), None);
+        // sub-0.01h gap
+        assert_eq!(rate_at(&[e(0.0, 1.0), e(1000.0, 2.0)], 500.0), None);
+    }
 
     const T0: f64 = 1_700_000_000_000.0;
     fn e(ms: f64, value: f64) -> Entry {
@@ -357,5 +517,53 @@ mod tests {
         assert_eq!(measure((0.0, 10.0), (3_600_000.0, 25.0)), (15.0, 3_600_000.0));
         assert_eq!(measure_per_hour((0.0, 10.0), (3_600_000.0, 25.0)), Some(15.0));
         assert_eq!(measure_per_hour((5.0, 1.0), (5.0, 2.0)), None);
+    }
+
+    fn ent(h: f64, v: f64) -> Entry {
+        Entry { ms: h * 3_600_000.0, value: v }
+    }
+
+    #[test]
+    fn average_rate_skips_reset_drop() {
+        let pts = [ent(0.0, 10.0), ent(1.0, 30.0), ent(2.0, 0.0), ent(3.0, 20.0)];
+        let r = average_rate(&pts, 0.0, 3.0 * 3_600_000.0).unwrap();
+        assert!((r - 40.0 / 3.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn average_rate_needs_two_points() {
+        assert_eq!(average_rate(&[ent(1.0, 5.0)], 0.0, 3_600_000.0), None);
+        assert_eq!(average_rate(&[], 0.0, 3_600_000.0), None);
+    }
+
+    #[test]
+    fn noon_markers_one_per_day() {
+        let off = 7.0 * 3_600_000.0;
+        // Local midnight of day 10 (UTC+7) = 10 days - 7 h in UTC ms.
+        let start = 10.0 * DAY_MS - off;
+        let m = noon_markers(start, start + 3.0 * DAY_MS, off);
+        assert_eq!(m, vec![start + 12.0 * 3_600_000.0, start + 36.0 * 3_600_000.0, start + 60.0 * 3_600_000.0]);
+    }
+
+    #[test]
+    fn limit_points_filters_flagged() {
+        let v = [(ent(0.0, 1.0), false), (ent(1.0, 100.0), true)];
+        assert_eq!(limit_points(&v), vec![ent(1.0, 100.0)]);
+    }
+
+    // Hand-run of the macOS formula over a 10 h range.
+    // A (weight 1): 10,30,20,50 -> deltas 20+0+30 = 50
+    // B (weight 5): 0,10 -> delta 10
+    // C (weight 20): one point only -> delta 0, but weight counts
+    // weighted = 50*1 + 10*5 + 0*20 = 100; weight = 26; 100/26/10.
+    #[test]
+    fn weighted_average_rate_literal() {
+        let a = [ent(1.0, 10.0), ent(2.0, 30.0), ent(3.0, 20.0), ent(4.0, 50.0)];
+        let b = [ent(1.0, 0.0), ent(2.0, 10.0)];
+        let c = [ent(5.0, 70.0)];
+        let r = weighted_average_rate(&[(&a, 1.0), (&b, 5.0), (&c, 20.0)], 0.0, 10.0 * 3_600_000.0).unwrap();
+        assert!((r - 100.0 / 26.0 / 10.0).abs() < 1e-9);
+        assert_eq!(weighted_average_rate(&[(&a, 1.0)], 0.0, 30_000.0), None);
+        assert_eq!(weighted_average_rate(&[(&a, 1.0)], 50.0 * 3_600_000.0, 60.0 * 3_600_000.0), None);
     }
 }

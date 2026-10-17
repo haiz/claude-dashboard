@@ -16,12 +16,9 @@ pub mod format;
 pub mod rows;
 pub mod extension_sources;
 pub mod scan;
+pub mod account_kind;
 pub mod startup;
-pub mod command_log;
-pub mod command_classifier;
 pub mod claude_code;
-pub mod auto_run;
-pub mod run_commands;
 
 #[cfg(windows)]
 pub mod userprotect;

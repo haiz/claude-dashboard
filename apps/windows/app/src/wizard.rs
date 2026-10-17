@@ -59,7 +59,10 @@ fn account_ids() -> Vec<(String, String)> {
 }
 
 /// Builds the (hidden) wizard window and returns the function that opens it.
-pub fn install(dark: bool, nudge: Sender<()>) -> Result<Rc<dyn Fn()>, slint::PlatformError> {
+pub fn install(
+    dark: bool,
+    nudge: Sender<crate::refresh::Nudge>,
+) -> Result<Rc<dyn Fn()>, slint::PlatformError> {
     let win = SetupWizardWindow::new()?;
     win.global::<crate::Theme>().set_dark(dark);
 
@@ -98,7 +101,7 @@ pub fn install(dark: bool, nudge: Sender<()>) -> Result<Rc<dyn Fn()>, slint::Pla
                     }
                     polling.store(false, Ordering::SeqCst);
                     if let Some(name) = new_name {
-                        let _ = nudge.send(());
+                        let _ = nudge.send(crate::refresh::Nudge::All);
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(w) = weak.upgrade() {
                                 w.set_ext_status(SharedString::from(format!("Added {name}")));
@@ -144,7 +147,7 @@ pub fn install(dark: bool, nudge: Sender<()>) -> Result<Rc<dyn Fn()>, slint::Pla
                                 Some(e) if !e.is_empty() => format!("{} ({e})", s.display_name),
                                 _ => s.display_name.clone(),
                             };
-                            let detail = format!("{:?} - {}", s.browser, s.profile_dir);
+                            let detail = format!("{} - {}", s.browser.short_name(), s.profile_dir);
                             rows.push((sessions.len() as i32, label, detail));
                             sessions.push(s);
                         }
@@ -224,7 +227,7 @@ pub fn install(dark: bool, nudge: Sender<()>) -> Result<Rc<dyn Fn()>, slint::Pla
             std::thread::spawn(move || {
                 let outcomes = setup::add_scanned(&selected);
                 if outcomes.iter().any(is_success) {
-                    let _ = nudge.send(());
+                    let _ = nudge.send(crate::refresh::Nudge::All);
                 }
                 let text = outcomes
                     .iter()
@@ -258,7 +261,7 @@ pub fn install(dark: bool, nudge: Sender<()>) -> Result<Rc<dyn Fn()>, slint::Pla
                 let outcome = setup::add_from_session_key(&key);
                 let ok = is_success(&outcome);
                 if ok {
-                    let _ = nudge.send(());
+                    let _ = nudge.send(crate::refresh::Nudge::All);
                 }
                 let text = outcome_text(&outcome);
                 let _ = slint::invoke_from_event_loop(move || {

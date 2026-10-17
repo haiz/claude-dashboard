@@ -352,9 +352,10 @@ pub struct WindowsProfile {
 /// The `User Data` directories under `%LOCALAPPDATA%`, by browser. Arc on
 /// Windows is a packaged app with a per-install path; it is reached through
 /// the browser extension, not scanned here.
-fn windows_user_data_roots() -> [(Browser, [&'static str; 3]); 3] {
+fn windows_user_data_roots() -> [(Browser, [&'static str; 3]); 4] {
     [
         (Browser::Chrome, ["Google", "Chrome", "User Data"]),
+        (Browser::ChromeDev, ["Google", "Chrome Dev", "User Data"]),
         (Browser::Edge, ["Microsoft", "Edge", "User Data"]),
         (Browser::Brave, ["BraveSoftware", "Brave-Browser", "User Data"]),
     ]
@@ -788,5 +789,21 @@ mod tests {
         assert_eq!(found[0].local_state, chrome.join("Local State"));
         assert_eq!(found[1].browser, Browser::Edge);
         assert_eq!(found[1].cookies_db, edge.join("Default").join("Cookies"));
+    }
+
+    #[test]
+    fn discovers_chrome_dev_profiles() {
+        let d = tempfile::tempdir().unwrap();
+        let chrome = d.path().join("Google").join("Chrome").join("User Data");
+        let dev = d.path().join("Google").join("Chrome Dev").join("User Data");
+        write(&chrome.join("Default").join("Network").join("Cookies"), "");
+        write(&dev.join("Default").join("Network").join("Cookies"), "");
+
+        let found = discover_windows_profiles_under(d.path());
+
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].browser, Browser::Chrome);
+        assert_eq!(found[1].browser, Browser::ChromeDev);
+        assert_eq!(found[1].cookies_db, dev.join("Default").join("Network").join("Cookies"));
     }
 }

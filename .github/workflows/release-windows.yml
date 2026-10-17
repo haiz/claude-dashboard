@@ -75,7 +75,14 @@ jobs:
         run: cd apps/windows; cargo install cargo-wix --locked --version 0.3.9
 
       - name: Build MSI
-        run: ./apps/windows/scripts/build-msi.ps1
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          # About shows the release date, as macOS does; build.rs bakes it in (yyyy-MM-dd).
+          # Null-safe: no output leaves it empty (About then shows no date) instead of failing.
+          $date = git log -1 --format=%cs "$env:TAG"
+          $env:CLAUDE_DASHBOARD_RELEASE_DATE = if ($date) { "$date".Trim() } else { "" }
+          ./apps/windows/scripts/build-msi.ps1
 
       - name: Pack extension
         run: |

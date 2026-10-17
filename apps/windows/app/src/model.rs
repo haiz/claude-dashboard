@@ -5,13 +5,14 @@
 use claude_dashboard_core::burn_rate::BurnRateResult;
 use claude_dashboard_core::colors::{avatar_color, countdown_color, usage_color, Rgb};
 use claude_dashboard_core::geometry::{
-    fill_fraction, progress_arc, ring_center, ring_radius, METRICS_REGULAR, TAU,
+    countdown_segments, fill_fraction, progress_arc, ring_center, ring_radius, segment_count_for,
+    to_angle, METRICS_REGULAR, TAU,
 };
 use claude_dashboard_core::format::{format_reset_time, formatted_countdown};
 use claude_dashboard_core::model::{AccountPlan, AccountStatus};
-use claude_dashboard_core::rows::{DisplayRow, WindowView};
+use claude_dashboard_core::rows::{sidebar_percent, DisplayRow, WindowView};
 
-use crate::{UiRow, UiWindow};
+use crate::{UiRow, UiSegment, UiWindow};
 
 const FIVE_HOUR_S: f64 = 18000.0;
 const SEVEN_DAY_S: f64 = 604800.0;
@@ -95,7 +96,39 @@ pub fn gauge_path(utilization: f64, diameter: f64, line_width: f64) -> String {
     format!("M {x0:.3} {y0:.3} A {r:.3} {r:.3} 0 {large} 1 {x1:.3} {y1:.3}")
 }
 
-fn window(w: &Option<WindowView>, total_s: f64, now: f64, local_shift: f64) -> UiWindow {
+/// Slint path for one arc between two ring fractions (0..1 of the full circle).
+fn arc_path(from: f64, to: f64, diameter: f64, line_width: f64) -> String {
+    let c = ring_center(diameter);
+    let r = ring_radius(diameter, line_width);
+    let (a0, a1) = (to_angle(from), to_angle(to));
+    let (x0, y0) = pt(c, r, a0);
+    let (x1, y1) = pt(c, r, a1);
+    let large = if a1 - a0 > TAU / 2.0 { 1 } else { 0 };
+    format!("M {x0:.3} {y0:.3} A {r:.3} {r:.3} 0 {large} 1 {x1:.3} {y1:.3}")
+}
+
+/// The countdown ring: one path per live segment, all in the countdown colour
+/// (blue, turning green under 30% of the window left).
+pub fn countdown_ring(remaining_s: f64, total_s: f64, diameter: f64, line_width: f64) -> Vec<UiSegment> {
+    let color = to_color(countdown_color(remaining_s, total_s));
+    countdown_segments(remaining_s, total_s, diameter, segment_count_for(total_s))
+        .into_iter()
+        .map(|(a, b)| UiSegment { path: arc_path(a, b, diameter, line_width).into(), color })
+        .collect()
+}
+
+fn animal_for(projected: Option<f64>) -> &'static str {
+    projected.map(|s| BurnRateResult::from_projected_time(s).animal).unwrap_or("")
+}
+
+fn window(
+    w: &Option<WindowView>,
+    total_s: f64,
+    now: f64,
+    local_shift: f64,
+    animal: &str,
+    countdown_ring_shown: bool,
+) -> UiWindow {
     match w {
         None => UiWindow {
             diameter: GAUGE_DIAMETER as f32,
@@ -126,6 +159,11 @@ fn window(w: &Option<WindowView>, total_s: f64, now: f64, local_shift: f64) -> U
                 reset_label: reset_label.into(),
                 countdown: countdown.into(),
                 countdown_color: cd_color,
+                segments: slint::ModelRc::new(slint::VecModel::from(match v.resets_at_unix {
+                    Some(r) if countdown_ring_shown => countdown_ring(r - now, total_s, GAUGE_DIAMETER, GAUGE_LINE_WIDTH),
+                    _ => Vec::new(),
+                })),
+                animal: animal.into(),
             }
         }
     }
@@ -134,10 +172,8 @@ fn window(w: &Option<WindowView>, total_s: f64, now: f64, local_shift: f64) -> U
 pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
     let shift = local_offset_s();
     let seed = if row.account_id.is_empty() { &row.name } else { &row.account_id };
-    let animal = row
-        .burn_projected_seconds
-        .map(|s| BurnRateResult::from_projected_time(s).animal)
-        .unwrap_or("");
+    let animal = animal_for(row.burn_projected_seconds);
+    let sidebar = sidebar_percent(row);
     UiRow {
         id: row.account_id.as_str().into(),
         name: row.name.as_str().into(),
@@ -153,21 +189,88 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
         status: status_str(&row.status).into(),
         peak: row.peak_utilization as f32,
         peak_color: to_color(usage_color(row.peak_utilization)),
-        five_hour: window(&row.five_hour, FIVE_HOUR_S, now_unix_s, shift),
-        seven_day: window(&row.seven_day, SEVEN_DAY_S, now_unix_s, shift),
-        fable: window(&row.fable, SEVEN_DAY_S, now_unix_s, shift),
+        five_hour: window(&row.five_hour, FIVE_HOUR_S, now_unix_s, shift, animal, true),
+        seven_day: window(
+            &row.seven_day,
+            SEVEN_DAY_S,
+            now_unix_s,
+            shift,
+            animal_for(row.burn_projected_seconds_7d),
+            true,
+        ),
+        // macOS `showCountdown: false` for Fable: no countdown segments.
+        fable: window(
+            &row.fable,
+            SEVEN_DAY_S,
+            now_unix_s,
+            shift,
+            animal_for(row.burn_projected_seconds_fable),
+            false,
+        ),
         avatar_color: to_color(avatar_color(seed)),
         animal: animal.into(),
         staleness: staleness(row.last_synced_unix, now_unix_s).into(),
         error: row.error.clone().unwrap_or_default().into(),
         extension_sourced: row.is_extension_sourced,
         claude_code: row.is_active_claude_code,
+        pinned: row.is_pinned,
+        expired: row.status == AccountStatus::Expired,
+        kind_label: row.kind_label.as_str().into(),
+        expired_hint: row.expired_hint.as_str().into(),
+        sidebar_percent: sidebar.unwrap_or(0.0) as f32,
+        sidebar_color: to_color(usage_color(sidebar.unwrap_or(0.0))),
+        has_sidebar_percent: sidebar.is_some(),
+        loading: false,
     }
+}
+
+/// Tray tooltip text: the menu-bar row's 5h utilization and reset countdown.
+pub fn tray_tooltip(row: Option<&DisplayRow>, now: f64) -> String {
+    let Some(w) = row.and_then(|r| r.five_hour.as_ref()) else {
+        return "Claude Dashboard - --".into();
+    };
+    // Truncated, like macOS `Int(utilization)`; the countdown is always `XhYYm`.
+    let mut s = format!("Claude Dashboard - {}%", w.utilization as i64);
+    if let Some(reset) = w.resets_at_unix {
+        let mins = ((reset - now) / 60.0).floor() as i64;
+        if mins > 0 {
+            s.push_str(&format!(" \u{b7} resets in {}h{:02}m", mins / 60, mins % 60));
+        }
+    }
+    s
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use slint::Model;
+
+    #[test]
+    fn tray_tooltip_with_reset() {
+        let mut r = row();
+        r.five_hour = Some(WindowView { utilization: 64.4, resets_at_unix: Some(1e9 + 72.0 * 60.0), is_limited: false });
+        assert_eq!(tray_tooltip(Some(&r), 1e9), "Claude Dashboard - 64% \u{b7} resets in 1h12m");
+        r.five_hour = Some(WindowView { utilization: 64.0, resets_at_unix: Some(1e9 + 45.0 * 60.0), is_limited: false });
+        assert_eq!(tray_tooltip(Some(&r), 1e9), "Claude Dashboard - 64% \u{b7} resets in 0h45m");
+        // Truncated, not rounded (macOS Int()).
+        r.five_hour = Some(WindowView { utilization: 64.9, resets_at_unix: Some(1e9 + 125.0 * 60.0), is_limited: false });
+        assert_eq!(tray_tooltip(Some(&r), 1e9), "Claude Dashboard - 64% \u{b7} resets in 2h05m");
+    }
+
+    #[test]
+    fn tray_tooltip_no_data() {
+        assert_eq!(tray_tooltip(None, 1e9), "Claude Dashboard - --");
+    }
+
+    #[test]
+    fn tray_tooltip_no_reset_omits_suffix() {
+        let mut r = row();
+        r.five_hour = Some(WindowView { utilization: 12.0, resets_at_unix: None, is_limited: false });
+        assert_eq!(tray_tooltip(Some(&r), 1e9), "Claude Dashboard - 12%");
+        // A reset already in the past is omitted too.
+        r.five_hour = Some(WindowView { utilization: 12.0, resets_at_unix: Some(1e9 - 5.0), is_limited: false });
+        assert_eq!(tray_tooltip(Some(&r), 1e9), "Claude Dashboard - 12%");
+    }
 
     #[test]
     fn claude_code_flag_maps_to_ui() {
@@ -189,10 +292,15 @@ mod tests {
             fable: None,
             peak_utilization: 0.0,
             burn_projected_seconds: None,
+            burn_projected_seconds_7d: None,
+            burn_projected_seconds_fable: None,
             is_extension_sourced: false,
             error: None,
             last_synced_unix: None,
             is_active_claude_code: false,
+            is_pinned: false,
+            kind_label: String::new(),
+            expired_hint: String::new(),
         }
     }
 
@@ -209,6 +317,56 @@ mod tests {
         let ui = to_ui_row(&r, 1e9);
         assert!(!ui.five_hour.gauge_path.is_empty());
         assert!((ui.five_hour.fraction - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn countdown_segments_turn_green_under_30_percent() {
+        let total = FIVE_HOUR_S;
+        let blue = countdown_ring(total * 0.6, total, GAUGE_DIAMETER, GAUGE_LINE_WIDTH);
+        let green = countdown_ring(total * 0.1, total, GAUGE_DIAMETER, GAUGE_LINE_WIDTH);
+        assert!(!blue.is_empty() && !green.is_empty());
+        let (b, g) = (blue[0].color, green[0].color);
+        assert!(b.blue() > b.green(), "blue above 30% left");
+        assert!(g.green() > g.blue() && g.green() > g.red(), "green under 30% left");
+        assert!(blue.len() >= green.len());
+        assert!(blue[0].path.starts_with("M "));
+        assert!(countdown_ring(0.0, total, GAUGE_DIAMETER, GAUGE_LINE_WIDTH).is_empty());
+    }
+
+    #[test]
+    fn every_window_carries_its_animal_and_fable_has_no_countdown() {
+        let mut r = row();
+        let reset = Some(1e9 + 3600.0);
+        r.five_hour = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
+        r.seven_day = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
+        r.fable = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
+        r.burn_projected_seconds = Some(600.0);
+        r.burn_projected_seconds_7d = Some(1.0e6);
+        r.burn_projected_seconds_fable = Some(600.0);
+        let ui = to_ui_row(&r, 1e9);
+        assert!(!ui.five_hour.animal.is_empty());
+        assert!(!ui.seven_day.animal.is_empty());
+        assert!(!ui.fable.animal.is_empty());
+        assert_ne!(ui.five_hour.animal, ui.seven_day.animal);
+        assert!(ui.five_hour.segments.row_count() > 0);
+        assert!(ui.seven_day.segments.row_count() > 0);
+        assert_eq!(ui.fable.segments.row_count(), 0);
+    }
+
+    #[test]
+    fn pin_expired_and_sidebar_fields_map_to_ui() {
+        let mut r = row();
+        r.is_pinned = true;
+        r.status = AccountStatus::Expired;
+        r.expired_hint = "hint".into();
+        let ui = to_ui_row(&r, 1e9);
+        assert!(ui.pinned && ui.expired && !ui.has_sidebar_percent);
+        assert_eq!(ui.expired_hint.as_str(), "hint");
+        r.status = AccountStatus::Active;
+        r.five_hour = Some(WindowView { utilization: 42.0, resets_at_unix: None, is_limited: false });
+        let ui = to_ui_row(&r, 1e9);
+        assert!(ui.has_sidebar_percent);
+        assert!((ui.sidebar_percent - 42.0).abs() < 1e-6);
     }
 
     #[test]
