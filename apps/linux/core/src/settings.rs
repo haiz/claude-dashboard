@@ -14,6 +14,20 @@ pub const DEFAULT_REFRESH_MINUTES: u64 = 5;
 pub const MIN_REFRESH_MINUTES: u64 = 1;
 pub const MAX_REFRESH_MINUTES: u64 = 60;
 
+// Auto Switch and Critical Accounts (macOS `AutoSwitchSettings` / `CriticalSettings`).
+pub const AUTO_SWITCH_FIVE_HOUR_RANGE: std::ops::RangeInclusive<i64> = 50..=99;
+pub const AUTO_SWITCH_SEVEN_DAY_RANGE: std::ops::RangeInclusive<i64> = 50..=100;
+pub const DEFAULT_AUTO_SWITCH_FIVE_HOUR: i64 = 95;
+pub const DEFAULT_AUTO_SWITCH_SEVEN_DAY: i64 = 99;
+pub const CRITICAL_PACE_RANGE: std::ops::RangeInclusive<i64> = 10..=100;
+pub const CRITICAL_PACE_STEP: i64 = 5;
+pub const CRITICAL_HOUR_RANGE: std::ops::RangeInclusive<i64> = 0..=23;
+pub const DEFAULT_CRITICAL_PACE: i64 = 50;
+pub const DEFAULT_CRITICAL_HIGH_PACE: i64 = 80;
+pub const DEFAULT_CRITICAL_QUIET_START: i64 = 0;
+pub const DEFAULT_CRITICAL_QUIET_END: i64 = 7;
+pub const DEFAULT_CRITICAL_TIME_ZONE: &str = "Asia/Ho_Chi_Minh";
+
 fn default_true() -> bool {
     true
 }
@@ -43,6 +57,33 @@ pub struct Settings {
     /// macOS `autoPingEnabled`: ping every active account whose 5h or 7d window is not running.
     #[serde(rename = "autoPingEnabled")]
     pub auto_ping_enabled: bool,
+    #[serde(rename = "autoSwitchEnabled")]
+    pub auto_switch_enabled: bool,
+    #[serde(rename = "autoSwitchFiveHourThreshold")]
+    pub auto_switch_five_hour: i64,
+    #[serde(rename = "autoSwitchSevenDayThreshold")]
+    pub auto_switch_seven_day: i64,
+    /// Lets the flyout footer show the toggle when the active account nears a limit.
+    #[serde(rename = "autoSwitchShowWidgetToggle")]
+    pub auto_switch_show_widget_toggle: bool,
+    /// The home account (bolt): Claude Code comes back to it after each of its 5h resets.
+    #[serde(rename = "autoSwitchPriorityAccountId", skip_serializing_if = "Option::is_none")]
+    pub auto_switch_priority_id: Option<String>,
+    /// Its 5h `resetsAt` (Unix seconds) when ticked or last used; none before its window started.
+    #[serde(rename = "autoSwitchPriorityBaseline", skip_serializing_if = "Option::is_none")]
+    pub auto_switch_priority_baseline: Option<f64>,
+    #[serde(rename = "criticalPace")]
+    pub critical_pace: i64,
+    /// Never below `critical_pace`.
+    #[serde(rename = "criticalHighPace")]
+    pub critical_high_pace: i64,
+    #[serde(rename = "criticalQuietStart")]
+    pub critical_quiet_start: i64,
+    #[serde(rename = "criticalQuietEnd")]
+    pub critical_quiet_end: i64,
+    /// An IANA zone name the quiet hours are read in.
+    #[serde(rename = "criticalTimeZone")]
+    pub critical_time_zone: String,
 }
 
 /// On-disk shape: also accepts the legacy `autoRefreshSeconds` and `shell`
@@ -67,6 +108,33 @@ struct RawSettings {
     has_launched_before: bool,
     #[serde(rename = "autoPingEnabled", default)]
     auto_ping_enabled: bool,
+    #[serde(rename = "autoSwitchEnabled", default = "default_true")]
+    auto_switch_enabled: bool,
+    #[serde(rename = "autoSwitchFiveHourThreshold", default)]
+    auto_switch_five_hour: Option<i64>,
+    #[serde(rename = "autoSwitchSevenDayThreshold", default)]
+    auto_switch_seven_day: Option<i64>,
+    #[serde(rename = "autoSwitchShowWidgetToggle", default = "default_true")]
+    auto_switch_show_widget_toggle: bool,
+    #[serde(rename = "autoSwitchPriorityAccountId", default)]
+    auto_switch_priority_id: Option<String>,
+    #[serde(rename = "autoSwitchPriorityBaseline", default)]
+    auto_switch_priority_baseline: Option<f64>,
+    #[serde(rename = "criticalPace", default)]
+    critical_pace: Option<i64>,
+    #[serde(rename = "criticalHighPace", default)]
+    critical_high_pace: Option<i64>,
+    #[serde(rename = "criticalQuietStart", default)]
+    critical_quiet_start: Option<i64>,
+    #[serde(rename = "criticalQuietEnd", default)]
+    critical_quiet_end: Option<i64>,
+    #[serde(rename = "criticalTimeZone", default)]
+    critical_time_zone: Option<String>,
+}
+
+/// A stored value outside `range` (or missing) loads as `default` (macOS `stored(_:in:default:)`).
+fn in_range(v: Option<i64>, range: std::ops::RangeInclusive<i64>, default: i64) -> i64 {
+    v.filter(|v| range.contains(v)).unwrap_or(default)
 }
 
 impl From<RawSettings> for Settings {
@@ -76,6 +144,7 @@ impl From<RawSettings> for Settings {
             (None, Some(0)) | (None, None) => default_minutes(),
             (None, Some(s)) => (s.saturating_add(30) / 60).clamp(MIN_REFRESH_MINUTES, MAX_REFRESH_MINUTES),
         };
+        let pace = in_range(r.critical_pace, CRITICAL_PACE_RANGE, DEFAULT_CRITICAL_PACE);
         Settings {
             auto_refresh_enabled: r.auto_refresh_enabled,
             auto_refresh_minutes: minutes,
@@ -85,6 +154,20 @@ impl From<RawSettings> for Settings {
             last_auto_update_check_unix: r.last_auto_update_check_unix,
             has_launched_before: r.has_launched_before,
             auto_ping_enabled: r.auto_ping_enabled,
+            auto_switch_enabled: r.auto_switch_enabled,
+            auto_switch_five_hour: in_range(r.auto_switch_five_hour, AUTO_SWITCH_FIVE_HOUR_RANGE, DEFAULT_AUTO_SWITCH_FIVE_HOUR),
+            auto_switch_seven_day: in_range(r.auto_switch_seven_day, AUTO_SWITCH_SEVEN_DAY_RANGE, DEFAULT_AUTO_SWITCH_SEVEN_DAY),
+            auto_switch_show_widget_toggle: r.auto_switch_show_widget_toggle,
+            auto_switch_priority_id: r.auto_switch_priority_id,
+            auto_switch_priority_baseline: r.auto_switch_priority_baseline,
+            critical_pace: pace,
+            critical_high_pace: in_range(r.critical_high_pace, CRITICAL_PACE_RANGE, DEFAULT_CRITICAL_HIGH_PACE).max(pace),
+            critical_quiet_start: in_range(r.critical_quiet_start, CRITICAL_HOUR_RANGE, DEFAULT_CRITICAL_QUIET_START),
+            critical_quiet_end: in_range(r.critical_quiet_end, CRITICAL_HOUR_RANGE, DEFAULT_CRITICAL_QUIET_END),
+            critical_time_zone: r
+                .critical_time_zone
+                .filter(|z| z.parse::<chrono_tz::Tz>().is_ok())
+                .unwrap_or_else(|| DEFAULT_CRITICAL_TIME_ZONE.to_string()),
         }
     }
 }
@@ -100,6 +183,17 @@ impl Default for Settings {
             last_auto_update_check_unix: None,
             has_launched_before: false,
             auto_ping_enabled: false,
+            auto_switch_enabled: true,
+            auto_switch_five_hour: DEFAULT_AUTO_SWITCH_FIVE_HOUR,
+            auto_switch_seven_day: DEFAULT_AUTO_SWITCH_SEVEN_DAY,
+            auto_switch_show_widget_toggle: true,
+            auto_switch_priority_id: None,
+            auto_switch_priority_baseline: None,
+            critical_pace: DEFAULT_CRITICAL_PACE,
+            critical_high_pace: DEFAULT_CRITICAL_HIGH_PACE,
+            critical_quiet_start: DEFAULT_CRITICAL_QUIET_START,
+            critical_quiet_end: DEFAULT_CRITICAL_QUIET_END,
+            critical_time_zone: DEFAULT_CRITICAL_TIME_ZONE.to_string(),
         }
     }
 }
@@ -109,15 +203,37 @@ impl Settings {
     pub fn effective_refresh_minutes(&self) -> u64 {
         self.auto_refresh_minutes.clamp(MIN_REFRESH_MINUTES, MAX_REFRESH_MINUTES)
     }
+
+    /// Raising it above the high critical pace raises that with it (macOS `pace.didSet`).
+    pub fn set_critical_pace(&mut self, v: i64) {
+        self.critical_pace = v.clamp(*CRITICAL_PACE_RANGE.start(), *CRITICAL_PACE_RANGE.end());
+        self.critical_high_pace = self.critical_high_pace.max(self.critical_pace);
+    }
+
+    /// Never below the critical pace.
+    pub fn set_critical_high_pace(&mut self, v: i64) {
+        self.critical_high_pace = v.clamp(self.critical_pace, *CRITICAL_PACE_RANGE.end());
+    }
 }
 
-/// Settings > General "Reset": auto refresh back to on / 5 min, Auto Ping off and auto
-/// update on. Launch at startup, the scan browser and the update-check stamp stay.
+/// Settings > General "Reset": auto refresh back to on / 5 min, Auto Ping off, Auto Switch
+/// and Critical Accounts back to their defaults, auto update on. Launch at startup, the scan
+/// browser, the update-check stamp and the home account stay (macOS `resetSettingsToDefaults`).
 pub fn reset_general(s: &mut Settings) {
+    let d = Settings::default();
     s.auto_refresh_enabled = true;
     s.auto_refresh_minutes = DEFAULT_REFRESH_MINUTES;
     s.auto_ping_enabled = false;
     s.auto_update = true;
+    s.auto_switch_enabled = d.auto_switch_enabled;
+    s.auto_switch_five_hour = d.auto_switch_five_hour;
+    s.auto_switch_seven_day = d.auto_switch_seven_day;
+    s.auto_switch_show_widget_toggle = d.auto_switch_show_widget_toggle;
+    s.critical_pace = d.critical_pace;
+    s.critical_high_pace = d.critical_high_pace;
+    s.critical_quiet_start = d.critical_quiet_start;
+    s.critical_quiet_end = d.critical_quiet_end;
+    s.critical_time_zone = d.critical_time_zone;
 }
 
 /// `settings.json` beside `accounts.json`.
@@ -261,6 +377,7 @@ mod tests {
             last_auto_update_check_unix: None,
             has_launched_before: true,
             auto_ping_enabled: true,
+            ..Settings::default()
         };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s);
@@ -326,6 +443,7 @@ mod tests {
             last_auto_update_check_unix: Some(9.0),
             has_launched_before: true,
             auto_ping_enabled: true,
+            ..Settings::default()
         };
         reset_general(&mut s);
         assert!(s.auto_refresh_enabled);
@@ -345,6 +463,107 @@ mod tests {
         let s = load_from(&p);
         assert!(s.launch_at_startup);
         assert_eq!(s.auto_refresh_minutes, 15);
+    }
+
+    #[test]
+    fn auto_switch_and_critical_defaults() {
+        let s = load_str("{}");
+        assert!(s.auto_switch_enabled, "macOS: on by default");
+        assert_eq!((s.auto_switch_five_hour, s.auto_switch_seven_day), (95, 99));
+        assert!(s.auto_switch_show_widget_toggle);
+        assert_eq!((s.auto_switch_priority_id.clone(), s.auto_switch_priority_baseline), (None, None));
+        assert_eq!((s.critical_pace, s.critical_high_pace), (50, 80));
+        assert_eq!((s.critical_quiet_start, s.critical_quiet_end), (0, 7));
+        assert_eq!(s.critical_time_zone, "Asia/Ho_Chi_Minh");
+        assert_eq!(s, Settings::default());
+    }
+
+    #[test]
+    fn out_of_range_values_fall_back() {
+        let s = load_str(
+            r#"{"autoSwitchFiveHourThreshold":100,"autoSwitchSevenDayThreshold":49,"criticalPace":5,
+                "criticalHighPace":101,"criticalQuietStart":24,"criticalQuietEnd":-1,"criticalTimeZone":"Mars/Base"}"#,
+        );
+        assert_eq!((s.auto_switch_five_hour, s.auto_switch_seven_day), (95, 99));
+        assert_eq!((s.critical_pace, s.critical_high_pace), (50, 80));
+        assert_eq!((s.critical_quiet_start, s.critical_quiet_end), (0, 7));
+        assert_eq!(s.critical_time_zone, "Asia/Ho_Chi_Minh");
+        let edge = load_str(r#"{"autoSwitchFiveHourThreshold":50,"autoSwitchSevenDayThreshold":100,"criticalTimeZone":"Europe/Paris"}"#);
+        assert_eq!((edge.auto_switch_five_hour, edge.auto_switch_seven_day), (50, 100));
+        assert_eq!(edge.critical_time_zone, "Europe/Paris");
+    }
+
+    #[test]
+    fn high_pace_never_below_pace() {
+        let s = load_str(r#"{"criticalPace":90,"criticalHighPace":60}"#);
+        assert_eq!((s.critical_pace, s.critical_high_pace), (90, 90));
+        let mut s = Settings::default();
+        s.set_critical_pace(95);
+        assert_eq!((s.critical_pace, s.critical_high_pace), (95, 95), "raising pace raises high pace");
+        s.set_critical_high_pace(60);
+        assert_eq!(s.critical_high_pace, 95, "high pace never drops below pace");
+        s.set_critical_pace(10);
+        assert_eq!((s.critical_pace, s.critical_high_pace), (10, 95));
+    }
+
+    #[test]
+    fn reset_general_resets_switch_and_critical_but_keeps_home_account() {
+        let mut s = Settings {
+            auto_switch_enabled: false,
+            auto_switch_five_hour: 60,
+            auto_switch_seven_day: 70,
+            auto_switch_show_widget_toggle: false,
+            auto_switch_priority_id: Some("home".into()),
+            auto_switch_priority_baseline: Some(42.0),
+            critical_pace: 20,
+            critical_high_pace: 30,
+            critical_quiet_start: 22,
+            critical_quiet_end: 6,
+            critical_time_zone: "Europe/Paris".into(),
+            ..Settings::default()
+        };
+        reset_general(&mut s);
+        let d = Settings::default();
+        assert_eq!(
+            (s.auto_switch_enabled, s.auto_switch_five_hour, s.auto_switch_seven_day, s.auto_switch_show_widget_toggle),
+            (true, 95, 99, true)
+        );
+        assert_eq!((s.critical_pace, s.critical_high_pace, s.critical_quiet_start, s.critical_quiet_end), (50, 80, 0, 7));
+        assert_eq!(s.critical_time_zone, d.critical_time_zone);
+        assert_eq!((s.auto_switch_priority_id.as_deref(), s.auto_switch_priority_baseline), (Some("home"), Some(42.0)));
+    }
+
+    #[test]
+    fn round_trip_keys_use_macos_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        let s = Settings {
+            auto_switch_enabled: false,
+            auto_switch_five_hour: 90,
+            auto_switch_seven_day: 98,
+            auto_switch_show_widget_toggle: false,
+            auto_switch_priority_id: Some("abc".into()),
+            auto_switch_priority_baseline: Some(1_700_000_000.0),
+            critical_pace: 55,
+            critical_high_pace: 85,
+            critical_quiet_start: 23,
+            critical_quiet_end: 5,
+            critical_time_zone: "Europe/Paris".into(),
+            ..Settings::default()
+        };
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p), s);
+        let raw = fs::read_to_string(&p).unwrap();
+        for key in [
+            "autoSwitchEnabled", "autoSwitchFiveHourThreshold", "autoSwitchSevenDayThreshold", "autoSwitchShowWidgetToggle",
+            "autoSwitchPriorityAccountId", "autoSwitchPriorityBaseline", "criticalPace", "criticalHighPace",
+            "criticalQuietStart", "criticalQuietEnd", "criticalTimeZone",
+        ] {
+            assert!(raw.contains(key), "{key} missing in {raw}");
+        }
+        save_to(&p, &Settings::default()).unwrap();
+        let raw = fs::read_to_string(&p).unwrap();
+        assert!(!raw.contains("autoSwitchPriorityAccountId"), "no home account -> key absent: {raw}");
     }
 
     #[test]
