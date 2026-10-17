@@ -248,13 +248,6 @@ impl Interaction {
         }
     }
 
-    /// Preset change that reloads (Overview): new range, entries dropped.
-    pub fn start_loading(&mut self, preset: &str, now_ms: f64) {
-        self.set_preset(preset, now_ms);
-        self.entries.clear();
-        self.loading = true;
-    }
-
     /// New series. A following (non-custom, no cycle) range re-anchors on
     /// `now_ms`; a frozen one keeps its range.
     pub fn loaded(&mut self, entries: Vec<Entry>, now_ms: f64) {
@@ -433,6 +426,7 @@ pub(crate) fn to_state(v: &View) -> ChartState {
         x_ticks: ticks(&v.x_ticks),
         y_ticks: ticks(&v.y_ticks),
         cross_visible: v.cross.is_some(),
+        cross_dot: true,
         cross_x: cx as f32,
         cross_y: cy as f32,
         tooltip: v.tooltip.as_str().into(),
@@ -580,15 +574,6 @@ mod tests {
         i.hover_at(sc2.left + 1.0, sc2.top + 1.0);
         let (cx, _) = i.view(0.0).cross.expect("crosshair");
         assert!(cx >= sc2.left && cx <= sc2.right);
-    }
-
-    #[test]
-    fn start_loading_resets_state() {
-        let mut i = loaded();
-        i.start_loading("7d", NOW);
-        let v = i.view(0.0);
-        assert!(v.loading && v.preset == "7d");
-        assert_eq!(i.range.to_ms - i.range.from_ms, 7.0 * 24.0 * H);
     }
 
     // ---- Task 10: container state (presets, custom, pan/zoom, ruler, cycles) ----

@@ -317,6 +317,8 @@ export component AppWindow inherits Window {
     callback overview-size(float, float);
     callback overview-hover(float, float);
     callback overview-select(float, float);
+    callback overview-pan(float);
+    callback overview-toggle-mode();
     callback overview-reset();
     changed selection => {
         if root.selection == Pane.overview { root.overview-open(); } else { root.overview-close(); }
@@ -528,6 +530,8 @@ export component AppWindow inherits Window {
                 size-changed(w, h) => { root.overview-size(w, h); }
                 hover(x, y) => { root.overview-hover(x, y); }
                 select(a, b) => { root.overview-select(a, b); }
+                pan(dx) => { root.overview-pan(dx); }
+                toggle-mode => { root.overview-toggle-mode(); }
                 reset => { root.overview-reset(); }
             }
             if root.selection == Pane.settings-accounts: AccountsSettingsPane {

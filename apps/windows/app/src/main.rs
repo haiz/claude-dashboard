@@ -95,6 +95,7 @@ fn apply_output(
         }
         // Slide the open History chart to "now" and reload its data.
         history::on_refresh(&app);
+        overview::on_refresh(&app);
     }
     let bar = claude_dashboard_core::rows::menu_bar_row(&out.rows);
     tray::update_label(

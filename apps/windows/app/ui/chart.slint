@@ -23,6 +23,8 @@ export struct ChartLegendItem {
     color: color,
     on: bool,
     has-data: bool,
+    // Burn animal for the selected window ("" = unknown, shown as a dash).
+    animal: string,
 }
 
 export struct ChartPoint {
@@ -91,6 +93,8 @@ export struct ChartState {
     x-ticks: [ChartTick],
     y-ticks: [ChartTick],
     cross-visible: bool,
+    // A dot on the crosshair (History); the Overview dots each line instead.
+    cross-dot: bool,
     cross-x: float,
     cross-y: float,
     tooltip: string,
@@ -358,7 +362,7 @@ export component InteractiveChart inherits Rectangle {
         height: root.state.plot-height * 1px;
         background: Theme.text-secondary;
     }
-    if root.state.cross-visible && !root.dragging && !root.panning: Rectangle {
+    if root.state.cross-visible && root.state.cross-dot && !root.dragging && !root.panning: Rectangle {
         x: root.state.cross-x * 1px - 4px;
         y: root.state.cross-y * 1px - 4px;
         width: 8px;
@@ -633,21 +637,44 @@ export component OverviewPane inherits VerticalLayout {
     callback size-changed(float, float);
     callback hover(float, float);
     callback select(float, float);
+    callback pan(float);
+    callback toggle-mode();
     callback reset();
     spacing: 12px;
 
+    // Same container row as the History box: mode, presets, Custom, Avg, window.
     HorizontalLayout {
-        spacing: 8px;
-        for w[i] in ["5h", "7d", "fable"]: PresetChip {
-            label: i == 2 ? "Fable" : w;
-            active: root.state.window == w;
-            clicked => { root.window(w); }
+        spacing: 6px;
+        PresetChip {
+            compact: true;
+            label: root.state.pan-mode ? "Pan" : "Zoom";
+            clicked => { root.toggle-mode(); }
+        }
+        for p in ["5h", "24h", "3d", "7d", "30d"]: PresetChip {
+            compact: true;
+            label: p;
+            active: !root.state.custom && root.state.preset == p;
+            clicked => { root.preset(p); }
+        }
+        if root.state.custom: Text {
+            text: "Custom";
+            color: Theme.text-secondary;
+            font-size: 11px;
+            vertical-alignment: center;
         }
         Rectangle { horizontal-stretch: 1; }
-        for p in ["5h", "24h", "3d", "7d", "30d"]: PresetChip {
-            label: p;
-            active: root.state.preset == p;
-            clicked => { root.preset(p); }
+        Text {
+            text: root.state.avg-text;
+            color: root.state.avg-text == "Avg: --" ? Theme.text-secondary : (root.state.avg-hot ? #ff9f0a : #34c759);
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        for w[i] in ["5h", "7d", "fable"]: PresetChip {
+            compact: true;
+            label: i == 2 ? "F" : w;
+            active: root.state.window == w;
+            clicked => { root.window(w); }
         }
     }
     Flickable {
@@ -658,7 +685,7 @@ export component OverviewPane inherits VerticalLayout {
             alignment: start;
             for item in root.state.legend: Rectangle {
                 height: 28px;
-                width: lt.preferred-width + 38px;
+                width: lt.preferred-width + 38px + 24px;
                 border-radius: 6px;
                 border-width: 1px;
                 border-color: item.on ? item.color : Theme.card-border;
@@ -681,6 +708,13 @@ export component OverviewPane inherits VerticalLayout {
                     color: Theme.text-primary;
                     font-size: 12px;
                 }
+                Text {
+                    x: parent.width - self.preferred-width - 8px;
+                    y: (parent.height - self.height) / 2;
+                    text: item.animal != "" ? item.animal : "{2014}";
+                    color: Theme.text-secondary;
+                    font-size: 13px;
+                }
                 lt-touch := TouchArea { clicked => { root.toggle(item.id); } }
             }
         }
@@ -700,11 +734,14 @@ export component OverviewPane inherits VerticalLayout {
             size-changed(w, h) => { root.size-changed(w, h); }
             hover(x, y) => { root.hover(x, y); }
             select(a, b) => { root.select(a, b); }
+            pan(dx) => { root.pan(dx); }
             reset => { root.reset(); }
         }
     }
     Text {
-        text: "Click an account to show or hide its line \u{b7} drag to zoom \u{b7} double-click to reset";
+        text: root.state.pan-mode
+            ? "Click an account to show or hide its line \u{b7} drag to pan \u{b7} double-click to reset"
+            : "Click an account to show or hide its line \u{b7} drag to zoom \u{b7} double-click to reset";
         color: Theme.text-secondary;
         font-size: 11px;
     }
