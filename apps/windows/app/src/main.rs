@@ -12,6 +12,7 @@ mod instance;
 mod migration;
 mod model;
 mod pin;
+mod ping;
 mod pipe;
 mod popover;
 mod refresh;
