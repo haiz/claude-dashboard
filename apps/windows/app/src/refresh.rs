@@ -4,9 +4,9 @@ use std::collections::{HashMap, HashSet};
 
 use claude_dashboard_core::api;
 use claude_dashboard_core::burn_rate::BurnRateTracker;
-use claude_dashboard_core::model::AccountStatus;
+use claude_dashboard_core::model::{Account, AccountStatus};
 use claude_dashboard_core::extension_sources;
-use claude_dashboard_core::rows::{build_rows, peak_utilization, BuildInput, DisplayRow, WindowView};
+use claude_dashboard_core::rows::{build_rows, peak_utilization, BuildInput, DisplayRow, WindowView, sort_rows};
 use claude_dashboard_core::store::{self, UsageLogStore};
 use claude_dashboard_core::usage::{UsageData, UsageLimit};
 
@@ -14,6 +14,64 @@ use claude_dashboard_core::usage::{UsageData, UsageLimit};
 pub struct RefreshOutput {
     pub rows: Vec<DisplayRow>,
     pub peak: f64,
+}
+
+/// What wakes the refresh loop: every account, or just one (the account page's Refresh).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Nudge {
+    All,
+    One(String),
+}
+
+/// Folds the nudges that piled up while a cycle ran: any `All` covers everything, otherwise
+/// each distinct account once, in arrival order.
+pub fn coalesce(nudges: Vec<Nudge>) -> Vec<Nudge> {
+    if nudges.contains(&Nudge::All) {
+        return vec![Nudge::All];
+    }
+    let mut out: Vec<Nudge> = Vec::new();
+    for n in nudges {
+        if !out.contains(&n) {
+            out.push(n);
+        }
+    }
+    out
+}
+
+/// Puts `fresh` in place of the row with the same account id (appended when `prev` has none)
+/// and re-sorts with the rule `build_rows` uses. Every other row is untouched, projections
+/// included.
+pub fn merge_one(prev: &[DisplayRow], fresh: DisplayRow, now_unix_s: f64) -> Vec<DisplayRow> {
+    let mut rows = prev.to_vec();
+    match rows.iter_mut().find(|r| r.account_id == fresh.account_id) {
+        Some(slot) => *slot = fresh,
+        None => rows.push(fresh),
+    }
+    sort_rows(&mut rows, now_unix_s);
+    rows
+}
+
+/// Refreshes one account and keeps every other row from `prev` as it was (their burn
+/// projections included). A failure to read the store, or an account that no longer
+/// exists, leaves `prev` unchanged.
+pub fn refresh_one(account_id: &str, prev: &[DisplayRow], now_unix_s: f64) -> RefreshOutput {
+    let fresh = store::load_accounts()
+        .map_err(|e| e.to_string())
+        .and_then(|all| {
+            let one: Vec<Account> = all.into_iter().filter(|a| a.id == account_id).collect();
+            if one.is_empty() { Err(format!("account {account_id} not found")) } else { Ok(one) }
+        })
+        .map(|one| fetch_and_build(&one, now_unix_s));
+    match fresh {
+        Ok(mut rows) if rows.len() == 1 => {
+            backfill_errored_rows(prev, &mut rows);
+            let merged = merge_one(prev, rows.remove(0), now_unix_s);
+            let peak = peak_utilization(&merged);
+            RefreshOutput { rows: merged, peak }
+        }
+        Ok(_) => merge_errors(prev, Err("unexpected row count".into())),
+        Err(e) => merge_errors(prev, Err(e)),
+    }
 }
 
 /// Ok -> the fresh output; Err -> the previous rows, unchanged.
@@ -127,7 +185,14 @@ pub fn refresh_once(now_unix_s: f64) -> Result<RefreshOutput, String> {
         Ok(a) => a,
         Err(e) => return Err(e.to_string()),
     };
+    let rows = fetch_and_build(&accounts, now_unix_s);
+    let peak = peak_utilization(&rows);
+    Ok(RefreshOutput { rows, peak })
+}
 
+/// Fetches usage for `accounts` (one thread each), saves rotated keys and sync stamps,
+/// logs the readings and builds their sorted rows.
+fn fetch_and_build(accounts: &[Account], now_unix_s: f64) -> Vec<DisplayRow> {
     let results: Vec<(String, Result<Fetched, String>)> = std::thread::scope(|s| {
         let handles: Vec<_> = accounts
             .iter()
@@ -183,16 +248,14 @@ pub fn refresh_once(now_unix_s: f64) -> Result<RefreshOutput, String> {
 
     let sources = load_sources();
     let active_email = claude_dashboard_core::claude_code::active_email();
-    let rows = build_rows(BuildInput {
-        accounts: &accounts,
+    build_rows(BuildInput {
+        accounts,
         usage_by_account: &usage_by_account,
         errors: &errors,
         sources: &sources,
         now_unix_s,
         active_claude_code_email: active_email.as_deref(),
-    });
-    let peak = peak_utilization(&rows);
-    Ok(RefreshOutput { rows, peak })
+    })
 }
 
 /// How long the refresh loop waits between cycles: the user's Auto Refresh
@@ -224,7 +287,6 @@ mod tests {
         assert_eq!(timeout_for(true, 0), Some(Duration::from_secs(60)));
         assert_eq!(timeout_for(true, 999), Some(Duration::from_secs(3600)));
     }
-    use claude_dashboard_core::model::Account;
 
     #[test]
     fn projections_follow_rising_usage_per_window_and_skip_bad_rows() {
@@ -293,6 +355,53 @@ mod tests {
     fn out(rows: Vec<DisplayRow>) -> RefreshOutput {
         let peak = peak_utilization(&rows);
         RefreshOutput { rows, peak }
+    }
+
+    #[test]
+    fn refresh_one_keeps_other_rows() {
+        let mut prev = rows(&[]);
+        assert_eq!(prev.iter().map(|r| r.account_id.as_str()).collect::<Vec<_>>(), ["b", "a", "c"]);
+        for r in prev.iter_mut() {
+            r.burn_projected_seconds = Some(1234.0);
+        }
+        // b was 70% and led; it drops to 5%, so the order becomes a, c, b.
+        let mut fresh = prev.iter().find(|r| r.account_id == "b").unwrap().clone();
+        fresh.five_hour = Some(WindowView { utilization: 5.0, resets_at_unix: None, is_limited: false });
+        fresh.burn_projected_seconds = Some(99.0);
+        let merged = merge_one(&prev, fresh.clone(), NOW);
+        assert_eq!(merged.iter().map(|r| r.account_id.as_str()).collect::<Vec<_>>(), ["a", "c", "b"]);
+        for id in ["a", "c"] {
+            let old = prev.iter().find(|r| r.account_id == id).unwrap();
+            let new = merged.iter().find(|r| r.account_id == id).unwrap();
+            assert_eq!(new, old, "{id} untouched, projection kept");
+        }
+        assert_eq!(merged.iter().find(|r| r.account_id == "b").unwrap(), &fresh);
+    }
+
+    #[test]
+    fn merge_one_appends_unknown_and_pin_stays_first() {
+        let mut prev = rows(&[]);
+        prev.iter_mut().find(|r| r.account_id == "c").unwrap().is_pinned = true;
+        prev.sort_by_key(|r| r.account_id != "c");
+        let mut fresh = prev.iter().find(|r| r.account_id == "b").unwrap().clone();
+        fresh.five_hour = Some(WindowView { utilization: 99.0, resets_at_unix: None, is_limited: false });
+        let merged = merge_one(&prev, fresh, NOW);
+        assert_eq!(merged[0].account_id, "c", "pinned row leads");
+        assert_eq!(merged[1].account_id, "b");
+        let mut extra = merged[2].clone();
+        extra.account_id = "z".into();
+        assert_eq!(merge_one(&merged, extra, NOW).len(), 4);
+    }
+
+    #[test]
+    fn coalesce_folds_pending_nudges() {
+        use Nudge::*;
+        assert_eq!(coalesce(vec![One("a".into()), All, One("b".into())]), vec![All]);
+        assert_eq!(
+            coalesce(vec![One("a".into()), One("b".into()), One("a".into())]),
+            vec![One("a".into()), One("b".into())]
+        );
+        assert!(coalesce(vec![]).is_empty());
     }
 
     #[test]

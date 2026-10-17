@@ -67,21 +67,43 @@ fn view(l: &UsageLimit) -> WindowView {
     }
 }
 
-/// Port of `sortKey`: 5-hour utilization over time remaining.
-fn sort_key(usage: Option<&UsageData>, status: &AccountStatus, now: f64) -> f64 {
-    let Some(u) = usage else { return -1.0 };
-    if *status != AccountStatus::Active {
+/// Port of `sortKey`: 5-hour utilization over time remaining. Read from the row, so it
+/// also holds for a row spliced into an existing list; an errored row had no usage when
+/// it was built, so it keys -1 whatever last-good windows it was backfilled with.
+fn row_sort_key(row: &DisplayRow, now: f64) -> f64 {
+    let Some(w) = row.five_hour.as_ref() else { return -1.0 };
+    if row.status != AccountStatus::Active || row.error.is_some() {
         return -1.0;
     }
-    let remaining = match u.five_hour.resets_at {
+    let remaining = match w.resets_at_unix {
         None => FIVE_HOUR_SECONDS,
-        Some(r) => (r as f64 - now).max(60.0),
+        Some(r) => (r - now).max(60.0),
     };
-    u.five_hour.utilization / remaining
+    w.utilization / remaining
+}
+
+/// The display order: 1 pinned, 2 active Claude Code (only when nothing is pinned),
+/// 3 burn key. Stable.
+pub fn sort_rows(rows: &mut [DisplayRow], now: f64) {
+    let any_pinned = rows.iter().any(|r| r.is_pinned);
+    let keys: HashMap<String, f64> =
+        rows.iter().map(|r| (r.account_id.clone(), row_sort_key(r, now))).collect();
+    rows.sort_by(|a, b| {
+        b.is_pinned
+            .cmp(&a.is_pinned)
+            .then_with(|| {
+                if any_pinned {
+                    std::cmp::Ordering::Equal
+                } else {
+                    b.is_active_claude_code.cmp(&a.is_active_claude_code)
+                }
+            })
+            .then(keys[&b.account_id].partial_cmp(&keys[&a.account_id]).unwrap_or(std::cmp::Ordering::Equal))
+    });
 }
 
 pub fn build_rows(input: BuildInput<'_>) -> Vec<DisplayRow> {
-    let mut keyed: Vec<(bool, f64, DisplayRow)> = input
+    let mut rows: Vec<DisplayRow> = input
         .accounts
         .iter()
         .map(|a| {
@@ -94,7 +116,6 @@ pub fn build_rows(input: BuildInput<'_>) -> Vec<DisplayRow> {
                 .flatten()
                 .map(|w| w.utilization)
                 .fold(0.0, f64::max);
-            let key = sort_key(usage, &a.status, input.now_unix_s);
             let kind = kind_of(a, input.sources);
             let row = DisplayRow {
                 account_id: a.id.clone(),
@@ -119,23 +140,11 @@ pub fn build_rows(input: BuildInput<'_>) -> Vec<DisplayRow> {
                 kind_label: kind.settings_label(),
                 expired_hint: kind.expired_hint(),
             };
-            (a.is_pinned, key, row)
+            row
         })
         .collect();
-    let any_pinned = keyed.iter().any(|k| k.0);
-    // 1 pinned, 2 active Claude Code (only when nothing is pinned), 3 burn key. Stable.
-    keyed.sort_by(|a, b| {
-        b.0.cmp(&a.0)
-            .then_with(|| {
-                if any_pinned {
-                    std::cmp::Ordering::Equal
-                } else {
-                    b.2.is_active_claude_code.cmp(&a.2.is_active_claude_code)
-                }
-            })
-            .then(b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal))
-    });
-    keyed.into_iter().map(|(_, _, r)| r).collect()
+    sort_rows(&mut rows, input.now_unix_s);
+    rows
 }
 
 /// Port of `DashboardViewModel.menuBarPercentText`'s row choice: the pinned

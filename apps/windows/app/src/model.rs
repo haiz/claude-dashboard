@@ -229,15 +229,12 @@ pub fn tray_tooltip(row: Option<&DisplayRow>, now: f64) -> String {
     let Some(w) = row.and_then(|r| r.five_hour.as_ref()) else {
         return "Claude Dashboard - --".into();
     };
-    let mut s = format!("Claude Dashboard - {:.0}%", w.utilization);
+    // Truncated, like macOS `Int(utilization)`; the countdown is always `XhYYm`.
+    let mut s = format!("Claude Dashboard - {}%", w.utilization as i64);
     if let Some(reset) = w.resets_at_unix {
         let mins = ((reset - now) / 60.0).floor() as i64;
         if mins > 0 {
-            if mins >= 60 {
-                s.push_str(&format!(" \u{b7} resets in {}h{:02}m", mins / 60, mins % 60));
-            } else {
-                s.push_str(&format!(" \u{b7} resets in {mins}m"));
-            }
+            s.push_str(&format!(" \u{b7} resets in {}h{:02}m", mins / 60, mins % 60));
         }
     }
     s
@@ -254,7 +251,10 @@ mod tests {
         r.five_hour = Some(WindowView { utilization: 64.4, resets_at_unix: Some(1e9 + 72.0 * 60.0), is_limited: false });
         assert_eq!(tray_tooltip(Some(&r), 1e9), "Claude Dashboard - 64% \u{b7} resets in 1h12m");
         r.five_hour = Some(WindowView { utilization: 64.0, resets_at_unix: Some(1e9 + 45.0 * 60.0), is_limited: false });
-        assert_eq!(tray_tooltip(Some(&r), 1e9), "Claude Dashboard - 64% \u{b7} resets in 45m");
+        assert_eq!(tray_tooltip(Some(&r), 1e9), "Claude Dashboard - 64% \u{b7} resets in 0h45m");
+        // Truncated, not rounded (macOS Int()).
+        r.five_hour = Some(WindowView { utilization: 64.9, resets_at_unix: Some(1e9 + 125.0 * 60.0), is_limited: false });
+        assert_eq!(tray_tooltip(Some(&r), 1e9), "Claude Dashboard - 64% \u{b7} resets in 2h05m");
     }
 
     #[test]

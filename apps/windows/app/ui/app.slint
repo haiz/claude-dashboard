@@ -19,11 +19,13 @@ component GroupHeader inherits Text {
 // Shown in the Dashboard pane and the flyout when no accounts exist. The
 // button opens the Add Account wizard.
 component EmptyState inherits VerticalLayout {
+    in property <string> title: "No Accounts";
+    in property <string> subtitle: "Sync your Claude accounts from your browser to get started.";
     callback add-account();
     alignment: center;
     spacing: 10px;
-    Text { text: "No accounts yet"; color: Theme.text-primary; font-size: 16px; font-weight: 600; horizontal-alignment: center; }
-    Text { text: "Add an account to start tracking usage."; color: Theme.text-secondary; horizontal-alignment: center; wrap: word-wrap; }
+    Text { text: root.title; color: Theme.text-primary; font-size: 16px; font-weight: 600; horizontal-alignment: center; }
+    if root.subtitle != "": Text { text: root.subtitle; color: Theme.text-secondary; horizontal-alignment: center; wrap: word-wrap; }
     HorizontalLayout {
         alignment: center;
         Rectangle {
@@ -42,15 +44,17 @@ component EmptyState inherits VerticalLayout {
 component PaneButton inherits Rectangle {
     in property <string> label;
     in property <color> tint: Theme.accent;
+    in property <bool> enabled: true;
     callback clicked();
     height: 32px;
     width: t.preferred-width + 28px;
     border-radius: 6px;
-    background: touch.has-hover ? root.tint.with-alpha(0.15) : Theme.card-bg;
+    opacity: root.enabled ? 1.0 : 0.45;
+    background: touch.has-hover && root.enabled ? root.tint.with-alpha(0.15) : Theme.card-bg;
     border-width: 1px;
     border-color: Theme.card-border;
-    t := Text { text: root.label; color: root.tint; horizontal-alignment: center; vertical-alignment: center; }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    t := Text { text: root.label; color: root.enabled ? root.tint : Theme.text-secondary; horizontal-alignment: center; vertical-alignment: center; }
+    touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
 }
 
 // Settings > Accounts (macOS AccountsSettingsPane): list, delete (inline
@@ -284,9 +288,17 @@ export component AppWindow inherits Window {
     in-out property <Pane> selection: Pane.dashboard;
     in-out property <string> selected-account-id;
     callback resync();
-    // Account card actions (ids are account ids).
+    // True while a refresh runs (any scope); Rust raises it with the card spinners.
+    in property <bool> refreshing: false;
+    // Account card and account page actions (ids are account ids).
     callback toggle-pin(string, bool);
     callback resync-account(string);
+    // Refresh one account only (the account page header).
+    callback refresh-account(string);
+    // Remove an account (the account page Actions box); same path as Settings > Accounts delete.
+    callback remove-account(string);
+    // An account page was opened (sidebar row, card, flyout); the chart window resets to 5h.
+    callback select-account(string);
     // A gauge click: "5h" | "7d" | "fable". The pane is selected here; the chart reads
     // `requested-window` to pick its window.
     callback open-account-window(string, string);
@@ -339,6 +351,14 @@ export component AppWindow inherits Window {
     callback install-update();
     callback set-auto-update(bool);
 
+    // Opens an account's page on the 5h window (macOS `selectFromSidebar` resets the window).
+    function select-account-page(id: string) {
+        root.requested-window = "5h";
+        root.selected-account-id = id;
+        root.selection = Pane.account;
+        root.select-account(id);
+    }
+
     property <string> pane-title: root.selection == Pane.dashboard ? "Dashboard"
         : root.selection == Pane.overview ? "Overview"
         : root.selection == Pane.help ? "Help"
@@ -381,15 +401,15 @@ export component AppWindow inherits Window {
                         clicked => { root.selection = Pane.overview; }
                     }
 
-                    GroupHeader { text: "Accounts"; }
+                    if root.account-rows.length > 0: GroupHeader { text: "Accounts"; }
                     for acct in root.account-rows: SidebarRow {
                         label: acct.name; initial: acct.initial; tile: acct.avatar-color;
                         text-color: Theme.text-primary;
+                        warning: acct.expired;
+                        trailing: acct.has-sidebar-percent ? floor(acct.sidebar-percent) + "%" : "";
+                        trailing-color: acct.sidebar-color;
                         selected: root.selection == Pane.account && root.selected-account-id == acct.id;
-                        clicked => {
-                            root.selected-account-id = acct.id;
-                            root.selection = Pane.account;
-                        }
+                        clicked => { root.select-account-page(acct.id); }
                     }
 
                     GroupHeader { text: "Tools"; }
@@ -421,21 +441,48 @@ export component AppWindow inherits Window {
         VerticalLayout {
             padding: 24px;
             spacing: 12px;
-            Text {
-                text: root.pane-title;
-                color: Theme.text-primary;
-                font-size: 24px;
-                font-weight: 600;
+            // PaneHeader (the account page draws its own, with the account's name).
+            if root.selection != Pane.account: HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    text: root.pane-title;
+                    color: Theme.text-primary;
+                    font-size: 24px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Rectangle { horizontal-stretch: 1; }
+                if root.selection == Pane.dashboard && root.account-rows.length > 0: PaneButton {
+                    label: "Refresh";
+                    enabled: !root.refreshing;
+                    y: (parent.height - self.height) / 2;
+                    clicked => { root.resync(); }
+                }
             }
             if root.selection == Pane.account: Rectangle {
+                vertical-stretch: 1;
                 // Non-layout container: one pane per row, only the selected one visible.
                 for acct in root.account-rows: AccountPane {
                     visible: root.selected-account-id == acct.id;
                     data: acct;
+                    refreshing: root.refreshing;
                     width: parent.width;
                     height: parent.height;
-                    resync => { root.resync(); }
+                    refresh => { root.refresh-account(acct.id); }
+                    resync => { root.resync-account(acct.id); }
+                    toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
+                    remove => {
+                        root.remove-account(acct.id);
+                        root.selection = Pane.dashboard;
+                    }
                     view-chart => {
+                        root.chart-title = acct.name;
+                        root.chart-color = acct.avatar-color;
+                        root.chart-open = true;
+                        root.view-chart(acct.id);
+                    }
+                    open-window(w) => {
+                        root.requested-window = w;
                         root.chart-title = acct.name;
                         root.chart-color = acct.avatar-color;
                         root.chart-open = true;
@@ -447,31 +494,40 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
                 add-account => { root.add-account(); }
             }
-            if root.selection == Pane.dashboard: Flickable {
-                // Responsive wrap: as many fixed-width cards per row as fit.
-                property <length> card-w: 340px;
-                property <length> card-h: 176px;
-                property <length> gap: 14px;
-                property <int> cols: max(1, floor((self.width + self.gap) / (self.card-w + self.gap)));
+            if root.selection == Pane.dashboard && root.account-rows.length > 0: scroll := Flickable {
+                // macOS adaptive grid: columns 420-480 pt wide, 12 pt apart; a row is as tall
+                // as its tallest card (cards size themselves).
+                property <length> gap: 12px;
+                // Width from the window, not from this Flickable: its own width would loop through the grid it sizes.
+                property <length> avail: root.width - 240px - 48px;
+                property <int> cols: max(1, floor((self.avail + self.gap) / (420px + self.gap)));
                 property <int> nrows: ceil(root.account-rows.length / self.cols);
-                content-height: self.nrows * (self.card-h + self.gap);
-                for acct[i] in root.account-rows: AccountCard {
-                    data: acct;
-                    x: mod(i, parent.cols) * (parent.card-w + parent.gap);
-                    y: floor(i / parent.cols) * (parent.card-h + parent.gap);
-                    width: parent.card-w;
-                    height: parent.card-h;
-                    clicked => {
-                        root.selected-account-id = acct.id;
-                        root.selection = Pane.account;
-                    }
-                    toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
-                    resync => { root.resync-account(acct.id); }
-                    open-window(w) => {
-                        root.selected-account-id = acct.id;
-                        root.selection = Pane.account;
-                        root.requested-window = w;
-                        root.open-account-window(acct.id, w);
+                property <length> card-w: min(480px, (self.avail - (self.cols - 1) * self.gap) / self.cols);
+                content-height: grid.preferred-height;
+                grid := VerticalLayout {
+                    // Explicit so the cards (sized from the window width) are not read back as a size constraint.
+                    min-width: 0px;
+                    preferred-width: 0px;
+                    max-width: 100000px;
+                    spacing: scroll.gap;
+                    alignment: start;
+                    for r in scroll.nrows: HorizontalLayout {
+                        spacing: scroll.gap;
+                        alignment: start;
+                        for c in min(scroll.cols, root.account-rows.length - r * scroll.cols): AccountCard {
+                            property <UiRow> acct: root.account-rows[r * scroll.cols + c];
+                            data: self.acct;
+                            compact: false;
+                            width: scroll.card-w;
+                            clicked => { root.select-account-page(self.acct.id); }
+                            toggle-pin(pinned) => { root.toggle-pin(self.acct.id, pinned); }
+                            resync => { root.resync-account(self.acct.id); }
+                            open-window(w) => {
+                                root.select-account-page(self.acct.id);
+                                root.requested-window = w;
+                                root.open-account-window(self.acct.id, w);
+                            }
+                        }
                     }
                 }
             }
@@ -512,7 +568,7 @@ export component AppWindow inherits Window {
                 set-auto-update(on) => { root.set-auto-update(on); }
             }
             if root.selection == Pane.help: HelpPane { vertical-stretch: 1; }
-            if root.selection != Pane.dashboard: Rectangle { }
+            if root.selection != Pane.dashboard && root.selection != Pane.account: Rectangle { }
         }
     }
 
@@ -589,11 +645,11 @@ export component PopoverWindow inherits Window {
     callback open-account(string);
     callback open-account-window(string, string);
 
-    property <length> card-h: 176px;
-    property <length> list-h: root.account-rows.length == 0 ? 170px
-        : min(root.account-rows.length * (root.card-h + 8px) - 8px, 520px);
-    // padding + header + footer + the gaps between the sections (+ banner).
-    property <length> chrome: 24px + 28px + 28px + 16px + (root.update-banner != "" ? 32px : 0px);
+    // The list is as tall as its cards (they size themselves), capped; the empty state has a fixed height.
+    property <length> list-h: root.account-rows.length == 0 ? 170px : min(list.preferred-height, 560px);
+    // padding 2x12 + header 28 + separator 1 + footer 28 + the 3 gaps between those four
+    // (+ the banner 24 and its gap 8).
+    property <length> chrome: 24px + 28px + 1px + 28px + 24px + (root.update-banner != "" ? 32px : 0px);
 
     Rectangle {
         background: root.use-solid-background ? Theme.window-bg : (Theme.dark ? #20202080 : #f3f3f380);
@@ -637,16 +693,22 @@ export component PopoverWindow inherits Window {
             FlyoutIconButton { glyph: "\u{E897}"; clicked => { root.open-help(); } }
             FlyoutIconButton { glyph: "\u{E713}"; clicked => { root.open-settings(); } }
         }
-        if root.account-rows.length == 0: EmptyState { vertical-stretch: 1; add-account => { root.add-account(); } }
-        if root.account-rows.length > 0: Flickable {
+        if root.account-rows.length == 0: EmptyState {
+            title: "No accounts configured";
+            subtitle: "";
             vertical-stretch: 1;
+            add-account => { root.add-account(); }
+        }
+        // Always present (so the window height can follow `list`); zero-height when empty.
+        Flickable {
+            vertical-stretch: 1;
+            max-height: root.account-rows.length > 0 ? 100000px : 0px;
             content-height: list.preferred-height;
             list := VerticalLayout {
                 spacing: 8px;
                 alignment: start;
                 for acct in root.account-rows: AccountCard {
                     data: acct;
-                    height: root.card-h;
                     clicked => { root.open-account(acct.id); }
                     toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
                     resync => { root.resync-account(acct.id); }
