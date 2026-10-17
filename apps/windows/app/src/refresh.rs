@@ -20,11 +20,70 @@ pub struct RefreshOutput {
 /// What wakes the refresh loop: every account, just one (the account page's Refresh), or
 /// `Reschedule`: the Auto Refresh setting changed, so restart the wait with the new
 /// interval without fetching anything (macOS only reschedules its timer).
+/// `Some`: just these accounts, in one pass (Re-sync All refreshes the accounts it re-synced).
+/// `Local`: an account field the rows show changed in the store (a pin), so re-read it and
+/// re-sort without fetching (macOS `togglePin` only writes the store).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Nudge {
     All,
     One(String),
+    Some(Vec<String>),
     Reschedule,
+    Local,
+}
+
+/// The Auto Refresh timer, kept apart from manual and nudged refreshes as macOS
+/// `scheduleAutoRefresh` is: only `reschedule` (a settings change) and the timer firing
+/// move the next due time.
+#[derive(Debug, Default)]
+pub struct AutoTimer {
+    due: Option<std::time::Instant>,
+}
+
+impl AutoTimer {
+    /// How long to wait for the next tick; `None` when Auto Refresh is off.
+    pub fn wait(&mut self, interval: Option<std::time::Duration>, now: std::time::Instant) -> Option<std::time::Duration> {
+        let Some(interval) = interval else {
+            self.due = None;
+            return None;
+        };
+        let due = *self.due.get_or_insert(now + interval);
+        Some(due.saturating_duration_since(now))
+    }
+
+    /// The timer fired, or the interval changed: count a full interval from `now`.
+    pub fn restart(&mut self, interval: Option<std::time::Duration>, now: std::time::Instant) {
+        self.due = interval.map(|i| now + i);
+    }
+}
+
+/// Windows whose reset time passed more than 10 s ago on an active row, as
+/// `(account, window, resets_at)`; macOS `checkResetTriggers` refreshes for these so the
+/// gauges move on as soon as a window resets. The caller fires once per triple.
+pub fn passed_resets(rows: &[DisplayRow], now_unix_s: f64) -> Vec<(String, i64, i64)> {
+    let threshold = now_unix_s - 10.0;
+    let mut out = Vec::new();
+    for r in rows.iter().filter(|r| r.status == AccountStatus::Active) {
+        for (w, view) in [(WINDOW_FIVE_HOUR, &r.five_hour), (WINDOW_SEVEN_DAY, &r.seven_day)] {
+            if let Some(at) = view.as_ref().and_then(|v| v.resets_at_unix).filter(|&at| at <= threshold) {
+                out.push((r.account_id.clone(), w, at as i64));
+            }
+        }
+    }
+    out
+}
+
+/// `Nudge::Local`: copies the pin flags from `accounts` onto `prev` and re-sorts. No fetch.
+pub fn relabel(prev: &[DisplayRow], accounts: &[Account], now_unix_s: f64) -> RefreshOutput {
+    let mut rows = prev.to_vec();
+    for r in rows.iter_mut() {
+        if let Some(a) = accounts.iter().find(|a| a.id == r.account_id) {
+            r.is_pinned = a.is_pinned;
+        }
+    }
+    sort_rows(&mut rows, now_unix_s);
+    let peak = peak_utilization(&rows);
+    RefreshOutput { rows, peak }
 }
 
 /// Folds the nudges that piled up while a cycle ran: any `All` covers everything, otherwise
@@ -57,25 +116,24 @@ pub fn merge_one(prev: &[DisplayRow], fresh: DisplayRow, now_unix_s: f64) -> Vec
     rows
 }
 
-/// Refreshes one account and keeps every other row from `prev` as it was (their burn
-/// projections included). A failure to read the store, or an account that no longer
-/// exists, leaves `prev` unchanged.
-pub fn refresh_one(account_id: &str, prev: &[DisplayRow], now_unix_s: f64) -> RefreshOutput {
+/// Refreshes the accounts `ids` (macOS `refreshAll(only:)`) and keeps every other row from
+/// `prev` as it was (their burn projections and error lines included). A failure to read
+/// the store, or none of `ids` still existing, leaves `prev` unchanged.
+pub fn refresh_some(ids: &[String], prev: &[DisplayRow], now_unix_s: f64) -> RefreshOutput {
     let fresh = store::load_accounts()
         .map_err(|e| e.to_string())
         .and_then(|all| {
-            let one: Vec<Account> = all.into_iter().filter(|a| a.id == account_id).collect();
-            if one.is_empty() { Err(format!("account {account_id} not found")) } else { Ok(one) }
+            let some: Vec<Account> = all.into_iter().filter(|a| ids.contains(&a.id)).collect();
+            if some.is_empty() { Err(format!("accounts {ids:?} not found")) } else { Ok(some) }
         })
-        .map(|one| fetch_and_build(&one, now_unix_s));
+        .map(|some| fetch_and_build(&some, now_unix_s));
     match fresh {
-        Ok(mut rows) if rows.len() == 1 => {
+        Ok(mut rows) => {
             backfill_errored_rows(prev, &mut rows);
-            let merged = merge_one(prev, rows.remove(0), now_unix_s);
+            let merged = rows.into_iter().fold(prev.to_vec(), |acc, row| merge_one(&acc, row, now_unix_s));
             let peak = peak_utilization(&merged);
             RefreshOutput { rows: merged, peak }
         }
-        Ok(_) => merge_errors(prev, Err("unexpected row count".into()), now_unix_s),
         Err(e) => merge_errors(prev, Err(e), now_unix_s),
     }
 }
@@ -576,6 +634,44 @@ mod tests {
         assert!(b.seven_day.is_some());
         assert_eq!(merged.peak, 70.0);
         assert_eq!(merged.rows.len(), 3);
+    }
+
+    #[test]
+    fn auto_timer_ignores_nudges_and_restarts_only_when_told() {
+        use std::time::{Duration, Instant};
+        let (t0, five) = (Instant::now(), Some(Duration::from_secs(300)));
+        let mut t = AutoTimer::default();
+        assert_eq!(t.wait(five, t0), Some(Duration::from_secs(300)));
+        // A manual refresh 100 s in does not push the tick back.
+        assert_eq!(t.wait(five, t0 + Duration::from_secs(100)), Some(Duration::from_secs(200)));
+        t.restart(five, t0 + Duration::from_secs(300));
+        assert_eq!(t.wait(five, t0 + Duration::from_secs(300)), Some(Duration::from_secs(300)));
+        assert_eq!(t.wait(None, t0), None, "off");
+        assert_eq!(t.wait(five, t0), Some(Duration::from_secs(300)), "back on: a full interval");
+    }
+
+    #[test]
+    fn passed_resets_lists_active_windows_past_the_grace() {
+        let mut rs = rows(&[]);
+        for r in rs.iter_mut() {
+            r.five_hour.as_mut().unwrap().resets_at_unix = Some(NOW - 11.0);
+            r.seven_day.as_mut().unwrap().resets_at_unix = Some(NOW - 5.0);
+        }
+        rs.iter_mut().find(|r| r.account_id == "c").unwrap().status = AccountStatus::Expired;
+        let mut got = passed_resets(&rs, NOW);
+        got.sort();
+        assert_eq!(got, vec![("a".into(), 0, (NOW - 11.0) as i64), ("b".into(), 0, (NOW - 11.0) as i64)]);
+    }
+
+    #[test]
+    fn relabel_moves_the_new_pin_first_without_fetching() {
+        let prev = rows(&[]);
+        let mut accts = vec![acct("a"), acct("b"), acct("c")];
+        accts[2].is_pinned = true;
+        let out = relabel(&prev, &accts, NOW);
+        assert_eq!(out.rows[0].account_id, "c");
+        assert!(out.rows[0].is_pinned);
+        assert_eq!(out.rows.iter().filter(|r| r.is_pinned).count(), 1);
     }
 
     #[test]

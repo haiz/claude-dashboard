@@ -255,6 +255,26 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
     }
 }
 
+/// The 1 s tick (macOS `TimelineView(.periodic(by: 1))` on each countdown): rebuilds the
+/// three windows of `ui` from `row` at `now` when their countdown text, reset label or
+/// countdown colour changed, leaving every other field (error lines included) alone.
+/// Returns whether anything changed, so callers only touch rows that need a redraw.
+pub fn retime(ui: &mut UiRow, row: &DisplayRow, now: f64) -> bool {
+    let fresh = to_ui_row(row, now);
+    let mut changed = false;
+    for (cur, new) in [
+        (&mut ui.five_hour, fresh.five_hour),
+        (&mut ui.seven_day, fresh.seven_day),
+        (&mut ui.fable, fresh.fable),
+    ] {
+        if cur.countdown != new.countdown || cur.reset_label != new.reset_label || cur.countdown_color != new.countdown_color {
+            *cur = new;
+            changed = true;
+        }
+    }
+    changed
+}
+
 /// Tray tooltip text: the menu-bar row's 5h utilization and reset countdown.
 pub fn tray_tooltip(row: Option<&DisplayRow>, now: f64) -> String {
     let Some(w) = row.and_then(|r| r.five_hour.as_ref()) else {
@@ -362,6 +382,19 @@ mod tests {
         assert!(blue.len() >= green.len());
         assert!(blue[0].path.starts_with("M "));
         assert!(countdown_ring(0.0, total, GAUGE_DIAMETER, GAUGE_LINE_WIDTH).is_empty());
+    }
+
+    #[test]
+    fn retime_moves_the_countdown_and_keeps_other_fields() {
+        let mut r = row();
+        r.five_hour = Some(WindowView { utilization: 10.0, resets_at_unix: Some(1e9 + 600.0), is_limited: false });
+        let mut ui = to_ui_row(&r, 1e9);
+        ui.error = "kept".into();
+        assert_eq!(ui.five_hour.countdown.as_str(), "10:00");
+        assert!(!retime(&mut ui, &r, 1e9), "same second: nothing to redraw");
+        assert!(retime(&mut ui, &r, 1e9 + 1.0));
+        assert_eq!(ui.five_hour.countdown.as_str(), "9:59");
+        assert_eq!(ui.error.as_str(), "kept");
     }
 
     #[test]
