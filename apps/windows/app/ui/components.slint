@@ -21,7 +21,8 @@ export component SidebarRow inherits Rectangle {
 
     height: 32px;
     border-radius: 6px;
-    background: root.selected ? root.selected-color : (touch.has-hover && root.enabled ? root.hover-color : transparent);
+    // macOS sidebar: the selected row is filled with the accent colour, its label white.
+    background: root.selected ? Theme.accent : (touch.has-hover && root.enabled ? root.hover-color : transparent);
     opacity: root.enabled ? 1.0 : 0.45;
 
     HorizontalLayout {
@@ -29,16 +30,17 @@ export component SidebarRow inherits Rectangle {
         padding-right: 8px;
         spacing: 10px;
         alignment: start;
+        // Account avatars are 20 pt on macOS, the static rows' icon tiles 22.
         Rectangle {
-            width: 22px;
-            height: 22px;
+            width: root.initial != "" ? 20px : 22px;
+            height: self.width;
             y: (parent.height - self.height) / 2;
-            border-radius: root.initial != "" ? 11px : 5px;
+            border-radius: root.initial != "" ? self.width / 2 : 5px;
             background: root.tile;
             Text {
                 text: root.initial != "" ? root.initial : root.glyph;
                 font-family: root.initial != "" ? "Segoe UI Variable" : "Segoe Fluent Icons";
-                font-size: 12px;
+                font-size: root.initial != "" ? 10px : 12px;
                 font-weight: root.initial != "" ? 600 : 400;
                 color: white;
                 horizontal-alignment: center;
@@ -47,7 +49,7 @@ export component SidebarRow inherits Rectangle {
         }
         Text {
             text: root.label;
-            color: root.text-color;
+            color: root.selected ? #ffffff : root.text-color;
             vertical-alignment: center;
             overflow: elide;
             horizontal-stretch: 1;
@@ -187,7 +189,7 @@ component RingButton inherits Rectangle {
 // One gauge column on the card (macOS UsageBar, compact): mono label, usage ring with the
 // burn-rate animal at its bottom-right, then the segmented countdown ring beside it with the
 // reset label above. Only the two rings open that window's chart, as on macOS.
-component WindowColumn inherits Rectangle {
+export component WindowColumn inherits Rectangle {
     in property <string> label;
     in property <UiWindow> win;
     // Fable has no countdown column (it resets in lockstep with 7d).
@@ -295,9 +297,10 @@ export component AccountCard inherits Rectangle {
     callback resync();
     // The card itself is not clickable (macOS passes no `onTap`); its rings open the charts.
     callback open-window(string /* "5h" | "7d" | "fable" */);
-    // The card sizes itself from its content (an error or hint line never clips); a
-    // parent layout may stretch it to the tallest card in its row.
+    // The card sizes itself from its content (an error or hint line never clips).
     preferred-height: lay.preferred-height;
+    // macOS grid rows align cards to the top at their own height; never stretch to a taller neighbour.
+    max-height: lay.preferred-height;
     background: Theme.card-bg;
     border-radius: 8px;
     border-width: 1px;
@@ -362,9 +365,9 @@ export component AccountCard inherits Rectangle {
                 background: root.plan-tint.with-alpha(0.15);
                 plan := Text {
                     text: root.data.plan;
-                    color: root.plan-tint;
-                    font-size: 11px;
-                    font-weight: 600;
+                    color: Theme.text-primary;
+                    font-size: 10px;
+                    font-weight: 700;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
@@ -483,19 +486,32 @@ component ActionButton inherits Rectangle {
     in property <color> tint: Theme.accent;
     // Hover tooltip (macOS `.help`); empty shows none.
     in property <string> tip;
+    // Optional Segoe Fluent glyph before the label (macOS `Label(_, systemImage:)`).
+    in property <string> glyph;
     callback clicked();
     height: 32px;
-    width: t.preferred-width + 28px;
+    width: row.preferred-width + 28px;
     border-radius: 6px;
     border-width: 1px;
     border-color: Theme.card-border;
     background: root.enabled ? (touch.has-hover ? root.tint.with-alpha(0.15) : Theme.card-bg) : transparent;
     opacity: root.enabled ? 1.0 : 0.45;
-    t := Text {
-        text: root.label;
-        color: root.enabled ? root.tint : Theme.text-secondary;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    row := HorizontalLayout {
+        x: (parent.width - self.preferred-width) / 2;
+        width: self.preferred-width;
+        spacing: 6px;
+        if root.glyph != "": Text {
+            text: root.glyph;
+            font-family: "Segoe Fluent Icons";
+            font-size: 13px;
+            color: root.enabled ? root.tint : Theme.text-secondary;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.label;
+            color: root.enabled ? root.tint : Theme.text-secondary;
+            vertical-alignment: center;
+        }
     }
     touch := TouchArea {
         enabled: root.enabled;
@@ -585,11 +601,12 @@ export component AccountPane inherits VerticalLayout {
     // PaneHeader
     HorizontalLayout {
         spacing: 10px;
+        // macOS PaneHeader: `.title2.bold()`.
         Text {
             text: root.data.name;
             color: Theme.text-primary;
-            font-size: 24px;
-            font-weight: 600;
+            font-size: 17px;
+            font-weight: 700;
             vertical-alignment: center;
             overflow: elide;
         }
@@ -623,6 +640,7 @@ export component AccountPane inherits VerticalLayout {
         }
         ActionButton {
             label: "Refresh";
+            glyph: "\u{E72C}";
             enabled: !root.refreshing && !root.data.expired;
             tip: root.data.expired
                 ? "Session expired. Re-sync to read a fresh key from the browser."
@@ -671,9 +689,9 @@ export component AccountPane inherits VerticalLayout {
                                 background: root.plan-tint.with-alpha(0.15);
                                 plan := Text {
                                     text: root.data.plan;
-                                    color: root.plan-tint;
-                                    font-size: 11px;
-                                    font-weight: 600;
+                                    color: Theme.text-primary;
+                                    font-size: 10px;
+                                    font-weight: 700;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }

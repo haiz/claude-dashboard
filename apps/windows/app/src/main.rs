@@ -367,13 +367,11 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
         if ids.is_empty() {
             return;
         }
-        // Dev runs: the scanned fake rows, the denominator the real path counts from the store.
-        let dev_scanned = dev_run().then(|| {
-            LAST_OUTPUT.with(|l| l.borrow().as_ref().map_or(0, |(out, _)| fake_scanned_total(&out.rows)))
-        });
+        // Dev runs: walk the progress over the fake rows without touching the store.
+        let dev_total = dev_run().then(|| ids.len());
         app.set_resyncing(true);
         // Until the worker counts the scanned accounts.
-        app.set_resync_progress("Re-syncing\u{2026}".into());
+        app.set_resync_progress(settings_accounts::progress_text(0, ids.len()).into());
         let (w, tx) = (w.clone(), tx.clone());
         std::thread::spawn(move || {
             let post = |text: Option<String>| {
@@ -385,9 +383,9 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
                     }
                 });
             };
-            if let Some(total) = dev_scanned {
+            if let Some(total) = dev_total {
                 // Dev runs never touch the store: just walk the progress text over the
-                // scanned rows, as the real path does.
+                // rows, as the real path does.
                 post(Some(settings_accounts::progress_text(0, total)));
                 for done in 1..=total {
                     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -396,7 +394,6 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
                 post(None);
                 return;
             }
-            post(Some(settings_accounts::progress_text(0, resync::scanned_total(&ids))));
             let results = resync::resync_all(&ids, &resync::RealResyncEnv, &|done, total| {
                 post(Some(settings_accounts::progress_text(done, total)));
             });
@@ -441,14 +438,6 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
             }
         });
     });
-}
-
-/// Dev-only: how many fake rows are scanned accounts (neither extension-fed nor pasted).
-fn fake_scanned_total(rows: &[claude_dashboard_core::rows::DisplayRow]) -> usize {
-    let pasted = claude_dashboard_core::account_kind::AccountKind::PastedKey.settings_label();
-    rows.iter()
-        .filter(|r| !r.is_extension_sourced && r.kind_label != pasted)
-        .count()
 }
 
 /// Dev-only: `CLAUDE_DASHBOARD_FAKE_ROWS=1` seeds sample cards (no network): a pinned
@@ -618,12 +607,16 @@ thread_local! {
 /// UI thread only: stores `state` and mirrors it into the Updates card.
 fn show_update_state(app: &AppWindow, state: updater::UpdateState) {
     use updater::UpdateState as S;
-    app.set_update_status(updater::status_text(&state, settings_general::APP_VERSION).into());
-    app.set_update_can_install(matches!(state, S::Available(_)));
+    app.set_update_status(updater::status_text(&state).into());
+    app.set_update_status_kind(updater::status_kind(&state));
+    // The Latest version row stays once a check has found a release (macOS `latestVersion`).
+    if let Some(v) = updater::latest_version(&state) {
+        app.set_update_latest(v.into());
+    }
     app.set_update_busy(matches!(state, S::Checking | S::Downloading | S::Installing));
     // Yellow flyout banner while an update downloads or installs (macOS MenuBarPopover).
     let banner = if matches!(state, S::Downloading | S::Installing) {
-        updater::status_text(&state, settings_general::APP_VERSION)
+        updater::status_text(&state)
     } else {
         String::new()
     };
@@ -686,6 +679,8 @@ fn install_updates(app: &AppWindow) {
     eprintln!("updater: installed copy = {installed}");
 
     show_update_state(app, if installed { S::Idle } else { S::DevBuild(None) });
+    // macOS debug builds disable Check for Updates; a dev build here cannot install either.
+    app.set_update_release(installed);
     let w = app.as_weak();
     std::thread::spawn(move || {
         let on = settings_general::auto_update_enabled();
@@ -696,38 +691,25 @@ fn install_updates(app: &AppWindow) {
         });
     });
 
-    let w = app.as_weak();
+    // Check for Updates checks and, when a newer release exists, installs it in one go
+    // (macOS `checkNow(autoInstall: true)`).
+    let (w, exe_c) = (app.as_weak(), exe.clone());
     app.on_check_updates(move || {
-        if let Some(a) = w.upgrade() {
-            show_update_state(&a, S::Checking);
-        }
-        let w = w.clone();
-        std::thread::spawn(move || {
-            let state = match updater::check(settings_general::APP_VERSION) {
-                Ok(Some(i)) if installed => S::Available(i),
-                Ok(Some(i)) => S::DevBuild(Some(i)),
-                Ok(None) if installed => S::UpToDate,
-                Ok(None) => S::DevBuild(None),
-                Err(m) => S::Failed(m),
-            };
-            post_update_state(&w, state);
-        });
-    });
-
-    let (w, exe_i) = (app.as_weak(), exe.clone());
-    app.on_install_update(move || {
-        let state = UPDATE_STATE.with(|s| s.borrow().clone());
-        let S::Available(info) = state else { return };
         if !installed {
             return;
         }
-        // Clear can-install right now, on the UI thread, so a double click
-        // cannot reach this handler twice with the state still Available.
         if let Some(a) = w.upgrade() {
-            show_update_state(&a, S::Downloading);
+            show_update_state(&a, S::Checking);
         }
-        let (w, exe) = (w.clone(), exe_i.clone());
-        std::thread::spawn(move || download_and_apply(&w, &info, &exe));
+        let (w, exe) = (w.clone(), exe_c.clone());
+        std::thread::spawn(move || match updater::check(settings_general::APP_VERSION) {
+            Ok(Some(info)) => {
+                post_update_state(&w, S::Available(info.clone()));
+                download_and_apply(&w, &info, &exe);
+            }
+            Ok(None) => post_update_state(&w, S::UpToDate),
+            Err(m) => post_update_state(&w, S::Failed(m)),
+        });
     });
 
     let w = app.as_weak();
@@ -916,6 +898,12 @@ fn main() -> Result<(), slint::PlatformError> {
     // Settings > General: settings/registry I/O on workers, results back on the UI thread.
     {
         app.set_help_topics(help::topic_model());
+        // Reading a Card's sample ring (macOS: 5h at 62%, 2h15m left, a rabbit).
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        app.set_help_sample(model::sample_window(62.0, 8100.0, 18000.0, "\u{1F407}", now));
         app.set_app_name(settings_general::APP_NAME.into());
         app.set_app_version(settings_general::APP_VERSION.into());
         app.set_release_date(settings_general::format_release_date(settings_general::RELEASE_DATE).into());
@@ -1233,10 +1221,10 @@ fn main() -> Result<(), slint::PlatformError> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn fake_resync_all_counts_scanned_rows_only() {
-        // alice, carol and erin are scanned; bob is extension-fed, dave pasted.
+    fn fake_rows_cover_every_card_state() {
+        // alice (pinned), bob (extension, Fable), carol (100%), dave and erin (expired).
         let out = super::fake_rows(1_000_000.0);
         assert_eq!(out.rows.len(), 5);
-        assert_eq!(super::fake_scanned_total(&out.rows), 3);
+        assert_eq!(out.rows.iter().filter(|r| r.status == claude_dashboard_core::model::AccountStatus::Expired).count(), 2);
     }
 }

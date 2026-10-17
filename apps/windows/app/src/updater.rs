@@ -182,19 +182,37 @@ pub fn restamp_after(err_msg: &str, now: f64) -> Option<f64> {
     (err_msg == UpdateError::AssetNotFound.to_string()).then_some(now - CHECK_INTERVAL_S + 3600.0)
 }
 
-pub fn status_text(state: &UpdateState, current: &str) -> String {
+/// The Status row text, as macOS `UpdateViewModel.State.statusLabel` (empty when idle).
+/// The dev-build texts are Windows-only: dev builds cannot update themselves.
+pub fn status_text(state: &UpdateState) -> String {
     match state {
-        UpdateState::Idle => format!("Version {current}"),
+        UpdateState::Idle => String::new(),
         UpdateState::Checking => "Checking for updates…".into(),
-        UpdateState::UpToDate => format!("Up to date (version {current})"),
-        UpdateState::Available(i) => format!("Version {} is available", i.version),
+        UpdateState::UpToDate => "Up to date".into(),
+        UpdateState::Available(i) => format!("v{} available", i.version),
         UpdateState::Downloading => "Downloading update…".into(),
         UpdateState::Installing => "Installing update…".into(),
         UpdateState::DevBuild(None) => "Development build — install the MSI to update".into(),
-        UpdateState::DevBuild(Some(i)) => {
-            format!("Version {} is available — install the MSI to update", i.version)
-        }
+        UpdateState::DevBuild(Some(i)) => format!("v{} available — install the MSI to update", i.version),
         UpdateState::Failed(m) => m.clone(),
+    }
+}
+
+/// The "Latest version" row: set once a check finds a newer release (macOS `latestVersion`).
+pub fn latest_version(state: &UpdateState) -> Option<String> {
+    match state {
+        UpdateState::Available(i) | UpdateState::DevBuild(Some(i)) => Some(i.version.clone()),
+        _ => None,
+    }
+}
+
+/// The Status colour (macOS `statusColor`): 2 red on an error, 1 green when up to date,
+/// 0 secondary otherwise.
+pub fn status_kind(state: &UpdateState) -> i32 {
+    match state {
+        UpdateState::Failed(_) => 2,
+        UpdateState::UpToDate => 1,
+        _ => 0,
     }
 }
 
@@ -360,12 +378,21 @@ mod tests {
 
     #[test]
     fn status_texts() {
-        assert_eq!(status_text(&UpdateState::Idle, "1.18.1"), "Version 1.18.1");
-        assert_eq!(status_text(&UpdateState::UpToDate, "1.18.1"), "Up to date (version 1.18.1)");
-        assert_eq!(status_text(&UpdateState::Available(info()), "1.18.1"), "Version 1.19.0 is available");
-        assert_eq!(status_text(&UpdateState::DevBuild(None), "1.18.1"), "Development build — install the MSI to update");
-        assert_eq!(status_text(&UpdateState::DevBuild(Some(info())), "1.18.1"), "Version 1.19.0 is available — install the MSI to update");
-        assert_eq!(status_text(&UpdateState::Failed("boom".into()), "1.18.1"), "boom");
-        assert_eq!(status_text(&UpdateState::Checking, "x"), "Checking for updates…");
+        assert_eq!(status_text(&UpdateState::Idle), "");
+        assert_eq!(status_text(&UpdateState::UpToDate), "Up to date");
+        assert_eq!(status_text(&UpdateState::Available(info())), "v1.19.0 available");
+        assert_eq!(status_text(&UpdateState::DevBuild(None)), "Development build — install the MSI to update");
+        assert_eq!(status_text(&UpdateState::DevBuild(Some(info()))), "v1.19.0 available — install the MSI to update");
+        assert_eq!(status_text(&UpdateState::Failed("boom".into())), "boom");
+        assert_eq!(status_text(&UpdateState::Checking), "Checking for updates…");
+    }
+
+    #[test]
+    fn latest_version_and_status_colour() {
+        assert_eq!(latest_version(&UpdateState::Available(info())).as_deref(), Some("1.19.0"));
+        assert_eq!(latest_version(&UpdateState::UpToDate), None);
+        assert_eq!(status_kind(&UpdateState::Failed("x".into())), 2);
+        assert_eq!(status_kind(&UpdateState::UpToDate), 1);
+        assert_eq!(status_kind(&UpdateState::Checking), 0);
     }
 }

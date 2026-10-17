@@ -170,46 +170,17 @@ pub fn resync(account_id: &str, env: &dyn ResyncEnv) -> ResyncOutcome {
     ResyncOutcome::Updated
 }
 
-fn scanned_in(
-    accounts: &[claude_dashboard_core::model::Account],
-    sources: &extension_sources::ExtensionSources,
-    id: &str,
-) -> bool {
-    accounts
-        .iter()
-        .find(|a| a.id == id)
-        .is_some_and(|a| matches!(kind_of(a, sources), AccountKind::Scanned { .. }))
-}
-
-/// How many of `ids` are scanned accounts: the denominator of Re-sync All's progress.
-pub fn scanned_total(ids: &[String]) -> usize {
-    let accounts = store::load_accounts().unwrap_or_default();
-    let sources = extension_sources::load(&extension_sources::sources_path()).unwrap_or_default();
-    ids.iter()
-        .filter(|id| scanned_in(&accounts, &sources, id))
-        .count()
-}
-
-/// Re-syncs every id in order. `progress(done, total)` is called after each
-/// *scanned* account finishes; `total` counts scanned accounts only.
+/// Re-syncs every id in order. `progress(done, total)` is called after each account
+/// finishes; `total` counts every account, as macOS `resyncAll` does.
 pub fn resync_all(
     ids: &[String],
     env: &dyn ResyncEnv,
     progress: &dyn Fn(usize, usize),
 ) -> Vec<(String, ResyncOutcome)> {
-    let accounts = store::load_accounts().unwrap_or_default();
-    let sources = extension_sources::load(&extension_sources::sources_path()).unwrap_or_default();
-    let is_scanned = |id: &str| scanned_in(&accounts, &sources, id);
-    let total = ids.iter().filter(|id| is_scanned(id)).count();
-    let mut done = 0;
     let mut out = Vec::with_capacity(ids.len());
-    for id in ids {
-        let outcome = resync(id, env);
-        if is_scanned(id) {
-            done += 1;
-            progress(done, total);
-        }
-        out.push((id.clone(), outcome));
+    for (i, id) in ids.iter().enumerate() {
+        out.push((id.clone(), resync(id, env)));
+        progress(i + 1, ids.len());
     }
     out
 }
@@ -433,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn resync_all_progress_counts_scanned_only() {
+    fn resync_all_progress_counts_every_account() {
         let _g = crate::testenv::lock();
         let _d = setup(
             &[
@@ -447,7 +418,7 @@ mod tests {
         let calls = RefCell::new(Vec::new());
         let ids: Vec<String> = ["s", "e", "p"].iter().map(|s| s.to_string()).collect();
         let out = resync_all(&ids, &env, &|d, t| calls.borrow_mut().push((d, t)));
-        assert_eq!(*calls.borrow(), vec![(1, 1)]);
+        assert_eq!(*calls.borrow(), vec![(1, 3), (2, 3), (3, 3)]);
         assert_eq!(out.len(), 3);
         assert_eq!(out[0].1, ResyncOutcome::Updated);
         assert_eq!(out[1].1, ResyncOutcome::Refreshed);

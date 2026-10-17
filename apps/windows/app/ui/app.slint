@@ -17,28 +17,65 @@ component GroupHeader inherits Text {
     font-weight: 600;
 }
 
-// Shown in the Dashboard pane and the flyout when no accounts exist. The
-// button opens the Add Account wizard.
+// A sidebar section title (macOS `.sidebar` list Section header): small, secondary, with
+// room above it to split the sections.
+component SidebarHeader inherits Rectangle {
+    in property <string> text;
+    in property <bool> first: false;
+    height: root.first ? 22px : 34px;
+    Text {
+        x: 8px;
+        y: parent.height - self.height - 4px;
+        text: root.text;
+        color: Theme.text-secondary;
+        font-size: 11px;
+        font-weight: 600;
+    }
+}
+
+// Shown in the Dashboard pane and the flyout when no accounts exist (macOS
+// `emptyStateView` / the popover's `emptyState`): the add-person icon, the title,
+// and a filled accent "Add Account" button that opens the Add Account wizard.
+// `compact` is the flyout's smaller variant (no subtitle, secondary title).
 component EmptyState inherits VerticalLayout {
     in property <string> title: "No Accounts";
     in property <string> subtitle: "Sync your Claude accounts from your browser to get started.";
     in property <string> tip: "Add a Claude account from your browser or a pasted session key";
+    in property <bool> compact: false;
     callback add-account();
     alignment: center;
-    spacing: 10px;
-    Text { text: root.title; color: Theme.text-primary; font-size: 16px; font-weight: 600; horizontal-alignment: center; }
+    spacing: root.compact ? 12px : 16px;
+    Text {
+        text: "\u{E8FA}";
+        font-family: "Segoe Fluent Icons";
+        font-size: root.compact ? 26px : 48px;
+        color: Theme.text-secondary;
+        horizontal-alignment: center;
+    }
+    Text {
+        text: root.title;
+        color: root.compact ? Theme.text-secondary : Theme.text-primary;
+        font-size: root.compact ? 12px : 15px;
+        font-weight: root.compact ? 400 : 700;
+        horizontal-alignment: center;
+    }
     if root.subtitle != "": Text { text: root.subtitle; color: Theme.text-secondary; horizontal-alignment: center; wrap: word-wrap; }
     HorizontalLayout {
         alignment: center;
         Rectangle {
-            height: 32px;
+            height: root.compact ? 28px : 32px;
             width: add-text.preferred-width + 28px;
             border-radius: 6px;
-            background: add-touch.has-hover ? Theme.accent.with-alpha(0.15) : Theme.card-bg;
-            border-width: 1px;
-            border-color: Theme.card-border;
-            add-text := Text { text: "Add Account"; color: Theme.accent; horizontal-alignment: center; vertical-alignment: center; }
-            add-touch := TouchArea { clicked => { root.add-account(); } }
+            background: add-touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent;
+            add-text := Text {
+                text: "Add Account";
+                color: #ffffff;
+                font-size: root.compact ? 12px : 14px;
+                font-weight: 500;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            add-touch := TouchArea { mouse-cursor: pointer; clicked => { root.add-account(); } }
             Tooltip { text: @markdown("\{root.tip}"); }
         }
     }
@@ -50,15 +87,34 @@ component PaneButton inherits Rectangle {
     in property <bool> enabled: true;
     // Hover tooltip (macOS `.help`); empty shows none.
     in property <string> tip;
+    // Optional Segoe Fluent glyph before the label (macOS `Label(_, systemImage:)`).
+    in property <string> glyph;
+    // The default action (macOS `.borderedProminent` / `.defaultAction`): filled accent.
+    in property <bool> prominent: false;
     callback clicked();
     height: 32px;
-    width: t.preferred-width + 28px;
+    width: row.preferred-width + 28px;
     border-radius: 6px;
     opacity: root.enabled ? 1.0 : 0.45;
-    background: touch.has-hover && root.enabled ? root.tint.with-alpha(0.15) : Theme.card-bg;
-    border-width: 1px;
+    background: root.prominent
+        ? (touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent)
+        : (touch.has-hover && root.enabled ? root.tint.with-alpha(0.15) : Theme.card-bg);
+    border-width: root.prominent ? 0px : 1px;
     border-color: Theme.card-border;
-    t := Text { text: root.label; color: root.enabled ? root.tint : Theme.text-secondary; horizontal-alignment: center; vertical-alignment: center; }
+    property <color> fg: root.prominent ? #ffffff : (root.enabled ? root.tint : Theme.text-secondary);
+    row := HorizontalLayout {
+        x: (parent.width - self.preferred-width) / 2;
+        width: self.preferred-width;
+        spacing: 6px;
+        if root.glyph != "": Text {
+            text: root.glyph;
+            font-family: "Segoe Fluent Icons";
+            font-size: 13px;
+            color: root.fg;
+            vertical-alignment: center;
+        }
+        Text { text: root.label; color: root.fg; vertical-alignment: center; }
+    }
     touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
     if root.tip != "": Tooltip { text: @markdown("\{root.tip}"); }
 }
@@ -207,26 +263,6 @@ component SettingsCard inherits Rectangle {
     border-color: Theme.card-border;
 }
 
-// A preset chip for the Auto Refresh interval.
-component IntervalChip inherits Rectangle {
-    in property <string> label;
-    in property <bool> active;
-    callback clicked();
-    height: 28px;
-    width: t.preferred-width + 24px;
-    border-radius: 6px;
-    background: root.active ? Theme.accent : (touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent);
-    border-width: 1px;
-    border-color: root.active ? Theme.accent : Theme.card-border;
-    t := Text {
-        text: root.label;
-        color: root.active ? #ffffff : Theme.text-primary;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-    touch := TouchArea { clicked => { root.clicked(); } }
-}
-
 // Pill switch used by the Settings > General rows.
 component SwitchKnob inherits Rectangle {
     in property <bool> on;
@@ -272,11 +308,14 @@ component GeneralSettingsPane inherits Flickable {
     callback set-auto-refresh-minutes(int);
     callback set-launch-at-startup(bool);
     in property <string> update-status;
-    in property <bool> update-can-install;
+    // 2 error (red), 1 up to date (green), 0 other (secondary).
+    in property <int> update-status-kind;
+    in property <string> update-latest;
+    // False in dev builds: Check for Updates is disabled, as in macOS debug builds.
+    in property <bool> update-release;
     in property <bool> update-busy;
     in property <bool> auto-update;
     callback check-updates();
-    callback install-update();
     callback set-auto-update(bool);
     callback reset-all-settings();
     property <bool> confirming-reset;
@@ -290,20 +329,22 @@ component GeneralSettingsPane inherits Flickable {
             about-col := VerticalLayout {
                 padding: 12px;
                 spacing: 4px;
-                Text { text: root.app-name; color: Theme.text-primary; font-size: 18px; font-weight: 700; horizontal-alignment: center; }
+                // macOS About: the 64 pt app icon, the name, version and release date.
                 HorizontalLayout {
                     alignment: center;
-                    spacing: 8px;
+                    Image { source: @image-url("assets/app-icon.png"); width: 64px; height: 64px; }
+                }
+                Text { text: root.app-name; color: Theme.text-primary; font-size: 17px; font-weight: 700; horizontal-alignment: center; }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 10px;
                     Text { text: "Version " + root.app-version; color: Theme.text-secondary; }
                     if root.release-date != "": Text {
                         text: "(" + root.release-date + ")";
-                        color: Theme.text-secondary; font-size: 12px; vertical-alignment: bottom;
+                        color: Theme.text-secondary; font-size: 11px; vertical-alignment: bottom;
                     }
                 }
-                Text {
-                    text: "Monitors Claude.ai token usage across your accounts from the system tray.";
-                    color: Theme.text-secondary; font-size: 12px; wrap: word-wrap; horizontal-alignment: center;
-                }
+                // Windows-only: the Slint royalty-free licence asks for this attribution.
                 AboutSlint { height: 120px; }
             }
         }
@@ -360,13 +401,7 @@ component GeneralSettingsPane inherits Flickable {
             upd := VerticalLayout {
                 padding: 12px;
                 spacing: 10px;
-                HorizontalLayout {
-                    spacing: 10px;
-                    Text { text: root.update-status; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; wrap: word-wrap; }
-                    if root.update-can-install: IntervalChip { label: "Install"; active: true; clicked => { root.install-update(); } }
-                    IntervalChip { label: root.update-busy ? "Working…" : "Check for Updates"; active: false;
-                                   clicked => { if !root.update-busy { root.check-updates(); } } }
-                }
+                // macOS order: the toggle, Latest version, Status, then Check for Updates.
                 HorizontalLayout {
                     spacing: 4px;
                     Text { text: "Auto-update daily"; color: Theme.text-primary; vertical-alignment: center; }
@@ -374,11 +409,36 @@ component GeneralSettingsPane inherits Flickable {
                     Rectangle { horizontal-stretch: 1; }
                     SwitchKnob { on: root.auto-update; toggled(v) => { root.set-auto-update(v); } }
                 }
-                if root.auto-update: Text {
-                    text: "Checks GitHub once a day and installs new releases automatically.";
-                    color: Theme.text-secondary; font-size: 11px;
+                if root.update-latest != "": HorizontalLayout {
+                    Text { text: "Latest version"; color: Theme.text-primary; horizontal-stretch: 1; }
+                    Text { text: "v" + root.update-latest; color: Theme.text-secondary; }
+                }
+                if root.update-status != "": HorizontalLayout {
+                    spacing: 10px;
+                    Text { text: "Status"; color: Theme.text-primary; }
+                    Text {
+                        text: root.update-status;
+                        color: root.update-status-kind == 2 ? Theme.danger : root.update-status-kind == 1 ? Theme.ok : Theme.text-secondary;
+                        horizontal-stretch: 1;
+                        horizontal-alignment: right;
+                        wrap: word-wrap;
+                    }
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    PaneButton {
+                        label: root.update-busy ? "Working\u{2026}" : "Check for Updates";
+                        tint: Theme.text-primary;
+                        enabled: root.update-release && !root.update-busy;
+                        tip: root.update-release ? "Check GitHub for a newer version and install it" : "Updates only run in release builds";
+                        clicked => { root.check-updates(); }
+                    }
                 }
             }
+        }
+        if root.auto-update: Text {
+            text: "Checks GitHub once a day and installs new releases automatically.";
+            color: Theme.text-secondary; font-size: 11px;
         }
 
         SettingsCard {
@@ -456,6 +516,7 @@ export component AppWindow inherits Window {
     // Help pane: the topic grid, and the topic id to scroll to ("" = top). `open-help` selects
     // the pane and sets the focus; the pane clears it once it has scrolled.
     in property <[HelpTopic]> help-topics;
+    in property <UiWindow> help-sample;
     in-out property <string> help-focus;
     public function open-help(topic: string) {
         root.selection = Pane.help;
@@ -526,11 +587,12 @@ export component AppWindow inherits Window {
     callback reset-all-settings();
     callback set-launch-at-startup(bool);
     in property <string> update-status;
-    in property <bool> update-can-install;
+    in property <int> update-status-kind;
+    in property <string> update-latest;
+    in property <bool> update-release;
     in property <bool> update-busy;
     in-out property <bool> auto-update: true;
     callback check-updates();
-    callback install-update();
     callback set-auto-update(bool);
 
     // Opens an account's page on the 5h window (macOS `selectFromSidebar` resets the window).
@@ -569,7 +631,7 @@ export component AppWindow inherits Window {
                     spacing: 2px;
                     alignment: start;
 
-                    GroupHeader { text: "Usage"; }
+                    SidebarHeader { text: "Usage"; first: true; }
                     SidebarRow {
                         label: "Dashboard"; glyph: "\u{E80A}"; tile: #0a84ff;
                         text-color: Theme.text-primary;
@@ -583,7 +645,7 @@ export component AppWindow inherits Window {
                         clicked => { root.selection = Pane.overview; }
                     }
 
-                    if root.account-rows.length > 0: GroupHeader { text: "Accounts"; }
+                    if root.account-rows.length > 0: SidebarHeader { text: "Accounts"; }
                     for acct in root.account-rows: SidebarRow {
                         label: acct.name; initial: acct.initial; tile: acct.avatar-color;
                         text-color: Theme.text-primary;
@@ -594,7 +656,7 @@ export component AppWindow inherits Window {
                         clicked => { root.select-account-page(acct.id); }
                     }
 
-                    GroupHeader { text: "Tools"; }
+                    SidebarHeader { text: "Tools"; }
                     SidebarRow {
                         label: "Help"; glyph: "\u{E897}"; tile: #30d158;
                         text-color: Theme.text-primary;
@@ -602,7 +664,7 @@ export component AppWindow inherits Window {
                         clicked => { root.selection = Pane.help; }
                     }
 
-                    GroupHeader { text: "Settings"; }
+                    SidebarHeader { text: "Settings"; }
                     SidebarRow {
                         label: "Accounts"; glyph: "\u{E77B}"; tile: #40c8e0;
                         text-color: Theme.text-primary;
@@ -629,13 +691,14 @@ export component AppWindow inherits Window {
                 Text {
                     text: root.pane-title;
                     color: Theme.text-primary;
-                    font-size: 24px;
-                    font-weight: 600;
+                    font-size: 17px;
+                    font-weight: 700;
                     vertical-alignment: center;
                 }
                 Rectangle { horizontal-stretch: 1; }
                 if root.selection == Pane.dashboard && root.account-rows.length > 0: PaneButton {
                     label: "Refresh";
+                    glyph: "\u{E72C}";
                     tip: "Refresh usage for all accounts";
                     enabled: !root.refreshing;
                     y: (parent.height - self.height) / 2;
@@ -740,14 +803,15 @@ export component AppWindow inherits Window {
                 reset-all-settings => { root.reset-all-settings(); }
                 set-launch-at-startup(on) => { root.set-launch-at-startup(on); }
                 update-status: root.update-status;
-                update-can-install: root.update-can-install;
+                update-status-kind: root.update-status-kind;
+                update-latest: root.update-latest;
+                update-release: root.update-release;
                 update-busy: root.update-busy;
                 auto-update: root.auto-update;
                 check-updates => { root.check-updates(); }
-                install-update => { root.install-update(); }
                 set-auto-update(on) => { root.set-auto-update(on); }
             }
-            if root.selection == Pane.help: HelpPane { vertical-stretch: 1; topics: root.help-topics; focus-topic <=> root.help-focus; }
+            if root.selection == Pane.help: HelpPane { vertical-stretch: 1; avail-width: root.width - 240px - 48px; topics: root.help-topics; sample: root.help-sample; focus-topic <=> root.help-focus; }
             if root.selection != Pane.dashboard && root.selection != Pane.account: Rectangle { }
         }
     }
@@ -765,7 +829,7 @@ component FlyoutIconButton inherits Rectangle {
     height: 24px;
     border-radius: 6px;
     opacity: root.enabled ? 1.0 : 0.4;
-    background: touch.has-hover && root.enabled ? Theme.accent.with-alpha(0.15) : (Theme.dark ? #ffffff12 : #00000010);
+    background: touch.has-hover && root.enabled ? Theme.text-primary.with-alpha(0.15) : Theme.text-primary.with-alpha(0.07);
     Text {
         text: root.glyph;
         font-family: "Segoe Fluent Icons";
@@ -788,7 +852,7 @@ component FlyoutIconButton inherits Rectangle {
 // count (macOS sizes the popover to its content, list capped and scrolling).
 export component PopoverWindow inherits Window {
     no-frame: true;
-    width: 372px;
+    width: 352px;
     height: clamp(root.chrome + root.list-h, 240px, 700px);
     default-font-family: Theme.font-family;
     default-font-size: 14px;
@@ -814,10 +878,10 @@ export component PopoverWindow inherits Window {
     callback open-account-window(string, string);
 
     // The list is as tall as its cards (they size themselves), capped; the empty state has a fixed height.
-    property <length> list-h: root.account-rows.length == 0 ? 170px : min(list.preferred-height, 560px);
-    // header 24 + 2x12 padding, two full-width dividers, footer 28 + 2x4 padding
+    property <length> list-h: root.account-rows.length == 0 ? 170px : min(list.preferred-height, 400px);
+    // header 24 + 2x12 padding, two full-width dividers, footer 24 + 2x8 padding
     // (+ the full-width banner 26).
-    property <length> chrome: 48px + 2px + 36px + (root.update-banner != "" ? 26px : 0px);
+    property <length> chrome: 48px + 2px + 40px + (root.update-banner != "" ? 26px : 0px);
 
     Rectangle {
         background: root.use-solid-background ? Theme.window-bg : (Theme.dark ? #20202080 : #f3f3f380);
@@ -850,7 +914,7 @@ export component PopoverWindow inherits Window {
             Text {
                 text: "Claude Dashboard";
                 color: Theme.text-primary;
-                font-size: 15px;
+                font-size: 13px;
                 font-weight: 600;
                 vertical-alignment: center;
             }
@@ -868,6 +932,7 @@ export component PopoverWindow inherits Window {
         Rectangle { height: 1px; background: Theme.card-border; }
         if root.account-rows.length == 0: EmptyState {
             title: "No accounts configured";
+            compact: true;
             subtitle: "";
             tip: "Open the main window to add a Claude account";
             vertical-stretch: 1;
@@ -893,11 +958,11 @@ export component PopoverWindow inherits Window {
         }
         Rectangle { height: 1px; background: Theme.card-border; }
         HorizontalLayout {
-            height: 36px;
+            height: 40px;
             padding-left: 16px;
             padding-right: 16px;
-            padding-top: 4px;
-            padding-bottom: 4px;
+            padding-top: 8px;
+            padding-bottom: 8px;
             Rectangle {
                 horizontal-stretch: 1;
                 Rectangle {
@@ -917,7 +982,7 @@ export component PopoverWindow inherits Window {
                             color: Theme.text-secondary;
                             vertical-alignment: center;
                         }
-                        Text { text: "Quit"; color: Theme.text-secondary; font-size: 12px; vertical-alignment: center; }
+                        Text { text: "Quit"; color: Theme.text-secondary; font-size: 11px; vertical-alignment: center; }
                     }
                     quit-touch := TouchArea {
                         mouse-cursor: pointer;
@@ -933,7 +998,7 @@ export component PopoverWindow inherits Window {
                 width: version.preferred-width;
                 version := Text {
                     text: "v" + root.app-version;
-                    color: Theme.text-secondary.with-alpha(0.7);
+                    color: Theme.text-secondary.with-alpha(0.6);
                     font-size: 11px;
                     vertical-alignment: center;
                     horizontal-alignment: center;
@@ -977,17 +1042,18 @@ export component PopoverWindow inherits Window {
             prompt := VerticalLayout {
                 padding: 16px;
                 spacing: 10px;
-                Text { text: "Quit Claude Dashboard?"; color: Theme.text-primary; font-size: 15px; font-weight: 600; }
+                Text { text: "Quit Claude Dashboard?"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
                 Text {
                     text: "Usage monitoring stops until you open the app again.";
                     color: Theme.text-primary;
+                    font-size: 13px;
                     wrap: word-wrap;
                 }
                 HorizontalLayout {
                     spacing: 8px;
                     padding-top: 4px;
-                    PaneButton { horizontal-stretch: 1; label: "Cancel"; tint: Theme.text-secondary; tip: "Close without continuing"; clicked => { root.confirming-quit = false; } }
-                    PaneButton { horizontal-stretch: 1; label: "Quit"; tint: Theme.danger; tip: "Quit the app and stop monitoring usage"; clicked => { root.quit(); } }
+                    PaneButton { horizontal-stretch: 1; label: "Cancel"; tint: Theme.text-primary; tip: "Close without continuing"; clicked => { root.confirming-quit = false; } }
+                    PaneButton { horizontal-stretch: 1; label: "Quit"; prominent: true; tip: "Quit the app and stop monitoring usage"; clicked => { root.quit(); } }
                 }
             }
         }

@@ -165,7 +165,7 @@ and hints come from `core::account_kind`:
 **Re-sync All** re-syncs every account by its kind, then refreshes the accounts
 that re-synced in a single pass (macOS `refreshAll(only:)`); a single card's
 Re-sync refreshes that account only. Its "Re-syncing… (n/total)" progress counts
-scanned accounts only; per-account failures show in that card's error line after
+every account, as on macOS; per-account failures show in that card's error line after
 the refresh.
 
 ## Refresh
@@ -360,9 +360,8 @@ single-instance mutex). Check each pane:
   point, Reset Cycles list, Pin / Re-sync / Remove with inline confirmation.
 - **Overview:** one line per account with data, `(no data)` chips for alice, dave and erin, hover card,
   pan and window chips.
-- **Settings > Accounts:** Add Account wizard (extension / scan / paste), Re-sync All progress `(n/3)` (alice, carol and erin
-  are the scanned rows),
-  Delete with Confirm / Cancel, kind labels (Default, Browser extension (Microsoft Edge), Pasted key, Work).
+- **Settings > Accounts:** Add Account wizard (extension / scan / paste), Re-sync All progress `(n/5)`,
+  the trash button, kind labels (Default, Browser extension (Microsoft Edge), Pasted key, Work).
 - **Settings > General:** About header, info tips on Enable auto refresh and Interval, interval stepper,
   Launch at startup, Updates card, Reset All Settings with confirmation (accounts, logs and launch at
   startup kept). The stepper and Reset write the real `settings.json`, even under FAKE_ROWS.

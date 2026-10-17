@@ -200,6 +200,13 @@ fn window(
     }
 }
 
+/// One window built from plain values, for the Help pane's sample gauge (macOS shows a
+/// live `UsageBar` there).
+pub fn sample_window(utilization: f64, resets_in_s: f64, total_s: f64, animal: &str, now_unix_s: f64) -> UiWindow {
+    let view = WindowView { utilization, resets_at_unix: Some(now_unix_s + resets_in_s), is_limited: utilization >= 100.0 };
+    window(&Some(view), total_s, now_unix_s, local_offset_s(), animal, true)
+}
+
 pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
     let shift = local_offset_s();
     let seed = if row.account_id.is_empty() { &row.name } else { &row.account_id };
@@ -382,6 +389,15 @@ mod tests {
         assert!(blue.len() >= green.len());
         assert!(blue[0].path.starts_with("M "));
         assert!(countdown_ring(0.0, total, GAUGE_DIAMETER, GAUGE_LINE_WIDTH).is_empty());
+    }
+
+    #[test]
+    fn sample_window_is_a_live_5h_gauge() {
+        let w = sample_window(62.0, 8100.0, FIVE_HOUR_S, "\u{1F407}", 1e9);
+        assert!(w.present);
+        assert_eq!(w.countdown.as_str(), "2:15");
+        assert!(w.segments.row_count() > 0 && w.track_compact.row_count() == 5);
+        assert_eq!(w.animal.as_str(), "\u{1F407}");
     }
 
     #[test]
