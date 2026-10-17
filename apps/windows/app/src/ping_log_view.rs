@@ -37,6 +37,16 @@ pub fn medium_date_time(local_unix: f64) -> String {
     format!("{} {d}, {y} at {h12}:{min:02}:{s:02} {ampm}", MONTHS[(m - 1) as usize])
 }
 
+/// macOS `.abbreviated` date with `.shortened` time ("Oct 17, 2026 at 10:44 AM").
+pub fn abbreviated_date_time(local_unix: f64) -> String {
+    let full = medium_date_time(local_unix);
+    // Drop the seconds: "10:44:03 AM" -> "10:44 AM".
+    match (full.rfind(':'), full.rfind(' ')) {
+        (Some(c), Some(sp)) if c < sp => format!("{}{}", &full[..c], &full[sp..]),
+        _ => full,
+    }
+}
+
 /// Days since 1970-01-01 to (year, month, day) in the proleptic Gregorian calendar
 /// (Howard Hinnant's `civil_from_days`).
 fn civil_from_days(z: i64) -> (i64, i64, i64) {

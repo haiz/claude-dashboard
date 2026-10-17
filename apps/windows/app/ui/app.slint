@@ -6,8 +6,9 @@ import { OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartT
 import { HelpPane, HelpTopic } from "help.slint";
 import { InfoTip, TipStore, TipData } from "info_tip.slint";
 import { UiPingRow, PingLogPane, UiSwitchRow, SwitchLogPane } from "ping_log.slint";
+import { TickLabel, RatioPopover } from "ratio.slint";
 
-export { UiPingRow, UiSwitchRow, TipStore, TipData, HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData }
+export { UiPingRow, UiSwitchRow, TickLabel, TipStore, TipData, HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
 export enum Pane { dashboard, overview, account, ping-log, switch-log, help, settings-accounts, general }
@@ -620,6 +621,23 @@ export component AppWindow inherits Window {
     callback cc-prompt-ok();
     callback cc-prompt-cancel();
     // Tools > Ping Log: rows (Rust loads them on `ping-log-reload`), Clear All's prompt.
+    // X (macOS UsageRatioButton): the header label and tooltip, secondary while it is the
+    // default; the history overlay with its range (0 7 days, 1 30 days, 2 All) and hover.
+    in property <string> ratio-label: "X 16% (default)";
+    in property <string> ratio-help;
+    in property <bool> ratio-default: true;
+    in-out property <bool> ratio-open: false;
+    in-out property <int> ratio-range: 0;
+    in property <bool> ratio-empty: true;
+    in property <string> ratio-path;
+    in property <[TickLabel]> ratio-y-ticks;
+    in property <[TickLabel]> ratio-x-ticks;
+    in-out property <bool> ratio-hovering: false;
+    in property <float> ratio-hover-x;
+    in property <float> ratio-hover-y;
+    in property <string> ratio-readout;
+    callback ratio-load();
+    callback ratio-hover-at(float);
     // Tools > Switch Log: rows (Rust loads them on `switch-log-reload`), Clear All's prompt.
     in property <[UiSwitchRow]> switch-log-rows;
     in-out property <bool> switch-log-confirming: false;
@@ -847,6 +865,16 @@ export component AppWindow inherits Window {
                     y: (parent.height - self.height) / 2;
                     clicked => { root.switch-log-confirming = true; }
                 }
+                if root.selection == Pane.dashboard: PaneButton {
+                    label: root.ratio-label;
+                    tint: root.ratio-default ? Theme.text-secondary : Theme.text-primary;
+                    tip: root.ratio-help;
+                    y: (parent.height - self.height) / 2;
+                    clicked => {
+                        root.ratio-open = true;
+                        root.ratio-load();
+                    }
+                }
                 if root.selection == Pane.dashboard && root.account-rows.length > 0: PaneButton {
                     label: "Refresh";
                     glyph: "\u{E72C}";
@@ -984,6 +1012,40 @@ export component AppWindow inherits Window {
             }
             if root.selection == Pane.help: HelpPane { vertical-stretch: 1; avail-width: root.width - 240px - 48px; topics: root.help-topics; sample: root.help-sample; focus-topic <=> root.help-focus; }
             if root.selection != Pane.dashboard && root.selection != Pane.account: Rectangle { }
+        }
+    }
+
+    // The X history (macOS UsageRatioButton popover): under the header button; a click
+    // outside or Esc closes it.
+    if root.ratio-open: Rectangle {
+        TouchArea { clicked => { root.ratio-open = false; } }
+        FocusScope {
+            width: 0px;
+            height: 0px;
+            init => { self.focus(); }
+            key-pressed(e) => {
+                if e.text == Key.Escape {
+                    root.ratio-open = false;
+                    return accept;
+                }
+                reject
+            }
+        }
+        RatioPopover {
+            x: parent.width - self.width - 24px;
+            y: 60px;
+            range: root.ratio-range;
+            empty: root.ratio-empty;
+            path: root.ratio-path;
+            y-ticks: root.ratio-y-ticks;
+            x-ticks: root.ratio-x-ticks;
+            hovering: root.ratio-hovering;
+            hover-x: root.ratio-hover-x;
+            hover-y: root.ratio-hover-y;
+            readout: root.ratio-readout;
+            range-picked(r) => { root.ratio-range = r; root.ratio-load(); }
+            hover-at(f) => { root.ratio-hover-at(f); }
+            hover-end => { root.ratio-hovering = false; }
         }
     }
 

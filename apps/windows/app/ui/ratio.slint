@@ -1,0 +1,160 @@
+import { Theme } from "theme.slint";
+
+// One axis label: its position as a fraction of the plot (0 = left / bottom) and its text.
+export struct TickLabel {
+    frac: float,
+    label: string,
+}
+
+component RangeSegment inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+    height: 24px;
+    border-radius: 5px;
+    background: root.selected ? Theme.card-bg : transparent;
+    drop-shadow-blur: root.selected ? 2px : 0px;
+    drop-shadow-color: #00000030;
+    Text {
+        text: root.label;
+        color: Theme.text-primary;
+        font-size: 12px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// The X history (macOS UsageRatioChart in the header button's popover): "X over time", a
+// 7 days / 30 days / All picker, the line chart with the nearest point's readout on hover,
+// or "No history yet". Rust fills every value (`ratio::chart`).
+export component RatioPopover inherits Rectangle {
+    in property <int> range;
+    in property <bool> empty;
+    in property <string> path;
+    in property <[TickLabel]> y-ticks;
+    in property <[TickLabel]> x-ticks;
+    in property <bool> hovering;
+    in property <float> hover-x;
+    in property <float> hover-y;
+    in property <string> readout;
+    callback range-picked(int);
+    callback hover-at(float /* fraction of the plot width */);
+    callback hover-end();
+    width: 472px;
+    height: 312px;
+    border-radius: 12px;
+    background: Theme.dark ? #2b2b2b : #ffffff;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: #00000040;
+    // Swallow clicks so the outside-click closer does not fire on the card.
+    TouchArea { }
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        HorizontalLayout {
+            Text { text: "X over time"; color: Theme.text-primary; font-size: 15px; font-weight: 600; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            Rectangle {
+                width: 220px;
+                height: 28px;
+                border-radius: 7px;
+                background: Theme.text-primary.with-alpha(0.08);
+                HorizontalLayout {
+                    padding: 2px;
+                    spacing: 2px;
+                    RangeSegment { horizontal-stretch: 1; label: "7 days"; selected: root.range == 0; clicked => { root.range-picked(0); } }
+                    RangeSegment { horizontal-stretch: 1; label: "30 days"; selected: root.range == 1; clicked => { root.range-picked(1); } }
+                    RangeSegment { horizontal-stretch: 1; label: "All"; selected: root.range == 2; clicked => { root.range-picked(2); } }
+                }
+            }
+        }
+        if root.empty: Text {
+            vertical-stretch: 1;
+            text: "No history yet";
+            color: Theme.text-secondary;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        if !root.empty: HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 6px;
+            // The y-axis title (macOS chartYAxisLabel), rotated along the axis.
+            Rectangle {
+                width: 14px;
+                Text {
+                    text: "% of 7d per full 5h";
+                    color: Theme.text-secondary;
+                    font-size: 10px;
+                    transform-rotation: -90deg;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+            }
+            Rectangle {
+                width: 28px;
+                for t in root.y-ticks: Text {
+                    text: t.label;
+                    color: Theme.text-secondary;
+                    font-size: 10px;
+                    width: parent.width;
+                    horizontal-alignment: right;
+                    y: (1 - t.frac) * (parent.height - 18px) - self.height / 2;
+                }
+            }
+            plot-col := VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                plot := Rectangle {
+                    vertical-stretch: 1;
+                    for t in root.y-ticks: Rectangle {
+                        y: (1 - t.frac) * parent.height;
+                        height: 1px;
+                        background: Theme.card-border;
+                    }
+                    Path {
+                        width: parent.width;
+                        height: parent.height;
+                        viewbox-width: 1000;
+                        viewbox-height: 1000;
+                        commands: root.path;
+                        stroke: Theme.accent;
+                        stroke-width: 2px;
+                        fill: transparent;
+                    }
+                    if root.hovering: Rectangle {
+                        x: root.hover-x * parent.width - 4px;
+                        y: (1 - root.hover-y) * parent.height - 4px;
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: Theme.accent;
+                    }
+                    TouchArea {
+                        moved => { root.hover-at(self.mouse-x / self.width); }
+                        pointer-event(e) => {
+                            if e.kind == PointerEventKind.move { root.hover-at(self.mouse-x / self.width); }
+                        }
+                        changed has-hover => { if !self.has-hover { root.hover-end(); } }
+                    }
+                }
+                Rectangle {
+                    height: 14px;
+                    for t in root.x-ticks: Text {
+                        text: t.label;
+                        color: Theme.text-secondary;
+                        font-size: 10px;
+                        x: t.frac * parent.width - self.width / 2;
+                    }
+                }
+            }
+        }
+        if !root.empty: Text {
+            text: root.hovering ? root.readout : " ";
+            color: Theme.text-secondary;
+            font-size: 11px;
+        }
+    }
+}

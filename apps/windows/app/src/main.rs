@@ -174,6 +174,57 @@ fn set_auto_switch_fields(rows: &mut [UiRow], display: &[claude_dashboard_core::
     }
 }
 
+thread_local! {
+    /// The X chart's points and model, for the hover readout.
+    static RATIO_CHART: std::cell::RefCell<(Vec<claude_dashboard_core::usage_ratio::RatioPoint>, ratio::ChartModel)> =
+        std::cell::RefCell::new(Default::default());
+}
+
+/// The Dashboard header's X button.
+fn show_ratio_value(app: &AppWindow, v: &claude_dashboard_core::usage_ratio::RatioValue) {
+    app.set_ratio_label(ratio::label(v).into());
+    app.set_ratio_help(ratio::help(v, model::local_offset_s()).into());
+    app.set_ratio_default(v.is_default());
+}
+
+fn tick_labels(ticks: &[(f64, String)]) -> slint::ModelRc<TickLabel> {
+    let items: Vec<TickLabel> = ticks.iter().map(|(f, l)| TickLabel { frac: *f as f32, label: l.as_str().into() }).collect();
+    slint::ModelRc::new(slint::VecModel::from(items))
+}
+
+/// UI thread: loads the X history for the picked range on a worker and draws it.
+fn load_ratio_chart(weak: &slint::Weak<AppWindow>) {
+    let Some(app) = weak.upgrade() else { return };
+    let range = app.get_ratio_range().max(0) as usize;
+    let w = weak.clone();
+    std::thread::spawn(move || {
+        let points = if dev_run() { Vec::new() } else { ratio::history(range, unix_now()) };
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(app) = w.upgrade() else { return };
+            let m = ratio::chart(&points, model::local_offset_s());
+            app.set_ratio_empty(points.is_empty());
+            app.set_ratio_path(m.path.as_str().into());
+            app.set_ratio_y_ticks(tick_labels(&m.y_ticks));
+            app.set_ratio_x_ticks(tick_labels(&m.x_ticks));
+            app.set_ratio_hovering(false);
+            RATIO_CHART.with(|c| *c.borrow_mut() = (points, m));
+        });
+    });
+}
+
+/// The hover readout: the point nearest the pointer (macOS `UsageRatioChart.nearest`).
+fn ratio_hover(app: &AppWindow, frac: f32) {
+    RATIO_CHART.with(|c| {
+        let (points, m) = &*c.borrow();
+        let t = m.t_from + (frac as f64).clamp(0.0, 1.0) * (m.t_to - m.t_from);
+        let Some(p) = ratio::nearest(points, t).map(|i| points[i]) else { return };
+        app.set_ratio_hover_x(((p.t_unix - m.t_from) / (m.t_to - m.t_from)) as f32);
+        app.set_ratio_hover_y((p.x / m.y_max) as f32);
+        app.set_ratio_readout(ratio::readout(&p, model::local_offset_s()).into());
+        app.set_ratio_hovering(true);
+    });
+}
+
 /// The flyout footer's auto switch toggle and last event.
 fn set_footer(pop: &PopoverWindow, rows: &[claude_dashboard_core::rows::DisplayRow]) {
     let event = auto_switch::controller().last_event.clone();
@@ -393,7 +444,7 @@ fn spawn_refresh_loop(
     });
 }
 
-fn unix_now() -> f64 {
+pub(crate) fn unix_now() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
@@ -1614,6 +1665,30 @@ fn main() -> Result<(), slint::PlatformError> {
     let _ = CC_NUDGE.set(cc_nudge);
     app.on_switch_claude_code(|id| cc_request(id.to_string()));
     app.on_toggle_home(|id| toggle_home(id.as_str()));
+    // X: the header button, its history overlay, and the hourly estimate (never in dev runs,
+    // which keep the default).
+    show_ratio_value(&app, &ratio::current());
+    let w = app.as_weak();
+    app.on_ratio_load(move || load_ratio_chart(&w));
+    let w = app.as_weak();
+    app.on_ratio_hover_at(move |f| {
+        if let Some(a) = w.upgrade() {
+            ratio_hover(&a, f);
+        }
+    });
+    if !dev_run() {
+        let w = app.as_weak();
+        ratio::spawn(move |v| {
+            let w = w.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(a) = w.upgrade() {
+                    show_ratio_value(&a, &v);
+                }
+                // The flames depend on X.
+                refresh_auto_switch_ui();
+            });
+        });
+    }
     app.on_cc_prompt_ok(cc_ok);
     app.on_cc_prompt_cancel(cc_cancel);
     // macOS opens the window by itself only on the very first launch (`hasLaunchedBefore`);
