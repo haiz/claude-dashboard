@@ -421,7 +421,7 @@ component GeneralSettingsPane inherits Flickable {
                         color: root.update-status-kind == 2 ? Theme.danger : root.update-status-kind == 1 ? Theme.ok : Theme.text-secondary;
                         horizontal-stretch: 1;
                         horizontal-alignment: right;
-                        wrap: word-wrap;
+                        overflow: elide;
                     }
                 }
                 HorizontalLayout {

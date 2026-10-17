@@ -298,9 +298,9 @@ export component AccountCard inherits Rectangle {
     // The card itself is not clickable (macOS passes no `onTap`); its rings open the charts.
     callback open-window(string /* "5h" | "7d" | "fable" */);
     // The card sizes itself from its content (an error or hint line never clips).
+    // A grid row may stretch it to its tallest card (a max-height here would use the
+    // unwrapped height and clip wrapped hint lines).
     preferred-height: lay.preferred-height;
-    // macOS grid rows align cards to the top at their own height; never stretch to a taller neighbour.
-    max-height: lay.preferred-height;
     background: Theme.card-bg;
     border-radius: 8px;
     border-width: 1px;
