@@ -63,11 +63,9 @@ fn fetch_one(org_id: &str, session_key: &str) -> Result<Fetched, String> {
     Ok((usage, resp.new_session_key))
 }
 
-/// Account ids fed by a browser-extension install (empty if unreadable).
-fn extension_account_ids() -> HashSet<String> {
-    extension_sources::load(&extension_sources::sources_path())
-        .map(|s| s.bindings.values().map(|b| b.account_id.clone()).collect())
-        .unwrap_or_default()
+/// The extension install bindings (empty if unreadable).
+fn load_sources() -> extension_sources::ExtensionSources {
+    extension_sources::load(&extension_sources::sources_path()).unwrap_or_default()
 }
 
 /// Saves rotated session keys and last_synced stamps in one locked load-modify-save (shared with the
@@ -155,13 +153,13 @@ pub fn refresh_once(now_unix_s: f64) -> Result<RefreshOutput, String> {
         }
     }
 
-    let ext = extension_account_ids();
+    let sources = load_sources();
     let active_email = claude_dashboard_core::claude_code::active_email();
     let rows = build_rows(BuildInput {
         accounts: &accounts,
         usage_by_account: &usage_by_account,
         errors: &errors,
-        extension_install_account_ids: &ext,
+        sources: &sources,
         now_unix_s,
         active_claude_code_email: active_email.as_deref(),
     });
@@ -229,7 +227,7 @@ mod tests {
             accounts: &accts,
             usage_by_account: &u,
             errors: &e,
-            extension_install_account_ids: &HashSet::new(),
+            sources: &extension_sources::ExtensionSources::default(),
             now_unix_s: NOW,
             active_claude_code_email: None,
         })

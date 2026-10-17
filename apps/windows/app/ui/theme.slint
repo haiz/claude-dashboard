@@ -16,6 +16,11 @@ export global Theme {
     out property <string> font-family: "Segoe UI Variable";
 }
 
+export struct UiSegment {
+    path: string,
+    color: color,
+}
+
 export struct UiWindow {
     present: bool,
     percent: float,
@@ -31,6 +36,10 @@ export struct UiWindow {
     // Ring diameter / stroke width (core::geometry metrics), in logical px.
     diameter: float,
     line-width: float,
+    // Countdown ring segments (core::geometry::countdown_segments), blue -> green under 30% left.
+    segments: [UiSegment],
+    // Burn-rate animal placed on the ring ("" when unknown).
+    animal: string,
 }
 
 export struct UiRow {
@@ -51,4 +60,11 @@ export struct UiRow {
     error: string,
     extension-sourced: bool,
     claude-code: bool,
+    pinned: bool,
+    expired: bool,
+    kind-label: string,
+    expired-hint: string,
+    sidebar-percent: float,
+    sidebar-color: color,
+    has-sidebar-percent: bool,
 }

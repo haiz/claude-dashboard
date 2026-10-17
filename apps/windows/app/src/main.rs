@@ -9,6 +9,7 @@ mod overview;
 mod instance;
 mod migration;
 mod model;
+mod pin;
 mod pipe;
 mod popover;
 mod refresh;
@@ -140,6 +141,9 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         is_extension_sourced: false,
         error: None,
         last_synced_unix: Some(now),
+        is_pinned: name == "alice",
+        kind_label: "Default".into(),
+        expired_hint: String::new(),
     };
     let rows = vec![
         mk("f1", "alice", AccountPlan::Pro, 12.0, 30.0, None),
