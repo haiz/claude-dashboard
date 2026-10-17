@@ -1,10 +1,11 @@
 //! The refresh engine: fetch usage for every account, log it, build rows.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use claude_dashboard_core::api;
 use claude_dashboard_core::burn_rate::BurnRateTracker;
-use claude_dashboard_core::model::{Account, AccountStatus};
+use claude_dashboard_core::model::{Account, AccountPlan, AccountStatus};
+use claude_dashboard_core::plan::{parse_orgs, refreshed_plan_for};
 use claude_dashboard_core::extension_sources;
 use claude_dashboard_core::rows::{build_rows, peak_utilization, BuildInput, DisplayRow, WindowView, sort_rows};
 use claude_dashboard_core::store::{self, UsageLogStore};
@@ -74,16 +75,18 @@ pub fn refresh_one(account_id: &str, prev: &[DisplayRow], now_unix_s: f64) -> Re
             let peak = peak_utilization(&merged);
             RefreshOutput { rows: merged, peak }
         }
-        Ok(_) => merge_errors(prev, Err("unexpected row count".into())),
-        Err(e) => merge_errors(prev, Err(e)),
+        Ok(_) => merge_errors(prev, Err("unexpected row count".into()), now_unix_s),
+        Err(e) => merge_errors(prev, Err(e), now_unix_s),
     }
 }
 
-/// Ok -> the fresh output; Err -> the previous rows, unchanged.
-pub fn merge_errors(prev: &[DisplayRow], fresh: Result<RefreshOutput, String>) -> RefreshOutput {
+/// Ok -> the fresh output (backfilled rows re-sorted by their last-good usage); Err -> the
+/// previous rows, unchanged.
+pub fn merge_errors(prev: &[DisplayRow], fresh: Result<RefreshOutput, String>, now_unix_s: f64) -> RefreshOutput {
     match fresh {
         Ok(mut out) => {
             backfill_errored_rows(prev, &mut out.rows);
+            sort_rows(&mut out.rows, now_unix_s);
             out.peak = peak_utilization(&out.rows);
             out
         }
@@ -120,11 +123,13 @@ pub fn apply_projections(tracker: &mut BurnRateTracker, rows: &mut [DisplayRow],
     }
 }
 
-/// An errored row with no window data of its own keeps the previous row's last-good
-/// windows, so a transient failure does not blank its gauges.
+/// A row that was not fetched fine this time (errored, or expired and so skipped) and has
+/// no window data of its own keeps the previous row's last-good windows, as macOS keeps
+/// `usage` across a failed fetch, so its gauges do not blank.
 fn backfill_errored_rows(prev: &[DisplayRow], fresh: &mut [DisplayRow]) {
     for row in fresh.iter_mut() {
-        if row.error.is_none() || row.five_hour.is_some() || row.seven_day.is_some() || row.fable.is_some() {
+        let unfetched = row.error.is_some() || row.status != AccountStatus::Active;
+        if !unfetched || row.five_hour.is_some() || row.seven_day.is_some() || row.fable.is_some() {
             continue;
         }
         if let Some(p) = prev.iter().find(|p| p.account_id == row.account_id) {
@@ -145,13 +150,117 @@ const WINDOW_FABLE: i64 = 3;
 
 type Fetched = (UsageData, Option<String>);
 
-fn fetch_one(org_id: &str, session_key: &str) -> Result<Fetched, String> {
-    let resp = api::usage_raw(org_id, session_key).map_err(|e| e.to_string())?;
-    if resp.body.is_empty() {
-        return Err("Empty response.".into());
+/// Why one account's usage fetch failed. `Auth` (HTTP 401/403) marks the account
+/// expired, as macOS `UsageAPIError.authExpired` does; anything else is shown on its card.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FetchError {
+    Auth,
+    Other(String),
+}
+
+/// `core::api` keeps 401/403 as plain HTTP errors (the helper prints them); the app
+/// reads them as an expired session.
+pub fn classify(e: &api::ApiError) -> FetchError {
+    match e {
+        api::ApiError::HttpError(401 | 403) => FetchError::Auth,
+        other => FetchError::Other(other.to_string()),
     }
-    let usage = UsageData::decode(&resp.body).map_err(|e| e.to_string())?;
+}
+
+/// macOS `fetchWithRetry`: up to `attempts` tries, `delay` apart; an auth failure is final.
+pub fn with_retry<T>(
+    attempts: u32,
+    delay: std::time::Duration,
+    mut op: impl FnMut() -> Result<T, FetchError>,
+    sleep: impl Fn(std::time::Duration),
+) -> Result<T, FetchError> {
+    let mut last = FetchError::Other("no attempt".into());
+    for attempt in 0..attempts {
+        match op() {
+            Ok(v) => return Ok(v),
+            Err(FetchError::Auth) => return Err(FetchError::Auth),
+            Err(e) => last = e,
+        }
+        if attempt + 1 < attempts {
+            sleep(delay);
+        }
+    }
+    Err(last)
+}
+
+fn fetch_one(org_id: &str, session_key: &str) -> Result<Fetched, FetchError> {
+    let resp = api::usage_raw(org_id, session_key).map_err(|e| classify(&e))?;
+    if resp.body.is_empty() {
+        return Err(FetchError::Other("Empty response.".into()));
+    }
+    // macOS shows a decoding failure as a transient read error.
+    let usage = UsageData::decode(&resp.body)
+        .map_err(|_| FetchError::Other("Temporary read error. Try refreshing.".into()))?;
     Ok((usage, resp.new_session_key))
+}
+
+/// What one refresh learned about an account, written back to the store and to the
+/// in-memory copy the rows are built from (macOS `refreshAll`'s update step).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct AccountUpdate {
+    /// 401/403: the session is gone.
+    pub expired: bool,
+    /// Fetched fine: active again, `last_synced` = now.
+    pub synced: bool,
+    pub new_key: Option<String>,
+    /// From `/api/organizations` (`contract/cases/plan-refresh.json`); `None` leaves it.
+    pub plan: Option<AccountPlan>,
+    /// From `/api/account` when the record has no uuid yet: (uuid, email).
+    pub identity: Option<(String, Option<String>)>,
+}
+
+/// Applies `u` to `a`; the session key is the caller's (it is sealed only on disk).
+/// Identity only fills blanks and never touches `org_id`, as on macOS.
+pub fn apply_update(a: &mut Account, u: &AccountUpdate, now_unix_s: f64) {
+    if u.expired {
+        a.status = AccountStatus::Expired;
+    }
+    if u.synced {
+        a.status = AccountStatus::Active;
+        a.last_synced = Some(now_unix_s - REFERENCE_EPOCH_OFFSET);
+    }
+    if let Some(p) = &u.plan {
+        a.plan = p.clone();
+    }
+    if let Some((uuid, email)) = &u.identity {
+        if a.account_uuid.is_none() {
+            a.account_uuid = Some(uuid.clone());
+        }
+        if a.email.is_none() {
+            a.email = email.clone();
+        }
+    }
+}
+
+/// One account's fetch plus its best-effort plan and identity lookups (on success only).
+fn refresh_account(a: &Account, key: &str, org: &str) -> (Result<UsageData, FetchError>, AccountUpdate) {
+    let mut update = AccountUpdate::default();
+    let fetched = with_retry(3, std::time::Duration::from_secs(1), || fetch_one(org, key), std::thread::sleep);
+    let usage = match fetched {
+        Ok((usage, new_key)) => {
+            update.synced = true;
+            update.new_key = new_key;
+            let orgs = api::fetch_organizations(key).map(|b| parse_orgs(&b)).unwrap_or_default();
+            update.plan = refreshed_plan_for(a, &orgs);
+            if a.account_uuid.is_none() {
+                update.identity = api::fetch_account(key)
+                    .ok()
+                    .and_then(|b| api::parse_account(&b))
+                    .map(|i| (i.uuid, i.email));
+            }
+            Ok(usage)
+        }
+        Err(e) => {
+            update.expired = e == FetchError::Auth;
+            Err(e)
+        }
+    };
+    (usage, update)
 }
 
 /// The extension install bindings (empty if unreadable).
@@ -159,23 +268,24 @@ fn load_sources() -> extension_sources::ExtensionSources {
     extension_sources::load(&extension_sources::sources_path()).unwrap_or_default()
 }
 
-/// Saves rotated session keys and last_synced stamps in one locked load-modify-save (shared with the
-/// bridge writers), after all fetches so there are no write races.
 /// Reference-date (2001-01-01) offset from the Unix epoch, as `Account.last_synced` uses.
 const REFERENCE_EPOCH_OFFSET: f64 = 978_307_200.0;
 
-fn persist_refresh(rotated: &HashMap<String, String>, synced: &HashSet<String>, now_unix_s: f64) {
-    if rotated.is_empty() && synced.is_empty() {
+/// Writes every account's update (status, sync stamp, rotated key, plan, identity) in one
+/// locked load-modify-save (shared with the bridge writers), after all fetches so there
+/// are no write races.
+fn persist_refresh(updates: &HashMap<String, AccountUpdate>, now_unix_s: f64) {
+    if updates.values().all(|u| *u == AccountUpdate::default()) {
         return;
     }
     let Ok(_lock) = store::lock_store() else { return };
     let Ok((mut accounts, _)) = store::load_accounts_for_write() else { return };
     for a in accounts.iter_mut() {
-        if let Some(k) = rotated.get(&a.id) {
-            a.session_key = Some(store::encrypt_session_key(k));
-        }
-        if synced.contains(&a.id) {
-            a.last_synced = Some(now_unix_s - REFERENCE_EPOCH_OFFSET);
+        if let Some(u) = updates.get(&a.id) {
+            apply_update(a, u, now_unix_s);
+            if let Some(k) = &u.new_key {
+                a.session_key = Some(store::encrypt_session_key(k));
+            }
         }
     }
     if let Err(e) = store::save_accounts(&accounts) {
@@ -195,58 +305,70 @@ pub fn refresh_once(now_unix_s: f64) -> Result<RefreshOutput, String> {
     Ok(RefreshOutput { rows, peak })
 }
 
-/// Fetches usage for `accounts` (one thread each), saves rotated keys and sync stamps,
-/// logs the readings and builds their sorted rows.
+/// The `rat` a reading is logged under: its reset time, or now + the window length when
+/// the API sent none (macOS records `resetsAt ?? now + window`, `contract/usage-log.md`).
+pub fn log_resets_at(l: &UsageLimit, total_s: f64, now_unix_s: f64) -> f64 {
+    l.resets_at.map(|r| r as f64).unwrap_or(now_unix_s + total_s)
+}
+
+/// Fetches usage for `accounts` (one thread each), writes back what it learned, logs the
+/// readings and builds their sorted rows. Like macOS `refreshAll`, expired accounts and
+/// accounts with no key or org are not fetched (their rows carry no fresh usage).
 fn fetch_and_build(accounts: &[Account], now_unix_s: f64) -> Vec<DisplayRow> {
-    let results: Vec<(String, Result<Fetched, String>)> = std::thread::scope(|s| {
+    let results: Vec<(String, Result<UsageData, FetchError>, AccountUpdate)> = std::thread::scope(|s| {
         let handles: Vec<_> = accounts
             .iter()
-            .map(|a| {
-                s.spawn(move || {
-                    let key = a.session_key.as_deref().and_then(store::decrypt_session_key);
-                    let r = match (&a.org_id, key) {
-                        (Some(org), Some(key)) => fetch_one(org, &key),
-                        _ => Err("Not configured".to_string()),
-                    };
-                    (a.id.clone(), r)
-                })
+            .filter(|a| a.status != AccountStatus::Expired)
+            .filter_map(|a| {
+                let key = a.session_key.as_deref().and_then(store::decrypt_session_key)?;
+                let org = a.org_id.clone()?;
+                Some(s.spawn(move || {
+                    let (r, u) = refresh_account(a, &key, &org);
+                    (a.id.clone(), r, u)
+                }))
             })
             .collect();
-        handles
-            .into_iter()
-            .map(|h| h.join().unwrap_or_else(|_| (String::new(), Err("worker panicked".into()))))
-            .collect()
+        handles.into_iter().filter_map(|h| h.join().ok()).collect()
     });
 
     let mut usage_by_account: HashMap<String, UsageData> = HashMap::new();
     let mut errors: HashMap<String, String> = HashMap::new();
-    let mut rotated: HashMap<String, String> = HashMap::new();
-    for (id, r) in results {
+    let mut updates: HashMap<String, AccountUpdate> = HashMap::new();
+    for (id, r, u) in results {
         match r {
-            Ok((u, new_key)) => {
-                if let Some(k) = new_key {
-                    rotated.insert(id.clone(), k);
-                }
-                usage_by_account.insert(id, u);
+            Ok(usage) => {
+                usage_by_account.insert(id.clone(), usage);
             }
-            Err(e) => {
-                errors.insert(id, e);
+            // An expired session shows the expired card, not an error line.
+            Err(FetchError::Auth) => {}
+            Err(FetchError::Other(e)) => {
+                errors.insert(id.clone(), e);
             }
         }
+        updates.insert(id, u);
     }
 
-    let synced: HashSet<String> = usage_by_account.keys().cloned().collect();
-    persist_refresh(&rotated, &synced, now_unix_s);
+    persist_refresh(&updates, now_unix_s);
+    let accounts: Vec<Account> = accounts
+        .iter()
+        .cloned()
+        .map(|mut a| {
+            if let Some(u) = updates.get(&a.id) {
+                apply_update(&mut a, u, now_unix_s);
+            }
+            a
+        })
+        .collect();
 
     if let Ok(mut log) = UsageLogStore::open() {
         for (id, u) in &usage_by_account {
-            let mut rec = |w: i64, l: &UsageLimit| {
-                log.record(id, w, l.resets_at.unwrap_or(0) as f64, l.utilization, l.utilization >= 100.0);
+            let mut rec = |w: i64, l: &UsageLimit, total_s: f64| {
+                log.record(id, w, log_resets_at(l, total_s, now_unix_s), l.utilization, l.utilization >= 100.0);
             };
-            rec(WINDOW_FIVE_HOUR, &u.five_hour);
-            rec(WINDOW_SEVEN_DAY, &u.seven_day);
+            rec(WINDOW_FIVE_HOUR, &u.five_hour, 18000.0);
+            rec(WINDOW_SEVEN_DAY, &u.seven_day, 604800.0);
             if let Some(f) = &u.fable {
-                rec(WINDOW_FABLE, f);
+                rec(WINDOW_FABLE, f, 604800.0);
             }
         }
     }
@@ -254,7 +376,7 @@ fn fetch_and_build(accounts: &[Account], now_unix_s: f64) -> Vec<DisplayRow> {
     let sources = load_sources();
     let active_email = claude_dashboard_core::claude_code::active_email();
     build_rows(BuildInput {
-        accounts,
+        accounts: &accounts,
         usage_by_account: &usage_by_account,
         errors: &errors,
         sources: &sources,
@@ -425,7 +547,7 @@ mod tests {
     #[test]
     fn merge_errors_keeps_previous_rows_on_failure() {
         let prev = rows(&[]);
-        let merged = merge_errors(&prev, Err("offline".into()));
+        let merged = merge_errors(&prev, Err("offline".into()), NOW);
         assert_eq!(merged.rows, prev);
         assert_eq!(merged.peak, 70.0);
     }
@@ -433,7 +555,7 @@ mod tests {
     #[test]
     fn whole_refresh_failure_keeps_last_good_rows() {
         let prev = rows(&[("a", "old")]);
-        let merged = merge_errors(&prev, Err("store unreadable".into()));
+        let merged = merge_errors(&prev, Err("store unreadable".into()), NOW);
         assert_eq!(merged.rows.len(), 3);
         assert_eq!(merged.rows, prev);
     }
@@ -447,7 +569,7 @@ mod tests {
         b.seven_day = None;
         b.fable = None;
         b.peak_utilization = 0.0;
-        let merged = merge_errors(&prev, Ok(out(fresh)));
+        let merged = merge_errors(&prev, Ok(out(fresh)), NOW);
         let b = merged.rows.iter().find(|r| r.account_id == "b").unwrap();
         assert_eq!(b.error.as_deref(), Some("HTTP 500"));
         assert_eq!(b.five_hour.as_ref().map(|w| w.utilization), Some(70.0));
@@ -457,16 +579,105 @@ mod tests {
     }
 
     #[test]
+    fn auth_statuses_classify_as_expired_others_keep_their_text() {
+        use api::ApiError;
+        assert_eq!(classify(&ApiError::HttpError(401)), FetchError::Auth);
+        assert_eq!(classify(&ApiError::HttpError(403)), FetchError::Auth);
+        assert_eq!(classify(&ApiError::HttpError(500)), FetchError::Other("HTTP 500".into()));
+        assert_eq!(classify(&ApiError::Timeout), FetchError::Other("request timed out".into()));
+    }
+
+    #[test]
+    fn retry_tries_three_times_but_stops_on_auth() {
+        use std::cell::Cell;
+        let (calls, sleeps) = (Cell::new(0), Cell::new(0));
+        let d = std::time::Duration::from_secs(1);
+        let r: Result<(), _> = with_retry(3, d, || {
+            calls.set(calls.get() + 1);
+            Err(FetchError::Other("boom".into()))
+        }, |_| sleeps.set(sleeps.get() + 1));
+        assert_eq!(r, Err(FetchError::Other("boom".into())));
+        assert_eq!((calls.get(), sleeps.get()), (3, 2));
+
+        calls.set(0);
+        let r: Result<(), _> = with_retry(3, d, || {
+            calls.set(calls.get() + 1);
+            Err(FetchError::Auth)
+        }, |_| {});
+        assert_eq!(r, Err(FetchError::Auth));
+        assert_eq!(calls.get(), 1);
+
+        calls.set(0);
+        let r = with_retry(3, d, || {
+            calls.set(calls.get() + 1);
+            if calls.get() < 2 { Err(FetchError::Other("x".into())) } else { Ok(7) }
+        }, |_| {});
+        assert_eq!(r, Ok(7));
+    }
+
+    #[test]
+    fn updates_mark_expired_or_heal_and_fill_identity_blanks_only() {
+        let mut a = acct("a");
+        a.status = AccountStatus::Error;
+        apply_update(&mut a, &AccountUpdate { expired: true, ..Default::default() }, NOW);
+        assert_eq!(a.status, AccountStatus::Expired);
+
+        let u = AccountUpdate {
+            synced: true,
+            plan: Some(AccountPlan::Max20x),
+            identity: Some(("uuid-1".into(), Some("a@x.com".into()))),
+            ..Default::default()
+        };
+        apply_update(&mut a, &u, NOW);
+        assert_eq!(a.status, AccountStatus::Active);
+        assert_eq!(a.last_synced_unix(), Some(NOW));
+        assert_eq!(a.plan, AccountPlan::Max20x);
+        assert_eq!(a.account_uuid.as_deref(), Some("uuid-1"));
+        assert_eq!(a.email.as_deref(), Some("a@x.com"));
+
+        let again = AccountUpdate { identity: Some(("uuid-2".into(), Some("b@x.com".into()))), ..Default::default() };
+        apply_update(&mut a, &again, NOW);
+        assert_eq!(a.account_uuid.as_deref(), Some("uuid-1"), "never overwritten");
+        assert_eq!(a.email.as_deref(), Some("a@x.com"));
+    }
+
+    #[test]
+    fn log_resets_at_falls_back_to_now_plus_window() {
+        let l = UsageLimit { utilization: 1.0, resets_at: None };
+        assert_eq!(log_resets_at(&l, 18000.0, NOW), NOW + 18000.0);
+        let l = UsageLimit { utilization: 1.0, resets_at: Some(42) };
+        assert_eq!(log_resets_at(&l, 18000.0, NOW), 42.0);
+    }
+
+    #[test]
+    fn expired_row_keeps_last_good_windows_and_errored_row_keeps_its_place() {
+        let prev = rows(&[]);
+        let mut fresh = rows(&[("b", "HTTP 500")]);
+        let a = fresh.iter_mut().find(|r| r.account_id == "a").unwrap();
+        a.status = AccountStatus::Expired;
+        a.five_hour = None;
+        a.seven_day = None;
+        let b = fresh.iter_mut().find(|r| r.account_id == "b").unwrap();
+        b.five_hour = None;
+        b.seven_day = None;
+        let merged = merge_errors(&prev, Ok(out(fresh)), NOW);
+        let a = merged.rows.iter().find(|r| r.account_id == "a").unwrap();
+        assert_eq!(a.five_hour.as_ref().map(|w| w.utilization), Some(40.0));
+        // b (70%, errored) still leads on its last-good usage; expired a sinks.
+        assert_eq!(merged.rows.iter().map(|r| r.account_id.as_str()).collect::<Vec<_>>(), ["b", "c", "a"]);
+    }
+
+    #[test]
     fn merge_errors_takes_fresh_on_success() {
         let prev = rows(&[]);
         let fresh = out(vec![prev[0].clone()]);
-        let merged = merge_errors(&prev, Ok(fresh.clone()));
+        let merged = merge_errors(&prev, Ok(fresh.clone()), NOW);
         assert_eq!(merged, fresh);
     }
 
     #[test]
     fn refresh_merges_errors_without_dropping_rows() {
-        let merged = merge_errors(&[], Ok(out(rows(&[("a", "HTTP 500")]))));
+        let merged = merge_errors(&[], Ok(out(rows(&[("a", "HTTP 500")]))), NOW);
         assert_eq!(merged.rows.len(), 3);
         let a = merged.rows.iter().find(|r| r.account_id == "a").unwrap();
         assert_eq!(a.error.as_deref(), Some("HTTP 500"));

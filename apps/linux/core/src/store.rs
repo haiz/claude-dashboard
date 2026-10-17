@@ -632,6 +632,12 @@ impl UsageLogStore {
         );
     }
 
+    /// Deletes every row logged before `cutoff_unix` (macOS `deleteOlderThan`, run at
+    /// launch with now - 90 days). Best-effort: a SQLite failure deletes nothing.
+    pub fn delete_older_than(&mut self, cutoff_unix: f64) {
+        let _ = self.conn.execute("DELETE FROM usage_logs WHERE t < ?1", params![cutoff_unix as i64]);
+    }
+
     /// Test helper: total row count in `usage_logs` for `account_id` in
     /// `window`, across all `rat` values. Returns `0` if the account has no
     /// mapped `aid` yet or the query fails.
@@ -762,6 +768,17 @@ mod tests {
 
     fn mem_store() -> UsageLogStore {
         UsageLogStore::open_in_memory().unwrap()
+    }
+
+    #[test]
+    fn delete_older_than_keeps_rows_at_or_after_the_cutoff() {
+        let mut s = mem_store();
+        s.record_at("a", 0, 9_000.0, 10.0, false, 1_000.0);
+        s.record_at("a", 0, 9_000.0, 20.0, false, 2_000.0);
+        s.record_at("a", 0, 9_000.0, 30.0, false, 3_000.0);
+        s.delete_older_than(2_000.0);
+        assert_eq!(s.count("a", 0), 2);
+        assert_eq!(s.raw_u("a", 0), 3_000);
     }
 
     /// `accounts_path()` reads the process-global `XDG_CONFIG_HOME` env var,

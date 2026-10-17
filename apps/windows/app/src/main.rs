@@ -171,7 +171,7 @@ fn spawn_refresh_loop(
                     Nudge::All | Nudge::Reschedule => {
                         let fresh = refresh::refresh_once(now);
                         let fetched = fresh.is_ok();
-                        let mut out = refresh::merge_errors(&prev, fresh);
+                        let mut out = refresh::merge_errors(&prev, fresh, now);
                         // Only a real fetch is a new measurement; a failed refresh keeps the previous projections.
                         if fetched {
                             refresh::apply_projections(&mut tracker, &mut out.rows, now);

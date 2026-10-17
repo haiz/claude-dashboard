@@ -68,11 +68,11 @@ fn view(l: &UsageLimit) -> WindowView {
 }
 
 /// Port of `sortKey`: 5-hour utilization over time remaining. Read from the row, so it
-/// also holds for a row spliced into an existing list; an errored row had no usage when
-/// it was built, so it keys -1 whatever last-good windows it was backfilled with.
+/// also holds for a row spliced into an existing list. As on macOS, a failed fetch does
+/// not sink a row: one backfilled with its last-good windows keeps its burn position.
 fn row_sort_key(row: &DisplayRow, now: f64) -> f64 {
     let Some(w) = row.five_hour.as_ref() else { return -1.0 };
-    if row.status != AccountStatus::Active || row.error.is_some() {
+    if row.status != AccountStatus::Active {
         return -1.0;
     }
     let remaining = match w.resets_at_unix {
@@ -336,6 +336,16 @@ mod tests {
         assert_eq!(ids(&rows), ["ok", "bad"]);
         assert_eq!(rows[1].error.as_deref(), Some("boom"));
         assert_eq!(rows[0].error, None);
+    }
+
+    #[test]
+    fn errored_row_with_last_good_usage_keeps_its_burn_position() {
+        // macOS keeps the previous usage on a failed fetch and ranks it by burn as usual.
+        let accts = [acct("bad", false, AccountStatus::Active), acct("ok", false, AccountStatus::Active)];
+        let mut rows = run(&accts, &[("bad", usage(90.0, Some(3600))), ("ok", usage(1.0, None))], &[], &[]);
+        rows.iter_mut().find(|r| r.account_id == "bad").unwrap().error = Some("HTTP 500".into());
+        sort_rows(&mut rows, NOW);
+        assert_eq!(ids(&rows), ["bad", "ok"]);
     }
 
     #[test]
