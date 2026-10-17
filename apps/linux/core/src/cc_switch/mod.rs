@@ -2,3 +2,4 @@
 //! the switcher (port of macOS `Services/ClaudeCodeSwitch`).
 
 pub mod model;
+pub mod files;
