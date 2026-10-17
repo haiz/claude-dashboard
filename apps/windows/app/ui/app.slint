@@ -2,11 +2,11 @@ import { AboutSlint, Spinner } from "std-widgets.slint";
 import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "components.slint";
 import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
-import { OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartPoint, ChartCycle, ChartActions, HistoryData } from "chart.slint";
+import { OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData } from "chart.slint";
 import { HelpPane, HelpTopic } from "help.slint";
 import { InfoTip, TipStore, TipData } from "info_tip.slint";
 
-export { TipStore, TipData, HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartPoint, ChartCycle, ChartActions, HistoryData }
+export { TipStore, TipData, HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
 export enum Pane { dashboard, overview, account, help, settings-accounts, general }

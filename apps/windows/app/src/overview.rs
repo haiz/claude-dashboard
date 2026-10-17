@@ -12,8 +12,12 @@ use claude_dashboard_core::chart::{
 use claude_dashboard_core::store::UsageLogStore;
 use slint::{ComponentHandle, Model};
 
-use crate::chart::{now_ms, offset_ms, to_state, vis_with_context, Interaction, Mode, View};
-use crate::chart_model::{format_stamp, interpolate, points_to_entries, series_path, x_to_ms};
+use crate::chart::{
+    now_ms, offset_ms, to_state, vis_with_context, Interaction, Mode, Tip, TipRow, View,
+};
+use crate::chart_model::{
+    format_stamp, interpolate, palette_slot, points_to_entries, series_path, x_to_ms,
+};
 use crate::{AppWindow, ChartLegendItem, ChartLine, ChartPoint};
 
 /// macOS `OverviewChartView.initialPreset` (.fiveHour).
@@ -37,7 +41,8 @@ pub fn window_code(w: &str) -> i64 {
 pub struct Account {
     pub id: String,
     pub name: String,
-    pub color: slint::Color,
+    /// Shown in the legend after the name when it differs ("" = none).
+    pub email: String,
     /// Plan weight for the Avg overlay (macOS `planWeight`).
     pub weight: f64,
     /// Burn animal per window, in selector order: 5h, 7d, Fable ("" = unknown).
@@ -94,15 +99,16 @@ impl Overview {
         self.inner.loaded(Vec::new(), now);
     }
 
-    fn selected(&self) -> impl Iterator<Item = (&Account, &Vec<Entry>)> {
-        self.accounts.iter().filter_map(move |a| {
+    /// Shown accounts with data, with their palette slot (by list position).
+    fn selected(&self) -> impl Iterator<Item = (i32, &Account, &Vec<Entry>)> {
+        self.accounts.iter().enumerate().filter_map(move |(i, a)| {
             if self.hidden.contains(&a.id) {
                 return None;
             }
             self.series
                 .get(&a.id)
                 .filter(|v| !v.is_empty())
-                .map(|v| (a, v))
+                .map(|v| (palette_slot(i), a, v))
         })
     }
 
@@ -126,14 +132,10 @@ impl Overview {
         let mut v = self.inner.view(local_offset_ms);
         let sc = self.inner.scale();
         let range = self.inner.range;
-        let hover = self
-            .inner
-            .hover_pos()
-            .filter(|&(hx, hy)| hx >= sc.left && hx <= sc.right && hy >= sc.top && hy <= sc.bottom);
 
         let mut lines = Vec::new();
         let mut limits = Vec::new();
-        for (a, entries) in self.selected() {
+        for (slot, a, entries) in self.selected() {
             let path = series_path(&vis_with_context(entries, range), &sc);
             if path.is_empty() {
                 continue; // nothing in the zoomed range: absent, not zero
@@ -147,49 +149,41 @@ impl Overview {
             }
             lines.push(ChartLine {
                 path: path.as_str().into(),
-                color: a.color,
-                dot_visible: false,
-                dot_x: 0.0,
-                dot_y: 0.0,
+                slot,
             });
         }
 
-        // As macOS: the line follows the pointer; the card lists every shown
-        // account's interpolated value and local burn rate at that instant.
-        let shown: Vec<&Account> = self
-            .accounts
-            .iter()
-            .filter(|a| !self.hidden.contains(&a.id))
-            .collect();
-        match hover {
-            Some((hx, hy)) if !shown.is_empty() => {
-                let ms = x_to_ms(hx, &sc);
-                let mut tip = vec![format_stamp(ms + local_offset_ms)];
-                for a in &shown {
+        // As macOS: the dashed rule follows the pointer; the card lists every
+        // shown account's interpolated value and local burn rate at that instant.
+        v.tip = v.cross.map(|(hx, _)| {
+            let ms = x_to_ms(hx, &sc);
+            let rows = self
+                .accounts
+                .iter()
+                .enumerate()
+                .filter(|(_, a)| !self.hidden.contains(&a.id))
+                .map(|(i, a)| {
                     let es = self.series.get(&a.id).map(Vec::as_slice).unwrap_or(&[]);
-                    let util = interpolate(es, ms)
-                        .map(|u| format!("  {u:.0}%"))
-                        .unwrap_or_default();
-                    let rate = rate_at(es, ms)
-                        .map(|r| format!("{r:+.1}%/h"))
-                        .unwrap_or_else(|| "--".to_string());
-                    tip.push(format!("{}{util}  {rate}", a.name));
-                }
-                v.cross = Some((hx, hy));
-                v.tooltip = tip.join("\n");
+                    TipRow {
+                        name: a.name.clone(),
+                        slot: palette_slot(i),
+                        value: interpolate(es, ms),
+                        rate: rate_at(es, ms),
+                    }
+                })
+                .collect();
+            Tip {
+                time: format_stamp(ms + local_offset_ms),
+                rows,
             }
-            _ => {
-                v.cross = None;
-                v.tooltip.clear();
-            }
-        }
+        });
         v.line_path.clear();
         v.empty = self.series.values().all(|s| s.is_empty());
 
         // Plan-weighted Avg over the visible range (macOS `weightedAverageRate`).
         let pairs: Vec<(&[Entry], f64)> = self
             .selected()
-            .map(|(a, e)| (e.as_slice(), a.weight))
+            .map(|(_, a, e)| (e.as_slice(), a.weight))
             .collect();
         (v.avg_text, v.avg_hot) = match weighted_average_rate(&pairs, range.from_ms, range.to_ms) {
             Some(r) => (format!("Avg: {r:.1}%/h"), r > 0.1),
@@ -199,12 +193,18 @@ impl Overview {
         let legend = self
             .accounts
             .iter()
-            .map(|a| ChartLegendItem {
+            .enumerate()
+            .map(|(i, a)| ChartLegendItem {
                 id: a.id.as_str().into(),
                 name: a.name.as_str().into(),
-                color: a.color,
+                // macOS shows the email only when the name is not already it.
+                email: if a.email == a.name {
+                    "".into()
+                } else {
+                    a.email.as_str().into()
+                },
+                slot: palette_slot(i),
                 on: !self.hidden.contains(&a.id),
-                has_data: self.series.get(&a.id).is_some_and(|s| !s.is_empty()),
                 animal: self.animal(a).as_str().into(),
             })
             .collect();
@@ -228,8 +228,6 @@ fn push(app: &AppWindow, f: impl FnOnce(&mut Overview)) {
     });
     if let Some((v, lines, legend, limits, window)) = out {
         let mut st = to_state(&v);
-        // No single series to put a dot on: the per-line dots carry the hover.
-        st.cross_dot = false;
         st.limit_points = slint::ModelRc::new(slint::VecModel::from(
             limits
                 .into_iter()
@@ -253,7 +251,7 @@ fn accounts_of(app: &AppWindow) -> Vec<Account> {
         .map(|r| Account {
             id: r.id.to_string(),
             name: r.name.to_string(),
-            color: r.avatar_color,
+            email: r.email.to_string(),
             weight: plan_weight(r.plan.as_str()),
             animals: [
                 r.five_hour.animal.to_string(),
@@ -325,12 +323,10 @@ pub fn install(app: &AppWindow) {
         app.on_overview_open(move || {
             let Some(app) = w.upgrade() else { return };
             let accounts = accounts_of(&app);
-            // Keep toggles across re-opens.
+            // As macOS (@State): every visit starts on 5h with all accounts shown.
             STATE.with(|s| {
                 let mut s = s.borrow_mut();
-                let hidden = s.as_ref().map(|o| o.hidden.clone()).unwrap_or_default();
                 let mut o = Overview::new(DEFAULT_WINDOW, DEFAULT_PRESET, accounts, now_ms());
-                o.hidden = hidden;
                 if let Some((cw, ch)) = LAST_SIZE.with(|l| l.get()) {
                     o.inner.set_size(cw, ch);
                 }
@@ -469,7 +465,7 @@ mod tests {
         Account {
             id: id.into(),
             name: id.to_uppercase(),
-            color: slint::Color::from_rgb_u8(1, 2, 3),
+            email: format!("{id}@x.dev"),
             weight: 1.0,
             animals: [format!("{id}-5h"), format!("{id}-7d"), format!("{id}-f")],
         }
@@ -524,7 +520,22 @@ mod tests {
         let (v, lines, legend, _) = o.view(0.0);
         assert_eq!(lines.len(), 2, "c has no data -> no line");
         assert!(!v.empty);
-        assert!(!legend[2].has_data && legend[0].has_data);
+        // c still has its legend row (macOS lists every account).
+        assert_eq!(legend.len(), 3);
+    }
+
+    #[test]
+    fn colours_follow_list_position_like_macos() {
+        let mut o = ov();
+        o.toggle("a");
+        // b keeps slot 1 (cyan) with a hidden; the legend keeps every slot.
+        let (_, lines, legend, _) = o.view(0.0);
+        assert_eq!(lines.iter().map(|l| l.slot).collect::<Vec<_>>(), [1]);
+        assert_eq!(legend.iter().map(|l| l.slot).collect::<Vec<_>>(), [0, 1, 2]);
+        assert_eq!(legend[0].email.as_str(), "a@x.dev");
+        // The email is left out when it is the name.
+        o.accounts[1].email = o.accounts[1].name.clone();
+        assert_eq!(o.view(0.0).2[1].email.as_str(), "");
     }
 
     #[test]
@@ -544,11 +555,14 @@ mod tests {
         o.inner.hover_at(sc.x(NOW - 2.0 * H), sc.top + 5.0);
         let (v, _lines, _, _) = o.view(0.0);
         assert!(v.cross.is_some());
-        assert!(
-            v.tooltip.contains("A  ") && v.tooltip.contains("B  50%"),
-            "{}",
-            v.tooltip
-        );
+        let tip = v.tip.expect("card");
+        let names: Vec<&str> = tip.rows.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["A", "B", "C"]);
+        assert_eq!(tip.rows[1].value, Some(50.0));
+        o.toggle("b");
+        let tip = o.view(0.0).0.tip.expect("card");
+        assert_eq!(tip.rows.len(), 2);
+        assert_eq!(tip.rows[1].slot, 2, "c keeps its own colour");
     }
 
     #[test]
@@ -557,20 +571,16 @@ mod tests {
         let sc = o.inner.scale();
         // a: 10% at -3h, 30% at -1h -> 20% at -2h, +10%/h. b has one sample: 50%, no rate.
         o.inner.hover_at(sc.x(NOW - 2.0 * H), sc.top + 5.0);
-        let (v, lines, _, _) = o.view(0.0);
-        assert!(v.tooltip.contains("A  20%  +10.0%/h"), "{}", v.tooltip);
-        assert!(v.tooltip.contains("B  50%  --"), "{}", v.tooltip);
-        assert!(
-            v.tooltip.contains("C  --"),
-            "no data: rate only, {}",
-            v.tooltip
-        );
-        // The line follows the pointer exactly (no snapping to a sample).
+        let tip = o.view(0.0).0.tip.expect("card");
+        let a = &tip.rows[0];
+        assert!((a.value.unwrap() - 20.0).abs() < 1e-9 && a.rate == Some(10.0));
+        assert_eq!((tip.rows[1].value, tip.rows[1].rate), (Some(50.0), None));
+        // No data: no value, rate "--".
+        assert_eq!((tip.rows[2].value, tip.rows[2].rate), (None, None));
+        // The rule follows the pointer exactly (no snapping to a sample).
         let hx = sc.x(NOW - 2.2 * H);
         o.inner.hover_at(hx, sc.top + 5.0);
         assert_eq!(o.view(0.0).0.cross.map(|c| c.0), Some(hx));
-        assert!(o.view(0.0).1.iter().all(|l| !l.dot_visible));
-        let _ = lines;
     }
 
     #[test]
