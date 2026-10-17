@@ -722,8 +722,6 @@ export component InteractiveChart inherits Rectangle {
 // a window is reported to the page (`window-picked`) so the gauges and the picker share
 // one path.
 export component HistoryBox inherits VerticalLayout {
-    // Ignored: macOS draws the History line in a fixed blue (`ChartColors.blue`).
-    in property <color> line-color;
     callback window-picked(string);
     property <ChartState> st: HistoryData.state;
     property <bool> cycles-open: false;
