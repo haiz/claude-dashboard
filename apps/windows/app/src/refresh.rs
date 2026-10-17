@@ -15,6 +15,43 @@ use claude_dashboard_core::usage::{UsageData, UsageLimit};
 pub struct RefreshOutput {
     pub rows: Vec<DisplayRow>,
     pub peak: f64,
+    /// Accounts fetched fine this refresh, for Auto Ping (macOS pings on the refresh's own
+    /// fetch, never on stored usage).
+    pub candidates: Vec<PingCandidate>,
+}
+
+/// An account this refresh fetched successfully, with what a ping for it needs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PingCandidate {
+    pub account_id: String,
+    pub org_id: String,
+    pub session_key: String,
+    pub usage: UsageData,
+}
+
+/// One account's fetch in a refresh.
+pub struct Fetch {
+    pub id: String,
+    pub org: String,
+    pub key: String,
+    pub result: Result<UsageData, FetchError>,
+    pub update: AccountUpdate,
+}
+
+/// The successful fetches, each with its rotated session key when the server sent one.
+pub fn candidates_from(fetches: &[Fetch]) -> Vec<PingCandidate> {
+    fetches
+        .iter()
+        .filter_map(|f| {
+            let usage = f.result.as_ref().ok()?.clone();
+            Some(PingCandidate {
+                account_id: f.id.clone(),
+                org_id: f.org.clone(),
+                session_key: f.update.new_key.clone().unwrap_or_else(|| f.key.clone()),
+                usage,
+            })
+        })
+        .collect()
 }
 
 /// What wakes the refresh loop: every account, just one (the account page's Refresh), or
@@ -83,7 +120,7 @@ pub fn relabel(prev: &[DisplayRow], accounts: &[Account], now_unix_s: f64) -> Re
     }
     sort_rows(&mut rows, now_unix_s);
     let peak = peak_utilization(&rows);
-    RefreshOutput { rows, peak }
+    RefreshOutput { rows, peak, candidates: Vec::new() }
 }
 
 /// Folds the nudges that piled up while a cycle ran: any `All` covers everything, otherwise
@@ -128,11 +165,11 @@ pub fn refresh_some(ids: &[String], prev: &[DisplayRow], now_unix_s: f64) -> Ref
         })
         .map(|some| fetch_and_build(&some, now_unix_s));
     match fresh {
-        Ok(mut rows) => {
+        Ok((mut rows, candidates)) => {
             backfill_errored_rows(prev, &mut rows);
             let merged = rows.into_iter().fold(prev.to_vec(), |acc, row| merge_one(&acc, row, now_unix_s));
             let peak = peak_utilization(&merged);
-            RefreshOutput { rows: merged, peak }
+            RefreshOutput { rows: merged, peak, candidates }
         }
         Err(e) => merge_errors(prev, Err(e), now_unix_s),
     }
@@ -150,7 +187,7 @@ pub fn merge_errors(prev: &[DisplayRow], fresh: Result<RefreshOutput, String>, n
         }
         Err(e) => {
             eprintln!("refresh failed, keeping previous rows: {e}");
-            RefreshOutput { rows: prev.to_vec(), peak: peak_utilization(prev) }
+            RefreshOutput { rows: prev.to_vec(), peak: peak_utilization(prev), candidates: Vec::new() }
         }
     }
 }
@@ -358,9 +395,9 @@ pub fn refresh_once(now_unix_s: f64) -> Result<RefreshOutput, String> {
         Ok(a) => a,
         Err(e) => return Err(e.to_string()),
     };
-    let rows = fetch_and_build(&accounts, now_unix_s);
+    let (rows, candidates) = fetch_and_build(&accounts, now_unix_s);
     let peak = peak_utilization(&rows);
-    Ok(RefreshOutput { rows, peak })
+    Ok(RefreshOutput { rows, peak, candidates })
 }
 
 /// The `rat` a reading is logged under: its reset time, or now + the window length when
@@ -372,8 +409,8 @@ pub fn log_resets_at(l: &UsageLimit, total_s: f64, now_unix_s: f64) -> f64 {
 /// Fetches usage for `accounts` (one thread each), writes back what it learned, logs the
 /// readings and builds their sorted rows. Like macOS `refreshAll`, expired accounts and
 /// accounts with no key or org are not fetched (their rows carry no fresh usage).
-fn fetch_and_build(accounts: &[Account], now_unix_s: f64) -> Vec<DisplayRow> {
-    let results: Vec<(String, Result<UsageData, FetchError>, AccountUpdate)> = std::thread::scope(|s| {
+fn fetch_and_build(accounts: &[Account], now_unix_s: f64) -> (Vec<DisplayRow>, Vec<PingCandidate>) {
+    let results: Vec<Fetch> = std::thread::scope(|s| {
         let handles: Vec<_> = accounts
             .iter()
             .filter(|a| a.status != AccountStatus::Expired)
@@ -381,18 +418,19 @@ fn fetch_and_build(accounts: &[Account], now_unix_s: f64) -> Vec<DisplayRow> {
                 let key = a.session_key.as_deref().and_then(store::decrypt_session_key)?;
                 let org = a.org_id.clone()?;
                 Some(s.spawn(move || {
-                    let (r, u) = refresh_account(a, &key, &org);
-                    (a.id.clone(), r, u)
+                    let (result, update) = refresh_account(a, &key, &org);
+                    Fetch { id: a.id.clone(), org, key, result, update }
                 }))
             })
             .collect();
         handles.into_iter().filter_map(|h| h.join().ok()).collect()
     });
 
+    let candidates = candidates_from(&results);
     let mut usage_by_account: HashMap<String, UsageData> = HashMap::new();
     let mut errors: HashMap<String, String> = HashMap::new();
     let mut updates: HashMap<String, AccountUpdate> = HashMap::new();
-    for (id, r, u) in results {
+    for Fetch { id, result: r, update: u, .. } in results {
         match r {
             Ok(usage) => {
                 usage_by_account.insert(id.clone(), usage);
@@ -433,14 +471,15 @@ fn fetch_and_build(accounts: &[Account], now_unix_s: f64) -> Vec<DisplayRow> {
 
     let sources = load_sources();
     let active_email = claude_dashboard_core::claude_code::active_email();
-    build_rows(BuildInput {
+    let rows = build_rows(BuildInput {
         accounts: &accounts,
         usage_by_account: &usage_by_account,
         errors: &errors,
         sources: &sources,
         now_unix_s,
         active_claude_code_email: active_email.as_deref(),
-    })
+    });
+    (rows, candidates)
 }
 
 /// How long the refresh loop waits between cycles: the user's Auto Refresh
@@ -539,7 +578,7 @@ mod tests {
 
     fn out(rows: Vec<DisplayRow>) -> RefreshOutput {
         let peak = peak_utilization(&rows);
-        RefreshOutput { rows, peak }
+        RefreshOutput { rows, peak, candidates: Vec::new() }
     }
 
     #[test]
@@ -634,6 +673,37 @@ mod tests {
         assert!(b.seven_day.is_some());
         assert_eq!(merged.peak, 70.0);
         assert_eq!(merged.rows.len(), 3);
+    }
+
+    fn fetch(id: &str, result: Result<UsageData, FetchError>, new_key: Option<&str>) -> Fetch {
+        Fetch {
+            id: id.into(),
+            org: format!("org-{id}"),
+            key: format!("key-{id}"),
+            result,
+            update: AccountUpdate { new_key: new_key.map(String::from), ..Default::default() },
+        }
+    }
+
+    #[test]
+    fn candidates_only_from_successful_fetches() {
+        let fetches = [
+            fetch("a", Ok(usage(10.0)), None),
+            fetch("b", Err(FetchError::Auth), None),
+            fetch("c", Err(FetchError::Other("HTTP 500".into())), None),
+        ];
+        let c = candidates_from(&fetches);
+        assert_eq!(c.len(), 1);
+        assert_eq!(
+            c[0],
+            PingCandidate { account_id: "a".into(), org_id: "org-a".into(), session_key: "key-a".into(), usage: usage(10.0) }
+        );
+    }
+
+    #[test]
+    fn candidate_uses_rotated_key() {
+        let c = candidates_from(&[fetch("a", Ok(usage(1.0)), Some("rotated"))]);
+        assert_eq!(c[0].session_key, "rotated");
     }
 
     #[test]

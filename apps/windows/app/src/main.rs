@@ -142,6 +142,7 @@ fn publish_rows(current: slint::ModelRc<UiRow>, rows: Vec<UiRow>, set: impl FnOn
 /// burn projections) from the previous output.
 fn spawn_refresh_loop(
     rx: std::sync::mpsc::Receiver<refresh::Nudge>,
+    tx: std::sync::mpsc::Sender<refresh::Nudge>,
     weak: slint::Weak<AppWindow>,
     pop_weak: slint::Weak<PopoverWindow>,
 ) {
@@ -200,6 +201,10 @@ fn spawn_refresh_loop(
                     }
                 };
                 out.peak = claude_dashboard_core::rows::peak_utilization(&out.rows);
+                // Auto Ping on this refresh's own fetches (macOS `refreshAll`); never in dev runs.
+                let enabled = !dev_run() && claude_dashboard_core::settings::load().auto_ping_enabled;
+                let targets = ping::controller().claim_targets(&out.candidates, enabled, now);
+                spawn_auto_pings(targets, tx.clone());
                 prev = out.rows.clone();
                 let (weak, pop_weak) = (weak.clone(), pop_weak.clone());
                 let _ = slint::invoke_from_event_loop(move || apply_output(&weak, &pop_weak, &out, now));
@@ -228,6 +233,26 @@ fn spawn_refresh_loop(
             }
             jobs = refresh::coalesce(batch);
         }
+    });
+}
+
+/// Pings the claimed accounts in parallel on a worker, then refreshes them in one pass
+/// (macOS `runAutoPings`). A claim whose ping never ran (one was already running) is released.
+fn spawn_auto_pings(targets: Vec<ping::PingTarget>, tx: std::sync::mpsc::Sender<refresh::Nudge>) {
+    if targets.is_empty() {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::scope(|s| {
+            for t in &targets {
+                s.spawn(move || {
+                    if ping::run_ping(t, claude_dashboard_core::ping_log::PingTrigger::Auto).is_none() {
+                        ping::controller().release_claim(&t.account_id);
+                    }
+                });
+            }
+        });
+        let _ = tx.send(refresh::Nudge::Some(targets.into_iter().map(|t| t.account_id).collect()));
     });
 }
 
@@ -495,7 +520,7 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         expired("f4", "dave", AccountKind::PastedKey),
         expired("f5", "erin", AccountKind::Scanned { browser: Browser::Edge, profile: "Work".into() }),
     ];
-    refresh::RefreshOutput { peak: 100.0, rows }
+    refresh::RefreshOutput { peak: 100.0, rows, candidates: Vec::new() }
 }
 
 /// Time after a focus-loss hide during which a tray click is treated as the
@@ -810,6 +835,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let tray_nudge = nudge_tx.clone();
     let pop_nudge = nudge_tx.clone();
     let clock_nudge = nudge_tx.clone();
+    let ping_nudge = nudge_tx.clone();
 
     let dark = system_is_dark();
     // Add Account wizard (hidden until opened); its poll timer stops on close.
@@ -1199,7 +1225,9 @@ fn main() -> Result<(), slint::PlatformError> {
         apply_output(&app.as_weak(), &popover.as_weak(), &fake_rows(now), now);
         history::seed_fake_history();
     } else {
-        spawn_refresh_loop(nudge_rx, app.as_weak(), popover.as_weak());
+        // Each account page's latest ping, from the Ping Log.
+        ping::load_latest();
+        spawn_refresh_loop(nudge_rx, ping_nudge, app.as_weak(), popover.as_weak());
     }
     let _clock = start_clock(app.as_weak(), popover.as_weak(), clock_nudge);
     // Closing the main window hides it; the app lives in the tray and quits

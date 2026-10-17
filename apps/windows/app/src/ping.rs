@@ -5,9 +5,19 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
 
-use claude_dashboard_core::ping::PingOutcome;
-use claude_dashboard_core::ping_log::{PingLogEntry, PingTrigger};
+use claude_dashboard_core::ping::{PingOutcome, PingResult};
+use claude_dashboard_core::ping_log::{PingLogEntry, PingLogStore, PingTrigger};
 use claude_dashboard_core::usage::UsageData;
+
+use crate::refresh::PingCandidate;
+
+/// What a ping needs to reach claude.ai for one account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PingTarget {
+    pub account_id: String,
+    pub org_id: String,
+    pub session_key: String,
+}
 
 /// A failed auto ping may be retried after this long (macOS `failureCooldown`).
 pub const FAILURE_COOLDOWN_S: f64 = 600.0;
@@ -27,6 +37,63 @@ pub static CONTROLLER: LazyLock<Mutex<PingController>> = LazyLock::new(Default::
 /// Locks `CONTROLLER`, surviving a poisoned lock (a panicked ping thread).
 pub fn controller() -> std::sync::MutexGuard<'static, PingController> {
     CONTROLLER.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Called (on the pinging thread) whenever a ping starts or finishes, so the UI can redraw
+/// the account pages' Ping rows. Set once at startup.
+static ON_CHANGE: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>> = std::sync::OnceLock::new();
+
+pub fn set_on_change(f: impl Fn() + Send + Sync + 'static) {
+    let _ = ON_CHANGE.set(Box::new(f));
+}
+
+fn changed() {
+    if let Some(f) = ON_CHANGE.get() {
+        f();
+    }
+}
+
+fn unix_now() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
+}
+
+/// Pings one account and logs it (macOS `PingController.ping`). `None` when a ping for it
+/// is already running. Blocks for up to the completion timeout: call from a worker.
+pub fn run_ping(target: &PingTarget, trigger: PingTrigger) -> Option<PingResult> {
+    if !controller().begin(&target.account_id) {
+        return None;
+    }
+    changed();
+    let started = unix_now();
+    let timezone = iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".into());
+    let conversation = uuid::Uuid::new_v4().to_string().to_lowercase();
+    let result = claude_dashboard_core::ping::ping(&target.org_id, &target.session_key, &timezone, &conversation);
+    let finished = unix_now();
+    let id = PingLogStore::open()
+        .map(|mut log| log.insert(&target.account_id, trigger, started, finished, &result))
+        .unwrap_or(0);
+    let entry = PingLogEntry {
+        id,
+        account_id: target.account_id.clone(),
+        trigger,
+        started_unix: started,
+        finished_unix: finished,
+        outcome: result.outcome,
+        detail: result.detail.clone(),
+    };
+    controller().finish(entry, finished);
+    changed();
+    Some(result)
+}
+
+/// Startup: each account's latest logged ping, for the account pages' captions.
+pub fn load_latest() {
+    if let Ok(log) = PingLogStore::open() {
+        controller().set_latest_all(log.latest_all());
+    }
 }
 
 /// A window is not running when the API reports no reset time for it.
@@ -83,6 +150,20 @@ impl PingController {
             self.retry_after.insert(id.clone(), now + FAILURE_COOLDOWN_S);
         }
         self.latest.insert(id, entry);
+    }
+
+    /// The candidates this refresh claims for an auto ping (`active`: they were fetched fine,
+    /// which a refresh only does for active accounts and marks them active).
+    pub fn claim_targets(&mut self, cands: &[PingCandidate], enabled: bool, now: f64) -> Vec<PingTarget> {
+        cands
+            .iter()
+            .filter(|c| self.claim_auto(&c.account_id, true, &c.usage, enabled, now))
+            .map(|c| PingTarget {
+                account_id: c.account_id.clone(),
+                org_id: c.org_id.clone(),
+                session_key: c.session_key.clone(),
+            })
+            .collect()
     }
 
     pub fn is_in_flight(&self, id: &str) -> bool {
@@ -225,6 +306,18 @@ mod tests {
         assert!(c.claim_auto("a", true, &u, true, T));
         c.release_claim("a");
         assert!(c.claim_auto("a", true, &u, true, T + 1.0));
+    }
+
+    fn cand(id: &str, u: UsageData) -> crate::refresh::PingCandidate {
+        crate::refresh::PingCandidate { account_id: id.into(), org_id: "o".into(), session_key: "k".into(), usage: u }
+    }
+
+    #[test]
+    fn claim_targets_skips_unclaimed() {
+        let mut c = PingController::default();
+        let t = c.claim_targets(&[cand("a", usage(None, Some(1))), cand("b", running())], true, T);
+        assert_eq!(t, vec![PingTarget { account_id: "a".into(), org_id: "o".into(), session_key: "k".into() }]);
+        assert!(c.claim_targets(&[cand("a", usage(None, Some(1)))], true, T + 1.0).is_empty(), "latched");
     }
 
     #[test]
