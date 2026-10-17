@@ -147,6 +147,16 @@ pub fn ping_log_path() -> PathBuf {
     usage_log_path().with_file_name("ping_logs.db")
 }
 
+/// `<data dir>/claude-dashboard/auto_switch_logs.db`, beside the usage log.
+pub fn auto_switch_log_path() -> PathBuf {
+    usage_log_path().with_file_name("auto_switch_logs.db")
+}
+
+/// `<data dir>/claude-dashboard/ratio_logs.db`, beside the usage log.
+pub fn ratio_log_path() -> PathBuf {
+    usage_log_path().with_file_name("ratio_logs.db")
+}
+
 /// Loads the accounts array. A missing file is not an error — it means no
 /// accounts have been saved yet, so this returns an empty `Vec`.
 pub fn load_accounts() -> Result<Vec<Account>, StoreError> {
