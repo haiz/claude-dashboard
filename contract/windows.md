@@ -141,6 +141,25 @@ session), AppBound (`v20` cookie: the UI says "use the extension") or NoSession.
 AppBound profiles are never force-decoded. Deleting an extension-sourced account
 from the Settings Accounts pane mutes its install (see the muted rule above).
 
+The scan follows macOS `SetupView`. It reads one browser at a time, picked from
+the installed ones (those whose `User Data` directory exists) and saved as
+`preferredScanBrowser` in `settings.json`. With two or more browsers and no
+saved choice that is still installed, the tab asks which one before it reads
+any cookie; otherwise it scans when the tab first opens. Each Found profile's
+key is checked with `/api/account`, and its org is resolved as on macOS. Any
+account already stored (`contract/cases/dedupe.json`) is skipped. The scan
+offers the rest, showing the email (else the profile name), the plan, and
+`<Browser>: <Google email, else profile dir>`. When nothing is offered, it
+lists each skipped profile in natural order under "Nothing new to add. What
+the scan found:". The reasons are: already added as X, signed out (HTTP
+401/403), no organization with chat access, could not be read, and, Windows
+only, app-bound (use the Browser extension tab). Add Selected stores the picked
+accounts as scanned accounts (`source: browser`, `chromeProfilePath` = the
+profile dir, `chromeProfileName` = the Google email, else the profile name). It
+re-checks dedupe, refreshes and closes the wizard. A pasted key that is saved
+closes the wizard too, unless the account has no organization with chat
+access: then the warning stays on screen.
+
 Scan roots, under `%LOCALAPPDATA%`: `Google\Chrome\User Data`,
 `Google\Chrome Dev\User Data` (shown as "Chrome Dev", stored as `"chromeDev"`),
 `Microsoft\Edge\User Data` and `BraveSoftware\Brave-Browser\User Data`. Arc is
