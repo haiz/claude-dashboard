@@ -4,8 +4,9 @@ import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
 import { OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartPoint, ChartCycle, ChartActions, HistoryData } from "chart.slint";
 import { HelpPane, HelpTopic } from "help.slint";
+import { InfoTip, TipStore, TipData } from "info_tip.slint";
 
-export { HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartPoint, ChartCycle, ChartActions, HistoryData }
+export { TipStore, TipData, HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartPoint, ChartCycle, ChartActions, HistoryData }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
 export enum Pane { dashboard, overview, account, help, settings-accounts, general }
@@ -184,14 +185,49 @@ component IntervalChip inherits Rectangle {
     touch := TouchArea { clicked => { root.clicked(); } }
 }
 
-// Settings > General (macOS GeneralSettingsPane): About, Auto Refresh,
-// Launch at startup, Updates.
+// Pill switch used by the Settings > General rows.
+component SwitchKnob inherits Rectangle {
+    in property <bool> on;
+    callback toggled(bool);
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: root.on ? Theme.accent : Theme.card-border;
+    Rectangle {
+        width: 16px; height: 16px; border-radius: 8px; background: #ffffff;
+        y: 3px;
+        x: root.on ? parent.width - self.width - 3px : 3px;
+    }
+    TouchArea { clicked => { root.toggled(!root.on); } }
+}
+
+// Square stepper button for the Auto Refresh interval.
+component StepButton inherits Rectangle {
+    in property <string> glyph;
+    in property <bool> enabled: true;
+    callback clicked();
+    width: 26px;
+    height: 24px;
+    border-radius: 5px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    opacity: root.enabled ? 1.0 : 0.4;
+    background: touch.has-hover && root.enabled ? Theme.accent.with-alpha(0.15) : transparent;
+    Text { text: root.glyph; color: Theme.text-primary; horizontal-alignment: center; vertical-alignment: center; }
+    touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+// Settings > General (macOS GeneralSettingsPane): About, Auto Refresh (switch + 1-60 min
+// stepper), Launch at startup, Updates, Reset All Settings.
 component GeneralSettingsPane inherits Flickable {
     in property <string> app-name;
     in property <string> app-version;
-    in property <int> auto-refresh-seconds;
+    in property <string> release-date;
+    in property <bool> auto-refresh-enabled;
+    in property <int> auto-refresh-minutes;
     in property <bool> launch-at-startup;
-    callback set-auto-refresh(int);
+    callback set-auto-refresh-enabled(bool);
+    callback set-auto-refresh-minutes(int);
     callback set-launch-at-startup(bool);
     in property <string> update-status;
     in property <bool> update-can-install;
@@ -200,21 +236,31 @@ component GeneralSettingsPane inherits Flickable {
     callback check-updates();
     callback install-update();
     callback set-auto-update(bool);
+    callback reset-all-settings();
+    property <bool> confirming-reset;
     content-height: col.preferred-height;
     col := VerticalLayout {
         spacing: 12px;
         alignment: start;
 
-        GroupHeader { text: "About"; }
         SettingsCard {
             height: about-col.preferred-height + 24px;
             about-col := VerticalLayout {
                 padding: 12px;
                 spacing: 4px;
-                Text { text: root.app-name + "  v" + root.app-version; color: Theme.text-primary; font-weight: 600; }
+                Text { text: root.app-name; color: Theme.text-primary; font-size: 18px; font-weight: 700; horizontal-alignment: center; }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 8px;
+                    Text { text: "Version " + root.app-version; color: Theme.text-secondary; }
+                    if root.release-date != "": Text {
+                        text: "(" + root.release-date + ")";
+                        color: Theme.text-secondary; font-size: 12px; vertical-alignment: bottom;
+                    }
+                }
                 Text {
                     text: "Monitors Claude.ai token usage across your accounts from the system tray.";
-                    color: Theme.text-secondary; font-size: 12px; wrap: word-wrap;
+                    color: Theme.text-secondary; font-size: 12px; wrap: word-wrap; horizontal-alignment: center;
                 }
                 AboutSlint { height: 120px; }
             }
@@ -222,18 +268,35 @@ component GeneralSettingsPane inherits Flickable {
 
         GroupHeader { text: "Auto Refresh"; }
         SettingsCard {
-            height: 76px;
-            VerticalLayout {
+            height: ar.preferred-height + 24px;
+            ar := VerticalLayout {
                 padding: 12px;
-                spacing: 8px;
-                Text { text: "Refresh usage every"; color: Theme.text-primary; }
+                spacing: 10px;
                 HorizontalLayout {
-                    spacing: 6px;
-                    alignment: start;
-                    for p[i] in [{l: "1 min", s: 60}, {l: "2 min", s: 120}, {l: "5 min", s: 300}, {l: "15 min", s: 900}]: IntervalChip {
-                        label: p.l;
-                        active: root.auto-refresh-seconds == p.s;
-                        clicked => { root.set-auto-refresh(p.s); }
+                    spacing: 4px;
+                    Text { text: "Enable auto refresh"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "auto-refresh"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    SwitchKnob { on: root.auto-refresh-enabled; toggled(v) => { root.set-auto-refresh-enabled(v); } }
+                }
+                if root.auto-refresh-enabled: HorizontalLayout {
+                    spacing: 4px;
+                    Text { text: "Interval"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "refresh-interval"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        StepButton {
+                            glyph: "\u{2212}";
+                            enabled: root.auto-refresh-minutes > 1;
+                            clicked => { root.set-auto-refresh-minutes(root.auto-refresh-minutes - 1); }
+                        }
+                        Text { text: root.auto-refresh-minutes + " min"; color: Theme.text-primary; vertical-alignment: center; horizontal-alignment: center; min-width: 52px; }
+                        StepButton {
+                            glyph: "+";
+                            enabled: root.auto-refresh-minutes < 60;
+                            clicked => { root.set-auto-refresh-minutes(root.auto-refresh-minutes + 1); }
+                        }
                     }
                 }
             }
@@ -245,17 +308,7 @@ component GeneralSettingsPane inherits Flickable {
             HorizontalLayout {
                 padding: 12px;
                 Text { text: "Launch at startup"; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; }
-                Rectangle {
-                    width: 40px; height: 22px; y: (parent.height - self.height) / 2;
-                    border-radius: 11px;
-                    background: root.launch-at-startup ? Theme.accent : Theme.card-border;
-                    Rectangle {
-                        width: 16px; height: 16px; border-radius: 8px; background: #ffffff;
-                        y: 3px;
-                        x: root.launch-at-startup ? parent.width - self.width - 3px : 3px;
-                    }
-                    TouchArea { clicked => { root.set-launch-at-startup(!root.launch-at-startup); } }
-                }
+                SwitchKnob { y: (parent.height - self.height) / 2; on: root.launch-at-startup; toggled(v) => { root.set-launch-at-startup(v); } }
             }
         }
 
@@ -273,19 +326,45 @@ component GeneralSettingsPane inherits Flickable {
                                    clicked => { if !root.update-busy { root.check-updates(); } } }
                 }
                 HorizontalLayout {
-                    Text { text: "Install updates automatically"; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; }
-                    Rectangle {
-                        width: 40px; height: 22px;
-                        border-radius: 11px;
-                        background: root.auto-update ? Theme.accent : Theme.card-border;
-                        Rectangle { width: 16px; height: 16px; border-radius: 8px; background: #ffffff; y: 3px;
-                                    x: root.auto-update ? parent.width - self.width - 3px : 3px; }
-                        TouchArea { clicked => { root.set-auto-update(!root.auto-update); } }
-                    }
+                    spacing: 4px;
+                    Text { text: "Auto-update daily"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "auto-update"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    SwitchKnob { on: root.auto-update; toggled(v) => { root.set-auto-update(v); } }
                 }
-                Text { text: "Checks GitHub once a day and installs new releases."; color: Theme.text-secondary; font-size: 11px; }
+                if root.auto-update: Text {
+                    text: "Checks GitHub once a day and installs new releases automatically.";
+                    color: Theme.text-secondary; font-size: 11px;
+                }
             }
         }
+
+        SettingsCard {
+            height: rst.preferred-height + 24px;
+            rst := VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                if !root.confirming-reset: HorizontalLayout {
+                    alignment: end;
+                    PaneButton { label: "Reset All Settings\u{2026}"; tint: Theme.danger; clicked => { root.confirming-reset = true; } }
+                }
+                if root.confirming-reset: Text {
+                    text: "Reset all settings to their defaults?";
+                    color: Theme.text-primary; font-weight: 600; wrap: word-wrap;
+                }
+                if root.confirming-reset: Text {
+                    text: "Auto refresh and Updates go back to their defaults.";
+                    color: Theme.text-secondary; font-size: 12px; wrap: word-wrap;
+                }
+                if root.confirming-reset: HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    PaneButton { label: "Cancel"; tint: Theme.text-secondary; clicked => { root.confirming-reset = false; } }
+                    PaneButton { label: "Reset All Settings"; tint: Theme.danger; clicked => { root.confirming-reset = false; root.reset-all-settings(); } }
+                }
+            }
+        }
+        Text { text: "Accounts, logs and Launch at startup are kept."; color: Theme.text-secondary; font-size: 11px; }
     }
 }
 
@@ -368,9 +447,13 @@ export component AppWindow inherits Window {
 
     in property <string> app-name;
     in property <string> app-version;
-    in-out property <int> auto-refresh-seconds: 60;
+    in property <string> release-date;
+    in-out property <bool> auto-refresh-enabled: true;
+    in-out property <int> auto-refresh-minutes: 5;
     in-out property <bool> launch-at-startup;
-    callback set-auto-refresh(int);
+    callback set-auto-refresh-enabled(bool);
+    callback set-auto-refresh-minutes(int);
+    callback reset-all-settings();
     callback set-launch-at-startup(bool);
     in property <string> update-status;
     in property <bool> update-can-install;
@@ -578,9 +661,13 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
                 app-name: root.app-name;
                 app-version: root.app-version;
-                auto-refresh-seconds: root.auto-refresh-seconds;
+                release-date: root.release-date;
+                auto-refresh-enabled: root.auto-refresh-enabled;
+                auto-refresh-minutes: root.auto-refresh-minutes;
                 launch-at-startup: root.launch-at-startup;
-                set-auto-refresh(s) => { root.set-auto-refresh(s); }
+                set-auto-refresh-enabled(on) => { root.set-auto-refresh-enabled(on); }
+                set-auto-refresh-minutes(m) => { root.set-auto-refresh-minutes(m); }
+                reset-all-settings => { root.reset-all-settings(); }
                 set-launch-at-startup(on) => { root.set-launch-at-startup(on); }
                 update-status: root.update-status;
                 update-can-install: root.update-can-install;

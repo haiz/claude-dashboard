@@ -23,6 +23,46 @@ pub fn current_auto_refresh() -> (bool, u64) {
     (s.auto_refresh_enabled, s.effective_refresh_minutes())
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct GeneralState {
+    pub auto_refresh_enabled: bool,
+    pub auto_refresh_minutes: u64,
+    pub auto_update: bool,
+}
+
+/// Build date of the running release (`yyyy-MM-dd`), "" for local builds. See `build.rs`.
+pub const RELEASE_DATE: &str = env!("CLAUDE_DASHBOARD_RELEASE_DATE");
+
+/// Settings > General "Reset All Settings": one atomic settings update, then the
+/// values the UI shows. Accounts, logs, muted sources and Launch at startup stay.
+pub fn reset_all() -> Result<GeneralState, String> {
+    settings::update(settings::reset_general)?;
+    let s = settings::load();
+    Ok(GeneralState {
+        auto_refresh_enabled: s.auto_refresh_enabled,
+        auto_refresh_minutes: s.effective_refresh_minutes(),
+        auto_update: s.auto_update,
+    })
+}
+
+/// `yyyy-MM-dd` as macOS's abbreviated date ("Oct 17, 2026"); "" when empty or malformed.
+pub fn format_release_date(raw: &str) -> String {
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    let parts: Vec<&str> = raw.trim().split('-').collect();
+    let [y, m, d] = parts.as_slice() else {
+        return String::new();
+    };
+    let (Ok(y), Ok(m), Ok(d)) = (y.parse::<u32>(), m.parse::<usize>(), d.parse::<u32>()) else {
+        return String::new();
+    };
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) || y == 0 {
+        return String::new();
+    }
+    format!("{} {d}, {y}", MONTHS[m - 1])
+}
+
 pub fn launch_is_enabled() -> bool {
     startup::is_enabled()
 }
@@ -49,6 +89,43 @@ pub fn set_auto_update(on: bool) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_all_restores_refresh_and_update_keeps_startup() {
+        let _env = crate::testenv::lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("APPDATA", dir.path());
+        std::env::set_var("LOCALAPPDATA", dir.path());
+        set_auto_refresh_minutes(30).unwrap();
+        set_auto_refresh_enabled(false).unwrap();
+        set_auto_update(false).unwrap();
+        settings::update(|s| s.launch_at_startup = true).unwrap();
+
+        let after = reset_all().unwrap();
+        assert_eq!(
+            after,
+            GeneralState {
+                auto_refresh_enabled: true,
+                auto_refresh_minutes: 5,
+                auto_update: true
+            }
+        );
+        assert_eq!(current_auto_refresh(), (true, 5));
+        assert!(auto_update_enabled());
+        assert!(
+            settings::load().launch_at_startup,
+            "launch at startup is kept"
+        );
+    }
+
+    #[test]
+    fn release_date_formats_like_macos_abbreviated() {
+        assert_eq!(format_release_date("2026-10-17"), "Oct 17, 2026");
+        assert_eq!(format_release_date("2026-01-05"), "Jan 5, 2026");
+        assert_eq!(format_release_date(""), "");
+        assert_eq!(format_release_date("2026-13-01"), "");
+        assert_eq!(format_release_date("garbage"), "");
+    }
 
     #[test]
     fn set_auto_refresh_persists_and_clamps_for_display() {

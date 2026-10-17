@@ -19,6 +19,7 @@ mod resync;
 mod settings_accounts;
 mod settings_general;
 mod setup;
+mod tips;
 #[cfg(test)]
 mod testenv;
 mod tray;
@@ -778,37 +779,75 @@ fn main() -> Result<(), slint::PlatformError> {
         app.set_help_topics(help::topic_model());
         app.set_app_name(settings_general::APP_NAME.into());
         app.set_app_version(settings_general::APP_VERSION.into());
+        app.set_release_date(settings_general::format_release_date(settings_general::RELEASE_DATE).into());
+        {
+            let tips = app.global::<TipStore>();
+            tips.set_tips(tips::model());
+            let w = app.as_weak();
+            tips.on_more_help(move |topic| {
+                if let Some(a) = w.upgrade() {
+                    a.invoke_open_help(topic);
+                }
+            });
+        }
         let w = app.as_weak();
         std::thread::spawn(move || {
-            // The chips still speak seconds until the toggle + stepper UI lands; 0 = off.
             let (enabled, minutes) = settings_general::current_auto_refresh();
-            let secs = if enabled { (minutes * 60) as i32 } else { 0 };
             let launch = settings_general::launch_is_enabled();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(a) = w.upgrade() {
-                    a.set_auto_refresh_seconds(secs);
+                    a.set_auto_refresh_enabled(enabled);
+                    a.set_auto_refresh_minutes(minutes as i32);
                     a.set_launch_at_startup(launch);
                 }
             });
         });
         let tx = nudge_tx.clone();
         let w = app.as_weak();
-        app.on_set_auto_refresh(move |secs| {
-            let (tx, w) = (tx.clone(), w.clone());
+        app.on_set_auto_refresh_enabled(move |on| {
+            let tx = tx.clone();
             if let Some(a) = w.upgrade() {
-                a.set_auto_refresh_seconds(secs);
+                a.set_auto_refresh_enabled(on);
             }
-            std::thread::spawn(move || {
-                let minutes = (secs.max(0) as u64 / 60).max(1);
-                let saved = settings_general::set_auto_refresh_enabled(true)
-                    .and_then(|()| settings_general::set_auto_refresh_minutes(minutes));
-                match saved {
-                    // Nudge: the loop wakes and re-reads the interval right away.
-                    Ok(()) => {
-                        let _ = tx.send(refresh::Nudge::All);
-                    }
-                    Err(e) => eprintln!("save auto refresh failed: {e}"),
+            std::thread::spawn(move || match settings_general::set_auto_refresh_enabled(on) {
+                // Nudge: the loop wakes and re-reads the interval right away.
+                Ok(()) => {
+                    let _ = tx.send(refresh::Nudge::All);
                 }
+                Err(e) => eprintln!("save auto refresh failed: {e}"),
+            });
+        });
+        let tx = nudge_tx.clone();
+        let w = app.as_weak();
+        app.on_set_auto_refresh_minutes(move |minutes| {
+            let tx = tx.clone();
+            let minutes = minutes.clamp(1, 60);
+            if let Some(a) = w.upgrade() {
+                a.set_auto_refresh_minutes(minutes);
+            }
+            std::thread::spawn(move || match settings_general::set_auto_refresh_minutes(minutes as u64) {
+                Ok(()) => {
+                    let _ = tx.send(refresh::Nudge::All);
+                }
+                Err(e) => eprintln!("save auto refresh failed: {e}"),
+            });
+        });
+        let tx = nudge_tx.clone();
+        let w = app.as_weak();
+        app.on_reset_all_settings(move || {
+            let (tx, w) = (tx.clone(), w.clone());
+            std::thread::spawn(move || match settings_general::reset_all() {
+                Ok(state) => {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(a) = w.upgrade() {
+                            a.set_auto_refresh_enabled(state.auto_refresh_enabled);
+                            a.set_auto_refresh_minutes(state.auto_refresh_minutes as i32);
+                            a.set_auto_update(state.auto_update);
+                        }
+                    });
+                    let _ = tx.send(refresh::Nudge::All);
+                }
+                Err(e) => eprintln!("reset settings failed: {e}"),
             });
         });
         let w = app.as_weak();
