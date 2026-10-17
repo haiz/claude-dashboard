@@ -3,3 +3,4 @@
 
 pub mod model;
 pub mod files;
+pub mod switcher;
