@@ -94,6 +94,42 @@ impl AutoTimer {
     }
 }
 
+/// The 60 s poll of the active account while auto switch is on and it is near a limit
+/// (macOS `updateAutoSwitchPoll`): the first poll comes a full period after it starts.
+#[derive(Debug, Default)]
+pub struct FastPoll {
+    due: Option<std::time::Instant>,
+}
+
+impl FastPoll {
+    pub const PERIOD: std::time::Duration = std::time::Duration::from_secs(crate::auto_switch::FAST_POLL_S);
+
+    /// Starts the poll (keeping a running one's schedule) or stops it.
+    pub fn update(&mut self, on: bool, now: std::time::Instant) {
+        if !on {
+            self.due = None;
+        } else if self.due.is_none() {
+            self.due = Some(now + Self::PERIOD);
+        }
+    }
+
+    /// Time left to the next poll; `None` while stopped.
+    pub fn wait(&self, now: std::time::Instant) -> Option<std::time::Duration> {
+        self.due.map(|d| d.saturating_duration_since(now))
+    }
+
+    /// True when the poll is due; schedules the next one a period from `now`.
+    pub fn fire(&mut self, now: std::time::Instant) -> bool {
+        match self.due {
+            Some(d) if d <= now => {
+                self.due = Some(now + Self::PERIOD);
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
 /// Windows whose reset time passed more than 10 s ago on an active row, as
 /// `(account, window, resets_at)`; macOS `checkResetTriggers` refreshes for these so the
 /// gauges move on as soon as a window resets. The caller fires once per triple.
@@ -508,6 +544,25 @@ mod tests {
             ..Default::default()
         };
         loop_timeout(&s)
+    }
+
+    #[test]
+    fn fast_poll_arms_fires_and_disarms() {
+        use std::time::{Duration, Instant};
+        let t = Instant::now();
+        let mut p = FastPoll::default();
+        assert_eq!(p.wait(t), None);
+        assert!(!p.fire(t));
+        p.update(true, t);
+        assert_eq!(p.wait(t), Some(Duration::from_secs(60)));
+        p.update(true, t + Duration::from_secs(30));
+        assert_eq!(p.wait(t + Duration::from_secs(30)), Some(Duration::from_secs(30)), "a running poll keeps its schedule");
+        assert!(!p.fire(t + Duration::from_secs(59)));
+        assert!(p.fire(t + Duration::from_secs(60)));
+        assert_eq!(p.wait(t + Duration::from_secs(60)), Some(Duration::from_secs(60)));
+        p.update(false, t + Duration::from_secs(61));
+        assert_eq!(p.wait(t + Duration::from_secs(61)), None);
+        assert!(!p.fire(t + Duration::from_secs(500)));
     }
 
     #[test]

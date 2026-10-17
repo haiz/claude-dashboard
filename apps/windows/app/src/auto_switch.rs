@@ -13,7 +13,13 @@ use claude_dashboard_core::auto_switch::{
 use claude_dashboard_core::auto_switch_log::{NewEntry, Outcome};
 use claude_dashboard_core::cc_switch::switcher::SwitchError;
 use claude_dashboard_core::critical::CriticalLevel;
+use claude_dashboard_core::auto_switch::Window;
+use claude_dashboard_core::cc_switch::switcher::Availability;
+use claude_dashboard_core::critical::{CriticalAssessment, CriticalParameters};
+use claude_dashboard_core::model::AccountStatus;
+use claude_dashboard_core::rows::DisplayRow;
 use claude_dashboard_core::settings::Settings;
+use claude_dashboard_core::store::SeriesPoint;
 
 pub const FAILURE_COOLDOWN_S: f64 = 600.0;
 /// The fast poll's period while the active account is in the warning zone.
@@ -73,7 +79,7 @@ pub fn thresholds_of(s: &Settings) -> Thresholds {
     Thresholds { five_hour: s.auto_switch_five_hour as f64, seven_day: s.auto_switch_seven_day as f64 }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Controller {
     pub last_event: Option<Event>,
     pub lock: Option<Lock>,
@@ -265,6 +271,54 @@ fn is_active_login_error(e: &SwitchError) -> bool {
     matches!(e, SwitchError::ActiveAccountNotInDashboard(_) | SwitchError::ActiveAccountUnknown)
 }
 
+/// One planner account per row (macOS `autoSwitchAccounts`): display name is the email, else
+/// the name; fresh means the last fetch succeeded; critical is assessed only for a fresh,
+/// active account.
+pub fn accounts_from(
+    rows: &[DisplayRow],
+    availability: impl Fn(&str) -> Option<Availability>,
+    params: &CriticalParameters,
+    now: f64,
+) -> Vec<Account> {
+    rows.iter()
+        .map(|r| {
+            let is_fresh = r.error.is_none();
+            let is_usable = r.status == AccountStatus::Active;
+            let critical = if is_fresh && is_usable {
+                claude_dashboard_core::critical::assess(r.seven_day.as_ref(), params, now)
+            } else {
+                CriticalAssessment::NONE
+            };
+            Account {
+                id: r.account_id.clone(),
+                display_name: r.email.clone().filter(|e| !e.is_empty()).unwrap_or_else(|| r.name.clone()),
+                usage: usage_of(r),
+                availability: availability(&r.account_id),
+                is_usable,
+                is_active: r.is_active_claude_code,
+                is_fresh,
+                critical,
+                five_hour_log: Vec::new(),
+            }
+        })
+        .collect()
+}
+
+/// A row's 5h and 7d windows; `None` unless both are known.
+pub fn usage_of(r: &DisplayRow) -> Option<Usage> {
+    let w = |v: &claude_dashboard_core::rows::WindowView| Window { utilization: v.utilization, resets_at: v.resets_at_unix };
+    Some(Usage { five_hour: w(r.five_hour.as_ref()?), seven_day: w(r.seven_day.as_ref()?) })
+}
+
+/// The newest 20 5h log rows, oldest first, for the near-reset rule.
+pub fn log_points(series: &[SeriesPoint]) -> Vec<planner::LogPoint> {
+    let start = series.len().saturating_sub(20);
+    series[start..]
+        .iter()
+        .map(|p| planner::LogPoint { t: p.t_unix, utilization: p.utilization, resets_at: p.resets_at_unix })
+        .collect()
+}
+
 fn percent(v: f64) -> String {
     format!("{}%", v.round() as i64)
 }
@@ -288,9 +342,6 @@ pub fn describe(e: &SwitchError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claude_dashboard_core::auto_switch::Window;
-    use claude_dashboard_core::cc_switch::switcher::Availability;
-    use claude_dashboard_core::critical::CriticalAssessment;
 
     const T0: f64 = 1_800_000_000.0;
     const H: f64 = 3600.0;
@@ -558,6 +609,73 @@ mod tests {
         c.note_manual_switch("a", None, T0);
         let r = run(&mut c, &mut cfg(), &[account("a", 96.0, 10.0, None, true, T0), account("b", 0.0, 10.0, None, false, T0)], T0, Ok(()));
         assert_eq!((r.result.as_deref(), c.hold.clone()), (Some("b"), None));
+    }
+
+    fn row(id: &str, email: Option<&str>, five: Option<f64>, seven: Option<(f64, f64)>) -> DisplayRow {
+        use claude_dashboard_core::model::{AccountPlan, AccountStatus};
+        use claude_dashboard_core::rows::WindowView;
+        DisplayRow {
+            account_id: id.into(),
+            name: format!("{id}-name"),
+            email: email.map(Into::into),
+            plan: AccountPlan::Pro,
+            status: AccountStatus::Active,
+            five_hour: five.map(|u| WindowView { utilization: u, resets_at_unix: Some(T0 + H), is_limited: false }),
+            seven_day: seven.map(|(u, r)| WindowView { utilization: u, resets_at_unix: Some(r), is_limited: false }),
+            fable: None,
+            peak_utilization: 0.0,
+            burn_projected_seconds: None,
+            burn_projected_seconds_7d: None,
+            burn_projected_seconds_fable: None,
+            is_extension_sourced: false,
+            error: None,
+            last_synced_unix: None,
+            is_active_claude_code: false,
+            is_pinned: false,
+            kind_label: String::new(),
+            expired_hint: String::new(),
+        }
+    }
+
+    #[test]
+    fn accounts_from_rows() {
+        use claude_dashboard_core::model::AccountStatus;
+        let params = CriticalParameters { x: 16.0, pace: 50.0, high_pace: 80.0, quiet: None };
+        let critical_week = Some((55.0, T0 + 25.0 * H));
+        let mut active = row("a", Some("a@x.com"), Some(40.0), critical_week);
+        active.is_active_claude_code = true;
+        let mut stale = row("s", None, Some(10.0), critical_week);
+        stale.error = Some("boom".into());
+        let mut expired = row("e", None, Some(10.0), critical_week);
+        expired.status = AccountStatus::Expired;
+        let half = row("h", None, Some(10.0), None);
+        let avail = |id: &str| match id {
+            "a" => Some(Availability::Active),
+            "s" => Some(Availability::Ready),
+            _ => None,
+        };
+        let out = accounts_from(&[active, stale, expired, half], avail, &params, T0);
+        assert_eq!(out.iter().map(|a| a.display_name.as_str()).collect::<Vec<_>>(), vec!["a@x.com", "s-name", "e-name", "h-name"]);
+        assert!(out[0].is_active && out[0].is_fresh && out[0].is_usable);
+        assert_eq!(out[0].availability, Some(Availability::Active));
+        assert_eq!(out[0].critical.level, CriticalLevel::Critical);
+        assert_eq!(out[0].usage.unwrap().five_hour, Window { utilization: 40.0, resets_at: Some(T0 + H) });
+        assert!(!out[1].is_fresh);
+        assert_eq!(out[1].critical, CriticalAssessment::NONE, "stale: not assessed");
+        assert!(!out[2].is_usable);
+        assert_eq!(out[2].critical, CriticalAssessment::NONE, "not active: not assessed");
+        assert_eq!(out[3].usage, None, "a missing window means no usage");
+    }
+
+    #[test]
+    fn log_points_keep_the_newest_twenty_oldest_first() {
+        let series: Vec<SeriesPoint> = (0..25)
+            .map(|i| SeriesPoint { t_unix: T0 + i as f64, utilization: i as f64, resets_at_unix: T0 + H, is_limited: false })
+            .collect();
+        let points = log_points(&series);
+        assert_eq!(points.len(), 20);
+        assert_eq!((points[0].utilization, points[19].utilization), (5.0, 24.0));
+        assert_eq!(points[0].resets_at, T0 + H);
     }
 
     #[test]

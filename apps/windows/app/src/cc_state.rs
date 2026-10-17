@@ -44,6 +44,24 @@ pub fn availability(id: &str) -> Option<Availability> {
     AVAILABILITY.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(id).copied())
 }
 
+/// A Claude Code switch is running, manual or automatic (macOS `isSwitchingClaudeCode`):
+/// the two never run together.
+static BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Claims the switch; false while another one runs.
+pub fn try_begin_switch() -> bool {
+    use std::sync::atomic::Ordering;
+    BUSY.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok()
+}
+
+pub fn end_switch() {
+    BUSY.store(false, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub fn is_switching() -> bool {
+    BUSY.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 /// `(switch-state, switch-help)` for a row: `""` hides the button (no switcher, or no state
 /// yet), `active` hides it too (the badge marks that account).
 pub fn switch_fields(a: Option<Availability>) -> (String, String) {
@@ -73,6 +91,17 @@ mod tests {
             switch_fields(Some(Availability::NeedsLogin)),
             ("needs-login".into(), "Claude Code lost this login. Run /login with this account".into())
         );
+    }
+
+    #[test]
+    fn busy_flag_is_exclusive() {
+        assert!(try_begin_switch());
+        assert!(is_switching());
+        assert!(!try_begin_switch(), "a second switch waits");
+        end_switch();
+        assert!(!is_switching());
+        assert!(try_begin_switch());
+        end_switch();
     }
 
     #[test]

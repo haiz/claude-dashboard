@@ -4,6 +4,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
 mod auto_switch;
+mod ratio;
 mod cc_login;
 mod cc_flow;
 mod cc_state;
@@ -195,6 +196,8 @@ fn spawn_refresh_loop(
         let mut prev: Vec<claude_dashboard_core::rows::DisplayRow> = Vec::new();
         let mut tracker = claude_dashboard_core::burn_rate::BurnRateTracker::default();
         let mut timer = refresh::AutoTimer::default();
+        let mut poll = refresh::FastPoll::default();
+        let mut poll_target: Option<String> = None;
         let mut jobs = vec![Nudge::All];
         loop {
             // `coalesce` drops `Reschedule`: an empty batch just waits again below,
@@ -252,6 +255,10 @@ fn spawn_refresh_loop(
                         cc_state::refresh(&accounts);
                     }
                 }
+                // Auto Switch after every refresh (macOS `refreshAll` -> `runAutoSwitch`), then the
+                // 60 s poll of the active account while it is near a limit.
+                poll_target = run_auto_switch(&mut out, now);
+                poll.update(poll_target.is_some(), std::time::Instant::now());
                 // Auto Ping on this refresh's own fetches (macOS `refreshAll`); never in dev runs.
                 let enabled = !dev_run() && claude_dashboard_core::settings::load().auto_ping_enabled;
                 let targets = ping::controller().claim_targets(&out.candidates, enabled, now);
@@ -263,12 +270,26 @@ fn spawn_refresh_loop(
             // The Auto Refresh tick keeps its own schedule: nudged refreshes never push it
             // back; a `Reschedule` (settings change) or the tick itself restarts it.
             let interval = refresh::loop_timeout(&claude_dashboard_core::settings::load());
-            let batch = match timer.wait(interval, std::time::Instant::now()) {
+            let tick = timer.wait(interval, std::time::Instant::now());
+            let poll_wait = poll.wait(std::time::Instant::now());
+            let wait = match (tick, poll_wait) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (a, b) => a.or(b),
+            };
+            let batch = match wait {
                 Some(t) => match rx.recv_timeout(t) {
                     Ok(n) => pending(n, &rx),
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                        timer.restart(interval, std::time::Instant::now());
-                        vec![Nudge::All]
+                        let now = std::time::Instant::now();
+                        if timer.wait(interval, now).is_some_and(|left| left.is_zero()) {
+                            timer.restart(interval, now);
+                            vec![Nudge::All]
+                        } else if poll.fire(now) {
+                            // The poll fetches only Claude Code's account (macOS `refreshAll(only:)`).
+                            poll_target.clone().map(Nudge::One).into_iter().collect()
+                        } else {
+                            Vec::new()
+                        }
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
                 },
@@ -285,6 +306,69 @@ fn spawn_refresh_loop(
             jobs = refresh::coalesce(batch);
         }
     });
+}
+
+fn unix_now() -> f64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
+}
+
+/// Refresh thread: auto switch on this refresh's rows (macOS `runAutoSwitch`). A switch
+/// re-captures Claude Code's login and moves the badge in `out`. Returns the account the 60 s
+/// poll should fetch, while auto switch is on and it is near a limit. Never in dev runs (no
+/// switcher), and skipped while a manual Switch runs.
+fn run_auto_switch(out: &mut refresh::RefreshOutput, now: f64) -> Option<String> {
+    use claude_dashboard_core::cc_switch::switcher::{SwitchAccount, SwitchError};
+    let switcher = cc_state::switcher()?;
+    let settings = claude_dashboard_core::settings::load();
+    let mut cfg = auto_switch::Config::from_settings(&settings);
+    let params = claude_dashboard_core::critical::parameters_from(&settings, ratio::current().x);
+    let mut accounts = auto_switch::accounts_from(&out.rows, cc_state::availability, &params, now);
+    if let Some(active) = accounts.iter_mut().find(|a| a.is_active) {
+        if let Ok(log) = claude_dashboard_core::store::UsageLogStore::open() {
+            active.five_hour_log = auto_switch::log_points(&log.series(&active.id, 0, now - 3600.0, now + 1.0));
+        }
+    }
+    if cc_state::try_begin_switch() {
+        let stored = claude_dashboard_core::store::load_accounts().unwrap_or_default();
+        let log_store = claude_dashboard_core::auto_switch_log::AutoSwitchLogStore::open().ok();
+        let before = cfg.priority.clone();
+        // Evaluate on a copy: a switch can block for seconds, and the UI reads the footer event.
+        let mut c = auto_switch::controller().clone();
+        let switched = c.evaluate(
+            &mut cfg,
+            &accounts,
+            now,
+            |n| (uuid::Uuid::new_v4().as_u128() % n.max(1) as u128) as usize,
+            &mut |e| {
+                if let Some(s) = &log_store {
+                    s.insert(&e);
+                }
+            },
+            |id| {
+                let target = stored.iter().find(|a| a.id == id).ok_or(SwitchError::NotCaptured)?;
+                let target = SwitchAccount { id: target.id.clone(), email: target.email.clone() };
+                switcher.switch_to(&target, &cc_state::switch_accounts(&stored)).map(|_| ())
+            },
+        );
+        *auto_switch::controller() = c;
+        cc_state::end_switch();
+        if cfg.priority != before {
+            let p = cfg.priority.clone();
+            let _ = claude_dashboard_core::settings::update(|s| {
+                s.auto_switch_priority_id = p.as_ref().map(|p| p.account_id.clone());
+                s.auto_switch_priority_baseline = p.and_then(|p| p.baseline);
+            });
+        }
+        if switched.is_some() {
+            cc_state::refresh(&stored);
+            let candidates = std::mem::take(&mut out.candidates);
+            *out = refresh::relabel(&out.rows, &stored, now);
+            out.candidates = candidates;
+            accounts = auto_switch::accounts_from(&out.rows, cc_state::availability, &params, now);
+        }
+    }
+    let active = accounts.iter().find(|a| a.is_active)?.id.clone();
+    auto_switch::controller().should_fast_poll(&cfg, &accounts).then_some(active)
 }
 
 /// Pings the claimed accounts in parallel on a worker, then refreshes them in one pass
@@ -426,18 +510,24 @@ fn cc_start(id: String) {
         cc_prompt(2, cc_flow::MESSAGE_TITLE, &cc_flow::needs_login_message(&name));
         return;
     }
+    // An auto switch may be running on the refresh thread (macOS disables Switch meanwhile).
+    if !cc_state::try_begin_switch() {
+        return;
+    }
+    let usage = LAST_OUTPUT
+        .with(|l| l.borrow().as_ref().and_then(|(o, _)| o.rows.iter().find(|r| r.account_id == id).and_then(auto_switch::usage_of)));
     cc_set_switching(true);
     let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     CC_FLOW.with(|f| f.borrow_mut().cancel = Some(cancel.clone()));
     std::thread::spawn(move || {
-        let message = cc_run(&id, &cancel);
+        let message = cc_run(&id, &cancel, usage);
         let _ = slint::invoke_from_event_loop(move || cc_finish(message));
     });
 }
 
 /// Worker: signs the account in first when its vault copy is missing or expired, then
 /// switches. The message to show, or `None` (the user cancelled the browser wait).
-fn cc_run(id: &str, cancel: &std::sync::atomic::AtomicBool) -> Option<String> {
+fn cc_run(id: &str, cancel: &std::sync::atomic::AtomicBool, usage: Option<claude_dashboard_core::auto_switch::Usage>) -> Option<String> {
     use claude_dashboard_core::cc_switch::switcher::{Availability, SwitchAccount};
     let switcher = cc_state::switcher()?;
     let accounts = claude_dashboard_core::store::load_accounts().unwrap_or_default();
@@ -466,7 +556,11 @@ fn cc_run(id: &str, cancel: &std::sync::atomic::AtomicBool) -> Option<String> {
     }
     let target = SwitchAccount { id: account.id.clone(), email: account.email.clone() };
     let message = match switcher.switch_to(&target, &cc_state::switch_accounts(&accounts)) {
-        Ok(_) => cc_flow::success_message(&name),
+        Ok(_) => {
+            // Hold Claude Code here until its 5h reset, so the critical rules do not undo it.
+            auto_switch::controller().note_manual_switch(id, usage, unix_now());
+            cc_flow::success_message(&name)
+        }
         Err(e) => e.message(&name),
     };
     cc_state::refresh(&accounts);
@@ -478,6 +572,7 @@ fn cc_run(id: &str, cancel: &std::sync::atomic::AtomicBool) -> Option<String> {
 
 fn cc_finish(message: Option<String>) {
     cc_set_switching(false);
+    cc_state::end_switch();
     CC_FLOW.with(|f| f.borrow_mut().cancel = None);
     match message {
         Some(m) => cc_prompt(2, cc_flow::MESSAGE_TITLE, &m),
