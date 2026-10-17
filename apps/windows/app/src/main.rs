@@ -1057,8 +1057,12 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
     if let Some(w) = carol.five_hour.as_mut() {
         w.is_limited = true;
     }
+    // Flames: alice high critical (7d 60%, 10 hours left), bob critical (7d 55%, 25 hours left).
+    let mut alice = mk("f1", "alice", AccountPlan::Pro, 12.0, 60.0, None);
+    alice.seven_day = Some(win(60.0, 10.0 * 3600.0));
+    bob.seven_day = Some(win(55.0, 25.0 * 3600.0));
     let rows = vec![
-        mk("f1", "alice", AccountPlan::Pro, 12.0, 30.0, None),
+        alice,
         bob,
         carol,
         expired("f4", "dave", AccountKind::PastedKey),
@@ -1942,5 +1946,8 @@ mod tests {
         let out = super::fake_rows(1_000_000.0);
         assert_eq!(out.rows.len(), 5);
         assert_eq!(out.rows.iter().filter(|r| r.status == claude_dashboard_core::model::AccountStatus::Expired).count(), 2);
+        let params = claude_dashboard_core::critical::parameters_from(&claude_dashboard_core::settings::Settings::default(), 16.0);
+        let level = |i: usize| crate::auto_switch::card_fields(&out.rows[i], None, None, &params, 1_000_000.0).critical_level;
+        assert_eq!((level(0), level(1)), (2, 1), "alice high critical, bob critical");
     }
 }

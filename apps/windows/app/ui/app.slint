@@ -458,7 +458,7 @@ component GeneralSettingsPane inherits Flickable {
 
         GroupHeader { text: "Auto Switch"; }
         SettingsCard {
-            height: asw.preferred-height + 24px;
+            height: asw.preferred-height;
             asw := VerticalLayout {
                 padding: 12px;
                 spacing: 10px;
@@ -495,7 +495,7 @@ component GeneralSettingsPane inherits Flickable {
 
         GroupHeader { text: "Critical Accounts"; }
         SettingsCard {
-            height: crit.preferred-height + 24px;
+            height: crit.preferred-height;
             crit := VerticalLayout {
                 padding: 12px;
                 spacing: 10px;
@@ -516,15 +516,20 @@ component GeneralSettingsPane inherits Flickable {
                     Rectangle { horizontal-stretch: 1; }
                     HorizontalLayout {
                         spacing: 6px;
+                        horizontal-stretch: 0;
                         ComboBox {
-                            width: 96px;
+                            min-width: 96px;
+                            max-width: 96px;
+                            horizontal-stretch: 0;
                             model: root.hours;
                             current-index: root.sw.quiet-start;
                             selected => { root.set-switch-setting("quiet-start", self.current-index); }
                         }
                         Text { text: "to"; color: Theme.text-primary; vertical-alignment: center; }
                         ComboBox {
-                            width: 96px;
+                            min-width: 96px;
+                            max-width: 96px;
+                            horizontal-stretch: 0;
                             model: root.hours;
                             current-index: root.sw.quiet-end;
                             selected => { root.set-switch-setting("quiet-end", self.current-index); }
@@ -537,7 +542,9 @@ component GeneralSettingsPane inherits Flickable {
                     InfoTip { tip-id: "time-zone"; y: (parent.height - self.height) / 2; }
                     Rectangle { horizontal-stretch: 1; }
                     ComboBox {
-                        width: 240px;
+                        min-width: 240px;
+                        max-width: 240px;
+                        horizontal-stretch: 0;
                         model: root.zones;
                         current-value: root.sw.zone;
                         selected(v) => { root.set-critical-zone(v); }
