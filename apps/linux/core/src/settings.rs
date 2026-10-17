@@ -40,6 +40,9 @@ pub struct Settings {
     /// macOS `hasLaunchedBefore`: the main window opens by itself only on the first launch.
     #[serde(rename = "hasLaunchedBefore")]
     pub has_launched_before: bool,
+    /// macOS `autoPingEnabled`: ping every active account whose 5h or 7d window is not running.
+    #[serde(rename = "autoPingEnabled")]
+    pub auto_ping_enabled: bool,
 }
 
 /// On-disk shape: also accepts the legacy `autoRefreshSeconds` and `shell`
@@ -62,6 +65,8 @@ struct RawSettings {
     last_auto_update_check_unix: Option<f64>,
     #[serde(rename = "hasLaunchedBefore", default)]
     has_launched_before: bool,
+    #[serde(rename = "autoPingEnabled", default)]
+    auto_ping_enabled: bool,
 }
 
 impl From<RawSettings> for Settings {
@@ -79,6 +84,7 @@ impl From<RawSettings> for Settings {
             auto_update: r.auto_update,
             last_auto_update_check_unix: r.last_auto_update_check_unix,
             has_launched_before: r.has_launched_before,
+            auto_ping_enabled: r.auto_ping_enabled,
         }
     }
 }
@@ -93,6 +99,7 @@ impl Default for Settings {
             auto_update: true,
             last_auto_update_check_unix: None,
             has_launched_before: false,
+            auto_ping_enabled: false,
         }
     }
 }
@@ -104,11 +111,12 @@ impl Settings {
     }
 }
 
-/// Settings > General "Reset": auto refresh back to on / 5 min and auto update
-/// on. Launch at startup, the scan browser and the update-check stamp stay.
+/// Settings > General "Reset": auto refresh back to on / 5 min, Auto Ping off and auto
+/// update on. Launch at startup, the scan browser and the update-check stamp stay.
 pub fn reset_general(s: &mut Settings) {
     s.auto_refresh_enabled = true;
     s.auto_refresh_minutes = DEFAULT_REFRESH_MINUTES;
+    s.auto_ping_enabled = false;
     s.auto_update = true;
 }
 
@@ -198,6 +206,18 @@ mod tests {
     }
 
     #[test]
+    fn auto_ping_defaults_off_round_trips_and_reset_turns_off() {
+        assert!(!load_str("{}").auto_ping_enabled);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        update_at(&p, |s| s.auto_ping_enabled = true).unwrap();
+        assert!(load_from(&p).auto_ping_enabled);
+        assert!(fs::read_to_string(&p).unwrap().contains("autoPingEnabled"));
+        update_at(&p, reset_general).unwrap();
+        assert!(!load_from(&p).auto_ping_enabled, "Reset turns Auto Ping off (macOS)");
+    }
+
+    #[test]
     fn has_launched_before_defaults_false_round_trips_and_survives_reset() {
         assert!(!load_str("{}").has_launched_before);
         let dir = tempfile::tempdir().unwrap();
@@ -240,6 +260,7 @@ mod tests {
             auto_update: true,
             last_auto_update_check_unix: None,
             has_launched_before: true,
+            auto_ping_enabled: true,
         };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s);
@@ -304,6 +325,7 @@ mod tests {
             auto_update: false,
             last_auto_update_check_unix: Some(9.0),
             has_launched_before: true,
+            auto_ping_enabled: true,
         };
         reset_general(&mut s);
         assert!(s.auto_refresh_enabled);

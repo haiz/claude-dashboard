@@ -63,6 +63,7 @@ pub struct GeneralState {
     pub auto_refresh_enabled: bool,
     pub auto_refresh_minutes: u64,
     pub auto_update: bool,
+    pub auto_ping: bool,
 }
 
 /// Build date of the running release (`yyyy-MM-dd`), "" for local builds. See `build.rs`.
@@ -77,6 +78,7 @@ pub fn reset_all() -> Result<GeneralState, String> {
         auto_refresh_enabled: s.auto_refresh_enabled,
         auto_refresh_minutes: s.effective_refresh_minutes(),
         auto_update: s.auto_update,
+        auto_ping: s.auto_ping_enabled,
     })
 }
 
@@ -121,6 +123,14 @@ pub fn set_auto_update(on: bool) -> Result<(), String> {
     settings::update(|s| s.auto_update = on)
 }
 
+pub fn auto_ping_enabled() -> bool {
+    settings::load().auto_ping_enabled
+}
+
+pub fn set_auto_ping(on: bool) -> Result<(), String> {
+    settings::update(|s| s.auto_ping_enabled = on)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,6 +168,8 @@ mod tests {
         set_auto_refresh_minutes(30).unwrap();
         set_auto_refresh_enabled(false).unwrap();
         set_auto_update(false).unwrap();
+        set_auto_ping(true).unwrap();
+        assert!(auto_ping_enabled());
         settings::update(|s| s.launch_at_startup = true).unwrap();
 
         let after = reset_all().unwrap();
@@ -166,9 +178,11 @@ mod tests {
             GeneralState {
                 auto_refresh_enabled: true,
                 auto_refresh_minutes: 5,
-                auto_update: true
+                auto_update: true,
+                auto_ping: false,
             }
         );
+        assert!(!auto_ping_enabled());
         assert_eq!(current_auto_refresh(), (true, 5));
         assert!(auto_update_enabled());
         assert!(
