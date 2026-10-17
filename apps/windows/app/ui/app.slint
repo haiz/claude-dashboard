@@ -1005,6 +1005,13 @@ export component PopoverWindow inherits Window {
     // Yellow banner text while an update downloads or installs; empty hides it.
     in property <string> update-banner;
     in property <string> app-version;
+    // Footer auto switch toggle (macOS PopoverFooter): shown, on, near a limit, last event.
+    in property <bool> auto-switch-shown;
+    in property <bool> auto-switch-on;
+    in property <bool> auto-switch-near;
+    in property <string> auto-switch-event;
+    in property <bool> auto-switch-event-failed;
+    callback set-auto-switch(bool);
     // Inline Quit confirmation (macOS `confirmingQuit`); Rust clears it when the flyout hides.
     in-out property <bool> confirming-quit: false;
     callback expand();
@@ -1158,7 +1165,53 @@ export component PopoverWindow inherits Window {
                 }
                 Tooltip { text: @markdown("Claude Dashboard \{root.app-version}"); }
             }
-            Rectangle { horizontal-stretch: 1; }
+            // macOS PopoverFooter: the auto switch toggle and its last event, right-aligned in
+            // the right half; the toggle is dimmed while the active account is not near a limit.
+            HorizontalLayout {
+                horizontal-stretch: 1;
+                alignment: end;
+                spacing: 8px;
+                if root.auto-switch-shown && root.auto-switch-event != "": Rectangle {
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                    event-text := Text {
+                        width: parent.width;
+                        text: root.auto-switch-event;
+                        color: root.auto-switch-event-failed ? Theme.danger : Theme.text-secondary;
+                        font-size: 11px;
+                        overflow: elide;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                    Tooltip { text: @markdown("\{root.auto-switch-event}"); }
+                }
+                if root.auto-switch-shown: Rectangle {
+                    width: toggle-row.preferred-width;
+                    opacity: root.auto-switch-near ? 1.0 : 0.4;
+                    toggle-row := HorizontalLayout {
+                        spacing: 6px;
+                        Text { text: "Auto switch"; color: Theme.text-primary; font-size: 11px; vertical-alignment: center; }
+                        Rectangle {
+                            width: 26px;
+                            height: 15px;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: 7.5px;
+                            background: root.auto-switch-on ? Theme.accent : Theme.text-primary.with-alpha(0.2);
+                            Rectangle {
+                                width: 11px; height: 11px; border-radius: 5.5px; background: #ffffff;
+                                y: 2px;
+                                x: root.auto-switch-on ? parent.width - self.width - 2px : 2px;
+                                animate x { duration: 150ms; }
+                            }
+                        }
+                    }
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.set-auto-switch(!root.auto-switch-on); }
+                    }
+                    Tooltip { text: @markdown("Move Claude Code to another account when this one reaches its limit"); }
+                }
+            }
         }
     }
 

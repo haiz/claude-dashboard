@@ -98,6 +98,9 @@ fn apply_output(
     set_ping_fields(&mut rows);
     set_switch_fields(&mut rows);
     set_auto_switch_fields(&mut rows, &out.rows, now);
+    if let Some(pop) = pop_weak.upgrade() {
+        set_footer(&pop, &out.rows);
+    }
     // Re-sync All failures ride this refresh into the cards' error lines (macOS setError).
     let failures = std::mem::take(&mut *RESYNC_FAILURES.lock().unwrap_or_else(|e| e.into_inner()));
     for r in rows.iter_mut().filter(|r| !r.expired) {
@@ -170,6 +173,27 @@ fn set_auto_switch_fields(rows: &mut [UiRow], display: &[claude_dashboard_core::
     }
 }
 
+/// The flyout footer's auto switch toggle and last event.
+fn set_footer(pop: &PopoverWindow, rows: &[claude_dashboard_core::rows::DisplayRow]) {
+    let event = auto_switch::controller().last_event.clone();
+    let f = auto_switch::footer(&claude_dashboard_core::settings::load(), rows, event.as_ref(), model::local_offset_s());
+    pop.set_auto_switch_shown(f.shown);
+    pop.set_auto_switch_on(f.on);
+    pop.set_auto_switch_near(f.near);
+    pop.set_auto_switch_event(f.event.into());
+    pop.set_auto_switch_event_failed(f.failed);
+}
+
+/// Auto switch on or off, from the footer or Settings (macOS `setAutoSwitchEnabled`):
+/// turning it on near a limit acts now, not at the next refresh.
+fn set_auto_switch_enabled(on: bool) {
+    let _ = claude_dashboard_core::settings::update(|s| s.auto_switch_enabled = on);
+    refresh_auto_switch_ui();
+    if let Some(tx) = CC_NUDGE.get() {
+        let _ = tx.send(refresh::Nudge::Local);
+    }
+}
+
 /// UI thread: redraws every card's bolt and flame in place (a tick, a settings change, a new X).
 fn refresh_auto_switch_ui() {
     use slint::Model;
@@ -190,6 +214,7 @@ fn refresh_auto_switch_ui() {
     }
     if let Some(p) = POPOVER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade())) {
         patch(p.get_account_rows());
+        set_footer(&p, &out.rows);
     }
 }
 
@@ -1571,6 +1596,7 @@ fn main() -> Result<(), slint::PlatformError> {
     POPOVER.with(|p| *p.borrow_mut() = Some(popover.as_weak()));
     popover.on_switch_claude_code(|id| cc_request(id.to_string()));
     popover.on_toggle_home(|id| toggle_home(id.as_str()));
+    popover.on_set_auto_switch(set_auto_switch_enabled);
     popover.on_cc_prompt_ok(cc_ok);
     popover.on_cc_prompt_cancel(cc_cancel);
     popover.on_refresh(move || {

@@ -371,6 +371,37 @@ pub fn toggled_priority(current: Option<&Priority>, row: &DisplayRow, now: f64) 
     Some(Priority { account_id: row.account_id.clone(), baseline })
 }
 
+/// The flyout footer's right half (macOS `PopoverFooter`): shown while auto switch is on,
+/// or near a limit when the menu bar toggle is allowed; dimmed outside the toggle zone.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Footer {
+    pub shown: bool,
+    pub on: bool,
+    pub near: bool,
+    /// "{event} · {time}", empty without an event.
+    pub event: String,
+    pub failed: bool,
+}
+
+pub fn footer(settings: &Settings, rows: &[DisplayRow], event: Option<&Event>, local_offset_s: f64) -> Footer {
+    let thresholds = thresholds_of(settings);
+    let near = rows
+        .iter()
+        .find(|r| r.is_active_claude_code)
+        .and_then(usage_of)
+        .is_some_and(|u| planner::is_in_toggle_zone(&u, &thresholds));
+    let on = settings.auto_switch_enabled;
+    Footer {
+        shown: on || (settings.auto_switch_show_widget_toggle && near),
+        on,
+        near,
+        event: event
+            .map(|e| format!("{} \u{00B7} {}", e.text(), crate::ping::clock(e.date_unix, local_offset_s)))
+            .unwrap_or_default(),
+        failed: event.is_some_and(Event::is_failure),
+    }
+}
+
 fn percent(v: f64) -> String {
     format!("{}%", v.round() as i64)
 }
@@ -766,6 +797,29 @@ mod tests {
         assert_eq!(toggled_priority(None, &r, T0).unwrap().baseline, Some(T0 + FIVE_H), "active, not started: five hours");
         r.is_active_claude_code = false;
         assert_eq!(toggled_priority(None, &r, T0).unwrap().baseline, None, "not active, not started: no baseline");
+    }
+
+    #[test]
+    fn footer_visibility_dimming_and_event() {
+        let mut s = Settings::default();
+        let mut hot = row("a", Some("a@x.com"), Some(80.0), Some((10.0, T0 + 86_400.0)));
+        hot.is_active_claude_code = true;
+        let mut calm = hot.clone();
+        calm.five_hour.as_mut().unwrap().utilization = 79.0;
+        let f = footer(&s, &[calm.clone()], None, 0.0);
+        assert_eq!(f, Footer { shown: true, on: true, near: false, event: String::new(), failed: false }, "on: shown, dimmed");
+        s.auto_switch_enabled = false;
+        assert!(!footer(&s, &[calm.clone()], None, 0.0).shown, "off and calm: hidden");
+        let f = footer(&s, &[hot.clone()], None, 0.0);
+        assert!(f.shown && !f.on && f.near, "off but near a limit: shown so it can be turned on");
+        s.auto_switch_show_widget_toggle = false;
+        assert!(!footer(&s, &[hot.clone()], None, 0.0).shown, "the menu bar toggle setting is off");
+        let s = Settings::default();
+        let e = Event { kind: EventKind::Failed("x".into()), account_name: Some("b@x.com".into()), date_unix: 1_000_000.0 };
+        let f = footer(&s, &[hot], Some(&e), 0.0);
+        assert_eq!(f.event, "Could not switch to b@x.com: x \u{00B7} 1:46 PM");
+        assert!(f.failed);
+        assert!(!footer(&Settings::default(), &[], None, 0.0).near, "no active account: not near");
     }
 
     #[test]

@@ -97,7 +97,7 @@ pub fn load_latest() {
 }
 
 /// `h:mm AM` for a Unix time shifted by `local_offset_s` (the reset labels' clock format).
-fn clock(unix: f64, local_offset_s: f64) -> String {
+pub fn clock(unix: f64, local_offset_s: f64) -> String {
     let secs = (unix + local_offset_s).floor() as i64;
     let day = secs.rem_euclid(86_400);
     let (h, m) = (day / 3600, (day % 3600) / 60);
