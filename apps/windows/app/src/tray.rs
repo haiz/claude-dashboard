@@ -1,4 +1,4 @@
-//! System-tray icon: a ring filled to the peak utilization (colour and arc
+//! System-tray icon: a ring filled to the menu-bar row's 5h utilization (colour and arc
 //! both from `core`), plus the left-click / context-menu wiring.
 
 use claude_dashboard_core::colors::usage_color;
@@ -89,13 +89,30 @@ fn to_icon(img: &RgbaImage) -> Option<tray_icon::Icon> {
     tray_icon::Icon::from_rgba(img.data.clone(), img.width, img.height).ok()
 }
 
-/// Redraw the tray ring for a new peak. Must run on the thread that called
-/// `install_tray` (the UI thread).
-pub fn update_peak(peak: f64) {
+thread_local! {
+    /// What the tray currently shows, so an unchanged label is not redrawn.
+    static SHOWN: std::cell::RefCell<Option<(Option<u32>, String)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Quantised key for a utilization: the ring and tooltip only show whole percents.
+fn key(utilization: Option<f64>) -> Option<u32> {
+    utilization.map(|u| u.round().max(0.0) as u32)
+}
+
+/// Redraw the tray ring and tooltip for the menu-bar row (`None` = no usage yet).
+/// Does nothing when neither the value nor the tooltip changed. Must run on the
+/// thread that called `install_tray` (the UI thread).
+pub fn update_label(utilization: Option<f64>, tooltip: &str) {
+    let now = (key(utilization), tooltip.to_string());
+    if SHOWN.with(|s| s.borrow().as_ref() == Some(&now)) {
+        return;
+    }
     TRAY.with(|t| {
-        if let (Some(tray), Some(icon)) = (t.borrow().as_ref(), to_icon(&render_tray_icon(peak))) {
+        let icon = to_icon(&render_tray_icon(utilization.unwrap_or(0.0)));
+        if let (Some(tray), Some(icon)) = (t.borrow().as_ref(), icon) {
             let _ = tray.set_icon(Some(icon));
-            let _ = tray.set_tooltip(Some(format!("Claude Dashboard - peak {peak:.0}%")));
+            let _ = tray.set_tooltip(Some(tooltip));
+            SHOWN.with(|s| *s.borrow_mut() = Some(now));
         }
     });
 }
@@ -103,7 +120,7 @@ pub fn update_peak(peak: f64) {
 /// Install the tray icon (call on the UI thread, before the event loop runs).
 /// Left click toggles the popover; right click opens Open Dashboard /
 /// Refresh / Quit.
-pub fn install_tray(peak: f64, actions: TrayActions) -> Result<TrayHandle, String> {
+pub fn install_tray(utilization: Option<f64>, tooltip: &str, actions: TrayActions) -> Result<TrayHandle, String> {
     use tray_icon::menu::{Menu, MenuEvent, MenuItem};
     use tray_icon::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
@@ -113,15 +130,16 @@ pub fn install_tray(peak: f64, actions: TrayActions) -> Result<TrayHandle, Strin
     let menu = Menu::new();
     menu.append_items(&[&open, &refresh, &quit]).map_err(|e| e.to_string())?;
 
-    let icon = to_icon(&render_tray_icon(peak)).ok_or("bad tray icon")?;
+    let icon = to_icon(&render_tray_icon(utilization.unwrap_or(0.0))).ok_or("bad tray icon")?;
     let tray = TrayIconBuilder::new()
         .with_icon(icon)
-        .with_tooltip(format!("Claude Dashboard - peak {peak:.0}%"))
+        .with_tooltip(tooltip)
         .with_menu(Box::new(menu))
         .with_menu_on_left_click(false)
         .build()
         .map_err(|e| e.to_string())?;
     TRAY.with(|t| *t.borrow_mut() = Some(tray));
+    SHOWN.with(|s| *s.borrow_mut() = Some((key(utilization), tooltip.to_string())));
 
     let toggle = actions.toggle_popover;
     TrayIconEvent::set_event_handler(Some(move |e: TrayIconEvent| {

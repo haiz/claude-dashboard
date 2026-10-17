@@ -60,11 +60,17 @@ fn system_is_dark() -> bool {
 }
 
 thread_local! {
-    static LAST_PEAK: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
+    /// The rows last published, so a dev-run pin toggle can re-publish them.
+    static LAST_OUTPUT: std::cell::RefCell<Option<(refresh::RefreshOutput, f64)>> =
+        const { std::cell::RefCell::new(None) };
+    /// The flyout, reachable from `show_update_state` (banner) and the dev pin path.
+    static POPOVER: std::cell::RefCell<Option<slint::Weak<PopoverWindow>>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// The single fan-out for one refresh result: main window rows, popover rows
-/// and the tray icon (redrawn only when the peak changes). UI thread only.
+/// and the tray ring + tooltip (the macOS menu-bar row; the tray redraws only
+/// when its value or tooltip changes). UI thread only.
 fn apply_output(
     weak: &slint::Weak<AppWindow>,
     pop_weak: &slint::Weak<PopoverWindow>,
@@ -75,13 +81,17 @@ fn apply_output(
     let rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
     if let Some(pop) = pop_weak.upgrade() {
         pop.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows.clone())));
+        pop.set_refreshing(false);
     }
     if let Some(app) = weak.upgrade() {
         app.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
     }
-    if LAST_PEAK.with(|p| p.replace(Some(out.peak))) != Some(out.peak) {
-        tray::update_peak(out.peak);
-    }
+    let bar = claude_dashboard_core::rows::menu_bar_row(&out.rows);
+    tray::update_label(
+        bar.and_then(|r| r.five_hour.as_ref()).map(|w| w.utilization),
+        &model::tray_tooltip(bar, now),
+    );
+    LAST_OUTPUT.with(|l| *l.borrow_mut() = Some((out.clone(), now)));
 }
 
 
@@ -102,7 +112,8 @@ fn spawn_refresh_loop(
                 .unwrap_or(0.0);
             // Card spinners on until apply_output replaces the rows.
             let w = weak.clone();
-            let _ = slint::invoke_from_event_loop(move || set_all_loading(&w));
+            let pw = pop_weak.clone();
+            let _ = slint::invoke_from_event_loop(move || set_all_loading(&w, &pw));
             let fresh = refresh::refresh_once(now);
             let fetched = fresh.is_ok();
             let mut out = refresh::merge_errors(&prev, fresh);
@@ -149,16 +160,26 @@ fn patch_row(weak: &slint::Weak<AppWindow>, id: &str, f: impl FnOnce(&mut UiRow)
     }
 }
 
-/// UI thread: marks every card as refreshing (the next `apply_output` clears it).
-fn set_all_loading(weak: &slint::Weak<AppWindow>) {
+/// UI thread: marks every non-expired card as refreshing, in the main window and the
+/// flyout (macOS `refreshAll` skips expired accounts); the next `apply_output` clears it.
+fn set_all_loading(weak: &slint::Weak<AppWindow>, pop_weak: &slint::Weak<PopoverWindow>) {
     use slint::Model;
-    let Some(app) = weak.upgrade() else { return };
-    let rows = app.get_account_rows();
-    for i in 0..rows.row_count() {
-        if let Some(mut r) = rows.row_data(i) {
-            r.loading = true;
-            rows.set_row_data(i, r);
+    let mark = |rows: slint::ModelRc<UiRow>| {
+        for i in 0..rows.row_count() {
+            if let Some(mut r) = rows.row_data(i) {
+                if !r.expired {
+                    r.loading = true;
+                    rows.set_row_data(i, r);
+                }
+            }
         }
+    };
+    if let Some(app) = weak.upgrade() {
+        mark(app.get_account_rows());
+    }
+    if let Some(pop) = pop_weak.upgrade() {
+        mark(pop.get_account_rows());
+        pop.set_refreshing(true);
     }
 }
 
@@ -170,19 +191,15 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<()>) 
     app.on_toggle_pin(move |id, pinned| {
         let id = id.to_string();
         if dev_run() {
-            // Fake rows: flip the flags locally, the real store is left alone.
-            use slint::Model;
-            if let Some(app) = w.upgrade() {
-                let rows = app.get_account_rows();
-                for i in 0..rows.row_count() {
-                    if let Some(mut r) = rows.row_data(i) {
-                        let now_pinned = if r.id == id.as_str() { pinned } else { r.pinned && !pinned };
-                        if r.pinned != now_pinned {
-                            r.pinned = now_pinned;
-                            rows.set_row_data(i, r);
-                        }
-                    }
+            // Fake rows: flip the flags locally and re-publish (the tray follows the pin);
+            // the real store is left alone.
+            let last = LAST_OUTPUT.with(|l| l.borrow_mut().take());
+            if let Some((mut out, now)) = last {
+                for r in out.rows.iter_mut() {
+                    r.is_pinned = if r.account_id == id { pinned } else { r.is_pinned && !pinned };
                 }
+                let pop = POPOVER.with(|p| p.borrow().clone()).unwrap_or_default();
+                apply_output(&w, &pop, &out, now);
             }
             return;
         }
@@ -298,6 +315,7 @@ thread_local! {
 }
 
 fn hide_flyout(pop: &PopoverWindow) {
+    pop.set_confirming_quit(false);
     let _ = pop.hide();
     FLYOUT.with(|f| f.borrow_mut().hidden_at = Some(std::time::Instant::now()));
 }
@@ -363,6 +381,15 @@ fn show_update_state(app: &AppWindow, state: updater::UpdateState) {
     app.set_update_status(updater::status_text(&state, settings_general::APP_VERSION).into());
     app.set_update_can_install(matches!(state, S::Available(_)));
     app.set_update_busy(matches!(state, S::Checking | S::Downloading | S::Installing));
+    // Yellow flyout banner while an update downloads or installs (macOS MenuBarPopover).
+    let banner = if matches!(state, S::Downloading | S::Installing) {
+        updater::status_text(&state, settings_general::APP_VERSION)
+    } else {
+        String::new()
+    };
+    if let Some(pop) = POPOVER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade())) {
+        pop.set_update_banner(banner.into());
+    }
     UPDATE_STATE.with(|s| *s.borrow_mut() = state);
 }
 
@@ -693,6 +720,8 @@ fn main() -> Result<(), slint::PlatformError> {
     // Tray flyout (created hidden; shown on tray left-click).
     let popover = PopoverWindow::new()?;
     popover.global::<Theme>().set_dark(dark);
+    popover.set_app_version(settings_general::APP_VERSION.into());
+    POPOVER.with(|p| *p.borrow_mut() = Some(popover.as_weak()));
     popover.on_refresh(move || {
         let _ = pop_nudge.send(());
     });
@@ -708,14 +737,65 @@ fn main() -> Result<(), slint::PlatformError> {
             open();
         });
     }
+    // Header buttons and card actions: hide the flyout, then drive the main window.
     {
-        let (app_w, pop_w) = (app.as_weak(), popover.as_weak());
-        popover.on_expand(move || {
-            if let Some(p) = pop_w.upgrade() {
-                hide_flyout(&p);
+        let open_main = |app_w: slint::Weak<AppWindow>, pop_w: slint::Weak<PopoverWindow>| {
+            move |f: Box<dyn FnOnce(&AppWindow)>| {
+                if let Some(p) = pop_w.upgrade() {
+                    hide_flyout(&p);
+                }
+                if let Some(a) = app_w.upgrade() {
+                    f(&a);
+                    show_main(&a);
+                    raise_to_foreground(a.window());
+                }
             }
+        };
+        let go = open_main(app.as_weak(), popover.as_weak());
+        popover.on_expand({
+            let go = go.clone();
+            move || go(Box::new(|_| {}))
+        });
+        popover.on_open_help({
+            let go = go.clone();
+            move || go(Box::new(|a| a.set_selection(Pane::Help)))
+        });
+        popover.on_open_settings({
+            let go = go.clone();
+            move || go(Box::new(|a| a.set_selection(Pane::General)))
+        });
+        popover.on_open_account({
+            let go = go.clone();
+            move |id| {
+                let id = id.to_string();
+                go(Box::new(move |a| {
+                    a.set_selected_account_id(id.into());
+                    a.set_selection(Pane::Account);
+                }))
+            }
+        });
+        popover.on_open_account_window({
+            let go = go.clone();
+            move |id, win| {
+                let (id, win) = (id.to_string(), win.to_string());
+                go(Box::new(move |a| {
+                    a.set_selected_account_id(id.clone().into());
+                    a.set_selection(Pane::Account);
+                    a.set_requested_window(win.clone().into());
+                    a.invoke_open_account_window(id.into(), win.into());
+                }))
+            }
+        });
+        let app_w = app.as_weak();
+        popover.on_toggle_pin(move |id, pinned| {
             if let Some(a) = app_w.upgrade() {
-                show_main(&a);
+                a.invoke_toggle_pin(id, pinned);
+            }
+        });
+        let app_w = app.as_weak();
+        popover.on_resync_account(move |id| {
+            if let Some(a) = app_w.upgrade() {
+                a.invoke_resync_account(id);
             }
         });
     }
@@ -770,7 +850,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 });
             }),
         };
-        match tray::install_tray(0.0, actions) {
+        match tray::install_tray(None, &model::tray_tooltip(None, 0.0), actions) {
             Ok(h) => Some(h),
             Err(e) => {
                 eprintln!("tray unavailable: {e}");

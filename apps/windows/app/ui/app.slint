@@ -1,4 +1,4 @@
-import { AboutSlint } from "std-widgets.slint";
+import { AboutSlint, Spinner } from "std-widgets.slint";
 import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "components.slint";
 import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
@@ -535,11 +535,13 @@ export component AppWindow inherits Window {
 
 component FlyoutIconButton inherits Rectangle {
     in property <string> glyph;
+    in property <bool> enabled: true;
     callback clicked();
     width: 28px;
     height: 28px;
     border-radius: 6px;
-    background: touch.has-hover ? Theme.accent.with-alpha(0.15) : transparent;
+    opacity: root.enabled ? 1.0 : 0.4;
+    background: touch.has-hover && root.enabled ? Theme.accent.with-alpha(0.15) : (Theme.dark ? #ffffff12 : #00000010);
     Text {
         text: root.glyph;
         font-family: "Segoe Fluent Icons";
@@ -548,24 +550,50 @@ component FlyoutIconButton inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
 }
 
-// Tray flyout (macOS MenuBarPopover): header, compact account rows, footer.
-// Borderless; Rust applies Mica + rounded corners and places it at the tray.
+// Tray flyout (macOS MenuBarPopover + PopoverFooter): update banner, header with icon
+// buttons, compact account cards, footer (Quit | version | empty). Borderless; Rust
+// applies Mica + rounded corners and places it at the tray. Height follows the card
+// count (macOS sizes the popover to its content, list capped and scrolling).
 export component PopoverWindow inherits Window {
     no-frame: true;
-    width: 340px;
-    height: 420px;
+    width: 372px;
+    height: clamp(root.chrome + root.list-h, 240px, 700px);
     default-font-family: Theme.font-family;
     default-font-size: 14px;
     background: transparent;
     in property <bool> use-solid-background: false;
     in property <[UiRow]> account-rows;
+    // True while a refresh is running (disables the header Refresh button).
+    in property <bool> refreshing: false;
+    // Yellow banner text while an update downloads or installs; empty hides it.
+    in property <string> update-banner;
+    in property <string> app-version;
+    // Inline Quit confirmation (macOS `confirmingQuit`); Rust clears it when the flyout hides.
+    in-out property <bool> confirming-quit: false;
     callback expand();
     callback refresh();
+    callback open-help();
+    callback open-settings();
     callback quit();
     callback add-account();
+    callback toggle-pin(string, bool);
+    callback resync-account(string);
+    // A card click opens that account's page; a gauge click its chart window ("5h" | "7d" | "fable").
+    callback open-account(string);
+    callback open-account-window(string, string);
+
+    property <length> card-h: 176px;
+    property <length> list-h: root.account-rows.length == 0 ? 170px
+        : min(root.account-rows.length * (root.card-h + 8px) - 8px, 520px);
+    // padding + header + footer + the gaps between the sections (+ banner).
+    property <length> chrome: 24px + 28px + 28px + 16px + (root.update-banner != "" ? 32px : 0px);
 
     Rectangle {
         background: root.use-solid-background ? Theme.window-bg : (Theme.dark ? #20202080 : #f3f3f380);
@@ -574,6 +602,22 @@ export component PopoverWindow inherits Window {
     VerticalLayout {
         padding: 12px;
         spacing: 8px;
+        if root.update-banner != "": Rectangle {
+            height: 24px;
+            border-radius: 6px;
+            background: #fce10026;
+            HorizontalLayout {
+                alignment: center;
+                spacing: 6px;
+                Spinner { width: 14px; height: 14px; y: (parent.height - self.height) / 2; indeterminate: true; }
+                Text {
+                    text: root.update-banner;
+                    color: Theme.text-secondary;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+        }
         HorizontalLayout {
             spacing: 4px;
             Text {
@@ -584,60 +628,98 @@ export component PopoverWindow inherits Window {
                 vertical-alignment: center;
             }
             Rectangle { }
-            FlyoutIconButton { glyph: "\u{E72C}"; clicked => { root.refresh(); } }
+            if root.account-rows.length > 0: FlyoutIconButton {
+                glyph: "\u{E72C}";
+                enabled: !root.refreshing;
+                clicked => { root.refresh(); }
+            }
             FlyoutIconButton { glyph: "\u{E740}"; clicked => { root.expand(); } }
+            FlyoutIconButton { glyph: "\u{E897}"; clicked => { root.open-help(); } }
+            FlyoutIconButton { glyph: "\u{E713}"; clicked => { root.open-settings(); } }
         }
         if root.account-rows.length == 0: EmptyState { vertical-stretch: 1; add-account => { root.add-account(); } }
-        Flickable {
+        if root.account-rows.length > 0: Flickable {
+            vertical-stretch: 1;
             content-height: list.preferred-height;
             list := VerticalLayout {
-                spacing: 6px;
+                spacing: 8px;
                 alignment: start;
-                for acct in root.account-rows: Rectangle {
-                    height: 60px;
-                    background: Theme.card-bg;
-                    border-radius: 8px;
-                    border-width: 1px;
-                    border-color: Theme.card-border;
-                    HorizontalLayout {
-                        padding: 8px;
-                        spacing: 10px;
-                        Avatar { size: 32px; initial: acct.initial; tint: acct.avatar-color; y: (parent.height - self.height) / 2; }
-                        VerticalLayout {
-                            alignment: center;
-                            Text { text: acct.name; color: Theme.text-primary; font-weight: 600; overflow: elide; }
-                            Text {
-                                text: acct.error != "" ? acct.error : acct.plan;
-                                color: acct.error != "" ? Theme.danger : Theme.text-secondary;
-                                font-size: 11px;
-                                overflow: elide;
-                            }
-                        }
-                        if acct.five-hour.present: UsageGauge { win: acct.five-hour; zoom: 0.55; y: (parent.height - self.height) / 2; }
-                        if acct.seven-day.present: UsageGauge { win: acct.seven-day; zoom: 0.55; y: (parent.height - self.height) / 2; }
-                    }
+                for acct in root.account-rows: AccountCard {
+                    data: acct;
+                    height: root.card-h;
+                    clicked => { root.open-account(acct.id); }
+                    toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
+                    resync => { root.resync-account(acct.id); }
+                    open-window(w) => { root.open-account-window(acct.id, w); }
                 }
             }
         }
+        Rectangle { height: 1px; background: Theme.card-border; }
         HorizontalLayout {
-            alignment: space-between;
+            height: 28px;
             Rectangle {
-                height: 32px;
-                width: expand-text.preferred-width + 28px;
-                border-radius: 6px;
-                background: expand-touch.has-hover ? Theme.accent.with-alpha(0.15) : Theme.card-bg;
-                border-width: 1px;
-                border-color: Theme.card-border;
-                expand-text := Text { text: "Expand"; color: Theme.accent; horizontal-alignment: center; vertical-alignment: center; }
-                expand-touch := TouchArea { clicked => { root.expand(); } }
+                horizontal-stretch: 1;
+                Rectangle {
+                    x: 0px;
+                    width: quit-row.preferred-width + 16px;
+                    border-radius: 6px;
+                    background: quit-touch.has-hover ? Theme.danger.with-alpha(0.15) : transparent;
+                    quit-row := HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 6px;
+                        Text {
+                            text: "\u{E7E8}";
+                            font-family: "Segoe Fluent Icons";
+                            font-size: 12px;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                        Text { text: "Quit"; color: Theme.text-secondary; font-size: 12px; vertical-alignment: center; }
+                    }
+                    quit-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.confirming-quit = true; }
+                    }
+                }
             }
-            Rectangle {
-                height: 32px;
-                width: quit-text.preferred-width + 28px;
-                border-radius: 6px;
-                background: quit-touch.has-hover ? Theme.danger.with-alpha(0.15) : transparent;
-                quit-text := Text { text: "Quit"; color: Theme.text-secondary; horizontal-alignment: center; vertical-alignment: center; }
-                quit-touch := TouchArea { clicked => { root.quit(); } }
+            Text {
+                text: "v" + root.app-version;
+                color: Theme.text-secondary.with-alpha(0.7);
+                font-size: 11px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+    }
+
+    // Inline Quit confirmation (macOS InlinePrompt): dim the flyout, centred card.
+    if root.confirming-quit: Rectangle {
+        background: #00000059;
+        TouchArea { }
+        Rectangle {
+            width: 260px;
+            height: prompt.preferred-height + 32px;
+            border-radius: 12px;
+            background: Theme.dark ? #2b2b2b : #ffffff;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            prompt := VerticalLayout {
+                padding: 16px;
+                spacing: 10px;
+                Text { text: "Quit Claude Dashboard?"; color: Theme.text-primary; font-size: 15px; font-weight: 600; }
+                Text {
+                    text: "Usage monitoring stops until you open the app again.";
+                    color: Theme.text-primary;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    padding-top: 4px;
+                    PaneButton { horizontal-stretch: 1; label: "Cancel"; tint: Theme.text-secondary; clicked => { root.confirming-quit = false; } }
+                    PaneButton { horizontal-stretch: 1; label: "Quit"; tint: Theme.danger; clicked => { root.quit(); } }
+                }
             }
         }
     }
