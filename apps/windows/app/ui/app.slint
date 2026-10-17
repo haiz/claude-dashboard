@@ -5,11 +5,12 @@ import { SetupWizardWindow, ScanItem } from "wizard.slint";
 import { OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData } from "chart.slint";
 import { HelpPane, HelpTopic } from "help.slint";
 import { InfoTip, TipStore, TipData } from "info_tip.slint";
+import { UiPingRow, PingLogPane } from "ping_log.slint";
 
-export { TipStore, TipData, HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData }
+export { UiPingRow, TipStore, TipData, HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
-export enum Pane { dashboard, overview, account, help, settings-accounts, general }
+export enum Pane { dashboard, overview, account, ping-log, help, settings-accounts, general }
 
 component GroupHeader inherits Text {
     color: Theme.text-secondary;
@@ -556,6 +557,11 @@ export component AppWindow inherits Window {
     callback refresh-account(string);
     // The account page's Ping button.
     callback ping-account(string);
+    // Tools > Ping Log: rows (Rust loads them on `ping-log-reload`), Clear All's prompt.
+    in property <[UiPingRow]> ping-log-rows;
+    in-out property <bool> ping-log-confirming: false;
+    callback ping-log-reload();
+    callback ping-log-clear();
     // Remove an account (the account page Actions box); same path as Settings > Accounts delete.
     callback remove-account(string);
     // An account page was opened (sidebar row, card, flyout); the chart window resets to 5h.
@@ -629,6 +635,7 @@ export component AppWindow inherits Window {
 
     property <string> pane-title: root.selection == Pane.dashboard ? "Dashboard"
         : root.selection == Pane.overview ? "Overview"
+        : root.selection == Pane.ping-log ? "Ping Log"
         : root.selection == Pane.help ? "Help"
         : root.selection == Pane.settings-accounts ? "Accounts"
         : root.selection == Pane.general ? "General"
@@ -682,6 +689,15 @@ export component AppWindow inherits Window {
 
                     SidebarHeader { text: "Tools"; }
                     SidebarRow {
+                        label: "Ping Log"; glyph: "\u{E8C8}"; tile: #5e5ce6;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.ping-log;
+                        clicked => {
+                            root.selection = Pane.ping-log;
+                            root.ping-log-reload();
+                        }
+                    }
+                    SidebarRow {
                         label: "Help"; glyph: "\u{E897}"; tile: #30d158;
                         text-color: Theme.text-primary;
                         selected: root.selection == Pane.help;
@@ -720,6 +736,23 @@ export component AppWindow inherits Window {
                     vertical-alignment: center;
                 }
                 Rectangle { horizontal-stretch: 1; }
+                // macOS PingLogView header: Refresh (reload) and Clear All (asks first).
+                if root.selection == Pane.ping-log: PaneButton {
+                    label: "Refresh";
+                    glyph: "\u{E72C}";
+                    tip: "Reload the ping log";
+                    y: (parent.height - self.height) / 2;
+                    clicked => { root.ping-log-reload(); }
+                }
+                if root.selection == Pane.ping-log: PaneButton {
+                    label: "Clear All";
+                    glyph: "\u{E74D}";
+                    tint: Theme.danger;
+                    enabled: root.ping-log-rows.length > 0;
+                    tip: "Delete every ping log entry";
+                    y: (parent.height - self.height) / 2;
+                    clicked => { root.ping-log-confirming = true; }
+                }
                 if root.selection == Pane.dashboard && root.account-rows.length > 0: PaneButton {
                     label: "Refresh";
                     glyph: "\u{E72C}";
@@ -837,6 +870,12 @@ export component AppWindow inherits Window {
                 set-auto-update(on) => { root.set-auto-update(on); }
                 auto-ping: root.auto-ping;
                 set-auto-ping(on) => { root.set-auto-ping(on); }
+            }
+            if root.selection == Pane.ping-log: PingLogPane {
+                vertical-stretch: 1;
+                rows: root.ping-log-rows;
+                confirming-clear <=> root.ping-log-confirming;
+                clear => { root.ping-log-clear(); }
             }
             if root.selection == Pane.help: HelpPane { vertical-stretch: 1; avail-width: root.width - 240px - 48px; topics: root.help-topics; sample: root.help-sample; focus-topic <=> root.help-focus; }
             if root.selection != Pane.dashboard && root.selection != Pane.account: Rectangle { }

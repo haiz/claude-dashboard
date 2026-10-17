@@ -13,6 +13,7 @@ mod migration;
 mod model;
 mod pin;
 mod ping;
+mod ping_log_view;
 mod pipe;
 mod popover;
 mod refresh;
@@ -282,6 +283,31 @@ fn spawn_auto_pings(targets: Vec<ping::PingTarget>, tx: std::sync::mpsc::Sender<
             }
         });
         let _ = tx.send(refresh::Nudge::Some(targets.into_iter().map(|t| t.account_id).collect()));
+    });
+}
+
+/// UI thread: reads the Ping Log on a worker and shows it, names from the current rows.
+fn load_ping_log(weak: &slint::Weak<AppWindow>) {
+    use slint::Model;
+    let Some(app) = weak.upgrade() else { return };
+    let names: std::collections::HashMap<String, String> =
+        app.get_account_rows().iter().map(|r| (r.id.to_string(), r.name.to_string())).collect();
+    let w = weak.clone();
+    std::thread::spawn(move || {
+        let entries = if dev_run() {
+            Vec::new()
+        } else {
+            claude_dashboard_core::ping_log::PingLogStore::open()
+                .map(|log| log.fetch(claude_dashboard_core::ping_log::MAX_ENTRIES))
+                .unwrap_or_default()
+        };
+        let offset = model::local_offset_s();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(a) = w.upgrade() {
+                let rows = ping_log_view::rows(&entries, &names, offset);
+                a.set_ping_log_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+            }
+        });
     });
 }
 
@@ -1123,6 +1149,25 @@ fn main() -> Result<(), slint::PlatformError> {
                 if ping::run_ping(&target, claude_dashboard_core::ping_log::PingTrigger::Manual).is_some() {
                     let _ = tx.send(refresh::Nudge::One(id));
                 }
+            });
+        });
+        // Tools > Ping Log: load on open and on Refresh; Clear All also forgets the captions.
+        let w = app.as_weak();
+        app.on_ping_log_reload(move || load_ping_log(&w));
+        let w = app.as_weak();
+        app.on_ping_log_clear(move || {
+            let w = w.clone();
+            std::thread::spawn(move || {
+                if !dev_run() {
+                    if let Ok(mut log) = claude_dashboard_core::ping_log::PingLogStore::open() {
+                        log.clear();
+                    }
+                }
+                ping::controller().clear_latest();
+                let _ = slint::invoke_from_event_loop(move || {
+                    refresh_ping_ui(&w);
+                    load_ping_log(&w);
+                });
             });
         });
         let w = app.as_weak();
