@@ -316,6 +316,8 @@ component GeneralSettingsPane inherits Flickable {
     in property <bool> update-busy;
     in property <bool> auto-update;
     callback check-updates();
+    in property <bool> auto-ping;
+    callback set-auto-ping(bool);
     callback set-auto-update(bool);
     callback reset-all-settings();
     property <bool> confirming-reset;
@@ -383,6 +385,24 @@ component GeneralSettingsPane inherits Flickable {
                     }
                 }
             }
+        }
+
+        GroupHeader { text: "Auto Ping"; }
+        SettingsCard {
+            height: 52px;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 4px;
+                Text { text: "Ping when a usage window is not running"; color: Theme.text-primary; vertical-alignment: center; }
+                InfoTip { tip-id: "auto-ping"; y: (parent.height - self.height) / 2; }
+                Rectangle { horizontal-stretch: 1; }
+                SwitchKnob { on: root.auto-ping; y: (parent.height - self.height) / 2; toggled(v) => { root.set-auto-ping(v); } }
+            }
+        }
+        Text {
+            text: "Starts a new window for every active account whose 5h or 7d window is not running. Each ping sends one short message from that account.";
+            color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
         }
 
         GroupHeader { text: "Startup"; }
@@ -480,7 +500,7 @@ component GeneralSettingsPane inherits Flickable {
                     color: Theme.text-primary; font-weight: 600; wrap: word-wrap;
                 }
                 if root.confirming-reset: Text {
-                    text: "Auto refresh and Updates go back to their defaults.";
+                    text: "Auto refresh, Auto Ping and Updates go back to their defaults.";
                     color: Theme.text-secondary; font-size: 12px; wrap: word-wrap;
                 }
                 if root.confirming-reset: HorizontalLayout {
@@ -595,6 +615,8 @@ export component AppWindow inherits Window {
     in property <bool> update-busy;
     in-out property <bool> auto-update: true;
     callback check-updates();
+    in-out property <bool> auto-ping: false;
+    callback set-auto-ping(bool);
     callback set-auto-update(bool);
 
     // Opens an account's page on the 5h window (macOS `selectFromSidebar` resets the window).
@@ -813,6 +835,8 @@ export component AppWindow inherits Window {
                 auto-update: root.auto-update;
                 check-updates => { root.check-updates(); }
                 set-auto-update(on) => { root.set-auto-update(on); }
+                auto-ping: root.auto-ping;
+                set-auto-ping(on) => { root.set-auto-ping(on); }
             }
             if root.selection == Pane.help: HelpPane { vertical-stretch: 1; avail-width: root.width - 240px - 48px; topics: root.help-topics; sample: root.help-sample; focus-topic <=> root.help-focus; }
             if root.selection != Pane.dashboard && root.selection != Pane.account: Rectangle { }

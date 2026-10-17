@@ -989,12 +989,31 @@ fn main() -> Result<(), slint::PlatformError> {
         std::thread::spawn(move || {
             let (enabled, minutes) = settings_general::current_auto_refresh();
             let launch = settings_general::launch_is_enabled();
+            let auto_ping = settings_general::auto_ping_enabled();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(a) = w.upgrade() {
                     a.set_auto_refresh_enabled(enabled);
                     a.set_auto_refresh_minutes(minutes as i32);
                     a.set_launch_at_startup(launch);
+                    a.set_auto_ping(auto_ping);
                 }
+            });
+        });
+        // Auto Ping: turning it on refreshes now, so idle accounts are pinged without
+        // waiting for the interval (macOS `setAutoPingEnabled`).
+        let tx = nudge_tx.clone();
+        let w = app.as_weak();
+        app.on_set_auto_ping(move |on| {
+            if let Some(a) = w.upgrade() {
+                a.set_auto_ping(on);
+            }
+            let tx = tx.clone();
+            settings_general::writer().submit(move || match settings_general::set_auto_ping(on) {
+                Ok(()) if on => {
+                    let _ = tx.send(refresh::Nudge::All);
+                }
+                Ok(()) => {}
+                Err(e) => eprintln!("save auto ping failed: {e}"),
             });
         });
         let tx = nudge_tx.clone();
@@ -1038,6 +1057,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             a.set_auto_refresh_enabled(state.auto_refresh_enabled);
                             a.set_auto_refresh_minutes(state.auto_refresh_minutes as i32);
                             a.set_auto_update(state.auto_update);
+                            a.set_auto_ping(state.auto_ping);
                         }
                     });
                     let _ = tx.send(refresh::Nudge::Reschedule);
