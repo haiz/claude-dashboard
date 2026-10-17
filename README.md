@@ -1,45 +1,59 @@
 # Claude Dashboard
 
-A macOS menu bar app that monitors your Claude.ai token usage across multiple accounts in real-time.
+A macOS menu bar app that monitors Claude.ai usage across multiple accounts in real time, and moves Claude Code to the account with quota to spare.
 
 ![Dashboard Window](docs/screenshot/dashboard-window.png)
 
 ## Features
 
-- **Multi-account monitoring** — Track usage across multiple Claude.ai accounts simultaneously
-- **Menu bar quick view** — See usage at a glance without opening a window
-- **Burn-rate sorting** — Accounts sorted by burn rate so you know which ones need attention
-- **Interactive charts** — Visualize usage trends over time with zoomable charts (5h, 24h, 3d, 7d, 30d)
-- **Reset cycle tracking** — See when your usage limits reset with countdown bars
-- **Plan detection** — Detects Pro and Max plans from the account's org capabilities
-- **Color-coded progress** — Green-to-red bars show utilization at a glance
-- **Zero dependencies** — Pure native Swift (SwiftUI, AppKit, Combine)
+### Usage at a glance
+
+- **Multi-account monitoring**: every Claude.ai account you are signed in to, side by side
+- **Menu bar label**: 5h usage and the time left until reset for your pinned account (or the top account)
+- **Ring gauges** for the 5-hour window, the 7-day window and, when your plan has one, the weekly Fable window. A small countdown ring next to each shows the time until it resets
+- **Burn-rate sorting**: accounts that will hit 100% soonest come first
+- **Plan detection**: Pro, Max 5x, Max 20x, or Max when the tier is unknown
+- **Color-coded**: green when there is plenty left, red when almost out
+
+### Charts
+
+- **History chart** on each account page: 5h, 7d or Fable window over the last 5h, 24h, 3d, 7d or 30d
+- Pan and zoom, filter by reset cycle, and measure the change between two points
+- **Overview**: every account on one chart; click a legend entry to show or hide it
+
+### Claude Code account switching
+
+- **One-click Switch**: point Claude Code at another account. The first switch for an account signs in once through that account's own browser profile; after that it is instant, with no browser, for about 30 days
+- **Auto Switch** (on by default): when the active account reaches 95% of 5h or 99% of 7d, Claude Code moves to the account whose weekly quota is closest to going unused
+- **Critical accounts**: a flame marks an account whose weekly quota will expire unused even at a steady pace, and Auto Switch uses it first
+- **Home after reset**: tick an account to bring Claude Code back to it each time its 5h limit resets
+- **Switch Log**: every switch and failed attempt, with the reason
+
+### Ping
+
+- **Ping** starts an account's 5h and 7d windows now (by sending one short message), so they reset sooner
+- **Auto Ping** (off by default) pings every active account whose window is not running
+- **Ping Log**: the latest 500 pings and their results
+
+### And
+
+- Reads sessions from **Chrome, Chrome Dev, Arc, Brave or Edge**, or takes a pasted session key
+- Auto refresh (every 1 to 60 minutes) and a daily auto-update from GitHub releases
+- **Zero dependencies**: pure native Swift (SwiftUI, AppKit, Combine)
 
 ## Screenshots
 
-| Menu Bar Popover | Dashboard Window |
+| Menu Bar Popover | Account Page |
 |:---:|:---:|
-| ![Menu Bar](docs/screenshot/menubar-popover.png) | ![Dashboard](docs/screenshot/dashboard-window.png) |
+| ![Menu Bar](docs/screenshot/menubar-popover.png) | ![Account](docs/screenshot/account-detail-chart.png) |
 
-| Overview Chart | Account Detail |
+| Overview Chart | Switch Log |
 |:---:|:---:|
-| ![Overview](docs/screenshot/overview-chart.png) | ![Detail](docs/screenshot/account-detail-chart.png) |
+| ![Overview](docs/screenshot/overview-chart.png) | ![Switch Log](docs/screenshot/switch-log.png) |
 
-## Repository Layout
-
-```
-apps/macos/       SwiftUI menu bar app, tests, and the Swift helper binary
-apps/linux/       Rust workspace: the shared core plus the Linux helper binary.
-                  Drives the same bash CLI. apps/linux/gnome-extension/ is a
-                  GNOME Shell panel indicator built on the same helper.
-contract/         Behaviour shared across platforms: docs plus executable cases
-cli/              claude-dashboard-cli — the bash terminal dashboard
-scripts/          release, version sync
-.github/workflows/ release-linux.yml — builds and uploads the Linux tarballs
-Formula/ Casks/   Homebrew tap (must stay at the repo root)
-install.sh        one-liner installer (published URL, must stay at the repo root)
-install.ps1       Windows one-liner installer (published URL, must stay at the repo root)
-```
+| Ping Log | Settings |
+|:---:|:---:|
+| ![Ping Log](docs/screenshot/ping-log.png) | ![Settings](docs/screenshot/settings-general.png) |
 
 ## Installation
 
@@ -59,6 +73,24 @@ brew install haiz/claude-dashboard/claude-dashboard-cli
 curl -fsSL https://raw.githubusercontent.com/haiz/claude-dashboard/main/install.sh | bash
 ```
 
+### Manual Download
+
+1. Go to the [latest release](https://github.com/haiz/claude-dashboard/releases/latest)
+2. Download `ClaudeDashboard.app.zip`
+3. Extract and move `ClaudeDashboard.app` to `/Applications`
+4. Right-click the app and select **Open** (first time only, since the app is unsigned)
+
+### First run
+
+1. Sign in to claude.ai in Chrome, Chrome Dev, Arc, Brave or Edge, one browser profile per account.
+2. Open **Settings > Accounts** and click **Add Account...**
+3. Pick your browser, check the accounts it finds, then click **Add Selected**.
+4. When macOS asks for Keychain access, choose **Always Allow**. The app needs it to read the browser's cookies.
+
+No browser session? Click **Paste a session key instead** and paste the account's claude.ai `sessionKey` cookie. The in-app **Help** page (Tools > Help) covers every feature.
+
+![Settings > Accounts](docs/screenshot/settings-accounts.png)
+
 ### Linux
 
 ```bash
@@ -73,11 +105,11 @@ from `libsecret-tools`.
 On GNOME 45, 46, or 47, a GNOME Shell panel indicator is also available: an
 icon in the top bar showing your highest utilization across accounts, with a
 popup listing each account's email, plan, and ring gauges for the 5h, 7d, and
-(where present) Fable windows — the same countdown-ring and burn-rate-animal
-gauges as the macOS menu bar popover. It's a panel indicator and popup only;
-the fuller macOS surfaces (the dashboard window, historical charts, Command
-Log, Help sheet, setup wizard, and auto-update) remain macOS-only. Install
-and enable it with:
+(where present) Fable windows, the same countdown-ring and burn-rate-animal
+gauges as the macOS menu bar popover. It is a panel indicator and popup only;
+the fuller macOS surfaces (the dashboard window, historical charts, Claude
+Code switching, Ping, the logs, Help, the setup wizard, and auto-update)
+remain macOS-only. Install and enable it with:
 
 ```bash
 apps/linux/gnome-extension/install.sh
@@ -88,18 +120,18 @@ gnome-extensions enable claude-dashboard@haiz.github.io
 `~/.local/share/gnome-shell/extensions/` and compiles its settings schema. On
 Wayland, a newly installed extension is only picked up by the Shell after you
 log out and back in, since the session can't be restarted in place. The
-extension drives the existing `claude-dashboard-helper` binary — the same one
-the CLI uses — so account and `sync` state is shared between the extension
+extension drives the existing `claude-dashboard-helper` binary (the same one
+the CLI uses), so account and `sync` state is shared between the extension
 and the CLI.
 
 Two GSettings keys under `org.gnome.shell.extensions.claude-dashboard`
-configure it — edit them from the extension's own Preferences dialog (the
+configure it. Edit them from the extension's own Preferences dialog (the
 gear icon in the popup, or `gnome-extensions prefs claude-dashboard@haiz.github.io`),
 or with `gsettings`:
 
-- `refresh-interval` — seconds between helper calls, default 120. Takes
+- `refresh-interval`: seconds between helper calls, default 120. Takes
   effect immediately; no need to disable and re-enable the extension.
-- `helper-path` — an escape hatch, blank by default. The extension looks for
+- `helper-path`: an escape hatch, blank by default. The extension looks for
   `claude-dashboard-helper` on `PATH` and then at `~/.local/bin/claude-dashboard-helper`
   (where the one-liner above installs it); set this key explicitly only if
   the helper lives somewhere neither of those finds it, which can happen in
@@ -113,7 +145,7 @@ Known limitations on Linux:
   against a real cookie database; the same holds for multiple profiles in one
   browser and for Flatpak/snap installs.
 - Chromium's v12 (secret-portal) cookies need a secret-service backend
-  reachable through `secret-tool` — a profile is skipped only when none of the
+  reachable through `secret-tool`. A profile is skipped only when none of the
   tried app-id candidates yield a usable portal secret.
 
 ### Windows
@@ -132,16 +164,9 @@ Re-run it to upgrade (the app also updates itself). To use the extension, open
 click **Load unpacked** and pick that folder. Uninstall from **Settings > Apps**;
 your accounts and settings are kept.
 
-### Manual Download
-
-1. Go to the [latest release](https://github.com/haiz/claude-dashboard/releases/latest)
-2. Download `ClaudeDashboard.app.zip`
-3. Extract and move `ClaudeDashboard.app` to `/Applications`
-4. Right-click the app and select **Open** (first time only, since the app is unsigned)
-
 ## Terminal CLI
 
-A terminal dashboard is available on both platforms. On macOS, install it via the `claude-dashboard-cli` Homebrew formula — it reuses the same account storage as the menu bar app, so after `sync`, every account shows up in both the GUI and the terminal. On Linux, install it with the one-liner above instead — it reuses the same account storage as the GNOME panel extension described in the Linux install section above, so every account shows up in both.
+A terminal dashboard is available on macOS and Linux. On macOS, install it with the `claude-dashboard-cli` Homebrew formula; it reuses the menu bar app's account storage, so after `sync` every account shows up in both. On Linux, install it with the one-liner above; it shares account storage with the GNOME panel extension.
 
 ![CLI Dashboard](docs/screenshot/cli.png)
 
@@ -159,7 +184,7 @@ claude-dashboard-cli sync
 claude-dashboard-cli
 ```
 
-`sync` opens the cookie database of every installed supported browser (Chrome, Chrome Dev on macOS, Arc, Brave, Edge), validates each session against the Claude.ai API, detects the plan (Pro or Max), and saves the accounts — on macOS to `~/Library/Preferences/com.claude-dashboard.app.plist` (shared with the menu bar app), on Linux to `~/.config/claude-dashboard/accounts.json` (or `$XDG_CONFIG_HOME/claude-dashboard/accounts.json` if that variable is set).
+`sync` opens the cookie database of every installed supported browser (Chrome, Chrome Dev on macOS, Arc, Brave, Edge), validates each session against the Claude.ai API, detects the plan (Pro or Max), and saves the accounts: on macOS to `~/Library/Preferences/com.claude-dashboard.app.plist` (shared with the menu bar app), on Linux to `~/.config/claude-dashboard/accounts.json` (or `$XDG_CONFIG_HOME/claude-dashboard/accounts.json` if that variable is set).
 
 ### Commands
 
@@ -177,38 +202,58 @@ claude-dashboard-cli
 
 Each account card shows up to three usage bars:
 
-- **5h** — 5-hour rolling window utilization
-- **7d** — 7-day rolling window utilization
-- **F** — Fable weekly window utilization (only when the account has one)
+- **5h**: 5-hour rolling window utilization
+- **7d**: 7-day rolling window utilization
+- **F**: Fable weekly window utilization (only when the account has one)
 
-The `resets` column shows when each window resets (local time). Progress bars transition green → yellow → red as utilization approaches 100%. A card whose session has expired shows a status line in place of the bars.
+The `resets` column shows when each window resets (local time). Bars go green, yellow, then red as utilization approaches 100%. A card whose session has expired shows a status line in place of the bars.
 
 ### Tips
 
 - Re-run `claude-dashboard-cli sync` whenever you log into a new Claude account in a supported browser, or after a session expires.
-- **macOS:** To manage accounts (add, delete, re-sync), open the menu bar app — both share the same storage.
-- **Linux:** On GNOME 45+, the panel extension (see the Linux install section above) shares the same account storage and has its own Sync button. Otherwise, re-run `claude-dashboard-cli sync` to rescan browsers, or — when no browser is available — add or repair one account by piping a session key to `claude-dashboard-helper add-key` on stdin, e.g. `echo "$SESSION_KEY" | claude-dashboard-helper add-key`.
+- **macOS:** to manage accounts (add, delete, re-sync), open the menu bar app; both share the same storage.
+- **Linux:** on GNOME 45+, the panel extension (see the Linux install section above) shares the same account storage and has its own Sync button. Otherwise, re-run `claude-dashboard-cli sync` to rescan browsers, or, when no browser is available, add or repair one account by piping a session key to `claude-dashboard-helper add-key` on stdin, e.g. `echo "$SESSION_KEY" | claude-dashboard-helper add-key`.
 - Press `Ctrl+C` to quit the live dashboard.
 
 ## Requirements
 
 - **macOS** 13.0 (Ventura) or later, for the menu bar app and the CLI
-- **Linux** x86_64 or aarch64, for the CLI — the binaries are statically
+- **Linux** x86_64 or aarch64, for the CLI. The binaries are statically
   linked, so there is no distribution or glibc floor. The GNOME panel
   extension additionally requires GNOME Shell 45 or later.
 - **Windows** 10 or 11, x64 (ARM64 runs the x64 build under emulation), for
   the tray app
 - One of Google Chrome, Arc, Brave, or Microsoft Edge (for automatic session key
   extraction); on macOS, Google Chrome Dev also works
+- **Claude Code** (optional), for account switching
 
 ## How It Works
 
 1. Reads Claude.ai session cookies from a supported browser's encrypted cookie database (Chrome, Chrome Dev, Arc, Brave, or Edge)
-2. Encrypts session keys with AES-GCM (key derived from the machine's identity — the hardware UUID on macOS, `/etc/machine-id` on Linux) and stores them — on macOS in the app's preferences, on Linux in `~/.config/claude-dashboard/accounts.json`
+2. Encrypts session keys with AES-GCM (key derived from the machine's identity: the hardware UUID on macOS, `/etc/machine-id` on Linux) and stores them, on macOS in the app's preferences, on Linux in `~/.config/claude-dashboard/accounts.json`
 3. Fetches usage data from Claude.ai's API
 4. Displays real-time utilization with burn-rate-based sorting
+5. To switch Claude Code, keeps a copy of each account's Claude Code login in the Keychain and swaps the active one in `~/.claude`
 
-> **Note:** The app requires access to the browser's cookie database and Keychain (that browser's Safe Storage password). App Sandbox is disabled for this reason. On Linux, the equivalent dependency is a secret-service backend reachable through `secret-tool` (e.g. GNOME Keyring) — there is no Keychain or App Sandbox on that platform.
+> **Note:** The app requires access to the browser's cookie database and Keychain (that browser's Safe Storage password). App Sandbox is disabled for this reason. On Linux, the equivalent dependency is a secret-service backend reachable through `secret-tool` (e.g. GNOME Keyring); there is no Keychain or App Sandbox on that platform.
+
+## Repository Layout
+
+```
+apps/macos/       SwiftUI menu bar app, tests, and the Swift helper binary
+apps/linux/       Rust workspace: the shared core plus the Linux helper binary.
+                  Drives the same bash CLI. apps/linux/gnome-extension/ is a
+                  GNOME Shell panel indicator built on the same helper.
+apps/windows/     Rust workspace for Windows: the Slint tray app, the
+                  native-messaging bridge, and the browser extension
+contract/         Behaviour shared across platforms: docs plus executable cases
+cli/              claude-dashboard-cli, the bash terminal dashboard
+scripts/          release, version sync
+.github/workflows/ release-linux.yml and release-windows.yml
+Formula/ Casks/   Homebrew tap (must stay at the repo root)
+install.sh        one-liner installer (published URL, must stay at the repo root)
+install.ps1       Windows one-liner installer (published URL, must stay at the repo root)
+```
 
 ## Build from Source
 
