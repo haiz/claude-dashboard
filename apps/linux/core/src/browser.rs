@@ -361,6 +361,22 @@ fn windows_user_data_roots() -> [(Browser, [&'static str; 3]); 4] {
     ]
 }
 
+/// The browsers whose `User Data` directory exists under `local_app_data`, in
+/// [`windows_user_data_roots`] order: what the Add Account scan offers in its
+/// browser picker (macOS `BrowserCookieService.installedBrowsers`).
+pub fn installed_windows_browsers_under(local_app_data: &Path) -> Vec<Browser> {
+    windows_user_data_roots()
+        .into_iter()
+        .filter(|(_, parts)| {
+            parts
+                .iter()
+                .fold(local_app_data.to_path_buf(), |p, part| p.join(part))
+                .is_dir()
+        })
+        .map(|(b, _)| b)
+        .collect()
+}
+
 /// Every profile, browser by browser in [`windows_user_data_roots`] order and
 /// by directory name within a browser, whose cookie DB exists — at
 /// `<profile>\Network\Cookies` (Chromium 96+) or the older `<profile>\Cookies`.
@@ -789,6 +805,21 @@ mod tests {
         assert_eq!(found[0].local_state, chrome.join("Local State"));
         assert_eq!(found[1].browser, Browser::Edge);
         assert_eq!(found[1].cookies_db, edge.join("Default").join("Cookies"));
+    }
+
+    #[test]
+    fn installed_windows_browsers_are_those_with_user_data() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(installed_windows_browsers_under(d.path()).is_empty());
+        std::fs::create_dir_all(d.path().join("BraveSoftware").join("Brave-Browser").join("User Data")).unwrap();
+        std::fs::create_dir_all(d.path().join("Google").join("Chrome").join("User Data")).unwrap();
+        // A vendor folder without User Data is not an install.
+        std::fs::create_dir_all(d.path().join("Microsoft").join("Edge")).unwrap();
+
+        assert_eq!(
+            installed_windows_browsers_under(d.path()),
+            vec![Browser::Chrome, Browser::Brave]
+        );
     }
 
     #[test]

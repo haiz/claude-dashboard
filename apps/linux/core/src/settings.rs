@@ -37,6 +37,9 @@ pub struct Settings {
     pub auto_update: bool,
     #[serde(rename = "lastAutoUpdateCheck", skip_serializing_if = "Option::is_none")]
     pub last_auto_update_check_unix: Option<f64>,
+    /// macOS `hasLaunchedBefore`: the main window opens by itself only on the first launch.
+    #[serde(rename = "hasLaunchedBefore")]
+    pub has_launched_before: bool,
 }
 
 /// On-disk shape: also accepts the legacy `autoRefreshSeconds` and `shell`
@@ -57,6 +60,8 @@ struct RawSettings {
     auto_update: bool,
     #[serde(rename = "lastAutoUpdateCheck", default)]
     last_auto_update_check_unix: Option<f64>,
+    #[serde(rename = "hasLaunchedBefore", default)]
+    has_launched_before: bool,
 }
 
 impl From<RawSettings> for Settings {
@@ -73,6 +78,7 @@ impl From<RawSettings> for Settings {
             launch_at_startup: r.launch_at_startup,
             auto_update: r.auto_update,
             last_auto_update_check_unix: r.last_auto_update_check_unix,
+            has_launched_before: r.has_launched_before,
         }
     }
 }
@@ -86,6 +92,7 @@ impl Default for Settings {
             launch_at_startup: false,
             auto_update: true,
             last_auto_update_check_unix: None,
+            has_launched_before: false,
         }
     }
 }
@@ -191,6 +198,18 @@ mod tests {
     }
 
     #[test]
+    fn has_launched_before_defaults_false_round_trips_and_survives_reset() {
+        assert!(!load_str("{}").has_launched_before);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        update_at(&p, |s| s.has_launched_before = true).unwrap();
+        assert!(load_from(&p).has_launched_before);
+        assert!(fs::read_to_string(&p).unwrap().contains("\"hasLaunchedBefore\": true"));
+        update_at(&p, reset_general).unwrap();
+        assert!(load_from(&p).has_launched_before, "Reset keeps it");
+    }
+
+    #[test]
     fn path_is_settings_json_beside_accounts() {
         assert_eq!(settings_path().file_name().unwrap(), "settings.json");
     }
@@ -220,6 +239,7 @@ mod tests {
             launch_at_startup: true,
             auto_update: true,
             last_auto_update_check_unix: None,
+            has_launched_before: true,
         };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s);
@@ -283,6 +303,7 @@ mod tests {
             launch_at_startup: true,
             auto_update: false,
             last_auto_update_check_unix: Some(9.0),
+            has_launched_before: true,
         };
         reset_general(&mut s);
         assert!(s.auto_refresh_enabled);

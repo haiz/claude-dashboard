@@ -1,4 +1,5 @@
-import { Theme } from "theme.slint";
+import { Theme, UiWindow } from "theme.slint";
+import { WindowColumn } from "components.slint";
 
 // Tools > Help (macOS HelpView + HelpBlocks): a topic grid that scrolls to one card per
 // topic. Topic ids and titles live in `src/help.rs` (TOPICS); the card for each id is
@@ -202,28 +203,64 @@ component HelpCard inherits Rectangle {
     }
 }
 
-// A tile in the topic grid; clicking scrolls to that topic's card.
+// A tile in the topic grid (macOS TopicChip): the topic's coloured icon tile (the same
+// glyph and colour as its card) and title; clicking scrolls to that topic's card.
 component TopicChip inherits Rectangle {
+    in property <string> topic-id;
     in property <string> title;
     callback clicked();
+    property <string> glyph: root.topic-id == "getting-started" ? "\u{E734}"
+        : root.topic-id == "reading-a-card" ? "\u{E946}"
+        : root.topic-id == "finding-your-way" ? "\u{E707}"
+        : root.topic-id == "charts" ? "\u{E9D2}"
+        : root.topic-id == "managing-accounts" ? "\u{E716}"
+        : root.topic-id == "refresh-updates" ? "\u{E72C}"
+        : "\u{E90F}";
+    property <color> tile: root.topic-id == "getting-started" ? #0a84ff
+        : root.topic-id == "reading-a-card" ? #bf5af2
+        : root.topic-id == "finding-your-way" ? #8e8e93
+        : root.topic-id == "charts" ? #ff9f0a
+        : root.topic-id == "managing-accounts" ? #30d158
+        : root.topic-id == "refresh-updates" ? #32ade6
+        : #a2845e;
     height: 32px;
     border-radius: 8px;
     background: Theme.dark
         ? (touch.has-hover ? #ffffff1a : #ffffff0a)
         : (touch.has-hover ? #0000001a : #0000000a);
-    Text {
-        x: 10px;
-        width: parent.width - 20px;
-        text: root.title;
-        color: Theme.text-primary;
-        font-size: 13px;
-        overflow: elide;
-        vertical-alignment: center;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 8px;
+        Rectangle {
+            width: 20px;
+            height: 20px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 5px;
+            background: root.tile;
+            Text {
+                text: root.glyph;
+                font-family: "Segoe Fluent Icons";
+                font-size: 11px;
+                color: white;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        Text {
+            text: root.title;
+            color: Theme.text-primary;
+            font-size: 13px;
+            overflow: elide;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
     }
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
+    Tooltip { text: @markdown("Jump to \{root.title}"); }
 }
 
 // ---- The pane -------------------------------------------------------------------------
@@ -233,7 +270,12 @@ export component HelpPane inherits Flickable {
     // A topic id to scroll to (`open-help`); cleared once the pane has scrolled. Set before
     // the pane exists or while it is open: the timer waits for the layout, then scrolls.
     in-out property <string> focus-topic;
+    // Reading a Card's sample gauge, built in Rust (`model::sample_window`).
+    in property <UiWindow> sample;
     content-height: col.preferred-height;
+    // The pane's width from the window (its own width would loop through the grid it sizes).
+    in property <length> avail-width: 600px;
+    property <int> grid-cols: max(1, floor((root.avail-width + 8px) / (170px + 8px)));
 
     function target(id: string) -> length {
         return id == "getting-started" ? c-start.y
@@ -270,14 +312,27 @@ export component HelpPane inherits Flickable {
         spacing: 16px;
         padding-bottom: 20px;
 
-        // Topic grid: three columns.
-        GridLayout {
-            spacing: 8px;
-            for t[i] in root.topics: TopicChip {
-                row: floor(i / 3);
-                col: mod(i, 3);
-                title: t.title;
-                clicked => { root.scroll-to(t.id); }
+        // Topic grid: as many columns of at least 170 px as fit (macOS adaptive grid),
+        // built like the Dashboard grid so the window width is not read back as a constraint.
+        Flickable {
+            interactive: false;
+            height: ceil(root.topics.length / root.grid-cols) * 40px - 8px;
+            VerticalLayout {
+                min-width: 0px;
+                preferred-width: 0px;
+                max-width: 100000px;
+                spacing: 8px;
+                for r in ceil(root.topics.length / root.grid-cols): HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    for c in min(root.grid-cols, root.topics.length - r * root.grid-cols): TopicChip {
+                        property <HelpTopic> t: root.topics[r * root.grid-cols + c];
+                        width: (root.avail-width - (root.grid-cols - 1) * 8px) / root.grid-cols;
+                        topic-id: self.t.id;
+                        title: self.t.title;
+                        clicked => { root.scroll-to(self.t.id); }
+                    }
+                }
             }
         }
 
@@ -293,7 +348,7 @@ export component HelpPane inherits Flickable {
                 HelpStep { n: 1; body: @markdown("Sign in to claude.ai in **Chrome, Chrome Dev, Edge, Brave or Arc**. Use one browser profile per account."); }
                 HelpStep { n: 2; body: @markdown("Open **Settings › Accounts** and click **Add Account…**"); }
                 HelpStep { n: 3; body: @markdown("Pick **Browser extension** (recommended, works with Chrome, Edge, Brave and Arc). In the browser's extensions page turn on Developer mode, click **Load unpacked** and select `%LOCALAPPDATA%\\claude-dashboard\\extension` (if you used the installer script; otherwise the folder you unzipped claude-dashboard-extension.zip to). Then open claude.ai: the extension sends the key by itself."); }
-                HelpStep { n: 4; body: @markdown("Or pick **Scan browser** (Chrome, Chrome Dev, Edge and Brave), check the accounts it finds, then click **Add selected**."); }
+                HelpStep { n: 4; body: @markdown("Or pick **Scan browser** (Chrome, Chrome Dev, Edge and Brave), check the accounts it finds, then click **Add Selected**."); }
             }
             HelpCallout { kind: "tip"; body: @markdown("Scan cannot read profiles that use Chrome's app-bound (`v20`) cookies. For those, use the **Browser extension**."); }
             HelpCallout { kind: "note"; body: @markdown("No browser session? In the same window, open **Paste a session key** and paste the account's claude.ai `sessionKey` cookie."); }
@@ -305,11 +360,17 @@ export component HelpPane inherits Flickable {
             subtitle: "What the rings, colors, animals and badges mean.";
             glyph: "\u{E946}";
             tile: #bf5af2;
-            VerticalLayout {
-                spacing: 8px;
-                HelpText { body: @markdown("**Big ring**: how much of the window you have used, with the percentage inside."); }
-                HelpText { body: @markdown("**Small ring**: time until the window resets. One segment per hour (5h) or per day (7d). It turns green as the reset gets close."); }
-                HelpText { body: @markdown("**Animal**: how fast you are burning (see below)."); }
+            // macOS: a sample 5h gauge beside the three ring explanations.
+            HorizontalLayout {
+                spacing: 20px;
+                WindowColumn { label: "5h"; win: root.sample; compact: false; y: (parent.height - self.height) / 2; }
+                VerticalLayout {
+                    spacing: 8px;
+                    alignment: center;
+                    HelpText { body: @markdown("**Big ring**: how much of the window you have used, with the percentage inside."); }
+                    HelpText { body: @markdown("**Small ring**: time until the window resets. One segment per hour (5h) or per day (7d). It turns green as the reset gets close."); }
+                    HelpText { body: @markdown("**Animal**: how fast you are burning (see below)."); }
+                }
             }
 
             HelpSubheading { text: "The windows"; }
@@ -422,7 +483,7 @@ export component HelpPane inherits Flickable {
             tile: #a2845e;
             VerticalLayout {
                 spacing: 14px;
-                HelpFAQ { question: "\"No profiles found\" when adding"; answer: @markdown("Make sure you are signed in to claude.ai in that browser, then click **Scan** again. A profile that uses app-bound (`v20`) cookies cannot be read: use the **Browser extension** tab for it."); }
+                HelpFAQ { question: "\"No profiles found\" when adding"; answer: @markdown("Make sure you are signed in to claude.ai in that browser, then click **Retry Scan**. A profile that uses app-bound (`v20`) cookies cannot be read: use the **Browser extension** tab for it."); }
                 HelpFAQ { question: "A card says \"Session expired\""; answer: @markdown("Open the browser profile named on the card, sign in to claude.ai, then click **Re-sync**. For an extension account, the extension sends the new key once you are signed in. A pasted key can't be re-synced: add it again with **Paste a session key**."); }
                 HelpFAQ { question: "The extension shows a red !"; answer: @markdown("The bridge (`claude-dashboard-bridge.exe`) is missing or reported an error. Reinstall the app, then reload the extension."); }
                 HelpFAQ { question: "Usage is not updating"; answer: @markdown("Click **Refresh** and check **Auto Refresh** in Settings › General. Expired accounts are skipped until you re-sync them."); }

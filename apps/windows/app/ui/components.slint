@@ -21,7 +21,8 @@ export component SidebarRow inherits Rectangle {
 
     height: 32px;
     border-radius: 6px;
-    background: root.selected ? root.selected-color : (touch.has-hover && root.enabled ? root.hover-color : transparent);
+    // macOS sidebar: the selected row is filled with the accent colour, its label white.
+    background: root.selected ? Theme.accent : (touch.has-hover && root.enabled ? root.hover-color : transparent);
     opacity: root.enabled ? 1.0 : 0.45;
 
     HorizontalLayout {
@@ -29,16 +30,17 @@ export component SidebarRow inherits Rectangle {
         padding-right: 8px;
         spacing: 10px;
         alignment: start;
+        // Account avatars are 20 pt on macOS, the static rows' icon tiles 22.
         Rectangle {
-            width: 22px;
-            height: 22px;
+            width: root.initial != "" ? 20px : 22px;
+            height: self.width;
             y: (parent.height - self.height) / 2;
-            border-radius: root.initial != "" ? 11px : 5px;
+            border-radius: root.initial != "" ? self.width / 2 : 5px;
             background: root.tile;
             Text {
                 text: root.initial != "" ? root.initial : root.glyph;
                 font-family: root.initial != "" ? "Segoe UI Variable" : "Segoe Fluent Icons";
-                font-size: 12px;
+                font-size: root.initial != "" ? 10px : 12px;
                 font-weight: root.initial != "" ? 600 : 400;
                 color: white;
                 horizontal-alignment: center;
@@ -47,7 +49,7 @@ export component SidebarRow inherits Rectangle {
         }
         Text {
             text: root.label;
-            color: root.text-color;
+            color: root.selected ? #ffffff : root.text-color;
             vertical-alignment: center;
             overflow: elide;
             horizontal-stretch: 1;
@@ -87,7 +89,8 @@ export component UsageGauge inherits Rectangle {
         y: self.x;
         border-radius: self.width / 2;
         border-width: root.win.line-width * root.zoom * 1px;
-        border-color: Theme.dark ? #ffffff22 : #00000014;
+        // macOS track: `Color.primary.opacity(0.2)`.
+        border-color: Theme.dark ? #ffffff33 : #00000033;
     }
     Path {
         width: parent.width;
@@ -101,13 +104,29 @@ export component UsageGauge inherits Rectangle {
         fill: transparent;
         animate stroke { duration: 300ms; easing: ease-out; }
     }
-    Text {
-        text: round(root.win.percent) + "%";
-        color: Theme.text-primary;
-        font-size: root.win.diameter * root.zoom * 0.24px;
-        font-weight: 600;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    // macOS: the number at 0.33 x diameter (semibold) and a smaller "%" at 0.20 x diameter
+    // on its baseline (core::geometry::percent_font_size / percent_sign_font_size).
+    property <length> d: root.win.diameter * root.zoom * 1px;
+    HorizontalLayout {
+        alignment: center;
+        Text {
+            text: floor(root.win.percent);
+            color: Theme.text-primary;
+            // macOS `minimumScaleFactor(0.7)`: three digits shrink to stay inside the ring.
+            font-size: root.d * 0.33 * (root.win.percent >= 100 ? 0.8 : 1.0);
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            // Drop the sign to the number's baseline: half the gap between the two cap heights.
+            padding-top: root.d * (0.33 - 0.20) * 0.5;
+            Text {
+                text: "%";
+                color: Theme.text-primary;
+                font-size: root.d * 0.20;
+            }
+        }
     }
 }
 
@@ -146,10 +165,31 @@ export component Avatar inherits Rectangle {
     }
 }
 
+// A clickable ring (macOS `CircularProgressView` / the countdown clock as a button): on
+// hover it grows 6% and glows in its colour, with a pointing hand and a tooltip.
+component RingButton inherits Rectangle {
+    in property <color> glow;
+    in property <string> tip;
+    callback clicked();
+    border-radius: self.width / 2;
+    // An opaque disc while hovered, so the glow shows around the ring, not through it.
+    background: touch.has-hover ? Theme.card-bg : transparent;
+    transform-scale: touch.has-hover ? 1.06 : 1.0;
+    animate transform-scale { duration: 280ms; easing: ease-out; }
+    drop-shadow-color: touch.has-hover ? root.glow.with-alpha(0.35) : transparent;
+    drop-shadow-blur: touch.has-hover ? 6px : 0px;
+    @children
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    Tooltip { text: @markdown("\{root.tip}"); }
+}
+
 // One gauge column on the card (macOS UsageBar, compact): mono label, usage ring with the
 // burn-rate animal at its bottom-right, then the segmented countdown ring beside it with the
-// reset label above. The whole column opens that window's chart.
-component WindowColumn inherits Rectangle {
+// reset label above. Only the two rings open that window's chart, as on macOS.
+export component WindowColumn inherits Rectangle {
     in property <string> label;
     in property <UiWindow> win;
     // Fable has no countdown column (it resets in lockstep with 7d).
@@ -162,6 +202,7 @@ component WindowColumn inherits Rectangle {
     property <float> big-zoom: root.big-d / (root.win.diameter * 1px);
     property <length> small-d: root.compact ? 34px : 44px;
     property <length> small-stroke: root.compact ? 4px : 5px;
+    property <string> tip: "Open the " + (root.label == "F" ? "Fable" : root.label) + " usage chart";
     width: col.preferred-width;
     height: col.preferred-height;
 
@@ -177,9 +218,12 @@ component WindowColumn inherits Rectangle {
         HorizontalLayout {
             spacing: root.compact ? 5px : 8px;
             alignment: center;
-            Rectangle {
+            RingButton {
                 width: root.big-d;
                 height: root.big-d;
+                glow: root.win.color;
+                tip: root.tip;
+                clicked => { root.clicked(); }
                 UsageGauge { win: root.win; zoom: root.big-zoom; }
                 if root.win.animal != "": Text {
                     x: parent.width - self.preferred-width + 4px;
@@ -191,30 +235,37 @@ component WindowColumn inherits Rectangle {
             if root.countdown && root.win.reset-label != "": VerticalLayout {
                 alignment: end;
                 spacing: 2px;
+                // macOS: 8 pt monospaced at both sizes.
                 Text {
                     text: root.win.reset-label;
                     color: Theme.text-secondary;
                     font-family: "Consolas";
-                    font-size: root.compact ? 8px : 10px;
+                    font-size: 8px;
                     horizontal-alignment: center;
                 }
-                Rectangle {
+                RingButton {
                     width: root.small-d;
                     height: root.small-d;
-                    Rectangle {
-                        width: parent.width - root.small-stroke;
-                        height: self.width;
-                        x: root.small-stroke / 2;
-                        y: root.small-stroke / 2;
-                        border-radius: self.width / 2;
-                        border-width: root.small-stroke;
-                        border-color: Theme.dark ? #ffffff14 : #0000000d;
-                    }
-                    for seg in root.win.segments: Path {
+                    glow: root.win.countdown-color;
+                    tip: root.tip;
+                    clicked => { root.clicked(); }
+                    // Segmented track (macOS `Color.primary.opacity(0.08)`), then the live
+                    // segments; both are built in Rust at this ring's size, so the viewbox is 1:1.
+                    for p in root.compact ? root.win.track-compact : root.win.track: Path {
                         width: parent.width;
                         height: parent.height;
-                        viewbox-width: root.win.diameter;
-                        viewbox-height: root.win.diameter;
+                        viewbox-width: root.small-d / 1px;
+                        viewbox-height: root.small-d / 1px;
+                        commands: p;
+                        stroke: Theme.dark ? #ffffff14 : #00000014;
+                        stroke-width: root.small-stroke;
+                        fill: transparent;
+                    }
+                    for seg in root.compact ? root.win.segments-compact : root.win.segments: Path {
+                        width: parent.width;
+                        height: parent.height;
+                        viewbox-width: root.small-d / 1px;
+                        viewbox-height: root.small-d / 1px;
                         commands: seg.path;
                         stroke: seg.color;
                         stroke-width: root.small-stroke;
@@ -232,11 +283,6 @@ component WindowColumn inherits Rectangle {
             }
         }
     }
-
-    TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
 }
 
 export component AccountCard inherits Rectangle {
@@ -247,25 +293,18 @@ export component AccountCard inherits Rectangle {
     property <color> plan-tint: root.data.plan == "Pro" ? #0a84ff
         : root.data.plan == "Max 20x" ? #ff9f0a
         : #bf5af2;
-    callback clicked();
     callback toggle-pin(bool /* new pinned state */);
     callback resync();
+    // The card itself is not clickable (macOS passes no `onTap`); its rings open the charts.
     callback open-window(string /* "5h" | "7d" | "fable" */);
-    // The card sizes itself from its content (an error or hint line never clips); a
-    // parent layout may stretch it to the tallest card in its row.
+    // The card sizes itself from its content (an error or hint line never clips).
+    // A grid row may stretch it to its tallest card (a max-height here would use the
+    // unwrapped height and clip wrapped hint lines).
     preferred-height: lay.preferred-height;
     background: Theme.card-bg;
     border-radius: 8px;
     border-width: 1px;
-    border-color: touch.has-hover ? Theme.accent : Theme.card-border;
-    animate border-color { duration: 120ms; }
-
-    // Declared first so it sits below the content; the gauge columns' own TouchAreas
-    // (inside the layout, declared later) are on top and win their clicks.
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
+    border-color: Theme.card-border;
 
     ContextMenuArea {
         Menu {
@@ -289,17 +328,18 @@ export component AccountCard inherits Rectangle {
                 HorizontalLayout {
                     spacing: 6px;
                     alignment: start;
+                    // macOS `.title3`: 15 pt, regular weight.
                     Text {
                         text: root.data.name;
                         color: Theme.text-primary;
                         font-size: 15px;
-                        font-weight: 600;
                         overflow: elide;
                     }
                     if root.data.claude-code: Rectangle {
                         width: 8px; height: 8px; y: (parent.height - self.height) / 2;
                         border-radius: 4px;
                         background: Theme.ok;
+                        Tooltip { text: @markdown("Currently active in Claude Code"); }
                     }
                 }
                 if root.data.email != "" && root.data.email != root.data.name: Text {
@@ -325,9 +365,9 @@ export component AccountCard inherits Rectangle {
                 background: root.plan-tint.with-alpha(0.15);
                 plan := Text {
                     text: root.data.plan;
-                    color: root.plan-tint;
-                    font-size: 11px;
-                    font-weight: 600;
+                    color: Theme.text-primary;
+                    font-size: 10px;
+                    font-weight: 700;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
@@ -379,8 +419,10 @@ export component AccountCard inherits Rectangle {
                         mouse-cursor: pointer;
                         clicked => { root.resync(); }
                     }
+                    Tooltip { text: @markdown("Read a fresh session key from the browser"); }
                 }
             }
+            // Windows keeps a failed Re-sync's message here (macOS shows none on the card).
             if root.data.error != "": Text {
                 text: root.data.error;
                 color: Theme.danger;
@@ -388,14 +430,18 @@ export component AccountCard inherits Rectangle {
                 wrap: word-wrap;
             }
         }
-        if !root.data.expired && root.data.error != "": Text {
+        // macOS shows the error only when there is no usage to show; a failed refresh
+        // keeps the last-good gauges instead.
+        if !root.data.expired && root.data.error != ""
+            && !root.data.five-hour.present && !root.data.seven-day.present: Text {
             text: root.data.error;
             color: Theme.danger;
             font-size: 12px;
             wrap: word-wrap;
         }
         if !root.data.expired: HorizontalLayout {
-            spacing: 20px;
+            // macOS UsageGaugeRow: 20 pt apart compact, 30 pt regular.
+            spacing: root.compact ? 20px : 30px;
             alignment: center;
             if root.data.five-hour.present: WindowColumn {
                 label: "5h"; win: root.data.five-hour; compact: root.compact;
@@ -418,7 +464,7 @@ export component AccountCard inherits Rectangle {
 export component UsageGaugeRow inherits HorizontalLayout {
     in property <UiRow> data;
     callback open-window(string /* "5h" | "7d" | "fable" */);
-    spacing: 20px;
+    spacing: 30px;
     alignment: end;
     if root.data.five-hour.present: WindowColumn {
         label: "5h"; win: root.data.five-hour; compact: false;
@@ -438,25 +484,41 @@ component ActionButton inherits Rectangle {
     in property <string> label;
     in property <bool> enabled: true;
     in property <color> tint: Theme.accent;
+    // Hover tooltip (macOS `.help`); empty shows none.
+    in property <string> tip;
+    // Optional Segoe Fluent glyph before the label (macOS `Label(_, systemImage:)`).
+    in property <string> glyph;
     callback clicked();
     height: 32px;
-    width: t.preferred-width + 28px;
+    width: row.preferred-width + 28px;
     border-radius: 6px;
     border-width: 1px;
     border-color: Theme.card-border;
     background: root.enabled ? (touch.has-hover ? root.tint.with-alpha(0.15) : Theme.card-bg) : transparent;
     opacity: root.enabled ? 1.0 : 0.45;
-    t := Text {
-        text: root.label;
-        color: root.enabled ? root.tint : Theme.text-secondary;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    row := HorizontalLayout {
+        x: (parent.width - self.preferred-width) / 2;
+        width: self.preferred-width;
+        spacing: 6px;
+        if root.glyph != "": Text {
+            text: root.glyph;
+            font-family: "Segoe Fluent Icons";
+            font-size: 13px;
+            color: root.enabled ? root.tint : Theme.text-secondary;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.label;
+            color: root.enabled ? root.tint : Theme.text-secondary;
+            vertical-alignment: center;
+        }
     }
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: root.enabled ? pointer : default;
         clicked => { root.clicked(); }
     }
+    if root.tip != "": Tooltip { text: @markdown("\{root.tip}"); }
 }
 
 // On/off switch (the Settings > General toggles use the same shape).
@@ -539,11 +601,12 @@ export component AccountPane inherits VerticalLayout {
     // PaneHeader
     HorizontalLayout {
         spacing: 10px;
+        // macOS PaneHeader: `.title2.bold()`.
         Text {
             text: root.data.name;
             color: Theme.text-primary;
-            font-size: 24px;
-            font-weight: 600;
+            font-size: 17px;
+            font-weight: 700;
             vertical-alignment: center;
             overflow: elide;
         }
@@ -553,10 +616,35 @@ export component AccountPane inherits VerticalLayout {
             y: (parent.height - self.height) / 2;
             indeterminate: true;
         }
-        Rectangle { horizontal-stretch: 1; }
+        Rectangle {
+            horizontal-stretch: 1;
+            // While Remove asks to confirm: Esc cancels, Enter removes (macOS
+            // confirmationDialog). Kept out of the layouts so it takes no room.
+            remove-keys := FocusScope {
+                enabled: root.confirming-remove;
+                width: 0px;
+                height: 0px;
+                key-pressed(e) => {
+                    if e.text == Key.Escape {
+                        root.confirming-remove = false;
+                        return accept;
+                    }
+                    if e.text == Key.Return {
+                        root.confirming-remove = false;
+                        root.remove();
+                        return accept;
+                    }
+                    reject
+                }
+            }
+        }
         ActionButton {
             label: "Refresh";
+            glyph: "\u{E72C}";
             enabled: !root.refreshing && !root.data.expired;
+            tip: root.data.expired
+                ? "Session expired. Re-sync to read a fresh key from the browser."
+                : "Fetch the latest usage for this account";
             y: (parent.height - self.height) / 2;
             clicked => { root.refresh(); }
         }
@@ -591,6 +679,7 @@ export component AccountPane inherits VerticalLayout {
                                 width: 8px; height: 8px; y: (parent.height - self.height) / 2;
                                 border-radius: 4px;
                                 background: Theme.ok;
+                                Tooltip { text: @markdown("Currently active in Claude Code"); }
                             }
                             Rectangle {
                                 width: plan.preferred-width + 12px;
@@ -600,9 +689,9 @@ export component AccountPane inherits VerticalLayout {
                                 background: root.plan-tint.with-alpha(0.15);
                                 plan := Text {
                                     text: root.data.plan;
-                                    color: root.plan-tint;
-                                    font-size: 11px;
-                                    font-weight: 600;
+                                    color: Theme.text-primary;
+                                    font-size: 10px;
+                                    font-weight: 700;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }
@@ -633,7 +722,11 @@ export component AccountPane inherits VerticalLayout {
                         }
                         if root.data.expired: HorizontalLayout {
                             alignment: start;
-                            ActionButton { label: "Re-sync"; height: 26px; clicked => { root.resync(); } }
+                            ActionButton {
+                                label: "Re-sync"; height: 26px;
+                                tip: "Read a fresh session key from the browser";
+                                clicked => { root.resync(); }
+                            }
                         }
                         if root.data.error != "": Text {
                             text: root.data.error;
@@ -647,7 +740,15 @@ export component AccountPane inherits VerticalLayout {
                         }
                     }
                     Rectangle { horizontal-stretch: 1; }
-                    if !root.data.expired: UsageGaugeRow {
+                    // macOS: no usage yet reads "No usage data yet."
+                    if !root.data.expired && root.data.error == ""
+                        && !root.data.five-hour.present && !root.data.seven-day.present: Text {
+                        text: "No usage data yet.";
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+                    // macOS shows the gauges whenever there is usage, expired or not.
+                    if root.data.five-hour.present || root.data.seven-day.present: UsageGaugeRow {
                         data: root.data;
                         open-window(w) => { root.open-window(w); }
                     }
@@ -655,7 +756,6 @@ export component AccountPane inherits VerticalLayout {
             }
 
             if root.active: HistoryBox {
-                line-color: root.data.avatar-color;
                 window-picked(w) => { root.window-picked(w); }
             }
 
@@ -672,7 +772,11 @@ export component AccountPane inherits VerticalLayout {
                 Rectangle { height: 1px; background: Theme.card-border; }
                 ActionRow {
                     title: "Read a fresh session key from the browser";
-                    ActionButton { label: "Re-sync"; clicked => { root.resync(); } }
+                    ActionButton {
+                        label: "Re-sync";
+                        tip: "Read a fresh session key from the browser";
+                        clicked => { root.resync(); }
+                    }
                 }
                 Rectangle { height: 1px; background: Theme.card-border; }
                 ActionRow {
@@ -680,7 +784,11 @@ export component AccountPane inherits VerticalLayout {
                     spacing: 8px;
                     if !root.confirming-remove: ActionButton {
                         label: "Remove Account\u{2026}"; tint: Theme.danger;
-                        clicked => { root.confirming-remove = true; }
+                        tip: "Remove this account from the dashboard";
+                        clicked => {
+                            root.confirming-remove = true;
+                            remove-keys.focus();
+                        }
                     }
                     if root.confirming-remove: ActionButton {
                         label: "Remove Account"; tint: Theme.danger;

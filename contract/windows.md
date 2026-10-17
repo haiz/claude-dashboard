@@ -126,6 +126,8 @@ removed `shell` key is dropped the same way.
 Changes take effect without a restart. An Auto Refresh change only re-arms the
 refresh timer with the new interval (as macOS reschedules its timer); it never
 starts a fetch. Writes from the Settings pane run one at a time, in click order.
+`hasLaunchedBefore` (default false) is set on the first launch and survives Reset
+All Settings.
 
 ## Launch at startup
 
@@ -138,6 +140,25 @@ The Add Account scan classifies each browser profile as Found (a decodable `v10`
 session), AppBound (`v20` cookie: the UI says "use the extension") or NoSession.
 AppBound profiles are never force-decoded. Deleting an extension-sourced account
 from the Settings Accounts pane mutes its install (see the muted rule above).
+
+The scan follows macOS `SetupView`. It reads one browser at a time, picked from
+the installed ones (those whose `User Data` directory exists) and saved as
+`preferredScanBrowser` in `settings.json`. With two or more browsers and no
+saved choice that is still installed, the tab asks which one before it reads
+any cookie; otherwise it scans when the tab first opens. Each Found profile's
+key is checked with `/api/account`, and its org is resolved as on macOS. Any
+account already stored (`contract/cases/dedupe.json`) is skipped. The scan
+offers the rest, showing the email (else the profile name), the plan, and
+`<Browser>: <Google email, else profile dir>`. When nothing is offered, it
+lists each skipped profile in natural order under "Nothing new to add. What
+the scan found:". The reasons are: already added as X, signed out (HTTP
+401/403), no organization with chat access, could not be read, and, Windows
+only, app-bound (use the Browser extension tab). Add Selected stores the picked
+accounts as scanned accounts (`source: browser`, `chromeProfilePath` = the
+profile dir, `chromeProfileName` = the Google email, else the profile name). It
+re-checks dedupe, refreshes and closes the wizard. A pasted key that is saved
+closes the wizard too, unless the account has no organization with chat
+access: then the warning stays on screen.
 
 Scan roots, under `%LOCALAPPDATA%`: `Google\Chrome\User Data`,
 `Google\Chrome Dev\User Data` (shown as "Chrome Dev", stored as `"chromeDev"`),
@@ -160,9 +181,23 @@ and hints come from `core::account_kind`:
 | Extension | `source: manual` with a binding in `extension-sources.json` | `Browser extension (<browser>)` | `Open <browser> and sign in to claude.ai; the extension sends the new key.` | reads nothing; refreshes usage |
 | Pasted key | `source: manual`, no binding | `Pasted key` | `This key was pasted by hand. Add it again from Settings › Accounts, Add Account, "Paste a session key instead".` | fails with "This account's session key was pasted by hand. Paste a new one to re-sync it." |
 
-**Re-sync All** re-syncs every account by its kind, then refreshes every account
-in a single pass. Its "Re-syncing… (n/total)" progress counts scanned accounts
-only; per-account failures show in that card's error line after the refresh.
+**Re-sync All** re-syncs every account by its kind, then refreshes the accounts
+that re-synced in a single pass (macOS `refreshAll(only:)`); a single card's
+Re-sync refreshes that account only. Its "Re-syncing… (n/total)" progress counts
+every account, as on macOS; per-account failures show in that card's error line after
+the refresh.
+
+## Refresh
+
+The app's refresh follows macOS `refreshAll`: an HTTP `401`/`403` marks the
+account `expired` (stored, and expired accounts are no longer polled until a
+re-sync); other failures retry 3 times 1 s apart and show on the card while it
+keeps its last-good usage and sort position; a successful fetch sets `active`,
+`lastSynced`, the plan from `/api/organizations` and a missing `accountUuid` /
+`email` from `/api/account`. The Auto Refresh tick keeps its own schedule (only a
+settings change restarts it); pinning re-sorts without a fetch; countdowns and the
+tray tooltip move every second; a 5h/7d reset that passed more than 10 s ago
+triggers one refresh. Usage history older than 90 days is pruned at launch.
 
 ## App reload pipe
 
@@ -175,6 +210,11 @@ pipe means the app is not running and is not an error.
 - **Single instance:** the app holds the named mutex
   `Local\ClaudeDashboardSingleInstance` for its lifetime; a second launch fails
   to acquire it and exits.
+- **Main window:** as on macOS it opens by itself only on the first launch
+  (`hasLaunchedBefore`); later launches, Launch at startup included, start in the
+  tray. Showing it with no accounts opens the Add Account wizard. Closing it hides
+  it and returns it to the Dashboard. The tray menu's Quit asks first, with the
+  flyout's Quit prompt text.
 - **Reload pipe consumer:** the app is the *reader* of `\\.\pipe\claude-dashboard`
   and refreshes on each `reload` line; the bridge (sub-project 1) is the writer.
 
@@ -339,9 +379,8 @@ single-instance mutex). Check each pane:
   point, Reset Cycles list, Pin / Re-sync / Remove with inline confirmation.
 - **Overview:** one line per account with data, `(no data)` chips for alice, dave and erin, hover card,
   pan and window chips.
-- **Settings > Accounts:** Add Account wizard (extension / scan / paste), Re-sync All progress `(n/3)` (alice, carol and erin
-  are the scanned rows),
-  Delete with Confirm / Cancel, kind labels (Default, Browser extension (Microsoft Edge), Pasted key, Work).
+- **Settings > Accounts:** Add Account wizard (extension / scan / paste), Re-sync All progress `(n/5)`,
+  the trash button, kind labels (Default, Browser extension (Microsoft Edge), Pasted key, Work).
 - **Settings > General:** About header, info tips on Enable auto refresh and Interval, interval stepper,
   Launch at startup, Updates card, Reset All Settings with confirmation (accounts, logs and launch at
   startup kept). The stepper and Reset write the real `settings.json`, even under FAKE_ROWS.

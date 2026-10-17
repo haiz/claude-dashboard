@@ -1,11 +1,14 @@
+import { ComboBox, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 
-// One row of the scan results. `idx >= 0` is a detected session (checkbox);
-// `idx < 0` is an informational row (app-bound profile).
+// One account the scan offers (macOS `DetectedAccount` row); `idx` indexes the
+// Rust-side list of detected accounts.
 export struct ScanItem {
     idx: int,
     label: string,
     detail: string,
+    // Plan capsule text ("Pro", "Max 20x", ...); empty when unknown.
+    plan: string,
     checked: bool,
 }
 
@@ -13,6 +16,8 @@ component WizButton inherits Rectangle {
     in property <string> label;
     in property <bool> enabled: true;
     in property <bool> primary: false;
+    // Hover tooltip (macOS `.help`); empty shows none.
+    in property <string> tip;
     callback clicked();
     height: 32px;
     width: t.preferred-width + 28px;
@@ -32,6 +37,7 @@ component WizButton inherits Rectangle {
         enabled: root.enabled;
         clicked => { root.clicked(); }
     }
+    if root.tip != "": Tooltip { text: @markdown("\{root.tip}"); }
 }
 
 component TabButton inherits Rectangle {
@@ -51,11 +57,34 @@ component TabButton inherits Rectangle {
     touch := TouchArea { clicked => { root.clicked(); } }
 }
 
+// One browser of the "choose a browser" list (macOS `browserChooserView`).
+component ChooserRow inherits Rectangle {
+    in property <string> label;
+    in property <string> tip;
+    callback clicked();
+    height: 40px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    background: touch.has-hover ? Theme.accent.with-alpha(0.15) : Theme.card-bg;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 10px;
+        Text { text: "\u{1F310}"; color: Theme.text-secondary; vertical-alignment: center; }
+        Text { text: root.label; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; }
+        Text { text: "\u{203A}"; color: Theme.text-secondary; vertical-alignment: center; }
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+    Tooltip { text: @markdown("\{root.tip}"); }
+}
+
 // Add Account wizard: browser extension (default) / scan browser / paste key.
 // Rust owns all behaviour; every long action runs on a worker thread.
 export component SetupWizardWindow inherits Window {
     title: "Add Account";
-    width: 560px;
+    // macOS SetupView is 520 x 450; the extension tab's install steps need the extra height.
+    width: 520px;
     height: 560px;
     default-font-family: Theme.font-family;
     default-font-size: 14px;
@@ -65,17 +94,27 @@ export component SetupWizardWindow inherits Window {
     // Extension tab
     in property <string> ext-status: "Waiting for a key\u{2026}";
     in property <bool> ext-done: false;
-    // Scan tab
+    // Scan tab: installed browsers (display names) and the picked one.
+    in property <[string]> browsers;
+    in-out property <int> browser-index: 0;
+    // Two or more browsers and no saved choice: ask before reading any cookie.
+    in property <bool> choosing-browser: false;
     in property <bool> scanning: false;
     in property <bool> adding: false;
     in property <[ScanItem]> scan-items;
+    // Why nothing is offered (empty scan / skipped profiles), or an Add failure.
     in property <string> scan-message;
     // Paste tab
+    in-out property <string> paste-key;
     in property <bool> pasting: false;
     in property <string> paste-result;
     in property <bool> paste-ok: false;
+    // A saved key with a warning keeps the window open; Cancel becomes Done.
+    in property <bool> paste-hold: false;
 
     callback tab-changed(int);
+    callback choose-browser(int);
+    callback browser-changed(int);
     callback scan();
     callback toggle(int);
     callback add-selected();
@@ -84,181 +123,282 @@ export component SetupWizardWindow inherits Window {
 
     in property <int> selected-count: 0;
 
-    VerticalLayout {
-        padding: 20px;
-        spacing: 14px;
-
-        Text { text: "Add Account"; color: Theme.text-primary; font-size: 22px; font-weight: 600; }
-
-        HorizontalLayout {
-            spacing: 6px;
-            TabButton { label: "Browser extension"; selected: root.tab == 0; clicked => { root.tab = 0; root.tab-changed(0); } }
-            TabButton { label: "Scan browser"; selected: root.tab == 1; clicked => { root.tab = 1; root.tab-changed(1); } }
-            TabButton { label: "Paste a session key"; selected: root.tab == 2; clicked => { root.tab = 2; root.tab-changed(2); } }
+    // Esc closes the window and Enter adds the checked accounts on the Scan tab
+    // (macOS `.cancelAction` / `.defaultAction`); the paste field keeps its own Enter.
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                root.done();
+                return accept;
+            }
+            if e.text == Key.Return && root.tab == 1 && root.selected-count > 0 && !root.scanning && !root.adding {
+                root.add-selected();
+                return accept;
+            }
+            reject
         }
+        VerticalLayout {
+            padding: 20px;
+            spacing: 14px;
 
-        // ---- Tab 0: browser extension ----
-        if root.tab == 0: VerticalLayout {
-            spacing: 10px;
-            vertical-stretch: 1;
-            alignment: start;
-            Text {
-                text: "Recommended. Works with Chrome, Edge, Brave and Arc, including profiles the scan cannot read.";
-                color: Theme.text-secondary; wrap: word-wrap;
-            }
-            Text { text: "How to install"; color: Theme.text-primary; font-weight: 600; }
-            Text {
-                text: "1. In your browser, open the extensions page (chrome://extensions or edge://extensions) and turn on Developer mode.\n2. Choose Load unpacked and select %LOCALAPPDATA%\\claude-dashboard\\extension (the install.ps1 one-liner puts it there; if you installed the MSI by hand, unzip claude-dashboard-extension.zip from the release into any folder and select that).\n3. Open claude.ai in that browser while signed in. The extension sends the key automatically.\n\n(Dev builds: load apps\\windows\\extension from the repository and run apps\\windows\\scripts\\register-dev-host.ps1 once. A store link will replace these steps once the extension is published.)";
-                color: Theme.text-secondary; wrap: word-wrap;
-            }
-            Rectangle {
-                height: 44px;
-                border-radius: 8px;
-                background: root.ext-done ? Theme.ok.with-alpha(0.15) : Theme.card-bg;
-                border-width: 1px;
-                border-color: root.ext-done ? Theme.ok : Theme.card-border;
-                Text {
-                    x: 12px;
-                    width: parent.width - 24px;
-                    text: root.ext-status;
-                    color: root.ext-done ? Theme.ok : Theme.text-secondary;
-                    vertical-alignment: center;
-                    overflow: elide;
-                }
-            }
-        }
+            Text { text: "Add Account"; color: Theme.text-primary; font-size: 22px; font-weight: 600; }
 
-        // ---- Tab 1: scan ----
-        if root.tab == 1: VerticalLayout {
-            spacing: 10px;
-            vertical-stretch: 1;
-            Text {
-                text: "Looks for a signed-in claude.ai session in your installed browsers.";
-                color: Theme.text-secondary; wrap: word-wrap;
-            }
             HorizontalLayout {
+                spacing: 6px;
+                TabButton { label: "Browser extension"; selected: root.tab == 0; clicked => { root.tab = 0; root.tab-changed(0); } }
+                TabButton { label: "Scan browser"; selected: root.tab == 1; clicked => { root.tab = 1; root.tab-changed(1); } }
+                TabButton { label: "Paste a session key"; selected: root.tab == 2; clicked => { root.tab = 2; root.tab-changed(2); } }
+            }
+
+            // ---- Tab 0: browser extension ----
+            if root.tab == 0: VerticalLayout {
                 spacing: 10px;
+                vertical-stretch: 1;
                 alignment: start;
-                WizButton {
-                    label: root.scanning ? "Scanning\u{2026}" : "Scan";
-                    enabled: !root.scanning && !root.adding;
-                    clicked => { root.scan(); }
+                Text {
+                    text: "Recommended. Works with Chrome, Edge, Brave and Arc, including profiles the scan cannot read.";
+                    color: Theme.text-secondary; wrap: word-wrap;
                 }
+                Text { text: "How to install"; color: Theme.text-primary; font-weight: 600; }
+                Text {
+                    text: "1. In your browser, open the extensions page (chrome://extensions or edge://extensions) and turn on Developer mode.\n2. Choose Load unpacked and select %LOCALAPPDATA%\\claude-dashboard\\extension (the install.ps1 one-liner puts it there; if you installed the MSI by hand, unzip claude-dashboard-extension.zip from the release into any folder and select that).\n3. Open claude.ai in that browser while signed in. The extension sends the key automatically.\n\n(Dev builds: load apps\\windows\\extension from the repository and run apps\\windows\\scripts\\register-dev-host.ps1 once. A store link will replace these steps once the extension is published.)";
+                    color: Theme.text-secondary; wrap: word-wrap;
+                }
+                Rectangle {
+                    height: 44px;
+                    border-radius: 8px;
+                    background: root.ext-done ? Theme.ok.with-alpha(0.15) : Theme.card-bg;
+                    border-width: 1px;
+                    border-color: root.ext-done ? Theme.ok : Theme.card-border;
+                    Text {
+                        x: 12px;
+                        width: parent.width - 24px;
+                        text: root.ext-status;
+                        color: root.ext-done ? Theme.ok : Theme.text-secondary;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            // ---- Tab 1: scan (macOS SetupView) ----
+            if root.tab == 1 && root.choosing-browser: VerticalLayout {
+                spacing: 12px;
+                vertical-stretch: 1;
+                alignment: start;
+                Text {
+                    text: "Choose the browser where you're signed in to Claude";
+                    color: Theme.text-primary; font-weight: 600;
+                    horizontal-alignment: center; wrap: word-wrap;
+                }
+                Text {
+                    text: "We'll only read cookies from the browser you pick.";
+                    color: Theme.text-secondary; font-size: 12px;
+                    horizontal-alignment: center;
+                }
+                HorizontalLayout {
+                    alignment: center;
+                    VerticalLayout {
+                        width: 320px;
+                        spacing: 8px;
+                        padding-top: 4px;
+                        for name[i] in root.browsers: ChooserRow {
+                            label: name;
+                            tip: "Scan " + name + " profiles for Claude sessions";
+                            clicked => { root.choose-browser(i); }
+                        }
+                    }
+                }
+            }
+            if root.tab == 1 && !root.choosing-browser: VerticalLayout {
+                spacing: 10px;
+                vertical-stretch: 1;
+                if root.browsers.length > 0: HorizontalLayout {
+                    alignment: center;
+                    spacing: 8px;
+                    Text { text: "Browser"; color: Theme.text-primary; vertical-alignment: center; }
+                    ComboBox {
+                        width: 200px;
+                        model: root.browsers;
+                        current-index <=> root.browser-index;
+                        enabled: !root.adding;
+                        selected(_) => { root.browser-changed(self.current-index); }
+                    }
+                }
+                if root.scanning: VerticalLayout {
+                    vertical-stretch: 1;
+                    alignment: center;
+                    spacing: 8px;
+                    HorizontalLayout {
+                        alignment: center;
+                        Spinner { width: 24px; height: 24px; indeterminate: true; }
+                    }
+                    Text {
+                        text: "Scanning " + (root.browsers.length > 0 ? root.browsers[root.browser-index] : "browser") + " profiles and detecting accounts...";
+                        color: Theme.text-secondary; font-size: 12px;
+                        horizontal-alignment: center;
+                    }
+                }
+                // Nothing to offer: why, and Retry Scan (macOS `noProfilesView`).
+                if !root.scanning && root.scan-items.length == 0: VerticalLayout {
+                    vertical-stretch: 1;
+                    alignment: center;
+                    spacing: 8px;
+                    Text { text: "\u{26A0}"; color: Theme.warn; font-size: 30px; horizontal-alignment: center; }
+                    Text {
+                        text: root.scan-message;
+                        color: Theme.text-secondary;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        padding-top: 8px;
+                        WizButton {
+                            label: "Retry Scan";
+                            tip: "Scan the browser profiles again";
+                            clicked => { root.scan(); }
+                        }
+                    }
+                }
+                if !root.scanning && root.scan-items.length > 0: Flickable {
+                    vertical-stretch: 1;
+                    content-height: list.preferred-height;
+                    list := VerticalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        for it[i] in root.scan-items: Rectangle {
+                            height: 52px;
+                            border-radius: 8px;
+                            background: Theme.card-bg;
+                            border-width: 1px;
+                            border-color: Theme.card-border;
+                            // Plan capsule colour (macOS badgeColor), as on the account card.
+                            property <color> plan-tint: it.plan == "Pro" ? #0a84ff : it.plan == "Max 20x" ? #ff9f0a : #bf5af2;
+                            HorizontalLayout {
+                                padding: 10px;
+                                spacing: 10px;
+                                Rectangle {
+                                    width: 18px;
+                                    height: 18px;
+                                    y: (parent.height - self.height) / 2;
+                                    border-radius: 4px;
+                                    border-width: 1px;
+                                    border-color: Theme.accent;
+                                    background: it.checked ? Theme.accent : transparent;
+                                    Text {
+                                        text: it.checked ? "\u{2713}" : "";
+                                        color: Theme.window-bg;
+                                        font-size: 12px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Text { text: it.label; color: Theme.text-primary; font-weight: 600; overflow: elide; }
+                                        if it.plan != "": Rectangle {
+                                            width: plan.preferred-width + 12px;
+                                            height: 18px;
+                                            border-radius: 9px;
+                                            background: plan-tint.with-alpha(0.15);
+                                            plan := Text {
+                                                text: it.plan;
+                                                color: plan-tint;
+                                                font-size: 10px;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                        Rectangle { horizontal-stretch: 1; }
+                                    }
+                                    Text { text: it.detail; color: Theme.text-secondary; font-size: 11px; overflow: elide; }
+                                }
+                            }
+                            TouchArea { clicked => { root.toggle(i); } }
+                        }
+                    }
+                }
+                // An Add Selected failure, under the list it applies to.
+                if !root.scanning && root.scan-items.length > 0 && root.scan-message != "": Text {
+                    text: root.scan-message;
+                    color: Theme.danger;
+                    wrap: word-wrap;
+                }
+            }
+
+            // ---- Tab 2: paste (macOS PasteKeyView) ----
+            if root.tab == 2: VerticalLayout {
+                spacing: 10px;
+                vertical-stretch: 1;
+                alignment: start;
+                Text {
+                    text: "Open claude.ai in your browser, copy the value of the sessionKey cookie, and paste it here. Use this when the app cannot read the cookie from the browser itself.";
+                    color: Theme.text-secondary; wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    Rectangle {
+                        height: 34px;
+                        border-radius: 6px;
+                        background: Theme.card-bg;
+                        border-width: 1px;
+                        border-color: key-input.has-focus ? Theme.accent : Theme.card-border;
+                        key-input := TextInput {
+                            x: 10px;
+                            width: parent.width - 20px;
+                            height: parent.height;
+                            vertical-alignment: center;
+                            color: Theme.text-primary;
+                            single-line: true;
+                            input-type: password;
+                            enabled: !root.pasting;
+                            text <=> root.paste-key;
+                            accepted => { root.paste-add(self.text); }
+                        }
+                        Text {
+                            x: 10px;
+                            text: "sessionKey";
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                            visible: key-input.text == "";
+                        }
+                    }
+                    WizButton {
+                        label: root.pasting ? "Checking\u{2026}" : "Add";
+                        tip: "Check the key with claude.ai and add its account";
+                        primary: true;
+                        enabled: !root.pasting && key-input.text != "";
+                        clicked => { root.paste-add(key-input.text); }
+                    }
+                }
+                Text {
+                    text: root.paste-result;
+                    color: root.paste-ok ? Theme.text-secondary : Theme.danger;
+                    wrap: word-wrap;
+                    visible: root.paste-result != "";
+                }
+            }
+
+            HorizontalLayout {
                 WizButton {
-                    label: "Add selected (" + root.selected-count + ")";
+                    label: root.tab == 2 && root.paste-hold ? "Done" : "Cancel";
+                    tip: root.tab == 2 && root.paste-hold ? "Close this window" : "Close without adding accounts";
+                    enabled: !(root.tab == 2 && root.pasting);
+                    clicked => { root.done(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                if root.tab == 1 && !root.choosing-browser && !root.scanning && root.scan-items.length > 0: WizButton {
+                    label: "Add Selected";
                     primary: true;
-                    enabled: root.selected-count > 0 && !root.scanning && !root.adding;
+                    tip: "Add the checked accounts to the dashboard";
+                    enabled: root.selected-count > 0 && !root.adding;
                     clicked => { root.add-selected(); }
                 }
             }
-            Flickable {
-                vertical-stretch: 1;
-                content-height: list.preferred-height;
-                list := VerticalLayout {
-                    spacing: 6px;
-                    alignment: start;
-                    for it[i] in root.scan-items: Rectangle {
-                        height: 52px;
-                        border-radius: 8px;
-                        background: Theme.card-bg;
-                        border-width: 1px;
-                        border-color: Theme.card-border;
-                        HorizontalLayout {
-                            padding: 10px;
-                            spacing: 10px;
-                            if it.idx >= 0: Rectangle {
-                                width: 18px;
-                                height: 18px;
-                                y: (parent.height - self.height) / 2;
-                                border-radius: 4px;
-                                border-width: 1px;
-                                border-color: Theme.accent;
-                                background: it.checked ? Theme.accent : transparent;
-                                Text {
-                                    text: it.checked ? "\u{2713}" : "";
-                                    color: Theme.window-bg;
-                                    font-size: 12px;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                }
-                            }
-                            VerticalLayout {
-                                alignment: center;
-                                Text { text: it.label; color: Theme.text-primary; font-weight: 600; overflow: elide; }
-                                Text {
-                                    text: it.detail;
-                                    color: it.idx >= 0 ? Theme.text-secondary : Theme.warn;
-                                    font-size: 11px;
-                                    overflow: elide;
-                                }
-                            }
-                        }
-                        if it.idx >= 0: TouchArea { clicked => { root.toggle(i); } }
-                    }
-                }
-            }
-            Text {
-                text: root.scan-message;
-                color: Theme.text-secondary;
-                wrap: word-wrap;
-                visible: root.scan-message != "";
-            }
-        }
-
-        // ---- Tab 2: paste ----
-        if root.tab == 2: VerticalLayout {
-            spacing: 10px;
-            vertical-stretch: 1;
-            alignment: start;
-            Text {
-                text: "Paste the sessionKey cookie value from claude.ai (browser dev tools > Application > Cookies).";
-                color: Theme.text-secondary; wrap: word-wrap;
-            }
-            HorizontalLayout {
-                spacing: 10px;
-                Rectangle {
-                    height: 34px;
-                    border-radius: 6px;
-                    background: Theme.card-bg;
-                    border-width: 1px;
-                    border-color: key-input.has-focus ? Theme.accent : Theme.card-border;
-                    key-input := TextInput {
-                        x: 10px;
-                        width: parent.width - 20px;
-                        height: parent.height;
-                        vertical-alignment: center;
-                        color: Theme.text-primary;
-                        single-line: true;
-                        input-type: password;
-                        enabled: !root.pasting;
-                        accepted => { root.paste-add(self.text); }
-                    }
-                    Text {
-                        x: 10px;
-                        text: "sk-ant-sid01-\u{2026}";
-                        color: Theme.text-secondary;
-                        vertical-alignment: center;
-                        visible: key-input.text == "";
-                    }
-                }
-                WizButton {
-                    label: root.pasting ? "Adding\u{2026}" : "Add";
-                    primary: true;
-                    enabled: !root.pasting && key-input.text != "";
-                    clicked => { root.paste-add(key-input.text); }
-                }
-            }
-            Text {
-                text: root.paste-result;
-                color: root.paste-ok ? Theme.ok : Theme.danger;
-                wrap: word-wrap;
-                visible: root.paste-result != "";
-            }
-        }
-
-        HorizontalLayout {
-            alignment: end;
-            WizButton { label: "Done"; clicked => { root.done(); } }
         }
     }
 }

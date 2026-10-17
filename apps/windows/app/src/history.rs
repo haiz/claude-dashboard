@@ -13,8 +13,12 @@ use claude_dashboard_core::colors::usage_color;
 use claude_dashboard_core::store::{ResetCycle, UsageLogStore};
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use crate::chart::{now_ms, offset_ms, to_state, Interaction, Mode, View, DEFAULT_PRESET};
-use crate::chart_model::{dashed_vlines, format_stamp, points_to_entries};
+use crate::chart::{
+    frame_top, now_ms, offset_ms, to_state, Interaction, Mode, View, DEFAULT_PRESET,
+};
+use crate::chart_model::{
+    dashed_hlines, dashed_vlines, day_bands, format_stamp, points_to_entries, rects_path,
+};
 use crate::model::to_color;
 use crate::overview::window_code;
 use crate::{AppWindow, ChartActions, ChartCycle, ChartPoint, ChartState, ChartTick, HistoryData};
@@ -39,6 +43,10 @@ pub struct Loaded {
 /// The chart parts the shared `View` does not carry.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Extras {
+    /// Every other local day shaded (macOS `chartDayBands`).
+    pub band_path: String,
+    /// The red dashed 100% limit rule.
+    pub limit_path: String,
     pub reset_path: String,
     pub reset_xs: Vec<f64>,
     pub limit_points: Vec<(f64, f64)>,
@@ -141,8 +149,21 @@ impl History {
                 )
             })
             .collect();
+        // Bands over the data's days (not the range's), clipped to the range.
+        let es = self.inner.entries();
+        let bands: Vec<(f64, f64)> = match (es.first(), es.last()) {
+            (Some(f), Some(l)) => day_bands(f.ms, l.ms, local_offset_ms)
+                .into_iter()
+                .filter(|&(a, b)| b > r.from_ms && a < r.to_ms)
+                .map(|(a, b)| (sc.x(a.max(r.from_ms)), sc.x(b.min(r.to_ms))))
+                .collect(),
+            _ => Vec::new(),
+        };
+        let top = frame_top(&sc);
         let extras = Extras {
-            reset_path: dashed_vlines(&reset_xs, sc.top, sc.bottom, 2.0, 4.0),
+            band_path: rects_path(&bands, top, sc.bottom),
+            limit_path: dashed_hlines(&[sc.y(100.0)], sc.left, sc.right, 5.0, 5.0),
+            reset_path: dashed_vlines(&reset_xs, top, sc.bottom, 2.0, 4.0),
             reset_xs,
             limit_points,
             cycles,
@@ -170,6 +191,8 @@ fn to_chart_state(v: &View, x: &Extras, window: i64) -> ChartState {
     let mut st = to_state(v);
     st.window = window_name(window).into();
     st.hint = "Data will appear after the next refresh.".into();
+    st.band_path = x.band_path.as_str().into();
+    st.limit_path = x.limit_path.as_str().into();
     st.reset_path = x.reset_path.as_str().into();
     st.reset_marks = ModelRc::new(VecModel::from(
         x.reset_xs
@@ -579,6 +602,26 @@ mod tests {
         let h = hist(0);
         let (_, x) = h.view(0.0);
         assert_eq!(x.limit_points.len(), 1, "the 300h-old point is outside 7d");
+    }
+
+    #[test]
+    fn day_bands_and_limit_rule() {
+        // Samples from 30h to 1h ago (NOW is a UTC midnight): days NOW-2d,
+        // NOW-1d; only the second (odd) one is shaded.
+        let h = hist(0);
+        let (_, x) = h.view(0.0);
+        assert_eq!(x.band_path.matches('Z').count(), 1, "{}", x.band_path);
+        let sc = h.inner.scale();
+        assert!(x
+            .band_path
+            .starts_with(&format!("M {:.2} ", sc.x(NOW - 24.0 * H))));
+        assert!(x
+            .limit_path
+            .starts_with(&format!("M {:.2} {:.2} L", sc.left, sc.y(100.0))));
+        // A 5h range inside the unshaded day has no band.
+        let mut h = h;
+        h.inner.set_preset("5h", NOW - 26.0 * H);
+        assert!(h.view(0.0).1.band_path.is_empty());
     }
 
     #[test]

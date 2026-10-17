@@ -148,6 +148,7 @@ fn spawn_refresh_loop(
     std::thread::spawn(move || {
         let mut prev: Vec<claude_dashboard_core::rows::DisplayRow> = Vec::new();
         let mut tracker = claude_dashboard_core::burn_rate::BurnRateTracker::default();
+        let mut timer = refresh::AutoTimer::default();
         let mut jobs = vec![Nudge::All];
         loop {
             // `coalesce` drops `Reschedule`: an empty batch just waits again below,
@@ -160,29 +161,38 @@ fn spawn_refresh_loop(
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs_f64())
                     .unwrap_or(0.0);
-                let only = match &job {
-                    Nudge::One(id) => Some(id.clone()),
-                    Nudge::All | Nudge::Reschedule => None,
-                };
-                // Spinners on until apply_output replaces the rows.
-                let (w, pw, o) = (weak.clone(), pop_weak.clone(), only.clone());
-                let _ = slint::invoke_from_event_loop(move || begin_refresh(&w, &pw, o.as_deref()));
+                if job != Nudge::Local {
+                    // The header Refresh buttons stay disabled until apply_output.
+                    let (w, pw) = (weak.clone(), pop_weak.clone());
+                    let _ = slint::invoke_from_event_loop(move || begin_refresh(&w, &pw));
+                }
                 let mut out = match &job {
+                    Nudge::Local => match claude_dashboard_core::store::load_accounts() {
+                        Ok(accounts) => refresh::relabel(&prev, &accounts, now),
+                        Err(e) => refresh::merge_errors(&prev, Err(e.to_string()), now),
+                    },
                     Nudge::All | Nudge::Reschedule => {
                         let fresh = refresh::refresh_once(now);
                         let fetched = fresh.is_ok();
-                        let mut out = refresh::merge_errors(&prev, fresh);
+                        let mut out = refresh::merge_errors(&prev, fresh, now);
                         // Only a real fetch is a new measurement; a failed refresh keeps the previous projections.
                         if fetched {
                             refresh::apply_projections(&mut tracker, &mut out.rows, now);
                         }
                         out
                     }
-                    Nudge::One(id) => {
-                        let mut out = refresh::refresh_one(id, &prev, now);
+                    Nudge::One(_) | Nudge::Some(_) => {
+                        let ids = match &job {
+                            Nudge::One(id) => vec![id.clone()],
+                            Nudge::Some(ids) => ids.clone(),
+                            _ => Vec::new(),
+                        };
+                        let mut out = refresh::refresh_some(&ids, &prev, now);
                         if out.rows != prev {
-                            if let Some(i) = out.rows.iter().position(|r| &r.account_id == id) {
-                                refresh::apply_projections(&mut tracker, &mut out.rows[i..=i], now);
+                            for i in 0..out.rows.len() {
+                                if ids.contains(&out.rows[i].account_id) {
+                                    refresh::apply_projections(&mut tracker, &mut out.rows[i..=i], now);
+                                }
                             }
                         }
                         out
@@ -193,10 +203,16 @@ fn spawn_refresh_loop(
                 let (weak, pop_weak) = (weak.clone(), pop_weak.clone());
                 let _ = slint::invoke_from_event_loop(move || apply_output(&weak, &pop_weak, &out, now));
             }
-            jobs = match refresh::loop_timeout(&claude_dashboard_core::settings::load()) {
+            // The Auto Refresh tick keeps its own schedule: nudged refreshes never push it
+            // back; a `Reschedule` (settings change) or the tick itself restarts it.
+            let interval = refresh::loop_timeout(&claude_dashboard_core::settings::load());
+            let batch = match timer.wait(interval, std::time::Instant::now()) {
                 Some(t) => match rx.recv_timeout(t) {
                     Ok(n) => pending(n, &rx),
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => vec![Nudge::All],
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        timer.restart(interval, std::time::Instant::now());
+                        vec![Nudge::All]
+                    }
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
                 },
                 // Auto refresh off: wait for a nudge only.
@@ -205,15 +221,21 @@ fn spawn_refresh_loop(
                     Err(_) => return,
                 },
             };
+            if batch.contains(&Nudge::Reschedule) {
+                let interval = refresh::loop_timeout(&claude_dashboard_core::settings::load());
+                timer.restart(interval, std::time::Instant::now());
+            }
+            jobs = refresh::coalesce(batch);
         }
     });
 }
 
-/// The first nudge plus whatever else is already queued, folded into the cycles to run.
+/// The first nudge plus whatever else is already queued (not yet folded: the loop reads
+/// `Reschedule` out of it before `coalesce` drops it).
 fn pending(first: refresh::Nudge, rx: &std::sync::mpsc::Receiver<refresh::Nudge>) -> Vec<refresh::Nudge> {
     let mut all = vec![first];
     all.extend(rx.try_iter());
-    refresh::coalesce(all)
+    all
 }
 
 
@@ -237,28 +259,62 @@ fn patch_row(weak: &slint::Weak<AppWindow>, id: &str, f: impl Fn(&mut UiRow)) {
     }
 }
 
-/// UI thread: marks the non-expired cards of a refresh as loading, in the main window and
-/// the flyout (macOS `refreshAll` skips expired accounts): every card for `only == None`,
-/// else just that account's. Also raises `refreshing`; the next `apply_output` clears both.
-fn begin_refresh(weak: &slint::Weak<AppWindow>, pop_weak: &slint::Weak<PopoverWindow>, only: Option<&str>) {
+/// Every second: moves the countdowns on every card and page (macOS redraws them each
+/// second) and the tray tooltip. Every 5 s: once an active window's reset passed more than
+/// 10 s ago, refreshes everything, once per reset (macOS `checkResetTriggers`).
+fn start_clock(
+    weak: slint::Weak<AppWindow>,
+    pop_weak: slint::Weak<PopoverWindow>,
+    tx: std::sync::mpsc::Sender<refresh::Nudge>,
+) -> slint::Timer {
     use slint::Model;
-    let mark = |rows: slint::ModelRc<UiRow>| {
-        for i in 0..rows.row_count() {
-            if let Some(mut r) = rows.row_data(i) {
-                if !r.expired && only.is_none_or(|id| r.id == id) {
-                    r.loading = true;
-                    rows.set_row_data(i, r);
+    let fired = std::cell::RefCell::new(std::collections::HashSet::new());
+    let ticks = std::cell::Cell::new(0u32);
+    let timer = slint::Timer::default();
+    timer.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(1), move || {
+        let Some(rows) = LAST_OUTPUT.with(|l| l.borrow().as_ref().map(|(o, _)| o.rows.clone())) else { return };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        let retime_all = |m: slint::ModelRc<UiRow>| {
+            for i in 0..m.row_count() {
+                let Some(mut ui) = m.row_data(i) else { continue };
+                let Some(r) = rows.iter().find(|r| r.account_id == ui.id.as_str()) else { continue };
+                if model::retime(&mut ui, r, now) {
+                    m.set_row_data(i, ui);
                 }
             }
+        };
+        if let Some(app) = weak.upgrade() {
+            retime_all(app.get_account_rows());
+            retime_all(app.get_pane_rows());
         }
-    };
+        if let Some(pop) = pop_weak.upgrade() {
+            retime_all(pop.get_account_rows());
+        }
+        let bar = claude_dashboard_core::rows::menu_bar_row(&rows);
+        tray::update_label(bar.and_then(|r| r.five_hour.as_ref()).map(|w| w.utilization), &model::tray_tooltip(bar, now));
+
+        ticks.set(ticks.get() + 1);
+        if ticks.get() % 5 == 0 && !dev_run() {
+            let mut fired = fired.borrow_mut();
+            let new = refresh::passed_resets(&rows, now).into_iter().filter(|k| fired.insert(k.clone())).count();
+            if new > 0 {
+                let _ = tx.send(refresh::Nudge::All);
+            }
+        }
+    });
+    timer
+}
+
+/// UI thread: raises `refreshing` (disables the Refresh buttons) until the next
+/// `apply_output`. Cards get no spinner: macOS never sets `isLoading` during a refresh.
+fn begin_refresh(weak: &slint::Weak<AppWindow>, pop_weak: &slint::Weak<PopoverWindow>) {
     if let Some(app) = weak.upgrade() {
-        mark(app.get_account_rows());
-        mark(app.get_pane_rows());
         app.set_refreshing(true);
     }
     if let Some(pop) = pop_weak.upgrade() {
-        mark(pop.get_account_rows());
         pop.set_refreshing(true);
     }
 }
@@ -285,8 +341,9 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
         }
         let (tx, w) = (tx.clone(), w.clone());
         std::thread::spawn(move || match pin::set_pinned(&id, pinned) {
+            // Re-sort from the store; no fetch (macOS `togglePin`).
             Ok(()) => {
-                let _ = tx.send(refresh::Nudge::All);
+                let _ = tx.send(refresh::Nudge::Local);
             }
             Err(e) => {
                 eprintln!("pin failed: {e}");
@@ -310,13 +367,11 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
         if ids.is_empty() {
             return;
         }
-        // Dev runs: the scanned fake rows, the denominator the real path counts from the store.
-        let dev_scanned = dev_run().then(|| {
-            LAST_OUTPUT.with(|l| l.borrow().as_ref().map_or(0, |(out, _)| fake_scanned_total(&out.rows)))
-        });
+        // Dev runs: walk the progress over the fake rows without touching the store.
+        let dev_total = dev_run().then(|| ids.len());
         app.set_resyncing(true);
         // Until the worker counts the scanned accounts.
-        app.set_resync_progress("Re-syncing\u{2026}".into());
+        app.set_resync_progress(settings_accounts::progress_text(0, ids.len()).into());
         let (w, tx) = (w.clone(), tx.clone());
         std::thread::spawn(move || {
             let post = |text: Option<String>| {
@@ -328,9 +383,9 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
                     }
                 });
             };
-            if let Some(total) = dev_scanned {
+            if let Some(total) = dev_total {
                 // Dev runs never touch the store: just walk the progress text over the
-                // scanned rows, as the real path does.
+                // rows, as the real path does.
                 post(Some(settings_accounts::progress_text(0, total)));
                 for done in 1..=total {
                     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -339,20 +394,26 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
                 post(None);
                 return;
             }
-            post(Some(settings_accounts::progress_text(0, resync::scanned_total(&ids))));
             let results = resync::resync_all(&ids, &resync::RealResyncEnv, &|done, total| {
                 post(Some(settings_accounts::progress_text(done, total)));
             });
             {
                 let mut f = RESYNC_FAILURES.lock().unwrap_or_else(|e| e.into_inner());
-                for (id, outcome) in results {
+                for (id, outcome) in &results {
                     if let resync::ResyncOutcome::Failed(msg) = outcome {
-                        f.insert(id, msg);
+                        f.insert(id.clone(), msg.clone());
                     }
                 }
             }
             post(None);
-            let _ = tx.send(refresh::Nudge::All);
+            // One pass over the accounts that re-synced (macOS `refreshAll(only: refreshable)`);
+            // the failures above reach their cards through apply_output.
+            let ok: Vec<String> = results
+                .into_iter()
+                .filter(|(_, o)| !matches!(o, resync::ResyncOutcome::Failed(_)))
+                .map(|(id, _)| id)
+                .collect();
+            let _ = tx.send(if ok.is_empty() { refresh::Nudge::Local } else { refresh::Nudge::Some(ok) });
         });
     });
     let w = app.as_weak();
@@ -365,8 +426,9 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
         let (w, tx) = (w.clone(), nudge_tx.clone());
         std::thread::spawn(move || {
             match resync::resync(&id, &resync::RealResyncEnv) {
+                // Refresh just this card (macOS `refreshAll(only: [id])`).
                 resync::ResyncOutcome::Updated | resync::ResyncOutcome::Refreshed => {
-                    let _ = tx.send(refresh::Nudge::All);
+                    let _ = tx.send(refresh::Nudge::One(id.clone()));
                 }
                 resync::ResyncOutcome::Failed(msg) => {
                     let _ = slint::invoke_from_event_loop(move || {
@@ -376,14 +438,6 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
             }
         });
     });
-}
-
-/// Dev-only: how many fake rows are scanned accounts (neither extension-fed nor pasted).
-fn fake_scanned_total(rows: &[claude_dashboard_core::rows::DisplayRow]) -> usize {
-    let pasted = claude_dashboard_core::account_kind::AccountKind::PastedKey.settings_label();
-    rows.iter()
-        .filter(|r| !r.is_extension_sourced && r.kind_label != pasted)
-        .count()
 }
 
 /// Dev-only: `CLAUDE_DASHBOARD_FAKE_ROWS=1` seeds sample cards (no network): a pinned
@@ -497,9 +551,38 @@ fn toggle_flyout(pop: &PopoverWindow, tray_rect: popover::Rect) {
     FLYOUT.with(|f| f.borrow_mut().shown_at = Some(std::time::Instant::now()));
 }
 
+thread_local! {
+    /// The Add Account wizard opener, for `show_main`.
+    static OPEN_WIZARD: std::cell::RefCell<Option<std::rc::Rc<dyn Fn()>>> = const { std::cell::RefCell::new(None) };
+    /// Mica is applied the first time the main window shows (it may start hidden).
+    static MAIN_STYLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Shows the main window. Like macOS `MainWindow.onAppear`, a store with no accounts
+/// opens the Add Account wizard over it.
 fn show_main(app: &AppWindow) {
     let _ = app.show();
     app.window().set_minimized(false);
+    if !MAIN_STYLED.with(|s| s.replace(true)) && !apply_mica(app.window()) {
+        app.set_use_solid_background(true);
+    }
+    let no_accounts = !dev_run() && claude_dashboard_core::store::load_accounts().is_ok_and(|a| a.is_empty());
+    if no_accounts {
+        if let Some(open) = OPEN_WIZARD.with(|o| o.borrow().clone()) {
+            open();
+        }
+    }
+}
+
+/// The tray menu's Quit confirmation: a system message box with the flyout prompt's text.
+fn confirm_quit() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONQUESTION, MB_OKCANCEL, MB_SETFOREGROUND};
+    let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let (text, title) = (wide("Usage monitoring stops until you open the app again."), wide("Quit Claude Dashboard?"));
+    let r = unsafe {
+        MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), MB_OKCANCEL | MB_ICONQUESTION | MB_SETFOREGROUND)
+    };
+    r == IDOK
 }
 
 /// Best-effort: bring the window to the foreground (needs the second instance's
@@ -524,12 +607,16 @@ thread_local! {
 /// UI thread only: stores `state` and mirrors it into the Updates card.
 fn show_update_state(app: &AppWindow, state: updater::UpdateState) {
     use updater::UpdateState as S;
-    app.set_update_status(updater::status_text(&state, settings_general::APP_VERSION).into());
-    app.set_update_can_install(matches!(state, S::Available(_)));
+    app.set_update_status(updater::status_text(&state).into());
+    app.set_update_status_kind(updater::status_kind(&state));
+    // The Latest version row stays once a check has found a release (macOS `latestVersion`).
+    if let Some(v) = updater::latest_version(&state) {
+        app.set_update_latest(v.into());
+    }
     app.set_update_busy(matches!(state, S::Checking | S::Downloading | S::Installing));
     // Yellow flyout banner while an update downloads or installs (macOS MenuBarPopover).
     let banner = if matches!(state, S::Downloading | S::Installing) {
-        updater::status_text(&state, settings_general::APP_VERSION)
+        updater::status_text(&state)
     } else {
         String::new()
     };
@@ -592,6 +679,8 @@ fn install_updates(app: &AppWindow) {
     eprintln!("updater: installed copy = {installed}");
 
     show_update_state(app, if installed { S::Idle } else { S::DevBuild(None) });
+    // macOS debug builds disable Check for Updates; a dev build here cannot install either.
+    app.set_update_release(installed);
     let w = app.as_weak();
     std::thread::spawn(move || {
         let on = settings_general::auto_update_enabled();
@@ -602,38 +691,25 @@ fn install_updates(app: &AppWindow) {
         });
     });
 
-    let w = app.as_weak();
+    // Check for Updates checks and, when a newer release exists, installs it in one go
+    // (macOS `checkNow(autoInstall: true)`).
+    let (w, exe_c) = (app.as_weak(), exe.clone());
     app.on_check_updates(move || {
-        if let Some(a) = w.upgrade() {
-            show_update_state(&a, S::Checking);
-        }
-        let w = w.clone();
-        std::thread::spawn(move || {
-            let state = match updater::check(settings_general::APP_VERSION) {
-                Ok(Some(i)) if installed => S::Available(i),
-                Ok(Some(i)) => S::DevBuild(Some(i)),
-                Ok(None) if installed => S::UpToDate,
-                Ok(None) => S::DevBuild(None),
-                Err(m) => S::Failed(m),
-            };
-            post_update_state(&w, state);
-        });
-    });
-
-    let (w, exe_i) = (app.as_weak(), exe.clone());
-    app.on_install_update(move || {
-        let state = UPDATE_STATE.with(|s| s.borrow().clone());
-        let S::Available(info) = state else { return };
         if !installed {
             return;
         }
-        // Clear can-install right now, on the UI thread, so a double click
-        // cannot reach this handler twice with the state still Available.
         if let Some(a) = w.upgrade() {
-            show_update_state(&a, S::Downloading);
+            show_update_state(&a, S::Checking);
         }
-        let (w, exe) = (w.clone(), exe_i.clone());
-        std::thread::spawn(move || download_and_apply(&w, &info, &exe));
+        let (w, exe) = (w.clone(), exe_c.clone());
+        std::thread::spawn(move || match updater::check(settings_general::APP_VERSION) {
+            Ok(Some(info)) => {
+                post_update_state(&w, S::Available(info.clone()));
+                download_and_apply(&w, &info, &exe);
+            }
+            Ok(None) => post_update_state(&w, S::UpToDate),
+            Err(m) => post_update_state(&w, S::Failed(m)),
+        });
     });
 
     let w = app.as_weak();
@@ -720,10 +796,19 @@ fn main() -> Result<(), slint::PlatformError> {
         {
             migration::run_launch_cleanup(local.as_ref(), roaming.as_ref());
         }
+        // Keep 90 days of usage history (macOS prunes at launch too).
+        if let Ok(mut log) = claude_dashboard_core::store::UsageLogStore::open() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(0.0);
+            log.delete_older_than(now - 90.0 * 86400.0);
+        }
     }
     let (nudge_tx, nudge_rx) = std::sync::mpsc::channel::<refresh::Nudge>();
     let tray_nudge = nudge_tx.clone();
     let pop_nudge = nudge_tx.clone();
+    let clock_nudge = nudge_tx.clone();
 
     let dark = system_is_dark();
     // Add Account wizard (hidden until opened); its poll timer stops on close.
@@ -813,6 +898,12 @@ fn main() -> Result<(), slint::PlatformError> {
     // Settings > General: settings/registry I/O on workers, results back on the UI thread.
     {
         app.set_help_topics(help::topic_model());
+        // Reading a Card's sample ring (macOS: 5h at 62%, 2h15m left, a rabbit).
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        app.set_help_sample(model::sample_window(62.0, 8100.0, 18000.0, "\u{1F407}", now));
         app.set_app_name(settings_general::APP_NAME.into());
         app.set_app_version(settings_general::APP_VERSION.into());
         app.set_release_date(settings_general::format_release_date(settings_general::RELEASE_DATE).into());
@@ -913,8 +1004,8 @@ fn main() -> Result<(), slint::PlatformError> {
         let (tx, w) = (nudge_tx.clone(), app.as_weak());
         app.on_refresh_account(move |id| {
             if dev_run() {
-                // Fake rows: spin the card for a moment, then re-publish the seeded rows.
-                begin_refresh(&w, &POPOVER.with(|p| p.borrow().clone()).unwrap_or_default(), Some(id.as_str()));
+                // Fake rows: hold the Refresh button busy for a moment, then re-publish the seeded rows.
+                begin_refresh(&w, &POPOVER.with(|p| p.borrow().clone()).unwrap_or_default());
                 let w = w.clone();
                 slint::Timer::single_shot(std::time::Duration::from_millis(1200), move || {
                     let last = LAST_OUTPUT.with(|l| l.borrow_mut().take());
@@ -932,9 +1023,15 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = nudge_tx.send(refresh::Nudge::All);
     });
     app.global::<Theme>().set_dark(dark);
-    app.show()?;
-    if !apply_mica(app.window()) {
-        app.set_use_solid_background(true);
+    OPEN_WIZARD.with(|o| *o.borrow_mut() = Some(open_wizard.clone()));
+    // macOS opens the window by itself only on the very first launch (`hasLaunchedBefore`);
+    // later launches, launch at startup included, start in the tray. Dev runs always show it.
+    let first_launch = !dev_run() && !claude_dashboard_core::settings::load().has_launched_before;
+    if first_launch {
+        let _ = claude_dashboard_core::settings::update(|s| s.has_launched_before = true);
+    }
+    if first_launch || dev_run() {
+        show_main(&app);
     }
 
     // Tray flyout (created hidden; shown on tray left-click).
@@ -983,16 +1080,6 @@ fn main() -> Result<(), slint::PlatformError> {
         popover.on_open_settings({
             let go = go.clone();
             move || go(Box::new(|a| a.set_selection(Pane::General)))
-        });
-        popover.on_open_account({
-            let go = go.clone();
-            move |id| {
-                let id = id.to_string();
-                go(Box::new(move |a| {
-                    a.set_selected_account_id(id.into());
-                    a.set_selection(Pane::Account);
-                }))
-            }
         });
         popover.on_open_account_window({
             let go = go.clone();
@@ -1058,15 +1145,19 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                     if let Some(a) = a.upgrade() {
                         show_main(&a);
+                        raise_to_foreground(a.window());
                     }
                 });
             }),
             refresh: Box::new(move || {
                 let _ = tray_nudge.send(refresh::Nudge::All);
             }),
+            // Asks first, with the flyout's Quit prompt text (macOS has a confirmed Quit only).
             quit: Box::new(|| {
                 let _ = slint::invoke_from_event_loop(|| {
-                    let _ = slint::quit_event_loop();
+                    if confirm_quit() {
+                        let _ = slint::quit_event_loop();
+                    }
                 });
             }),
         };
@@ -1109,10 +1200,17 @@ fn main() -> Result<(), slint::PlatformError> {
     } else {
         spawn_refresh_loop(nudge_rx, app.as_weak(), popover.as_weak());
     }
+    let _clock = start_clock(app.as_weak(), popover.as_weak(), clock_nudge);
     // Closing the main window hides it; the app lives in the tray and quits
     // only via the tray/flyout "Quit" (or the smoke timer) -> quit_event_loop.
-    app.window()
-        .on_close_requested(|| slint::CloseRequestResponse::HideWindow);
+    // Like macOS dropping the window's views, it reopens on the Dashboard.
+    let close_w = app.as_weak();
+    app.window().on_close_requested(move || {
+        if let Some(a) = close_w.upgrade() {
+            a.set_selection(Pane::Dashboard);
+        }
+        slint::CloseRequestResponse::HideWindow
+    });
     // Hidden windows do not end this loop; only quit_event_loop does.
     // Dropping `_tray` on return removes the icon.
     let result = slint::run_event_loop_until_quit();
@@ -1123,10 +1221,10 @@ fn main() -> Result<(), slint::PlatformError> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn fake_resync_all_counts_scanned_rows_only() {
-        // alice, carol and erin are scanned; bob is extension-fed, dave pasted.
+    fn fake_rows_cover_every_card_state() {
+        // alice (pinned), bob (extension, Fable), carol (100%), dave and erin (expired).
         let out = super::fake_rows(1_000_000.0);
         assert_eq!(out.rows.len(), 5);
-        assert_eq!(super::fake_scanned_total(&out.rows), 3);
+        assert_eq!(out.rows.iter().filter(|r| r.status == claude_dashboard_core::model::AccountStatus::Expired).count(), 2);
     }
 }

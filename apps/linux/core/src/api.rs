@@ -14,8 +14,9 @@
 //! `AuthExpired` variant; `401` and `403` fall through to
 //! [`ApiError::HttpError`] like every other non-2xx status, preserving the
 //! real numeric code. Do not "fix" this back to match the contract — the
-//! 401/403-to-account-expired write-back is GUI behaviour reserved for a
-//! later plan. Every other rule in that contract section (request headers,
+//! 401/403-to-account-expired write-back is GUI behaviour: the Windows app
+//! does it in `apps/windows/app/src/refresh.rs` (`classify`). Every other rule
+//! in that contract section (request headers,
 //! the 15s timeout, `Set-Cookie` parsing) still applies verbatim.
 
 use std::error::Error as _;
