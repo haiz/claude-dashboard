@@ -221,7 +221,15 @@ pub fn provision(
     }
     on_awaiting();
     let code = listener.wait(&pkce.state, timeout, cancel)?;
+    // A Cancel that lands while the code is exchanged still wins: nothing is stored or switched.
+    let cancelled = || cancel.load(Ordering::SeqCst);
+    if cancelled() {
+        return Err(ProvisionError::Cancelled);
+    }
     let entry = deps.exchange(&code, &pkce, &redirect_uri)?;
+    if cancelled() {
+        return Err(ProvisionError::Cancelled);
+    }
     let got = email_of(&entry.oauth_account).unwrap_or_default();
     if !got.eq_ignore_ascii_case(&input.email) {
         return Err(ProvisionError::EmailMismatch(got));
@@ -337,6 +345,30 @@ mod tests {
         let e = provision(&input(), &AtomicBool::new(false), || awaited = true, &FakeBrowser { email: "A@x.com".into() }, Duration::from_secs(10)).unwrap();
         assert!(awaited);
         assert_eq!(email_of(&e.oauth_account).as_deref(), Some("A@x.com"));
+    }
+
+    /// A browser that comes back with a code, but the user cancels while the exchange runs.
+    struct CancelDuringExchange {
+        inner: FakeBrowser,
+        cancel: std::sync::Arc<AtomicBool>,
+    }
+
+    impl ProvisionDeps for CancelDuringExchange {
+        fn open(&self, input: &ProvisionInput, url: &str) -> bool {
+            self.inner.open(input, url)
+        }
+        fn exchange(&self, code: &str, pkce: &Pkce, redirect_uri: &str) -> Result<VaultEntry, ProvisionError> {
+            self.cancel.store(true, Ordering::SeqCst);
+            self.inner.exchange(code, pkce, redirect_uri)
+        }
+    }
+
+    #[test]
+    fn cancel_during_exchange_returns_cancelled() {
+        let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let deps = CancelDuringExchange { inner: FakeBrowser { email: "a@x.com".into() }, cancel: cancel.clone() };
+        let r = provision(&input(), &cancel, || {}, &deps, Duration::from_secs(10));
+        assert_eq!(r, Err(ProvisionError::Cancelled));
     }
 
     #[test]

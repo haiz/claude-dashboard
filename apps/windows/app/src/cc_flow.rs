@@ -12,6 +12,12 @@ pub const MESSAGE_TITLE: &str = "Claude Code";
 pub const WAITING_TITLE: &str = "Finish signing in";
 pub const WAITING_TEXT: &str = "Claude Dashboard opened your browser profile for this account. Sign in and click Authorize to finish, then it switches automatically.";
 
+/// The browser sign-in takes focus and the flyout hides on focus loss, taking its prompt
+/// with it: when neither window is showing, a prompt opens the main window.
+pub fn needs_main_window(flyout_visible: bool, main_visible: bool) -> bool {
+    !flyout_visible && !main_visible
+}
+
 /// True while the active account still has quota left (5h under 95% and 7d under 99%): a
 /// switch then asks first (macOS `hasQuotaLeft`).
 pub fn needs_confirm(active_usage: Option<(f64, f64)>) -> bool {
@@ -58,6 +64,13 @@ pub fn provision_input(a: &Account, sources: &ExtensionSources) -> Option<Provis
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prompt_opens_main_window_only_when_nothing_shows() {
+        assert!(needs_main_window(false, false));
+        assert!(!needs_main_window(true, false));
+        assert!(!needs_main_window(false, true));
+    }
 
     #[test]
     fn confirm_only_with_quota_left() {

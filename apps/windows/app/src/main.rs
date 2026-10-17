@@ -364,6 +364,14 @@ fn cc_ui(f: impl Fn(&AppWindow), g: impl Fn(&PopoverWindow)) {
 /// Shows prompt `kind` (0 hides it) in both windows.
 fn cc_prompt(kind: i32, title: &str, text: &str) {
     CC_FLOW.with(|f| f.borrow_mut().kind = kind);
+    if kind != 0 {
+        let app = MAIN_APP.with(|m| m.borrow().as_ref().and_then(|w| w.upgrade()));
+        let flyout_visible = POPOVER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade())).is_some_and(|p| p.window().is_visible());
+        if let Some(a) = app.filter(|a| cc_flow::needs_main_window(flyout_visible, a.window().is_visible())) {
+            show_main(&a);
+            raise_to_foreground(a.window());
+        }
+    }
     let (t, x) = (slint::SharedString::from(title), slint::SharedString::from(text));
     cc_ui(
         |a| {
@@ -445,6 +453,9 @@ fn cc_run(id: &str, cancel: &std::sync::atomic::AtomicBool) -> Option<String> {
         };
         match cc_login::provision(&input, cancel, on_awaiting, &cc_login::RealDeps, cc_login::BROWSER_TIMEOUT) {
             Ok(entry) => {
+                if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                    return None;
+                }
                 if switcher.store(id, &entry).is_err() {
                     return Some(cc_flow::store_failed_message(&name));
                 }
