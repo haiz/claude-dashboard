@@ -160,9 +160,23 @@ and hints come from `core::account_kind`:
 | Extension | `source: manual` with a binding in `extension-sources.json` | `Browser extension (<browser>)` | `Open <browser> and sign in to claude.ai; the extension sends the new key.` | reads nothing; refreshes usage |
 | Pasted key | `source: manual`, no binding | `Pasted key` | `This key was pasted by hand. Add it again from Settings › Accounts, Add Account, "Paste a session key instead".` | fails with "This account's session key was pasted by hand. Paste a new one to re-sync it." |
 
-**Re-sync All** re-syncs every account by its kind, then refreshes every account
-in a single pass. Its "Re-syncing… (n/total)" progress counts scanned accounts
-only; per-account failures show in that card's error line after the refresh.
+**Re-sync All** re-syncs every account by its kind, then refreshes the accounts
+that re-synced in a single pass (macOS `refreshAll(only:)`); a single card's
+Re-sync refreshes that account only. Its "Re-syncing… (n/total)" progress counts
+scanned accounts only; per-account failures show in that card's error line after
+the refresh.
+
+## Refresh
+
+The app's refresh follows macOS `refreshAll`: an HTTP `401`/`403` marks the
+account `expired` (stored, and expired accounts are no longer polled until a
+re-sync); other failures retry 3 times 1 s apart and show on the card while it
+keeps its last-good usage and sort position; a successful fetch sets `active`,
+`lastSynced`, the plan from `/api/organizations` and a missing `accountUuid` /
+`email` from `/api/account`. The Auto Refresh tick keeps its own schedule (only a
+settings change restarts it); pinning re-sorts without a fetch; countdowns and the
+tray tooltip move every second; a 5h/7d reset that passed more than 10 s ago
+triggers one refresh. Usage history older than 90 days is pruned at launch.
 
 ## App reload pipe
 
