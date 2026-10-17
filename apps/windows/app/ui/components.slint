@@ -293,6 +293,9 @@ export component AccountCard inherits Rectangle {
     property <color> plan-tint: root.data.plan == "Pro" ? #0a84ff
         : root.data.plan == "Max 20x" ? #ff9f0a
         : #bf5af2;
+    // Claude Code Switch (macOS AccountCard `onSwitchClaudeCode`); `cc-switching` disables it.
+    in property <bool> cc-switching;
+    callback switch-cc();
     callback toggle-pin(bool /* new pinned state */);
     callback resync();
     // The card itself is not clickable (macOS passes no `onTap`); its rings open the charts.
@@ -357,6 +360,29 @@ export component AccountCard inherits Rectangle {
                 vertical-alignment: center;
             }
             Rectangle { horizontal-stretch: 1; }
+            // Switch Claude Code here: hidden on the active account (the badge marks it).
+            if root.data.switch-state != "" && root.data.switch-state != "active": Rectangle {
+                width: 26px;
+                height: 22px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 4px;
+                opacity: root.cc-switching ? 0.4 : 1.0;
+                background: sw-touch.has-hover && !root.cc-switching ? Theme.text-primary.with-alpha(0.10) : transparent;
+                Text {
+                    text: "\u{E8AB}";
+                    font-family: "Segoe Fluent Icons";
+                    font-size: 13px;
+                    color: Theme.text-secondary;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                sw-touch := TouchArea {
+                    enabled: !root.cc-switching;
+                    mouse-cursor: pointer;
+                    clicked => { root.switch-cc(); }
+                }
+                Tooltip { text: @markdown("\{root.data.switch-help}"); }
+            }
             Rectangle {
                 width: plan.preferred-width + 12px;
                 height: 20px;
@@ -587,6 +613,8 @@ export component AccountPane inherits VerticalLayout {
     callback refresh();
     callback resync();
     callback ping();
+    in property <bool> cc-switching;
+    callback switch-cc();
     callback toggle-pin(bool /* new pinned state */);
     callback remove();
     callback window-picked(string /* "5h" | "7d" | "fable" */);
@@ -638,6 +666,14 @@ export component AccountPane inherits VerticalLayout {
                     reject
                 }
             }
+        }
+        if root.data.switch-state != "" && root.data.switch-state != "active": ActionButton {
+            label: "Switch";
+            glyph: "\u{E8AB}";
+            enabled: !root.cc-switching;
+            tip: root.data.switch-help;
+            y: (parent.height - self.height) / 2;
+            clicked => { root.switch-cc(); }
         }
         ActionButton {
             label: "Refresh";

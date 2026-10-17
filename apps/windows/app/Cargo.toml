@@ -15,6 +15,7 @@ tray-icon = "0.24.2"
 tiny-skia = "0.12.0"
 uuid = { version = "1", features = ["v4"] }
 iana-time-zone = "0.1"
+serde_json = "1"
 ureq = { version = "2", features = ["tls"] }
 
 [dev-dependencies]

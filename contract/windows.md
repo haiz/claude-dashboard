@@ -209,6 +209,20 @@ failed auto ping, never on a failed fetch or a capped account) are `app/src/ping
 The log is `ping_logs.db` (SQLite, the macOS schema) beside `usage_logs.db` in
 `%LOCALAPPDATA%\claude-dashboard`, newest 500 kept. Dev runs never ping.
 
+## Claude Code switch
+
+Follows macOS (`docs/superpowers/specs/2026-10-08-claude-code-account-switch-design.md`;
+Windows design `docs/superpowers/specs/2026-10-17-windows-claude-code-switch-design.md`).
+Claude Code keeps its login in `%USERPROFILE%\.claude\.credentials.json` (`claudeAiOauth`, plus
+other keys such as `mcpOAuth` that a switch keeps) and its identity in `%USERPROFILE%\.claude.json`
+(`oauthAccount`); with `CLAUDE_CONFIG_DIR` set both live in that directory. Each refresh copies
+the active login into the app's vault, one DPAPI-sealed file per account in
+`%LOCALAPPDATA%\claude-dashboard\cc-vault\<account id>.bin`; deleting an account deletes its file.
+A switch writes the target's `claudeAiOauth` and `oauthAccount` (temp file + rename, compare
+before write, rollback on failure). An account with no usable copy signs in once through its
+browser profile (`--profile-directory`; extension-fed accounts open their browser without a
+profile; pasted keys cannot). Dev runs have no switcher.
+
 ## App reload pipe
 
 The app serves a named pipe `\\.\pipe\claude-dashboard`; the bridge writes

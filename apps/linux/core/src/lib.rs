@@ -21,6 +21,8 @@ pub mod scan;
 pub mod account_kind;
 pub mod startup;
 pub mod claude_code;
+pub mod cc_switch;
+pub mod cc_oauth;
 
 #[cfg(windows)]
 pub mod userprotect;

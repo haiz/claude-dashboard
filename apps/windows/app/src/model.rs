@@ -262,6 +262,8 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
         pinging: false,
         ping_caption: Default::default(),
         ping_failed: false,
+        switch_state: Default::default(),
+        switch_help: Default::default(),
     }
 }
 

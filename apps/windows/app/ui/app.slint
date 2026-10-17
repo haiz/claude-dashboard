@@ -516,6 +516,58 @@ component GeneralSettingsPane inherits Flickable {
     }
 }
 
+// The Claude Code Switch prompts (macOS `claudeCodeSwitchAlert` / `claudeCodeSwitchOverlay`):
+// kind 1 asks to confirm a switch, 2 shows its outcome, 3 waits for the browser sign-in.
+// Esc cancels (OK on a message), Enter confirms.
+component CcPrompt inherits Rectangle {
+    in property <int> kind;
+    in property <string> title;
+    in property <string> text;
+    callback ok();
+    callback cancel();
+    background: #00000059;
+    TouchArea { }
+    keys := FocusScope {
+        width: 0px;
+        height: 0px;
+        init => { self.focus(); }
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                if root.kind == 2 { root.ok(); } else { root.cancel(); }
+                return accept;
+            }
+            if e.text == Key.Return {
+                if root.kind == 3 { root.cancel(); } else { root.ok(); }
+                return accept;
+            }
+            reject
+        }
+    }
+    Rectangle {
+        width: min(360px, parent.width - 32px);
+        height: body.preferred-height + 32px;
+        border-radius: 12px;
+        background: Theme.dark ? #2b2b2b : #ffffff;
+        border-width: 1px;
+        border-color: Theme.card-border;
+        body := VerticalLayout {
+            padding: 16px;
+            spacing: 10px;
+            Text { text: root.title; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
+            Text { text: root.text; color: Theme.text-primary; font-size: 13px; wrap: word-wrap; }
+            HorizontalLayout {
+                spacing: 8px;
+                padding-top: 4px;
+                alignment: end;
+                if root.kind == 1: PaneButton { label: "Cancel"; tint: Theme.text-primary; tip: "Close without continuing"; clicked => { root.cancel(); } }
+                if root.kind == 1: PaneButton { label: "Switch"; prominent: true; tip: "Switch Claude Code to this account"; clicked => { root.ok(); } }
+                if root.kind == 2: PaneButton { label: "OK"; prominent: true; tip: "Dismiss this message"; clicked => { root.ok(); } }
+                if root.kind == 3: PaneButton { label: "Cancel"; tint: Theme.text-primary; tip: "Stop waiting for the browser sign-in"; clicked => { root.cancel(); } }
+            }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "Claude Dashboard";
     min-width: 900px;
@@ -557,6 +609,14 @@ export component AppWindow inherits Window {
     callback refresh-account(string);
     // The account page's Ping button.
     callback ping-account(string);
+    // Claude Code Switch: a switch is running; the prompt (0 none, see CcPrompt).
+    in property <bool> cc-switching;
+    in property <int> cc-prompt-kind;
+    in property <string> cc-prompt-title;
+    in property <string> cc-prompt-text;
+    callback switch-claude-code(string);
+    callback cc-prompt-ok();
+    callback cc-prompt-cancel();
     // Tools > Ping Log: rows (Rust loads them on `ping-log-reload`), Clear All's prompt.
     in property <[UiPingRow]> ping-log-rows;
     in-out property <bool> ping-log-confirming: false;
@@ -775,6 +835,8 @@ export component AppWindow inherits Window {
                     refresh => { root.refresh-account(acct.id); }
                     resync => { root.resync-account(acct.id); }
                     ping => { root.ping-account(acct.id); }
+                    cc-switching: root.cc-switching;
+                    switch-cc => { root.switch-claude-code(acct.id); }
                     toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
                     remove => {
                         root.remove-account(acct.id);
@@ -815,6 +877,8 @@ export component AppWindow inherits Window {
                             width: scroll.card-w;
                             toggle-pin(pinned) => { root.toggle-pin(self.acct.id, pinned); }
                             resync => { root.resync-account(self.acct.id); }
+                            cc-switching: root.cc-switching;
+                            switch-cc => { root.switch-claude-code(self.acct.id); }
                             open-window(w) => {
                                 root.select-account-page(self.acct.id);
                                 root.requested-window = w;
@@ -881,6 +945,14 @@ export component AppWindow inherits Window {
             if root.selection != Pane.dashboard && root.selection != Pane.account: Rectangle { }
         }
     }
+
+    if root.cc-prompt-kind != 0: CcPrompt {
+        kind: root.cc-prompt-kind;
+        title: root.cc-prompt-title;
+        text: root.cc-prompt-text;
+        ok => { root.cc-prompt-ok(); }
+        cancel => { root.cc-prompt-cancel(); }
+    }
 }
 
 
@@ -942,6 +1014,14 @@ export component PopoverWindow inherits Window {
     callback resync-account(string);
     // A gauge click opens that account's page on its chart window ("5h" | "7d" | "fable").
     callback open-account-window(string, string);
+    // Claude Code Switch: a switch is running; the prompt (0 none, see CcPrompt).
+    in property <bool> cc-switching;
+    in property <int> cc-prompt-kind;
+    in property <string> cc-prompt-title;
+    in property <string> cc-prompt-text;
+    callback switch-claude-code(string);
+    callback cc-prompt-ok();
+    callback cc-prompt-cancel();
 
     // The list is as tall as its cards (they size themselves), capped; the empty state has a fixed height.
     property <length> list-h: root.account-rows.length == 0 ? 170px : min(list.preferred-height, 400px);
@@ -1019,6 +1099,8 @@ export component PopoverWindow inherits Window {
                     toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
                     resync => { root.resync-account(acct.id); }
                     open-window(w) => { root.open-account-window(acct.id, w); }
+                    cc-switching: root.cc-switching;
+                    switch-cc => { root.switch-claude-code(acct.id); }
                 }
             }
         }
@@ -1123,5 +1205,13 @@ export component PopoverWindow inherits Window {
                 }
             }
         }
+    }
+
+    if root.cc-prompt-kind != 0: CcPrompt {
+        kind: root.cc-prompt-kind;
+        title: root.cc-prompt-title;
+        text: root.cc-prompt-text;
+        ok => { root.cc-prompt-ok(); }
+        cancel => { root.cc-prompt-cancel(); }
     }
 }

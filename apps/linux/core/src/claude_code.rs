@@ -9,12 +9,22 @@ pub fn active_email_from(text: &str) -> Option<String> {
     (!email.is_empty()).then(|| email.to_string())
 }
 
-pub fn claude_json_path() -> PathBuf {
+/// `(credentials file, .claude.json)` for this user, following `CLAUDE_CONFIG_DIR` like
+/// Claude Code (see `cc_switch::files::paths_from`).
+fn paths() -> (PathBuf, PathBuf) {
     let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-    match std::env::var(home_var) {
-        Ok(h) if !h.is_empty() => PathBuf::from(h).join(".claude.json"),
-        _ => PathBuf::from(".claude.json"),
-    }
+    let config_dir = std::env::var("CLAUDE_CONFIG_DIR").ok();
+    let home = std::env::var(home_var).ok();
+    crate::cc_switch::files::paths_from(config_dir.as_deref(), home.as_deref())
+}
+
+pub fn claude_json_path() -> PathBuf {
+    paths().1
+}
+
+/// Claude Code's credentials file (`.credentials.json`).
+pub fn credentials_path() -> PathBuf {
+    paths().0
 }
 
 pub fn active_email() -> Option<String> {

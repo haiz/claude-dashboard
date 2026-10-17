@@ -23,6 +23,7 @@ ureq = { version = "2", features = ["tls"] }
 time = { version = "0.3", features = ["parsing"] }
 aes-gcm = "0.10"
 hkdf = "0.12"
+getrandom = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Registry"] }
