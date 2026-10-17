@@ -3,6 +3,7 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
+mod cc_login;
 mod chart;
 mod chart_model;
 mod help;
