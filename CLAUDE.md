@@ -179,7 +179,9 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
     box on the account page (`src/history.rs`, with the Reset Cycles list), and the Overview multi-account chart opened from the sidebar "Overview" item. Sub-project 5 adds
     the green Claude Code badge (`core::claude_code`) and the Help pane. Ping, Auto Ping and
     the Ping Log match macOS (`core::ping`, `core::ping_log`, `app/src/ping.rs`; see
-    `contract/windows.md`, "Ping"). Run Command and the
+    `contract/windows.md`, "Ping"). The Claude Code account switch matches macOS too
+    (`core::cc_switch`, `core::cc_oauth`, `app/src/cc_*.rs`; credentials file + DPAPI vault;
+    see `contract/windows.md`, "Claude Code switch"). Run Command and the
     Command Log were later removed, as on macOS; the app deletes their leftover files at launch
     (`app/src/migration.rs`; see `contract/windows.md`, "Launch cleanup"). Sub-project 6 adds
     release: a per-user MSI

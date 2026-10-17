@@ -213,6 +213,7 @@ component TopicChip inherits Rectangle {
         : root.topic-id == "reading-a-card" ? "\u{E946}"
         : root.topic-id == "finding-your-way" ? "\u{E707}"
         : root.topic-id == "charts" ? "\u{E9D2}"
+        : root.topic-id == "switch-claude-code" ? "\u{E8AB}"
         : root.topic-id == "ping" ? "\u{E701}"
         : root.topic-id == "managing-accounts" ? "\u{E716}"
         : root.topic-id == "refresh-updates" ? "\u{E72C}"
@@ -221,6 +222,7 @@ component TopicChip inherits Rectangle {
         : root.topic-id == "reading-a-card" ? #bf5af2
         : root.topic-id == "finding-your-way" ? #8e8e93
         : root.topic-id == "charts" ? #ff9f0a
+        : root.topic-id == "switch-claude-code" ? #ff375f
         : root.topic-id == "ping" ? #5e5ce6
         : root.topic-id == "managing-accounts" ? #30d158
         : root.topic-id == "refresh-updates" ? #32ade6
@@ -284,6 +286,7 @@ export component HelpPane inherits Flickable {
             : id == "reading-a-card" ? c-card.y
             : id == "finding-your-way" ? c-way.y
             : id == "charts" ? c-charts.y
+            : id == "switch-claude-code" ? c-switch.y
             : id == "ping" ? c-ping.y
             : id == "managing-accounts" ? c-accounts.y
             : id == "refresh-updates" ? c-refresh.y
@@ -452,6 +455,23 @@ export component HelpPane inherits Flickable {
             HelpRow { glyph: "\u{21BA}"; glyph-font: "Segoe UI Symbol"; tint: #32ade6; body: @markdown("**Reset marker**: a 5h reset, along the top of the 7d chart."); }
             HelpRow { glyph: "\u{26A0}"; glyph-font: "Segoe UI Symbol"; tint: #ff9f0a; body: @markdown("**Limit point**: the usage reached 100% here."); }
             HelpCallout { kind: "tip"; body: @markdown("**Overview** puts every account on one chart. Click an account in the legend to show or hide it."); }
+        }
+
+        c-switch := HelpCard {
+            topic-id: "switch-claude-code";
+            title: "Switch Claude Code";
+            subtitle: "Move Claude Code to another account in one click.";
+            glyph: "\u{E8AB}";
+            tile: #ff375f;
+            HelpText { body: @markdown("Click the switch icon on a card, or **Switch** on the account page, then confirm. Claude Code now uses that account."); }
+            HelpSubheading { text: "The first time for an account"; }
+            VerticalLayout {
+                spacing: 8px;
+                HelpStep { n: 1; body: @markdown("The app opens **that account's own browser profile** on Claude's sign-in page."); }
+                HelpStep { n: 2; body: @markdown("Sign in and click **Authorize**."); }
+                HelpStep { n: 3; body: @markdown("The switch finishes by itself. From then on it is instant, no browser, for about 30 days."); }
+            }
+            HelpCallout { kind: "warning"; body: @markdown("Don't also use the same account through another `CLAUDE_CONFIG_DIR`. Two copies of one login sign each other out."); }
         }
 
         c-ping := HelpCard {
