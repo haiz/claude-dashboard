@@ -1,4 +1,4 @@
-import { AboutSlint, Spinner } from "std-widgets.slint";
+import { AboutSlint, Spinner, ComboBox } from "std-widgets.slint";
 import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "components.slint";
 import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
@@ -297,6 +297,48 @@ component StepButton inherits Rectangle {
     touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
 }
 
+// A Settings row with a "−  95%  +" stepper (macOS `Stepper` in a `LabeledContent`).
+component SettingStepper inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> tip-id;
+    in property <int> value;
+    in property <int> lo;
+    in property <int> hi;
+    in property <int> step: 1;
+    callback changed(int);
+    spacing: 4px;
+    Text { text: root.label; color: Theme.text-primary; vertical-alignment: center; }
+    InfoTip { tip-id: root.tip-id; y: (parent.height - self.height) / 2; }
+    Rectangle { horizontal-stretch: 1; }
+    HorizontalLayout {
+        spacing: 8px;
+        StepButton {
+            glyph: "\u{2212}";
+            enabled: root.value > root.lo;
+            clicked => { root.changed(max(root.lo, root.value - root.step)); }
+        }
+        Text { text: root.value + "%"; color: Theme.text-primary; vertical-alignment: center; horizontal-alignment: center; min-width: 52px; }
+        StepButton {
+            glyph: "+";
+            enabled: root.value < root.hi;
+            clicked => { root.changed(min(root.hi, root.value + root.step)); }
+        }
+    }
+}
+
+// Settings > General > Auto Switch and Critical Accounts, as Rust reads them from settings.json.
+export struct SwitchSettings {
+    on: bool,
+    five: int,
+    seven: int,
+    widget: bool,
+    pace: int,
+    high-pace: int,
+    quiet-start: int,
+    quiet-end: int,
+    zone: string,
+}
+
 // Settings > General (macOS GeneralSettingsPane): About, Auto Refresh (switch + 1-60 min
 // stepper), Launch at startup, Updates, Reset All Settings.
 component GeneralSettingsPane inherits Flickable {
@@ -320,6 +362,13 @@ component GeneralSettingsPane inherits Flickable {
     callback check-updates();
     in property <bool> auto-ping;
     callback set-auto-ping(bool);
+    // Auto Switch and Critical Accounts: one callback per number ("on", "five", "seven",
+    // "widget", "pace", "high-pace", "quiet-start", "quiet-end"), and the time zone.
+    in property <SwitchSettings> sw;
+    in property <[string]> hours;
+    in property <[string]> zones;
+    callback set-switch-setting(string, int);
+    callback set-critical-zone(string);
     callback set-auto-update(bool);
     callback reset-all-settings();
     property <bool> confirming-reset;
@@ -404,6 +453,100 @@ component GeneralSettingsPane inherits Flickable {
         }
         Text {
             text: "Starts a new window for every active account whose 5h or 7d window is not running. Each ping sends one short message from that account.";
+            color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
+        }
+
+        GroupHeader { text: "Auto Switch"; }
+        SettingsCard {
+            height: asw.preferred-height + 24px;
+            asw := VerticalLayout {
+                padding: 12px;
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 4px;
+                    Text { text: "Enable auto switch"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "auto-switch"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    SwitchKnob { on: root.sw.on; toggled(v) => { root.set-switch-setting("on", v ? 1 : 0); } }
+                }
+                SettingStepper {
+                    label: "Switch at 5h usage"; tip-id: "five-hour-threshold";
+                    value: root.sw.five; lo: 50; hi: 99; step: 1;
+                    changed(v) => { root.set-switch-setting("five", v); }
+                }
+                SettingStepper {
+                    label: "Switch at 7d usage"; tip-id: "seven-day-threshold";
+                    value: root.sw.seven; lo: 50; hi: 100; step: 1;
+                    changed(v) => { root.set-switch-setting("seven", v); }
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    Text { text: "Show toggle in the tray flyout when near limit"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "menu-bar-toggle"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    SwitchKnob { on: root.sw.widget; toggled(v) => { root.set-switch-setting("widget", v ? 1 : 0); } }
+                }
+            }
+        }
+        Text {
+            text: "Moves Claude Code to the account whose weekly quota is closest to expiring unused. Only accounts already signed in to Claude Code are used; no browser opens.";
+            color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
+        }
+
+        GroupHeader { text: "Critical Accounts"; }
+        SettingsCard {
+            height: crit.preferred-height + 24px;
+            crit := VerticalLayout {
+                padding: 12px;
+                spacing: 10px;
+                SettingStepper {
+                    label: "Critical pace"; tip-id: "critical-pace";
+                    value: root.sw.pace; lo: 10; hi: 100; step: 5;
+                    changed(v) => { root.set-switch-setting("pace", v); }
+                }
+                SettingStepper {
+                    label: "High critical pace"; tip-id: "high-critical-pace";
+                    value: root.sw.high-pace; lo: root.sw.pace; hi: 100; step: 5;
+                    changed(v) => { root.set-switch-setting("high-pace", v); }
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    Text { text: "Quiet hours"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "quiet-hours"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        ComboBox {
+                            width: 96px;
+                            model: root.hours;
+                            current-index: root.sw.quiet-start;
+                            selected => { root.set-switch-setting("quiet-start", self.current-index); }
+                        }
+                        Text { text: "to"; color: Theme.text-primary; vertical-alignment: center; }
+                        ComboBox {
+                            width: 96px;
+                            model: root.hours;
+                            current-index: root.sw.quiet-end;
+                            selected => { root.set-switch-setting("quiet-end", self.current-index); }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    Text { text: "Time zone"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "time-zone"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    ComboBox {
+                        width: 240px;
+                        model: root.zones;
+                        current-value: root.sw.zone;
+                        selected(v) => { root.set-critical-zone(v); }
+                    }
+                }
+            }
+        }
+        Text {
+            text: "Marks accounts whose weekly quota will go unused, and lets auto switch move Claude Code to them when their 5h window is free.";
             color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
         }
 
@@ -502,7 +645,7 @@ component GeneralSettingsPane inherits Flickable {
                     color: Theme.text-primary; font-weight: 600; wrap: word-wrap;
                 }
                 if root.confirming-reset: Text {
-                    text: "Auto refresh, Auto Ping and Updates go back to their defaults.";
+                    text: "Auto refresh, Auto Ping, Auto Switch, Critical Accounts and Updates go back to their defaults.";
                     color: Theme.text-secondary; font-size: 12px; wrap: word-wrap;
                 }
                 if root.confirming-reset: HorizontalLayout {
@@ -513,7 +656,7 @@ component GeneralSettingsPane inherits Flickable {
                 }
             }
         }
-        Text { text: "Accounts, logs and Launch at startup are kept."; color: Theme.text-secondary; font-size: 11px; }
+        Text { text: "Accounts, the home account, logs and Launch at startup are kept."; color: Theme.text-secondary; font-size: 11px; }
     }
 }
 
@@ -708,6 +851,12 @@ export component AppWindow inherits Window {
     callback check-updates();
     in-out property <bool> auto-ping: false;
     callback set-auto-ping(bool);
+    // Settings > General > Auto Switch and Critical Accounts.
+    in property <SwitchSettings> switch-settings;
+    in property <[string]> quiet-hour-names;
+    in property <[string]> time-zone-names;
+    callback set-switch-setting(string, int);
+    callback set-critical-zone(string);
     callback set-auto-update(bool);
 
     // Opens an account's page on the 5h window (macOS `selectFromSidebar` resets the window).
@@ -997,6 +1146,11 @@ export component AppWindow inherits Window {
                 set-auto-update(on) => { root.set-auto-update(on); }
                 auto-ping: root.auto-ping;
                 set-auto-ping(on) => { root.set-auto-ping(on); }
+                sw: root.switch-settings;
+                hours: root.quiet-hour-names;
+                zones: root.time-zone-names;
+                set-switch-setting(k, v) => { root.set-switch-setting(k, v); }
+                set-critical-zone(z) => { root.set-critical-zone(z); }
             }
             if root.selection == Pane.ping-log: PingLogPane {
                 vertical-stretch: 1;

@@ -1,5 +1,5 @@
 //! InfoTip texts for Settings > General, copied from macOS `SettingsTips.swift`
-//! (Auto Refresh, Auto Ping, Updates; Auto Switch and Critical tips come with their projects).
+//! (every Settings > General tip; "menu bar" reads "tray flyout" and "the Mac's" "the PC's").
 
 pub struct Tip {
     pub id: &'static str,
@@ -14,15 +14,15 @@ pub const TIPS: &[Tip] = &[
     Tip {
         id: "auto-refresh",
         summary: "Fetch usage for every account on a timer.",
-        detail: "When on, the app fetches usage for all accounts every interval. When off, usage only updates when you press Refresh.",
+        detail: "When on, the app fetches usage for all accounts every interval. When off, usage only updates when you press Refresh (auto switch still polls the active account near a limit).",
         example: "With a 5 min interval, a card that shows 40% at 10:00 shows the new figure by 10:05.",
         help_topic: "refresh-updates",
     },
     Tip {
         id: "refresh-interval",
         summary: "Minutes between automatic refreshes (1 to 60).",
-        detail: "Shorter intervals keep cards fresher, at the cost of more requests to claude.ai.",
-        example: "At 1 min a card is at most a minute out of date; at 15 min it can be 15 minutes behind.",
+        detail: "Shorter intervals keep cards fresher and let auto switch react sooner, at the cost of more requests to claude.ai.",
+        example: "At 1 min, auto switch sees a 5h window reach 95% within a minute; at 15 min it can be 15 minutes late.",
         help_topic: "refresh-updates",
     },
     Tip {
@@ -31,6 +31,62 @@ pub const TIPS: &[Tip] = &[
         detail: "A window only starts counting at the first message. After each refresh, Auto Ping sends one short message from every active account whose 5h or 7d window is not running, so it resets sooner.",
         example: "An account idle since yesterday shows 5h with no reset time. Auto Ping starts it at 09:00, so it resets at 14:00 instead of five hours after you first use it.",
         help_topic: "ping",
+    },
+    Tip {
+        id: "auto-switch",
+        summary: "Move Claude Code to another account before a limit blocks you.",
+        detail: "When the account Claude Code uses reaches a threshold, Claude Code moves to the account whose weekly quota is closest to going unused. Order: high critical, then the home account (bolt) after its 5h reset, then critical, then the threshold switch. Only accounts already signed in to Claude Code are used.",
+        example: "Claude Code is on A at 5h 95%. B has 5h 10% and 7d 40% with two days left, so Claude Code moves to B.",
+        help_topic: "auto-switch",
+    },
+    Tip {
+        id: "five-hour-threshold",
+        summary: "5h usage at which auto switch moves Claude Code.",
+        detail: "When the active account's 5h usage reaches this, auto switch picks another account.",
+        example: "At 95%, an account at 5h 94% stays; at 95% Claude Code moves.",
+        help_topic: "auto-switch",
+    },
+    Tip {
+        id: "seven-day-threshold",
+        summary: "7d usage at which auto switch moves Claude Code.",
+        detail: "When the active account's weekly usage reaches this, auto switch picks another account, whatever its 5h usage.",
+        example: "At 99%, an account at 5h 20% but 7d 99% still moves Claude Code away.",
+        help_topic: "auto-switch",
+    },
+    Tip {
+        id: "menu-bar-toggle",
+        summary: "Show the auto switch toggle in the tray flyout near a limit.",
+        detail: "When auto switch is off, the flyout footer shows its toggle once the active account comes close to a threshold, so you can turn it on in time.",
+        example: "Auto switch off, thresholds 95/99: at 5h 80% the toggle appears in the flyout footer.",
+        help_topic: "auto-switch",
+    },
+    Tip {
+        id: "critical-pace",
+        summary: "Assumed use per 5h window, outside quiet hours, for the critical check.",
+        detail: "An account is critical when, using this share of every 5h window from now until its weekly reset (quiet hours excluded), it still would not reach 100% of 7d. X (Dashboard header) converts 5h use into 7d use.",
+        example: "X 16%, pace 50%: each window costs 8% of 7d. 7d at 60% with 30 active hours left (6 windows): 60 + 48 = 108, so not critical. 7d at 55% with 25 hours (5 windows): 55 + 40 = 95, so critical.",
+        help_topic: "critical-accounts",
+    },
+    Tip {
+        id: "high-critical-pace",
+        summary: "Assumed use per 5h window, around the clock, for the high critical check.",
+        detail: "An account is high critical when even this heavier pace, with no quiet hours, would not reach 100% of 7d by the reset. High critical accounts win over the home account.",
+        example: "X 16%, pace 80%: 12.8% of 7d per window. 7d at 60% with 10 hours left (2 windows): 60 + 25.6 = 85.6, so high critical.",
+        help_topic: "critical-accounts",
+    },
+    Tip {
+        id: "quiet-hours",
+        summary: "Daily hours not counted as usable for the critical check.",
+        detail: "Hours between start and end each day are left out when counting the 5h windows still usable before a weekly reset. A start after the end crosses midnight. Equal start and end means no quiet hours. High critical ignores quiet hours.",
+        example: "Quiet 00:00 to 07:00, reset in 48 hours from 10:00: two quiet blocks drop 14 hours, leaving 34 hours (6.8 windows).",
+        help_topic: "critical-accounts",
+    },
+    Tip {
+        id: "time-zone",
+        summary: "Time zone the quiet hours are read in.",
+        detail: "Quiet hours follow this zone, not the PC's. Useful when travelling or when your working day follows another zone.",
+        example: "Zone Asia/Ho_Chi_Minh, quiet 00:00 to 07:00: on a PC set to Paris time that is 19:00 to 02:00 in summer.",
+        help_topic: "critical-accounts",
     },
     Tip {
         id: "auto-update",
@@ -86,8 +142,28 @@ mod tests {
     }
 
     #[test]
+    fn auto_switch_and_critical_tips_match_macos() {
+        let tip = |id: &str| TIPS.iter().find(|t| t.id == id).unwrap_or_else(|| panic!("{id}"));
+        assert_eq!(tip("auto-switch").summary, "Move Claude Code to another account before a limit blocks you.");
+        assert_eq!(tip("auto-switch").help_topic, "auto-switch");
+        assert_eq!(tip("five-hour-threshold").example, "At 95%, an account at 5h 94% stays; at 95% Claude Code moves.");
+        assert_eq!(tip("seven-day-threshold").summary, "7d usage at which auto switch moves Claude Code.");
+        assert_eq!(tip("menu-bar-toggle").summary, "Show the auto switch toggle in the tray flyout near a limit.");
+        assert!(tip("critical-pace").example.starts_with("X 16%, pace 50%: each window costs 8% of 7d."));
+        assert_eq!(tip("high-critical-pace").help_topic, "critical-accounts");
+        assert!(tip("quiet-hours").detail.ends_with("High critical ignores quiet hours."));
+        assert!(tip("time-zone").detail.starts_with("Quiet hours follow this zone, not the PC's."));
+        assert!(tip("auto-refresh").detail.ends_with("(auto switch still polls the active account near a limit)."));
+        assert!(tip("refresh-interval").example.starts_with("At 1 min, auto switch sees a 5h window reach 95% within a minute"));
+    }
+
+    #[test]
     fn tip_ids_are_unique_and_cover_the_settings() {
-        for id in ["auto-refresh", "refresh-interval", "auto-update"] {
+        assert_eq!(TIPS.len(), 12, "the 12 macOS SettingsTips");
+        for id in [
+            "auto-refresh", "refresh-interval", "auto-ping", "auto-switch", "five-hour-threshold", "seven-day-threshold",
+            "menu-bar-toggle", "critical-pace", "high-critical-pace", "quiet-hours", "time-zone", "auto-update",
+        ] {
             assert_eq!(TIPS.iter().filter(|t| t.id == id).count(), 1, "{id}");
         }
     }

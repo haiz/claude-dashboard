@@ -249,6 +249,9 @@ fn set_auto_switch_enabled(on: bool) {
 /// UI thread: redraws every card's bolt and flame in place (a tick, a settings change, a new X).
 fn refresh_auto_switch_ui() {
     use slint::Model;
+    if let Some(a) = MAIN_APP.with(|m| m.borrow().as_ref().and_then(|w| w.upgrade())) {
+        sync_switch_settings_ui(&a);
+    }
     let Some((out, now)) = LAST_OUTPUT.with(|l| l.borrow().clone()) else { return };
     let patch = |rows: slint::ModelRc<UiRow>| {
         for i in 0..rows.row_count() {
@@ -268,6 +271,22 @@ fn refresh_auto_switch_ui() {
         patch(p.get_account_rows());
         set_footer(&p, &out.rows);
     }
+}
+
+/// Settings > General's Auto Switch and Critical Accounts rows, from settings.json.
+fn sync_switch_settings_ui(app: &AppWindow) {
+    let s = settings_general::switch_state(&claude_dashboard_core::settings::load());
+    app.set_switch_settings(SwitchSettings {
+        on: s.on,
+        five: s.five as i32,
+        seven: s.seven as i32,
+        widget: s.widget,
+        pace: s.pace as i32,
+        high_pace: s.high_pace as i32,
+        quiet_start: s.quiet_start as i32,
+        quiet_end: s.quiet_end as i32,
+        zone: s.zone.into(),
+    });
 }
 
 /// The bolt (macOS `togglePriority`): ticks `id` (moving the tick off any other account) or
@@ -1548,8 +1567,11 @@ fn main() -> Result<(), slint::PlatformError> {
                             a.set_auto_update(state.auto_update);
                             a.set_auto_ping(state.auto_ping);
                         }
+                        refresh_auto_switch_ui();
                     });
                     let _ = tx.send(refresh::Nudge::Reschedule);
+                    // macOS `resetSettingsToDefaults` runs auto switch right away.
+                    let _ = tx.send(refresh::Nudge::Local);
                 }
                 Err(e) => eprintln!("reset settings failed: {e}"),
             });
@@ -1665,6 +1687,26 @@ fn main() -> Result<(), slint::PlatformError> {
     let _ = CC_NUDGE.set(cc_nudge);
     app.on_switch_claude_code(|id| cc_request(id.to_string()));
     app.on_toggle_home(|id| toggle_home(id.as_str()));
+    // Settings > General > Auto Switch and Critical Accounts.
+    {
+        let hours: Vec<slint::SharedString> = (0..24).map(|h| format!("{h:02}:00").into()).collect();
+        app.set_quiet_hour_names(slint::ModelRc::new(slint::VecModel::from(hours)));
+        let zones: Vec<slint::SharedString> = claude_dashboard_core::critical::time_zone_names().into_iter().map(Into::into).collect();
+        app.set_time_zone_names(slint::ModelRc::new(slint::VecModel::from(zones)));
+        sync_switch_settings_ui(&app);
+    }
+    app.on_set_switch_setting(|key, value| {
+        if key == "on" {
+            set_auto_switch_enabled(value != 0);
+            return;
+        }
+        let _ = claude_dashboard_core::settings::update(|s| settings_general::apply_switch_setting(s, key.as_str(), value as i64));
+        refresh_auto_switch_ui();
+    });
+    app.on_set_critical_zone(|zone| {
+        let _ = claude_dashboard_core::settings::update(|s| settings_general::apply_critical_zone(s, zone.as_str()));
+        refresh_auto_switch_ui();
+    });
     // X: the header button, its history overlay, and the hourly estimate (never in dev runs,
     // which keep the default).
     show_ratio_value(&app, &ratio::current());

@@ -123,6 +123,59 @@ pub fn set_auto_update(on: bool) -> Result<(), String> {
     settings::update(|s| s.auto_update = on)
 }
 
+/// Settings > General > Auto Switch and Critical Accounts, as the pane shows them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SwitchState {
+    pub on: bool,
+    pub five: i64,
+    pub seven: i64,
+    pub widget: bool,
+    pub pace: i64,
+    pub high_pace: i64,
+    pub quiet_start: i64,
+    pub quiet_end: i64,
+    pub zone: String,
+}
+
+pub fn switch_state(s: &settings::Settings) -> SwitchState {
+    SwitchState {
+        on: s.auto_switch_enabled,
+        five: s.auto_switch_five_hour,
+        seven: s.auto_switch_seven_day,
+        widget: s.auto_switch_show_widget_toggle,
+        pace: s.critical_pace,
+        high_pace: s.critical_high_pace,
+        quiet_start: s.critical_quiet_start,
+        quiet_end: s.critical_quiet_end,
+        zone: s.critical_time_zone.clone(),
+    }
+}
+
+/// Applies one Auto Switch / Critical Accounts control: `key` is the pane's name for it and
+/// `value` the new number (0 / 1 for a switch). Values are clamped to the macOS ranges, and
+/// the high critical pace never drops below the critical pace.
+pub fn apply_switch_setting(s: &mut settings::Settings, key: &str, value: i64) {
+    let clamp = |r: std::ops::RangeInclusive<i64>| value.clamp(*r.start(), *r.end());
+    match key {
+        "on" => s.auto_switch_enabled = value != 0,
+        "five" => s.auto_switch_five_hour = clamp(settings::AUTO_SWITCH_FIVE_HOUR_RANGE),
+        "seven" => s.auto_switch_seven_day = clamp(settings::AUTO_SWITCH_SEVEN_DAY_RANGE),
+        "widget" => s.auto_switch_show_widget_toggle = value != 0,
+        "pace" => s.set_critical_pace(value),
+        "high-pace" => s.set_critical_high_pace(value),
+        "quiet-start" => s.critical_quiet_start = clamp(settings::CRITICAL_HOUR_RANGE),
+        "quiet-end" => s.critical_quiet_end = clamp(settings::CRITICAL_HOUR_RANGE),
+        _ => {}
+    }
+}
+
+/// The time zone menu: a known IANA name, else nothing changes.
+pub fn apply_critical_zone(s: &mut settings::Settings, zone: &str) {
+    if claude_dashboard_core::critical::time_zone_names().contains(&zone) {
+        s.critical_time_zone = zone.to_string();
+    }
+}
+
 pub fn auto_ping_enabled() -> bool {
     settings::load().auto_ping_enabled
 }
@@ -189,6 +242,38 @@ mod tests {
             settings::load().launch_at_startup,
             "launch at startup is kept"
         );
+    }
+
+    #[test]
+    fn switch_settings_clamp_like_macos() {
+        let mut s = settings::Settings::default();
+        assert_eq!(
+            switch_state(&s),
+            SwitchState { on: true, five: 95, seven: 99, widget: true, pace: 50, high_pace: 80, quiet_start: 0, quiet_end: 7, zone: "Asia/Ho_Chi_Minh".into() }
+        );
+        apply_switch_setting(&mut s, "five", 100);
+        apply_switch_setting(&mut s, "seven", 100);
+        assert_eq!((s.auto_switch_five_hour, s.auto_switch_seven_day), (99, 100));
+        apply_switch_setting(&mut s, "five", 10);
+        apply_switch_setting(&mut s, "seven", 10);
+        assert_eq!((s.auto_switch_five_hour, s.auto_switch_seven_day), (50, 50));
+        apply_switch_setting(&mut s, "on", 0);
+        apply_switch_setting(&mut s, "widget", 0);
+        assert!(!s.auto_switch_enabled && !s.auto_switch_show_widget_toggle);
+        apply_switch_setting(&mut s, "pace", 90);
+        assert_eq!((s.critical_pace, s.critical_high_pace), (90, 90), "raising pace raises high pace");
+        apply_switch_setting(&mut s, "high-pace", 60);
+        assert_eq!(s.critical_high_pace, 90);
+        apply_switch_setting(&mut s, "pace", 5);
+        assert_eq!(s.critical_pace, 10);
+        apply_switch_setting(&mut s, "quiet-start", 30);
+        apply_switch_setting(&mut s, "quiet-end", -3);
+        assert_eq!((s.critical_quiet_start, s.critical_quiet_end), (23, 0));
+        apply_switch_setting(&mut s, "nonsense", 1);
+        apply_critical_zone(&mut s, "Europe/Paris");
+        assert_eq!(s.critical_time_zone, "Europe/Paris");
+        apply_critical_zone(&mut s, "Mars/Base");
+        assert_eq!(s.critical_time_zone, "Europe/Paris", "unknown zones are ignored");
     }
 
     #[test]
