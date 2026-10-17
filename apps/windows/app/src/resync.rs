@@ -29,7 +29,8 @@ pub enum ResyncOutcome {
 }
 
 pub trait ResyncEnv {
-    fn read_key(&self, b: Browser, profile: &str) -> Result<String, ResyncReadError>;
+    /// The profile's sessionKey and its `lastActiveOrg` cookie, if any.
+    fn read_key(&self, b: Browser, profile: &str) -> Result<(String, Option<String>), ResyncReadError>;
     fn fetch_account(&self, key: &str) -> Result<ParsedAccount, String>;
     /// The raw `/api/organizations` body.
     fn fetch_orgs(&self, key: &str) -> Result<String, String>;
@@ -38,7 +39,7 @@ pub trait ResyncEnv {
 pub struct RealResyncEnv;
 
 impl ResyncEnv for RealResyncEnv {
-    fn read_key(&self, b: Browser, profile: &str) -> Result<String, ResyncReadError> {
+    fn read_key(&self, b: Browser, profile: &str) -> Result<(String, Option<String>), ResyncReadError> {
         read_profile_session_key(b, profile)
     }
     fn fetch_account(&self, key: &str) -> Result<ParsedAccount, String> {
@@ -75,7 +76,7 @@ pub fn resync(account_id: &str, env: &dyn ResyncEnv) -> ResyncOutcome {
         AccountKind::Scanned { browser, profile } => (browser, profile),
     };
 
-    let key = match env.read_key(account.browser.clone(), &account.chrome_profile_path) {
+    let (key, cookie_org) = match env.read_key(account.browser.clone(), &account.chrome_profile_path) {
         Ok(k) => k,
         Err(ResyncReadError::AppBound) => {
             return ResyncOutcome::Failed(format!(
@@ -124,8 +125,8 @@ pub fn resync(account_id: &str, env: &dyn ResyncEnv) -> ResyncOutcome {
     target.status = AccountStatus::Active;
 
     // The org follows the org-selection rule, never a raw cookie. The stored org
-    // is the preference, so a correctly resolved org is kept while it is still a
-    // chat org. When /api/account was unreachable the stored org is untouched.
+    // is the fallback preference when the profile has no `lastActiveOrg` cookie.
+    // When /api/account was unreachable the stored org is untouched.
     let mut org_unresolved = false;
     if let Some(info) = &info {
         if target.account_uuid.is_none() {
@@ -134,7 +135,7 @@ pub fn resync(account_id: &str, env: &dyn ResyncEnv) -> ResyncOutcome {
         if target.email.is_none() {
             target.email = info.email.clone();
         }
-        match resolve_org_id(target.org_id.as_deref(), &info.memberships) {
+        match resolve_org_id(cookie_org.as_deref().or(target.org_id.as_deref()), &info.memberships) {
             Some(org) => target.org_id = Some(org),
             None => org_unresolved = true,
         }
@@ -189,14 +190,15 @@ mod tests {
 
     struct Fake {
         key: Result<String, ResyncReadError>,
+        cookie_org: Option<String>,
         account: Result<ParsedAccount, String>,
         read_calls: RefCell<Vec<(String, String)>>,
     }
 
     impl ResyncEnv for Fake {
-        fn read_key(&self, b: Browser, profile: &str) -> Result<String, ResyncReadError> {
+        fn read_key(&self, b: Browser, profile: &str) -> Result<(String, Option<String>), ResyncReadError> {
             self.read_calls.borrow_mut().push((b.display_name().to_string(), profile.to_string()));
-            self.key.clone()
+            self.key.clone().map(|k| (k, self.cookie_org.clone()))
         }
         fn fetch_account(&self, _key: &str) -> Result<ParsedAccount, String> {
             self.account.clone()
@@ -209,14 +211,18 @@ mod tests {
     fn fake(key: Result<&str, ResyncReadError>, uuid: &str) -> Fake {
         Fake {
             key: key.map(String::from),
+            cookie_org: None,
             account: Ok(ParsedAccount {
                 uuid: uuid.into(),
                 email: Some("a@b.c".into()),
-                memberships: vec![OrgMembership {
-                    uuid: "org-new".into(),
-                    name: "Org".into(),
-                    capabilities: vec!["chat".into()],
-                }],
+                memberships: ["org-new", "org-cookie", "org-stored"]
+                    .iter()
+                    .map(|u| OrgMembership {
+                        uuid: u.to_string(),
+                        name: "Org".into(),
+                        capabilities: vec!["chat".into()],
+                    })
+                    .collect(),
             }),
             read_calls: RefCell::new(Vec::new()),
         }
@@ -272,6 +278,27 @@ mod tests {
         assert_eq!(a.org_id.as_deref(), Some("org-new"));
         assert_eq!(a.status, AccountStatus::Active);
         assert_eq!(env.read_calls.borrow()[0], ("Microsoft Edge".to_string(), "Profile 2".to_string()));
+    }
+
+    #[test]
+    fn cookie_org_wins_over_stored_org_and_stored_is_the_fallback() {
+        let _g = crate::testenv::lock();
+        let mut a = account("s", AccountSource::Browser);
+        a.org_id = Some("org-stored".into());
+        let _d = setup(&[a], &[]);
+
+        let mut env = fake(Ok("sk-new"), "uuid-1");
+        env.cookie_org = Some("org-cookie".into());
+        assert_eq!(resync("s", &env), ResyncOutcome::Updated);
+        assert_eq!(stored("s").org_id.as_deref(), Some("org-cookie"));
+
+        // No cookie org: the stored org is the preference.
+        let mut a = stored("s");
+        a.org_id = Some("org-stored".into());
+        store::save_accounts(&[a]).unwrap();
+        let env = fake(Ok("sk-new"), "uuid-1");
+        assert_eq!(resync("s", &env), ResyncOutcome::Updated);
+        assert_eq!(stored("s").org_id.as_deref(), Some("org-stored"));
     }
 
     #[test]

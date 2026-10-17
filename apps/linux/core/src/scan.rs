@@ -111,7 +111,10 @@ pub enum ResyncReadError {
 /// Re-reads the claude.ai `sessionKey` of one profile (`profile_dir` is the
 /// account's `chromeProfilePath`) of `browser`.
 #[cfg(windows)]
-pub fn read_profile_session_key(browser: Browser, profile_dir: &str) -> Result<String, ResyncReadError> {
+pub fn read_profile_session_key(
+    browser: Browser,
+    profile_dir: &str,
+) -> Result<(String, Option<String>), ResyncReadError> {
     use crate::browser::discover_windows_profiles_under;
 
     let local = match std::env::var("LOCALAPPDATA") {
@@ -123,7 +126,7 @@ pub fn read_profile_session_key(browser: Browser, profile_dir: &str) -> Result<S
         .find(|p| p.browser == browser && p.profile_dir == profile_dir)
         .ok_or(ResyncReadError::NoSession)?;
     match scan_one_profile(profile) {
-        ProfileScanStatus::Found(s) => Ok(s.session_key),
+        ProfileScanStatus::Found(s) => Ok((s.session_key, s.org_id)),
         ProfileScanStatus::AppBound => Err(ResyncReadError::AppBound),
         ProfileScanStatus::NoSession => Err(ResyncReadError::NoSession),
     }
