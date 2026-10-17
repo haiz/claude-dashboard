@@ -1,33 +1,63 @@
 //! Add Account wizard wiring. All blocking work (scan, add, store polling)
 //! runs on worker threads; results return via `invoke_from_event_loop`.
+//!
+//! The Scan and Paste tabs follow macOS `SetupView` / `PasteKeyView`: the scan
+//! reads one browser, picked once and remembered in `preferredScanBrowser`, and
+//! a successful add closes the window.
 
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use claude_dashboard_core::scan::{scan_windows_profiles, ProfileScanStatus, ScannedSession};
-use claude_dashboard_core::store;
+use claude_dashboard_core::model::Browser;
+use claude_dashboard_core::plan::plan_wire_value;
+use claude_dashboard_core::scan::{installed_windows_browsers, scan_windows_browser};
+use claude_dashboard_core::{settings, store};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
-use crate::setup::{self, AddOutcome};
+use crate::setup::{self, DetectedAccount, RealScanEnv};
 use crate::{ScanItem, SetupWizardWindow};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 const WAITING: &str = "Waiting for a key\u{2026}";
 
-/// Human text for one add outcome (never contains the key).
-pub fn outcome_text(o: &AddOutcome) -> String {
-    match o {
-        AddOutcome::Added(n) => format!("Added {n}"),
-        AddOutcome::Updated(n) => format!("Updated {n}"),
-        AddOutcome::Rejected(r) => format!("Not accepted: {r}"),
-        AddOutcome::NoChatOrg => {
-            "This account has no chat-capable organization, so it was not added.".to_string()
-        }
-        AddOutcome::StoreError(e) => format!("Could not save the account: {e}"),
+/// The `preferredScanBrowser` value of a browser (its stored raw value).
+fn browser_key(b: &Browser) -> &'static str {
+    match b {
+        Browser::Chrome => "chrome",
+        Browser::ChromeDev => "chromeDev",
+        Browser::Arc => "arc",
+        Browser::Brave => "brave",
+        Browser::Edge => "edge",
+    }
+}
+
+/// Which browser the Scan tab starts on, and whether it must ask first
+/// (macOS `SetupView.onAppear`): a saved choice that is still installed, else
+/// the only browser, else ask when there are two or more.
+fn initial_browser(installed: &[Browser], saved: Option<&str>) -> (usize, bool) {
+    if let Some(i) = saved.and_then(|k| installed.iter().position(|b| browser_key(b) == k)) {
+        return (i, false);
+    }
+    (0, installed.len() >= 2)
+}
+
+fn remember_browser(b: &Browser) {
+    let key = browser_key(b).to_string();
+    let _ = settings::update(|s| s.preferred_scan_browser = Some(key));
+}
+
+fn scan_item(idx: usize, d: &DetectedAccount) -> ScanItem {
+    ScanItem {
+        idx: idx as i32,
+        label: d.name.clone().into(),
+        detail: d.detail().into(),
+        plan: d.plan.as_ref().map(plan_wire_value).unwrap_or_default().into(),
+        checked: true,
     }
 }
 
@@ -35,13 +65,9 @@ fn sync_count(w: &SetupWizardWindow) {
     let m = w.get_scan_items();
     let n = (0..m.row_count())
         .filter_map(|i| m.row_data(i))
-        .filter(|it| it.idx >= 0 && it.checked)
+        .filter(|it| it.checked)
         .count();
     w.set_selected_count(n as i32);
-}
-
-fn is_success(o: &AddOutcome) -> bool {
-    matches!(o, AddOutcome::Added(_) | AddOutcome::Updated(_))
 }
 
 /// (id, display name) of every stored account; empty on a read error.
@@ -70,8 +96,13 @@ pub fn install(
     // Account ids present when the wizard opened / last reported; shared with workers.
     let baseline: Arc<Mutex<Option<HashSet<String>>>> = Arc::new(Mutex::new(None));
     let polling = Arc::new(AtomicBool::new(false));
-    // Sessions behind the scan rows (ScanItem.idx indexes this).
-    let found: Arc<Mutex<Vec<ScannedSession>>> = Arc::new(Mutex::new(Vec::new()));
+    // Accounts behind the scan rows (ScanItem.idx indexes this).
+    let found: Arc<Mutex<Vec<DetectedAccount>>> = Arc::new(Mutex::new(Vec::new()));
+    // Installed browsers, in picker order; read when the wizard opens.
+    let installed: Rc<RefCell<Vec<Browser>>> = Rc::new(RefCell::new(Vec::new()));
+    // Bumped by every scan (and on open), so a superseded scan's result is dropped
+    // (macOS cancels the previous `scanTask`).
+    let generation = Arc::new(AtomicU64::new(0));
 
     // ---- extension tab poll ----
     let start_poll: Rc<dyn Fn()> = {
@@ -114,83 +145,103 @@ pub fn install(
         })
     };
 
-    // Stop the poll when the tab changes away (restart when it returns).
-    {
-        let (timer, start_poll) = (timer.clone(), start_poll.clone());
-        win.on_tab_changed(move |t| {
-            if t == 0 {
-                start_poll();
-            } else {
-                timer.stop();
-            }
-        });
-    }
-
     // ---- scan tab ----
-    {
-        let (weak, found) = (win.as_weak(), found.clone());
-        win.on_scan(move || {
+    // Scans the picked browser: read its profiles, check each key with claude.ai,
+    // offer the accounts not stored yet and explain the rest.
+    let start_scan: Rc<dyn Fn()> = {
+        let (weak, found, installed, generation) =
+            (win.as_weak(), found.clone(), installed.clone(), generation.clone());
+        Rc::new(move || {
             let Some(w) = weak.upgrade() else { return };
-            w.set_scanning(true);
-            w.set_scan_message(SharedString::from(""));
+            let gen = generation.fetch_add(1, Ordering::SeqCst) + 1;
             w.set_scan_items(ModelRc::new(VecModel::<ScanItem>::default()));
-            let (weak, found) = (weak.clone(), found.clone());
+            w.set_selected_count(0);
+            let browser = installed.borrow().get(w.get_browser_index().max(0) as usize).cloned();
+            let Some(browser) = browser else {
+                w.set_scan_message(SharedString::from(setup::NO_BROWSER_MESSAGE));
+                w.set_scanning(false);
+                return;
+            };
+            w.set_scan_message(SharedString::from(""));
+            w.set_scanning(true);
+            let (weak, found, generation) = (weak.clone(), found.clone(), generation.clone());
             std::thread::spawn(move || {
-                let results = scan_windows_profiles();
-                let mut sessions = Vec::new();
-                let mut rows: Vec<(i32, String, String)> = Vec::new();
-                let mut app_bound = 0usize;
-                for r in results {
-                    match r {
-                        ProfileScanStatus::Found(s) => {
-                            let label = match &s.google_email {
-                                Some(e) if !e.is_empty() => format!("{} ({e})", s.display_name),
-                                _ => s.display_name.clone(),
-                            };
-                            let detail = format!("{} - {}", s.browser.short_name(), s.profile_dir);
-                            rows.push((sessions.len() as i32, label, detail));
-                            sessions.push(s);
+                let profiles = scan_windows_browser(browser.clone());
+                let stored = setup::stored_identities();
+                let (offered, message) =
+                    match setup::detect_accounts(profiles, &stored, &RealScanEnv) {
+                        None => (Vec::new(), setup::no_sessions_message(&browser)),
+                        Some((offered, skipped)) => {
+                            let m = setup::scan_summary(offered.len(), &skipped).unwrap_or_default();
+                            (offered, m)
                         }
-                        ProfileScanStatus::AppBound => {
-                            app_bound += 1;
-                            rows.push((
-                                -1,
-                                "App-bound browser profile".to_string(),
-                                "Protected cookies - use the browser extension instead".to_string(),
-                            ));
-                        }
-                        ProfileScanStatus::NoSession => {}
-                    }
+                    };
+                if generation.load(Ordering::SeqCst) != gen {
+                    return;
                 }
-                let n_found = sessions.len();
+                let items: Vec<ScanItem> =
+                    offered.iter().enumerate().map(|(i, d)| scan_item(i, d)).collect();
                 if let Ok(mut f) = found.lock() {
-                    *f = sessions;
+                    *f = offered;
                 }
-                let message = if rows.is_empty() {
-                    "No Claude sessions found. Sign in to claude.ai in your browser, or use the extension.".to_string()
-                } else if n_found == 0 && app_bound > 0 {
-                    "Your browser protects its cookies; use the browser extension tab.".to_string()
-                } else {
-                    String::new()
-                };
                 let _ = slint::invoke_from_event_loop(move || {
                     let Some(w) = weak.upgrade() else { return };
-                    let items: Vec<ScanItem> = rows
-                        .into_iter()
-                        .map(|(idx, label, detail)| ScanItem {
-                            idx,
-                            label: label.into(),
-                            detail: detail.into(),
-                            checked: idx >= 0,
-                        })
-                        .collect();
+                    if generation.load(Ordering::SeqCst) != gen {
+                        return;
+                    }
                     w.set_scan_items(ModelRc::new(VecModel::from(items)));
                     sync_count(&w);
                     w.set_scan_message(SharedString::from(message));
                     w.set_scanning(false);
                 });
             });
+        })
+    };
+
+    // Entering the Scan tab scans once per opening, unless a browser must be picked
+    // first; leaving the Extension tab stops its poll (restart when it returns).
+    {
+        let (timer, start_poll, start_scan) = (timer.clone(), start_poll.clone(), start_scan.clone());
+        let weak = win.as_weak();
+        win.on_tab_changed(move |t| {
+            if t == 0 {
+                start_poll();
+            } else {
+                timer.stop();
+            }
+            let Some(w) = weak.upgrade() else { return };
+            let fresh = !w.get_scanning()
+                && w.get_scan_items().row_count() == 0
+                && w.get_scan_message().is_empty();
+            if t == 1 && !w.get_choosing_browser() && fresh {
+                start_scan();
+            }
         });
+    }
+    {
+        let (weak, installed, start_scan) = (win.as_weak(), installed.clone(), start_scan.clone());
+        win.on_choose_browser(move |i| {
+            let Some(w) = weak.upgrade() else { return };
+            if let Some(b) = installed.borrow().get(i.max(0) as usize) {
+                remember_browser(b);
+            }
+            w.set_browser_index(i);
+            w.set_choosing_browser(false);
+            start_scan();
+        });
+    }
+    {
+        let (installed, start_scan) = (installed.clone(), start_scan.clone());
+        win.on_browser_changed(move |i| {
+            if let Some(b) = installed.borrow().get(i.max(0) as usize) {
+                remember_browser(b);
+            }
+            start_scan();
+        });
+    }
+    {
+        let start_scan = start_scan.clone();
+        win.on_scan(move || start_scan());
     }
     {
         let weak = win.as_weak();
@@ -210,35 +261,36 @@ pub fn install(
         let (weak, found, nudge) = (win.as_weak(), found.clone(), nudge.clone());
         win.on_add_selected(move || {
             let Some(w) = weak.upgrade() else { return };
+            if w.get_adding() {
+                return;
+            }
             let model = w.get_scan_items();
-            let selected: Vec<ScannedSession> = {
-                let sessions = found.lock().map(|f| f.clone()).unwrap_or_default();
+            let selected: Vec<DetectedAccount> = {
+                let offered = found.lock().map(|f| f.clone()).unwrap_or_default();
                 (0..model.row_count())
                     .filter_map(|i| model.row_data(i))
-                    .filter(|it| it.idx >= 0 && it.checked)
-                    .filter_map(|it| sessions.get(it.idx as usize).cloned())
+                    .filter(|it| it.checked)
+                    .filter_map(|it| offered.get(it.idx as usize).cloned())
                     .collect()
             };
             if selected.is_empty() {
                 return;
             }
             w.set_adding(true);
+            w.set_scan_message(SharedString::from(""));
             let (weak, nudge) = (weak.clone(), nudge.clone());
             std::thread::spawn(move || {
-                let outcomes = setup::add_scanned(&selected);
-                if outcomes.iter().any(is_success) {
+                let result = setup::add_detected(&selected);
+                if result.is_ok() {
                     let _ = nudge.send(crate::refresh::Nudge::All);
                 }
-                let text = outcomes
-                    .iter()
-                    .zip(&selected)
-                    .map(|(o, s)| format!("{}: {}", s.display_name, outcome_text(o)))
-                    .collect::<Vec<_>>()
-                    .join("\n");
                 let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(w) = weak.upgrade() {
-                        w.set_scan_message(SharedString::from(text));
-                        w.set_adding(false);
+                    let Some(w) = weak.upgrade() else { return };
+                    w.set_adding(false);
+                    match result {
+                        // macOS adds, refreshes and closes the sheet.
+                        Ok(()) => w.invoke_done(),
+                        Err(e) => w.set_scan_message(SharedString::from(e)),
                     }
                 });
             });
@@ -254,21 +306,29 @@ pub fn install(
                 return;
             }
             w.set_pasting(true);
+            w.set_paste_hold(false);
             w.set_paste_result(SharedString::from(""));
-            let key = key.trim().to_string();
+            let key = key.to_string();
             let (weak, nudge) = (weak.clone(), nudge.clone());
             std::thread::spawn(move || {
                 let outcome = setup::add_from_session_key(&key);
-                let ok = is_success(&outcome);
-                if ok {
+                if !outcome.is_failure() {
                     let _ = nudge.send(crate::refresh::Nudge::All);
                 }
-                let text = outcome_text(&outcome);
                 let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(w) = weak.upgrade() {
-                        w.set_paste_ok(ok);
-                        w.set_paste_result(SharedString::from(text));
-                        w.set_pasting(false);
+                    let Some(w) = weak.upgrade() else { return };
+                    w.set_pasting(false);
+                    w.set_paste_ok(!outcome.is_failure());
+                    w.set_paste_result(SharedString::from(outcome.message()));
+                    if outcome.is_failure() {
+                        return;
+                    }
+                    // macOS PasteKeyView: clear the key; close unless a warning must be read.
+                    w.set_paste_key(SharedString::from(""));
+                    if outcome.holds_open() {
+                        w.set_paste_hold(true);
+                    } else {
+                        w.invoke_done();
                     }
                 });
             });
@@ -303,10 +363,26 @@ pub fn install(
         win.set_tab(0);
         win.set_ext_status(SharedString::from(WAITING));
         win.set_ext_done(false);
+        win.set_paste_key(SharedString::from(""));
         win.set_paste_result(SharedString::from(""));
+        win.set_paste_ok(false);
+        win.set_paste_hold(false);
+        // Drop any scan still running from a previous opening.
+        generation.fetch_add(1, Ordering::SeqCst);
+        win.set_scanning(false);
+        win.set_adding(false);
         win.set_scan_message(SharedString::from(""));
         win.set_scan_items(ModelRc::new(VecModel::<ScanItem>::default()));
         win.set_selected_count(0);
+        let browsers = installed_windows_browsers();
+        let (index, choosing) =
+            initial_browser(&browsers, settings::load().preferred_scan_browser.as_deref());
+        let names: Vec<SharedString> =
+            browsers.iter().map(|b| SharedString::from(b.display_name())).collect();
+        win.set_browsers(ModelRc::new(VecModel::from(names)));
+        win.set_browser_index(index as i32);
+        win.set_choosing_browser(choosing);
+        *installed.borrow_mut() = browsers;
         if win.show().is_err() {
             return;
         }
@@ -323,4 +399,35 @@ pub fn install(
         });
         start_poll();
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_saved_installed_browser_is_used_without_asking() {
+        let installed = [Browser::Chrome, Browser::Edge, Browser::Brave];
+        assert_eq!(initial_browser(&installed, Some("edge")), (1, false));
+    }
+
+    #[test]
+    fn two_browsers_and_no_usable_choice_ask_first() {
+        let installed = [Browser::Chrome, Browser::Edge];
+        assert_eq!(initial_browser(&installed, None), (0, true));
+        // Saved but since uninstalled: ask again, as macOS does.
+        assert_eq!(initial_browser(&installed, Some("brave")), (0, true));
+    }
+
+    #[test]
+    fn one_or_no_browser_never_asks() {
+        assert_eq!(initial_browser(&[Browser::Brave], None), (0, false));
+        assert_eq!(initial_browser(&[], None), (0, false));
+    }
+
+    #[test]
+    fn browser_keys_are_the_stored_raw_values() {
+        assert_eq!(browser_key(&Browser::ChromeDev), "chromeDev");
+        assert_eq!(browser_key(&Browser::Edge), "edge");
+    }
 }

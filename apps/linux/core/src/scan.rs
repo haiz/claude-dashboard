@@ -1,6 +1,6 @@
 //! Detects Claude sessions in Windows browser profiles.
 //!
-//! [`classify_profile`] is the pure decision; [`scan_windows_profiles`] wires
+//! [`classify_profile`] is the pure decision; [`scan_windows_browser`] wires
 //! the existing discovery and cookie primitives into it.
 
 use crate::cookie::CookieError;
@@ -83,10 +83,22 @@ fn scan_one_profile(p: crate::browser::WindowsProfile) -> ProfileScanStatus {
     classify_profile(p.browser, &p.profile_dir, &name, p.google_email, &cookies)
 }
 
-/// Scans every Chrome/Edge/Brave profile under `%LOCALAPPDATA%`; one status per
-/// discovered profile.
+/// The browsers installed under `%LOCALAPPDATA%` that the scan can read.
 #[cfg(windows)]
-pub fn scan_windows_profiles() -> Vec<ProfileScanStatus> {
+pub fn installed_windows_browsers() -> Vec<Browser> {
+    match std::env::var("LOCALAPPDATA") {
+        Ok(v) if !v.is_empty() => {
+            crate::browser::installed_windows_browsers_under(std::path::Path::new(&v))
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Scans every profile of one browser under `%LOCALAPPDATA%` (macOS reads only
+/// the browser the user picked); one `(profile_dir, status)` per discovered
+/// profile.
+#[cfg(windows)]
+pub fn scan_windows_browser(browser: Browser) -> Vec<(String, ProfileScanStatus)> {
     use crate::browser::discover_windows_profiles_under;
 
     let local = match std::env::var("LOCALAPPDATA") {
@@ -95,7 +107,8 @@ pub fn scan_windows_profiles() -> Vec<ProfileScanStatus> {
     };
     discover_windows_profiles_under(&local)
         .into_iter()
-        .map(scan_one_profile)
+        .filter(|p| p.browser == browser)
+        .map(|p| (p.profile_dir.clone(), scan_one_profile(p)))
         .collect()
 }
 

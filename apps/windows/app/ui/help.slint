@@ -294,7 +294,7 @@ export component HelpPane inherits Flickable {
                 HelpStep { n: 1; body: @markdown("Sign in to claude.ai in **Chrome, Chrome Dev, Edge, Brave or Arc**. Use one browser profile per account."); }
                 HelpStep { n: 2; body: @markdown("Open **Settings › Accounts** and click **Add Account…**"); }
                 HelpStep { n: 3; body: @markdown("Pick **Browser extension** (recommended, works with Chrome, Edge, Brave and Arc). In the browser's extensions page turn on Developer mode, click **Load unpacked** and select `%LOCALAPPDATA%\\claude-dashboard\\extension` (if you used the installer script; otherwise the folder you unzipped claude-dashboard-extension.zip to). Then open claude.ai: the extension sends the key by itself."); }
-                HelpStep { n: 4; body: @markdown("Or pick **Scan browser** (Chrome, Chrome Dev, Edge and Brave), check the accounts it finds, then click **Add selected**."); }
+                HelpStep { n: 4; body: @markdown("Or pick **Scan browser** (Chrome, Chrome Dev, Edge and Brave), check the accounts it finds, then click **Add Selected**."); }
             }
             HelpCallout { kind: "tip"; body: @markdown("Scan cannot read profiles that use Chrome's app-bound (`v20`) cookies. For those, use the **Browser extension**."); }
             HelpCallout { kind: "note"; body: @markdown("No browser session? In the same window, open **Paste a session key** and paste the account's claude.ai `sessionKey` cookie."); }
@@ -423,7 +423,7 @@ export component HelpPane inherits Flickable {
             tile: #a2845e;
             VerticalLayout {
                 spacing: 14px;
-                HelpFAQ { question: "\"No profiles found\" when adding"; answer: @markdown("Make sure you are signed in to claude.ai in that browser, then click **Scan** again. A profile that uses app-bound (`v20`) cookies cannot be read: use the **Browser extension** tab for it."); }
+                HelpFAQ { question: "\"No profiles found\" when adding"; answer: @markdown("Make sure you are signed in to claude.ai in that browser, then click **Retry Scan**. A profile that uses app-bound (`v20`) cookies cannot be read: use the **Browser extension** tab for it."); }
                 HelpFAQ { question: "A card says \"Session expired\""; answer: @markdown("Open the browser profile named on the card, sign in to claude.ai, then click **Re-sync**. For an extension account, the extension sends the new key once you are signed in. A pasted key can't be re-synced: add it again with **Paste a session key**."); }
                 HelpFAQ { question: "The extension shows a red !"; answer: @markdown("The bridge (`claude-dashboard-bridge.exe`) is missing or reported an error. Reinstall the app, then reload the extension."); }
                 HelpFAQ { question: "Usage is not updating"; answer: @markdown("Click **Refresh** and check **Auto Refresh** in Settings › General. Expired accounts are skipped until you re-sync them."); }
