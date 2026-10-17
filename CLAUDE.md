@@ -175,8 +175,8 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
     verified by run-checks, not CI. Sub-project 3 adds the Add Account wizard (extension / scan /
     paste tabs) and the Settings Accounts (delete + mute, re-sync) and General (auto refresh,
     launch at startup) panes. Sub-project 4 adds charts: the per-account interactive usage chart
-    (`ui/chart.slint`, `src/chart.rs`, pure helpers in `chart_model.rs`), opened by the "View
-    chart" button, and the Overview multi-account chart opened from the sidebar "Overview" item. Sub-project 5 adds
+    (`ui/chart.slint`, `src/chart.rs`, pure helpers in `chart_model.rs`), shown in the History
+    box on the account page (`src/history.rs`, with the Reset Cycles list), and the Overview multi-account chart opened from the sidebar "Overview" item. Sub-project 5 adds
     the green Claude Code badge (`core::claude_code`) and the Help pane. Run Command and the
     Command Log were later removed, as on macOS; the app deletes their leftover files at launch
     (`app/src/migration.rs`; see `contract/windows.md`, "Launch cleanup"). Sub-project 6 adds
@@ -192,7 +192,10 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
     pasted key) that drives the Settings label and the expired-card hint; `settings.json` keys are
     `autoRefreshEnabled`, `autoRefreshMinutes`, `launchAtStartup`, `autoUpdate`, `lastAutoUpdateCheck`
     (+ `preferredScanBrowser`); the dev seed (`CLAUDE_DASHBOARD_FAKE_ROWS=1`) shows alice/bob/carol/dave/erin,
-    covering every card state.
+    covering every card state. Also `pin.rs` (one pinned account), `resync.rs` (per-kind re-sync and
+    Re-sync All), `tips.rs` (Settings info tips), `help.rs` (Help topics) and `row_sync.rs` (refreshes
+    update the row models in place, so pane state survives). Auto Refresh changes send
+    `Nudge::Reschedule` (re-arm the timer, no fetch).
   - **apps/windows/bridge/** — `claude-dashboard-bridge.exe`, a native-messaging host for the
     browser extension. `handler.rs` runs the key intake over an injected `Environment` trait
     (so tests touch no network/store/pipe); `real_env.rs` is the production wiring; `framing.rs`

@@ -123,7 +123,9 @@ clamped to [1, 60]; when disabled the app refreshes only on demand. A legacy
 `autoRefreshSeconds` (no `autoRefreshMinutes` present) migrates on load to
 `round(seconds / 60)` clamped to [1, 60] (0 means 5) and is not written back. The
 removed `shell` key is dropped the same way.
-Changes take effect without a restart.
+Changes take effect without a restart. An Auto Refresh change only re-arms the
+refresh timer with the new interval (as macOS reschedules its timer); it never
+starts a fetch. Writes from the Settings pane run one at a time, in click order.
 
 ## Launch at startup
 
@@ -136,6 +138,31 @@ The Add Account scan classifies each browser profile as Found (a decodable `v10`
 session), AppBound (`v20` cookie: the UI says "use the extension") or NoSession.
 AppBound profiles are never force-decoded. Deleting an extension-sourced account
 from the Settings Accounts pane mutes its install (see the muted rule above).
+
+Scan roots, under `%LOCALAPPDATA%`: `Google\Chrome\User Data`,
+`Google\Chrome Dev\User Data` (shown as "Chrome Dev", stored as `"chromeDev"`),
+`Microsoft\Edge\User Data` and `BraveSoftware\Brave-Browser\User Data`. Arc is
+reached only through the extension.
+
+Downgrade: a Windows build from before Chrome Dev support has no `chromeDev`
+browser, so it fails to decode a `"chromeDev"` record (the same hazard
+`contract/account-schema.md` describes for macOS). Once a Chrome Dev account is
+added, do not run such a build.
+
+## Account kinds
+
+Windows has three kinds of account (macOS has only scanned and pasted). Labels
+and hints come from `core::account_kind`:
+
+| Kind | How to tell | Settings > Accounts label | Expired-card hint | Re-sync |
+|---|---|---|---|---|
+| Scanned | `source` is a browser and `chromeProfilePath` is set | the profile name (else path) | `Open <browser> profile "<profile>" and login to claude.ai, then re-sync.` | re-reads the key from that `v10` profile with the macOS `resyncCore` rules: stop if the profile now holds a different account (by `account_uuid`), else save the key, set `active` and re-resolve the org (the `lastActiveOrg` cookie, ignored when empty, else the stored org, as the org-selection preference) |
+| Extension | `source: manual` with a binding in `extension-sources.json` | `Browser extension (<browser>)` | `Open <browser> and sign in to claude.ai; the extension sends the new key.` | reads nothing; refreshes usage |
+| Pasted key | `source: manual`, no binding | `Pasted key` | `This key was pasted by hand. Add it again from Settings › Accounts, Add Account, "Paste a session key instead".` | fails with "This account's session key was pasted by hand. Paste a new one to re-sync it." |
+
+**Re-sync All** re-syncs every account by its kind, then refreshes every account
+in a single pass. Its "Re-syncing… (n/total)" progress counts scanned accounts
+only; per-account failures show in that card's error line after the refresh.
 
 ## App reload pipe
 
@@ -274,6 +301,11 @@ resolved tag, installs the pinned toolchain, runs clippy and tests with
 runs `gh release upload ... --clobber` for `ClaudeDashboard-x64.msi` and
 `claude-dashboard-extension.zip`.
 
+Build input: `CLAUDE_DASHBOARD_RELEASE_DATE` (`yyyy-MM-dd`), the tag's commit
+date (`%cs`), set before the MSI build. `app/build.rs` bakes it into the binary
+for the About header ("Oct 17, 2026"); unset or empty (local builds, or no git
+output) means no date is shown.
+
 Guardrails, the same five as `release-linux.yml`: published-release trigger only
 (never a tag push); upload only (exactly one `gh release` line, which is `upload`;
 no `gh api`; the only `uses:` is `actions/checkout`); never name the macOS
@@ -307,7 +339,8 @@ single-instance mutex). Check each pane:
   point, Reset Cycles list, Pin / Re-sync / Remove with inline confirmation.
 - **Overview:** one line per account with data, `(no data)` chips for alice, dave and erin, hover card,
   pan and window chips.
-- **Settings > Accounts:** Add Account wizard (extension / scan / paste), Re-sync All progress `(n/5)`,
+- **Settings > Accounts:** Add Account wizard (extension / scan / paste), Re-sync All progress `(n/3)` (alice, carol and erin
+  are the scanned rows),
   Delete with Confirm / Cancel, kind labels (Default, Browser extension (Microsoft Edge), Pasted key, Work).
 - **Settings > General:** About header, info tips on Enable auto refresh and Interval, interval stepper,
   Launch at startup, Updates card, Reset All Settings with confirmation (accounts, logs and launch at
