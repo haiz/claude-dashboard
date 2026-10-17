@@ -62,6 +62,8 @@ component PaneButton inherits Rectangle {
 component AccountsSettingsPane inherits VerticalLayout {
     in property <[UiRow]> rows;
     in property <[string]> muted;
+    in property <string> resync-progress;
+    in property <bool> resyncing;
     callback add-account();
     callback resync();
     callback delete-account(string);
@@ -72,8 +74,12 @@ component AccountsSettingsPane inherits VerticalLayout {
     HorizontalLayout {
         spacing: 8px;
         alignment: start;
-        PaneButton { label: "Add Account"; clicked => { root.add-account(); } }
-        PaneButton { label: "Re-sync All"; clicked => { root.resync(); } }
+        PaneButton { label: "Add Account\u{2026}"; clicked => { root.add-account(); } }
+        PaneButton {
+            label: root.resyncing ? root.resync-progress : "Re-sync All";
+            enabled: !root.resyncing && root.rows.length > 0;
+            clicked => { root.resync(); }
+        }
     }
     Flickable {
         content-height: list.preferred-height;
@@ -82,7 +88,7 @@ component AccountsSettingsPane inherits VerticalLayout {
             alignment: start;
             if root.rows.length == 0: Text { text: "No accounts."; color: Theme.text-secondary; }
             for acct in root.rows: Rectangle {
-                height: 56px;
+                height: 64px;
                 background: Theme.card-bg;
                 border-radius: 8px;
                 border-width: 1px;
@@ -100,6 +106,17 @@ component AccountsSettingsPane inherits VerticalLayout {
                             font-size: 11px;
                             overflow: elide;
                         }
+                        Text {
+                            text: acct.kind-label;
+                            color: Theme.text-secondary;
+                            font-size: 11px;
+                            overflow: elide;
+                        }
+                    }
+                    if acct.expired: Text {
+                        text: "\u{26a0}";
+                        color: #ff9f0a;
+                        vertical-alignment: center;
                     }
                     if root.confirming-id != acct.id: PaneButton {
                         label: "Delete"; tint: Theme.danger;
@@ -288,8 +305,12 @@ export component AppWindow inherits Window {
     in-out property <Pane> selection: Pane.dashboard;
     in-out property <string> selected-account-id;
     callback resync();
+    callback resync-all();
     // True while a refresh runs (any scope); Rust raises it with the card spinners.
     in property <bool> refreshing: false;
+    // Settings > Accounts Re-sync All: "Re-syncing… (n/total)" while running, else empty.
+    in property <string> resync-progress;
+    in property <bool> resyncing;
     // Account card and account page actions (ids are account ids).
     callback toggle-pin(string, bool);
     callback resync-account(string);
@@ -538,8 +559,10 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
                 rows: root.account-rows;
                 muted: root.muted-sources;
+                resync-progress: root.resync-progress;
+                resyncing: root.resyncing;
                 add-account => { root.add-account(); }
-                resync => { root.resync(); }
+                resync => { root.resync-all(); }
                 delete-account(id) => { root.delete-account(id); }
                 unmute(id) => { root.unmute(id); }
             }

@@ -69,6 +69,11 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
+/// Per-account Re-sync All failure texts waiting for the refresh that follows, which
+/// would otherwise replace the rows and drop them. Drained by `apply_output`.
+static RESYNC_FAILURES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, String>>> =
+    std::sync::LazyLock::new(Default::default);
+
 /// The single fan-out for one refresh result: main window rows, popover rows
 /// and the tray ring + tooltip (the macOS menu-bar row; the tray redraws only
 /// when its value or tooltip changes). UI thread only.
@@ -79,7 +84,14 @@ fn apply_output(
     now: f64,
 ) {
     eprintln!("refresh: {} rows, peak {:.0}%", out.rows.len(), out.peak);
-    let rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
+    let mut rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
+    // Re-sync All failures ride this refresh into the cards' error lines (macOS setError).
+    let failures = std::mem::take(&mut *RESYNC_FAILURES.lock().unwrap_or_else(|e| e.into_inner()));
+    for r in rows.iter_mut().filter(|r| !r.expired) {
+        if let Some(msg) = failures.get(r.id.as_str()) {
+            r.error = msg.as_str().into();
+        }
+    }
     if let Some(pop) = pop_weak.upgrade() {
         pop.set_account_rows(slint::ModelRc::new(slint::VecModel::from(rows.clone())));
         pop.set_refreshing(false);
@@ -259,6 +271,58 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
                     patch_row(&w, &id, |r| r.error = msg.into());
                 });
             }
+        });
+    });
+    // Settings > Accounts "Re-sync All": scanned accounts are re-read on a worker with
+    // "Re-syncing… (n/total)" progress, then one Nudge::All refreshes everything.
+    let (w, tx) = (app.as_weak(), nudge_tx.clone());
+    app.on_resync_all(move || {
+        use slint::Model;
+        let Some(app) = w.upgrade() else { return };
+        if app.get_resyncing() {
+            return;
+        }
+        let ids: Vec<String> = app.get_account_rows().iter().map(|r| r.id.to_string()).collect();
+        if ids.is_empty() {
+            return;
+        }
+        app.set_resyncing(true);
+        // Until the worker counts the scanned accounts.
+        app.set_resync_progress("Re-syncing\u{2026}".into());
+        let (w, tx) = (w.clone(), tx.clone());
+        std::thread::spawn(move || {
+            let post = |text: Option<String>| {
+                let w = w.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(a) = w.upgrade() {
+                        a.set_resyncing(text.is_some());
+                        a.set_resync_progress(text.unwrap_or_default().into());
+                    }
+                });
+            };
+            if dev_run() {
+                // Dev runs never touch the store: just walk the progress text.
+                for done in 1..=ids.len() {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    post(Some(settings_accounts::progress_text(done, ids.len())));
+                }
+                post(None);
+                return;
+            }
+            post(Some(settings_accounts::progress_text(0, resync::scanned_total(&ids))));
+            let results = resync::resync_all(&ids, &resync::RealResyncEnv, &|done, total| {
+                post(Some(settings_accounts::progress_text(done, total)));
+            });
+            {
+                let mut f = RESYNC_FAILURES.lock().unwrap_or_else(|e| e.into_inner());
+                for (id, outcome) in results {
+                    if let resync::ResyncOutcome::Failed(msg) = outcome {
+                        f.insert(id, msg);
+                    }
+                }
+            }
+            post(None);
+            let _ = tx.send(refresh::Nudge::All);
         });
     });
     let w = app.as_weak();
