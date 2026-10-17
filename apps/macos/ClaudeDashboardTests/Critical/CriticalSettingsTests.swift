@@ -77,4 +77,21 @@ final class CriticalSettingsTests: XCTestCase {
         XCTAssertEqual(p, CriticalParameters(x: 16.3, pace: 50, highPace: 80,
                                              quiet: QuietHours(startHour: 0, endHour: 7, timeZone: TimeZone(identifier: "Asia/Ho_Chi_Minh")!)))
     }
+
+    /// From pace 90 / high 95, resetting pace first must not leave high pace at 95.
+    func testResetToDefaults() {
+        let s = CriticalSettings(defaults: defaults)
+        s.pace = 90
+        s.highPace = 95
+        s.quietStart = 22
+        s.quietEnd = 5
+        s.timeZoneId = "Europe/Paris"
+
+        s.resetToDefaults()
+
+        for t in [s, CriticalSettings(defaults: defaults)] {
+            XCTAssertEqual([t.pace, t.highPace, t.quietStart, t.quietEnd], [50, 80, 0, 7])
+            XCTAssertEqual(t.timeZoneId, "Asia/Ho_Chi_Minh")
+        }
+    }
 }

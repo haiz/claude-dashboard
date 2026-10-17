@@ -17,6 +17,10 @@ final class CriticalSettings: ObservableObject {
     static let paceStep = 5
     static let hourRange = 0...23
     static let defaultTimeZone = "Asia/Ho_Chi_Minh"
+    static let defaultPace = 50
+    static let defaultHighPace = 80
+    static let defaultQuietStart = 0
+    static let defaultQuietEnd = 7
 
     private let defaults: UserDefaults
 
@@ -46,13 +50,22 @@ final class CriticalSettings: ObservableObject {
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
-        let pace = Self.stored(defaults, Self.paceKey, in: Self.paceRange, default: 50)
+        let pace = Self.stored(defaults, Self.paceKey, in: Self.paceRange, default: Self.defaultPace)
         self.pace = pace
-        highPace = max(Self.stored(defaults, Self.highPaceKey, in: Self.paceRange, default: 80), pace)
-        quietStart = Self.stored(defaults, Self.quietStartKey, in: Self.hourRange, default: 0)
-        quietEnd = Self.stored(defaults, Self.quietEndKey, in: Self.hourRange, default: 7)
+        highPace = max(Self.stored(defaults, Self.highPaceKey, in: Self.paceRange, default: Self.defaultHighPace), pace)
+        quietStart = Self.stored(defaults, Self.quietStartKey, in: Self.hourRange, default: Self.defaultQuietStart)
+        quietEnd = Self.stored(defaults, Self.quietEndKey, in: Self.hourRange, default: Self.defaultQuietEnd)
         let zone = defaults.string(forKey: Self.timeZoneKey)
         timeZoneId = zone.flatMap(TimeZone.init(identifier:)) != nil ? zone! : Self.defaultTimeZone
+    }
+
+    /// Restores every setting to its default. Pace goes first so `highPace` may drop to 80.
+    func resetToDefaults() {
+        pace = Self.defaultPace
+        highPace = Self.defaultHighPace
+        quietStart = Self.defaultQuietStart
+        quietEnd = Self.defaultQuietEnd
+        timeZoneId = Self.defaultTimeZone
     }
 
     /// nil when start == end (no quiet hours).

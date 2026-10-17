@@ -3,13 +3,15 @@ import AppKit
 
 /// Settings > General: app identity (icon, name, version), auto refresh
 /// (on/off plus a 1-60 minute interval), Auto Ping (on/off), auto switch (on/off, 5h and 7d thresholds, menu bar toggle),
-/// Critical Accounts (paces, quiet hours, time zone) and updates (daily toggle plus the manual check).
+/// Critical Accounts (paces, quiet hours, time zone), updates (daily toggle plus the manual check)
+/// and Reset All Settings (asks first, then `resetSettingsToDefaults`).
 /// Every setting carries an `InfoTip` (hover summary, click for detail and example, link to Help).
 ///
 ///     GeneralSettingsPane(viewModel: vm).environmentObject(updateViewModel)
 struct GeneralSettingsPane: View {
     @ObservedObject var viewModel: DashboardViewModel
     @EnvironmentObject var updateViewModel: UpdateViewModel
+    @State private var confirmingReset = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -88,8 +90,27 @@ struct GeneralSettingsPane: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                Section {
+                    HStack {
+                        Spacer()
+                        Button("Reset All Settings\u{2026}", role: .destructive) { confirmingReset = true }
+                            .help("Restore every setting on this page to its default")
+                    }
+                } footer: {
+                    Text("Accounts, the home account and logs are kept.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
+        }
+        .confirmationDialog("Reset all settings to their defaults?", isPresented: $confirmingReset) {
+            Button("Reset All Settings", role: .destructive) {
+                viewModel.resetSettingsToDefaults()
+                updateViewModel.autoUpdateEnabled = true
+            }
+        } message: {
+            Text("Auto refresh, Auto Ping, Auto Switch, Critical Accounts and Updates go back to their defaults.")
         }
     }
 

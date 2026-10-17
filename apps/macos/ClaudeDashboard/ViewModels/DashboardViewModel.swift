@@ -106,6 +106,7 @@ final class DashboardViewModel: ObservableObject {
     @Published var autoRefreshEnabled: Bool {
         didSet { AppDefaults.shared.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
     }
+    static let defaultAutoRefreshMinutes = 5
     @Published var autoRefreshMinutes: Int {
         didSet { AppDefaults.shared.set(autoRefreshMinutes, forKey: "autoRefreshMinutes"); scheduleAutoRefresh() }
     }
@@ -164,7 +165,7 @@ final class DashboardViewModel: ObservableObject {
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.autoRefreshMinutes = {
             let val = AppDefaults.shared.integer(forKey: "autoRefreshMinutes")
-            return val > 0 ? val : 5
+            return val > 0 ? val : Self.defaultAutoRefreshMinutes
         }()
         self.accountStore = accountStore
         self.apiService = apiService
@@ -219,6 +220,17 @@ final class DashboardViewModel: ObservableObject {
 
         // Auto-load data on launch
         Task { await self.refreshAll() }
+    }
+
+    /// Settings > General > Reset All: every setting on that page except Updates (owned by
+    /// `UpdateViewModel`) goes back to its default. Accounts, the home account and logs stay.
+    func resetSettingsToDefaults() {
+        autoRefreshEnabled = true
+        autoRefreshMinutes = Self.defaultAutoRefreshMinutes
+        setAutoPingEnabled(false)
+        criticalSettings.resetToDefaults()
+        autoSwitchSettings.resetToDefaults()
+        Task { await runAutoSwitch() }
     }
 
     private func scheduleAutoRefresh() {

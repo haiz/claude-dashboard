@@ -17,6 +17,8 @@ final class AutoSwitchSettings: ObservableObject {
     static let priorityBaselineKey = "autoSwitchPriorityBaseline"
     static let fiveHourRange = 50...99
     static let sevenDayRange = 50...100
+    static let defaultFiveHour = 95
+    static let defaultSevenDay = 99
 
     private let defaults: UserDefaults
 
@@ -42,8 +44,8 @@ final class AutoSwitchSettings: ObservableObject {
     init(defaults: UserDefaults) {
         self.defaults = defaults
         isEnabled = defaults.object(forKey: Self.enabledKey) as? Bool ?? true
-        fiveHourThreshold = Self.stored(defaults, Self.fiveHourKey, in: Self.fiveHourRange, default: 95)
-        sevenDayThreshold = Self.stored(defaults, Self.sevenDayKey, in: Self.sevenDayRange, default: 99)
+        fiveHourThreshold = Self.stored(defaults, Self.fiveHourKey, in: Self.fiveHourRange, default: Self.defaultFiveHour)
+        sevenDayThreshold = Self.stored(defaults, Self.sevenDayKey, in: Self.sevenDayRange, default: Self.defaultSevenDay)
         showWidgetToggle = defaults.object(forKey: Self.showWidgetToggleKey) as? Bool ?? true
         priority = defaults.string(forKey: Self.priorityIdKey).flatMap(UUID.init(uuidString:)).map { id in
             AutoSwitchPriority(
@@ -51,6 +53,14 @@ final class AutoSwitchSettings: ObservableObject {
                 baseline: (defaults.object(forKey: Self.priorityBaselineKey) as? Double)
                     .map(Date.init(timeIntervalSince1970:)))
         }
+    }
+
+    /// Restores every setting to its default; the home account (`priority`) is kept.
+    func resetToDefaults() {
+        isEnabled = true
+        fiveHourThreshold = Self.defaultFiveHour
+        sevenDayThreshold = Self.defaultSevenDay
+        showWidgetToggle = true
     }
 
     func setPriority(_ priority: AutoSwitchPriority?) {

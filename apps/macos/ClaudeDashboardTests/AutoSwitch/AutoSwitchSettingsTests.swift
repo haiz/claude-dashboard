@@ -69,4 +69,25 @@ final class AutoSwitchSettingsTests: XCTestCase {
         XCTAssertEqual(s.fiveHourThreshold, 95)
         XCTAssertEqual(s.sevenDayThreshold, 99)
     }
+
+    /// Reset restores every setting but keeps the home account, which is not a setting.
+    func testResetToDefaultsKeepsPriority() {
+        let s = AutoSwitchSettings(defaults: defaults)
+        s.isEnabled = false
+        s.fiveHourThreshold = 60
+        s.sevenDayThreshold = 70
+        s.showWidgetToggle = false
+        let priority = AutoSwitchPriority(accountId: UUID(), baseline: nil)
+        s.setPriority(priority)
+
+        s.resetToDefaults()
+
+        let reloaded = AutoSwitchSettings(defaults: defaults)
+        for settings in [s, reloaded] {
+            XCTAssertTrue(settings.isEnabled)
+            XCTAssertEqual(settings.thresholds, AutoSwitchThresholds(fiveHour: 95, sevenDay: 99))
+            XCTAssertTrue(settings.showWidgetToggle)
+            XCTAssertEqual(settings.priority, priority)
+        }
+    }
 }

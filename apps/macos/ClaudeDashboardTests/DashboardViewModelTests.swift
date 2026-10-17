@@ -209,6 +209,25 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(vm.accountStates.map(\.account.name), ["C", "A", "B"])
     }
 
+    // MARK: - Reset settings
+
+    func testResetSettingsToDefaults() throws {
+        let (vm, _) = try makeViewModelWithStore()
+        vm.autoRefreshEnabled = false
+        vm.autoRefreshMinutes = 30
+        vm.setAutoPingEnabled(true)
+        vm.autoSwitchSettings.fiveHourThreshold = 60
+        vm.criticalSettings.pace = 90
+
+        vm.resetSettingsToDefaults()
+
+        XCTAssertTrue(vm.autoRefreshEnabled)
+        XCTAssertEqual(vm.autoRefreshMinutes, 5)
+        XCTAssertFalse(vm.pingController.isAutoPingEnabled)
+        XCTAssertEqual(vm.autoSwitchSettings.fiveHourThreshold, 95)
+        XCTAssertEqual(vm.criticalSettings.pace, 50)
+    }
+
     // MARK: - Identity backfill
 
     /// A view model wired to an explicit store and a MockURLProtocol-backed
