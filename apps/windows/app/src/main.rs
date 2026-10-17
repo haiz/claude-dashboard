@@ -5,6 +5,7 @@ use slint::ComponentHandle;
 
 mod chart;
 mod chart_model;
+mod history;
 mod overview;
 mod instance;
 mod migration;
@@ -92,6 +93,8 @@ fn apply_output(
         {
             app.set_selection(Pane::Dashboard);
         }
+        // Slide the open History chart to "now" and reload its data.
+        history::on_refresh(&app);
     }
     let bar = claude_dashboard_core::rows::menu_bar_row(&out.rows);
     tray::update_label(
@@ -761,7 +764,7 @@ fn main() -> Result<(), slint::PlatformError> {
     install_card_actions(&app, nudge_tx.clone());
     // Re-sync button: same nudge the reload pipe sends (refreshes all accounts).
     install_updates(&app);
-    chart::install(&app);
+    history::install(&app);
     overview::install(&app);
     {
         // The account page's Refresh: this account only (macOS `refreshAll(only:)`).
@@ -960,7 +963,7 @@ fn main() -> Result<(), slint::PlatformError> {
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
         apply_output(&app.as_weak(), &popover.as_weak(), &fake_rows(now), now);
-        chart::seed_fake_history();
+        history::seed_fake_history();
     } else {
         spawn_refresh_loop(nudge_rx, app.as_weak(), popover.as_weak());
     }

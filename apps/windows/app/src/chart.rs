@@ -1,28 +1,31 @@
-//! Per-account interactive usage chart: loads the logged series off the UI
-//! thread and holds the interaction state (preset, range, hover). All
-//! geometry comes from `core::chart` via `chart_model`; the `.slint` only
-//! draws what this module computes.
-
-use std::cell::RefCell;
-use std::sync::atomic::{AtomicU64, Ordering};
+//! The reusable chart container: preset / range / pan / zoom / ruler / hover
+//! state and the view it produces (`Interaction`, plain data, testable without
+//! Slint). The per-account History chart (`history.rs`) and the Overview
+//! (`overview.rs`) both wrap it. All geometry comes from `core::chart` via
+//! `chart_model`; the `.slint` only draws what this module computes.
 
 use claude_dashboard_core::chart::{
-    format_tick, make_scale, nearest_entry, zoom_range, Entry, Range, Scale,
+    average_rate, format_tick, make_scale, nearest_entry, noon_markers, Entry, Range, Scale,
 };
-use claude_dashboard_core::store::UsageLogStore;
-use slint::ComponentHandle;
+use claude_dashboard_core::store::ResetCycle;
 
 use crate::chart_model::{
-    axis_ticks, points_to_entries, preset_window_and_span, series_path, x_to_ms,
-};
-use crate::{AppWindow, ChartState, ChartTick};
+    axis_ticks, dashed_vlines, format_duration, format_stamp, interpolate, preset_span_ms,
+    series_path, x_to_ms,
+};use crate::{ChartState, ChartTick};
 
 /// Uniform padding (px) around the plot; holds the axis labels.
 pub(crate) const PAD: f64 = 36.0;
-const DEFAULT_PRESET: &str = "24h";
+pub const DEFAULT_PRESET: &str = "24h";
+/// The smallest zoom span (macOS `InteractiveChartContainer`: 5 minutes).
+const MIN_ZOOM_MS: f64 = 5.0 * 60_000.0;
 
-/// Bumped on every open/preset/close so a slow worker never overwrites a newer view.
-static GENERATION: AtomicU64 = AtomicU64::new(0);
+/// Drag behaviour on the plot (macOS `InteractionMode`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    Pan,
+    Zoom,
+}
 
 /// What the UI should show; plain data so it is testable without Slint.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -36,32 +39,191 @@ pub struct View {
     pub loading: bool,
     pub preset: String,
     pub plot: (f64, f64, f64, f64),
+    /// "Custom" label shown after a pan / zoom / cycle selection.
+    pub custom: bool,
+    pub pan_mode: bool,
+    pub ruler: bool,
+    /// Dashed local-noon rules as one Slint path.
+    pub noon_path: String,
+    /// "Avg: 1.2%/h" or "Avg: --" and whether it is shown hot (> 0.1).
+    pub avg_text: String,
+    pub avg_hot: bool,
+    /// Ruler: x of point A / B (px) and the Δ% card lines.
+    pub measure_a_x: Option<f64>,
+    pub measure_b_x: Option<f64>,
+    pub measure_range: String,
+    pub measure_delta: String,
+    pub measure_duration: String,
+    pub measure_up: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct Interaction {
+    /// The active preset; stays set while `custom` (the label is drawn instead).
     pub preset: String,
+    /// Usage window code: 5h = 0, 7d = 1, Fable = 3.
+    pub window: i64,
+    pub mode: Mode,
+    /// A pan / zoom / cycle selection froze the range (no live-edge following).
+    pub custom: bool,
+    /// The ruler tool is armed: clicks measure, drags and presets are off.
+    pub ruler: bool,
+    /// Ruler points: A, then B once the second click lands.
+    pub measure: Option<(Entry, Option<Entry>)>,
+    pub selected_cycle: Option<ResetCycle>,
     entries: Vec<Entry>,
-    /// The preset's full range (what double-click resets to).
-    base: Range,
     pub range: Range,
     size: (f64, f64),
     hover: Option<(f64, f64)>,
     loading: bool,
+    now_ms: f64,
 }
 
 impl Interaction {
     pub fn new(preset: &str, now_ms: f64) -> Self {
-        let base = preset_range(preset, now_ms);
         Self {
             preset: preset.to_string(),
+            window: 0,
+            mode: Mode::Pan,
+            custom: false,
+            ruler: false,
+            measure: None,
+            selected_cycle: None,
             entries: Vec::new(),
-            base,
-            range: base,
+            range: preset_range(preset, now_ms),
             size: (640.0, 320.0),
             hover: None,
             loading: true,
+            now_ms,
         }
+    }
+
+    /// Switch the usage window (5h / 7d / Fable): drops the cycle filter and
+    /// the ruler points; the range and its `custom` state are kept.
+    pub fn set_window(&mut self, window: i64) {
+        self.window = window;
+        self.selected_cycle = None;
+        self.measure = None;
+    }
+
+    /// A preset click: the trailing window of that preset ending at `now_ms`;
+    /// clears `custom` and any cycle filter. Entries stay (the caller loaded
+    /// the whole window's history).
+    pub fn set_preset(&mut self, preset: &str, now_ms: f64) {
+        self.preset = preset.to_string();
+        self.now_ms = now_ms;
+        self.range = preset_range(preset, now_ms);
+        self.custom = false;
+        self.selected_cycle = None;
+        self.measure = None;
+        self.hover = None;
+    }
+
+    pub fn set_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+    }
+
+    /// Arm / disarm the ruler; disarming drops the points.
+    pub fn set_ruler(&mut self, on: bool) {
+        self.ruler = on;
+        if !on {
+            self.measure = None;
+        }
+    }
+
+    /// Pan by a pointer movement in px (drag right = back in time); freezes
+    /// the range (`custom`) and never moves its end past "now".
+    pub fn pan_by_px(&mut self, dx: f64) {
+        let sc = self.scale();
+        let span = self.range.to_ms - self.range.from_ms;
+        if sc.plot_width <= 0.0 || span <= 0.0 {
+            return;
+        }
+        let delta = -dx * span / sc.plot_width;
+        let mut from = self.range.from_ms + delta;
+        let mut to = self.range.to_ms + delta;
+        if to > self.now_ms {
+            from -= to - self.now_ms;
+            to = self.now_ms;
+        }
+        self.range = Range { from_ms: from, to_ms: to };
+        self.custom = true;
+        self.hover = None;
+    }
+
+    /// Zoom onto a drag-selected px span: clamped to the visible range;
+    /// selections under 5 minutes are ignored. Freezes the range.
+    pub fn zoom_select(&mut self, x0: f64, x1: f64) {
+        let sc = self.scale();
+        let (a, b) = (x_to_ms(x0.min(x1), &sc), x_to_ms(x0.max(x1), &sc));
+        let a = a.max(self.range.from_ms);
+        let b = b.min(self.range.to_ms);
+        if b - a < MIN_ZOOM_MS {
+            return;
+        }
+        self.range = Range { from_ms: a, to_ms: b };
+        self.custom = true;
+        self.hover = None;
+    }
+
+    /// Ruler click: first click sets A, second sets B (ignored within a
+    /// second of A), a third starts over. Values are interpolated on the
+    /// series like macOS; clicks outside the plot are ignored.
+    pub fn measure_click(&mut self, x: f64, _y: f64) {
+        let sc = self.scale();
+        if x < sc.left || x > sc.right {
+            return;
+        }
+        let ms = x_to_ms(x, &sc);
+        let Some(value) = interpolate(&self.entries, ms) else { return };
+        let p = Entry { ms, value };
+        self.measure = match self.measure {
+            None => Some((p, None)),
+            Some((a, None)) => {
+                if (p.ms - a.ms).abs() > 1000.0 {
+                    Some((a, Some(p)))
+                } else {
+                    Some((a, None))
+                }
+            }
+            Some((_, Some(_))) => None,
+        };
+    }
+
+    /// Filter the chart to one reset cycle (range = the cycle's data extent
+    /// plus a 2% margin, at least 5 minutes), or `None` for "Show All": back
+    /// to the preset's trailing window.
+    pub fn select_cycle(&mut self, cycle: Option<ResetCycle>) {
+        self.measure = None;
+        self.hover = None;
+        match cycle {
+            Some(c) => {
+                let (first, last) = (c.first_unix * 1000.0, c.last_unix * 1000.0);
+                let span = (last - first).max(MIN_ZOOM_MS);
+                let margin = span * 0.02;
+                self.range = Range { from_ms: first - margin, to_ms: first + span + margin };
+                self.custom = true;
+                self.selected_cycle = Some(c);
+            }
+            None => {
+                if self.selected_cycle.take().is_some() {
+                    self.range = preset_range(&self.preset, self.now_ms);
+                    self.custom = false;
+                }
+            }
+        }
+    }
+
+    /// A refresh finished: while following the live edge (a preset, no
+    /// pan / zoom / cycle) slide the window to end at `now_ms`. Returns
+    /// whether the range moved. The armed ruler is left alone.
+    pub fn live_tick(&mut self, now_ms: f64) -> bool {
+        self.now_ms = now_ms;
+        if self.ruler || self.custom || self.selected_cycle.is_some() {
+            return false;
+        }
+        self.range = preset_range(&self.preset, now_ms);
+        true
     }
 
     pub(crate) fn scale(&self) -> Scale {
@@ -82,21 +244,31 @@ impl Interaction {
         }
     }
 
+    /// Preset change that reloads (Overview): new range, entries dropped.
     pub fn start_loading(&mut self, preset: &str, now_ms: f64) {
-        self.preset = preset.to_string();
-        self.base = preset_range(preset, now_ms);
-        self.range = self.base;
+        self.set_preset(preset, now_ms);
         self.entries.clear();
-        self.hover = None;
         self.loading = true;
     }
 
+    /// New series. A following (non-custom, no cycle) range re-anchors on
+    /// `now_ms`; a frozen one keeps its range.
     pub fn loaded(&mut self, entries: Vec<Entry>, now_ms: f64) {
-        self.base = preset_range(&self.preset, now_ms);
-        self.range = self.base;
+        self.now_ms = now_ms;
+        if !self.custom && self.selected_cycle.is_none() {
+            self.range = preset_range(&self.preset, now_ms);
+        }
         self.entries = entries;
         self.hover = None;
         self.loading = false;
+    }
+
+    /// The window changed: show "loading" with no data until `loaded` lands
+    /// (the range and its custom state are kept).
+    pub(crate) fn clear_for_reload(&mut self) {
+        self.entries.clear();
+        self.hover = None;
+        self.loading = true;
     }
 
     pub fn hover_at(&mut self, x: f64, y: f64) {
@@ -111,22 +283,17 @@ impl Interaction {
         self.hover = None;
     }
 
-    /// Drag-select between two pointer x positions (px): becomes the range,
-    /// clamped to the visible range and to `zoom_range`'s span bounds.
+    /// Drag-select between two pointer x positions (px), see `zoom_select`.
     pub fn select(&mut self, x0: f64, x1: f64) {
-        let sc = self.scale();
-        let (a, b) = (x_to_ms(x0.min(x1), &sc), x_to_ms(x0.max(x1), &sc));
-        let a = a.max(self.range.from_ms);
-        let b = b.min(self.range.to_ms);
-        if b <= a {
-            return;
-        }
-        self.range = zoom_range(Range { from_ms: a, to_ms: b }, 1.0, (a + b) / 2.0);
-        self.hover = None;
+        self.zoom_select(x0, x1);
     }
 
+    /// Double-click: back to the preset's trailing window (frees `custom`
+    /// and any cycle filter).
     pub fn reset(&mut self) {
-        self.range = self.base;
+        self.range = preset_range(&self.preset, self.now_ms);
+        self.custom = false;
+        self.selected_cycle = None;
         self.hover = None;
     }
 
@@ -153,7 +320,16 @@ impl Interaction {
                 }
             }
         }
-        View {
+        let noon_x: Vec<f64> = noon_markers(self.range.from_ms, self.range.to_ms, local_offset_ms)
+            .into_iter()
+            .map(|ms| sc.x(ms))
+            .collect();
+        let (avg_text, avg_hot) =
+            match average_rate(&self.entries, self.range.from_ms, self.range.to_ms) {
+                Some(r) => (format!("Avg: {r:.1}%/h"), r > 0.1),
+                None => ("Avg: --".to_string(), false),
+            };
+        let mut v = View {
             line_path: series_path(&vis_with_context(&self.entries, self.range), &sc),
             x_ticks: xs,
             y_ticks: ys.into_iter().map(|(v, py)| (py, format!("{v:.0}%"))).collect(),
@@ -163,7 +339,35 @@ impl Interaction {
             loading: self.loading,
             preset: self.preset.clone(),
             plot: (sc.left, sc.top, sc.plot_width, sc.plot_height),
+            custom: self.custom,
+            pan_mode: self.mode == Mode::Pan,
+            ruler: self.ruler,
+            noon_path: dashed_vlines(&noon_x, sc.top, sc.bottom, 3.0, 4.0),
+            avg_text,
+            avg_hot,
+            ..View::default()
+        };
+        if let Some((a, b)) = self.measure {
+            v.measure_a_x = Some(sc.x(a.ms));
+            if let Some(b) = b {
+                // As macOS: the hover tooltip steps aside while the Δ card shows.
+                v.cross = None;
+                v.tooltip.clear();
+                v.measure_b_x = Some(sc.x(b.ms));
+                let (s, e) = if a.ms <= b.ms { (a, b) } else { (b, a) };
+                let delta = e.value - s.value;
+                v.measure_range = format!(
+                    "{} \u{2192} {}",
+                    format_stamp(s.ms + local_offset_ms),
+                    format_stamp(e.ms + local_offset_ms)
+                );
+                v.measure_delta =
+                    format!("{delta:+.0}%: {:.0}% \u{2192} {:.0}%", s.value, e.value);
+                v.measure_duration = format_duration(e.ms - s.ms);
+                v.measure_up = delta >= 0.0;
+            }
         }
+        v
     }
 }
 
@@ -184,8 +388,7 @@ pub(crate) fn vis_with_context(entries: &[Entry], r: Range) -> Vec<Entry> {
 }
 
 pub(crate) fn preset_range(preset: &str, now_ms: f64) -> Range {
-    let (_, span) = preset_window_and_span(preset);
-    Range { from_ms: now_ms - span, to_ms: now_ms }
+    Range { from_ms: now_ms - preset_span_ms(preset), to_ms: now_ms }
 }
 
 pub(crate) fn now_ms() -> f64 {
@@ -197,10 +400,6 @@ pub(crate) fn now_ms() -> f64 {
 
 pub(crate) fn offset_ms() -> f64 {
     crate::model::local_offset_s() * 1000.0
-}
-
-thread_local! {
-    static STATE: RefCell<Option<(String, Interaction)>> = const { RefCell::new(None) };
 }
 
 pub(crate) fn to_state(v: &View) -> ChartState {
@@ -227,160 +426,28 @@ pub(crate) fn to_state(v: &View) -> ChartState {
         plot_top: v.plot.1 as f32,
         plot_width: v.plot.2 as f32,
         plot_height: v.plot.3 as f32,
+        custom: v.custom,
+        pan_mode: v.pan_mode,
+        ruler: v.ruler,
+        noon_path: v.noon_path.as_str().into(),
+        avg_text: v.avg_text.as_str().into(),
+        avg_hot: v.avg_hot,
+        measure_a_visible: v.measure_a_x.is_some(),
+        measure_a_x: v.measure_a_x.unwrap_or(0.0) as f32,
+        measure_b_visible: v.measure_b_x.is_some(),
+        measure_b_x: v.measure_b_x.unwrap_or(0.0) as f32,
+        measure_range: v.measure_range.as_str().into(),
+        measure_delta: v.measure_delta.as_str().into(),
+        measure_duration: v.measure_duration.as_str().into(),
+        measure_up: v.measure_up,
         ..Default::default()
     }
-}
-
-/// Run `f` on the current interaction (if any) and push the new view.
-fn update(app: &AppWindow, f: impl FnOnce(&mut Interaction)) {
-    let view = STATE.with(|s| {
-        let mut s = s.borrow_mut();
-        let (_, i) = s.as_mut()?;
-        f(i);
-        Some(i.view(offset_ms()))
-    });
-    if let Some(v) = view {
-        app.set_chart(to_state(&v));
-    }
-}
-
-/// Read the preset's series on a worker (the on-disk log) and apply it on the
-/// UI thread unless a newer request superseded it.
-fn load(app: &AppWindow, account_id: String, preset: String) {
-    let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-    let (window, span) = preset_window_and_span(&preset);
-    let weak = app.as_weak();
-    std::thread::spawn(move || {
-        let now = now_ms();
-        let entries = match UsageLogStore::open() {
-            Ok(store) => points_to_entries(&store.series(
-                &account_id,
-                window,
-                (now - span) / 1000.0,
-                now / 1000.0,
-            )),
-            Err(e) => {
-                eprintln!("chart: usage log unavailable: {e}");
-                Vec::new()
-            }
-        };
-        let _ = slint::invoke_from_event_loop(move || {
-            if GENERATION.load(Ordering::SeqCst) != generation {
-                return;
-            }
-            if let Some(app) = weak.upgrade() {
-                update(&app, |i| i.loaded(entries, now));
-            }
-        });
-    });
-}
-
-/// Wire the chart callbacks on the main window.
-pub fn install(app: &AppWindow) {
-    {
-        let w = app.as_weak();
-        app.on_view_chart(move |id| {
-            let Some(app) = w.upgrade() else { return };
-            let id = id.to_string();
-            STATE.with(|s| {
-                *s.borrow_mut() = Some((id.clone(), Interaction::new(DEFAULT_PRESET, now_ms())));
-            });
-            update(&app, |_| {});
-            load(&app, id, DEFAULT_PRESET.to_string());
-        });
-    }
-    {
-        let w = app.as_weak();
-        app.on_chart_preset(move |p| {
-            let Some(app) = w.upgrade() else { return };
-            let p = p.to_string();
-            let Some(id) = STATE.with(|s| s.borrow().as_ref().map(|(id, _)| id.clone())) else {
-                return;
-            };
-            update(&app, |i| i.start_loading(&p, now_ms()));
-            load(&app, id, p);
-        });
-    }
-    {
-        let w = app.as_weak();
-        app.on_chart_close(move || {
-            GENERATION.fetch_add(1, Ordering::SeqCst);
-            STATE.with(|s| *s.borrow_mut() = None);
-            if let Some(app) = w.upgrade() {
-                app.set_chart(ChartState::default());
-            }
-        });
-    }
-    {
-        let w = app.as_weak();
-        app.on_chart_size(move |cw, ch| {
-            if let Some(app) = w.upgrade() {
-                update(&app, |i| i.set_size(cw as f64, ch as f64));
-            }
-        });
-    }
-    {
-        let w = app.as_weak();
-        app.on_chart_hover(move |x, y| {
-            if let Some(app) = w.upgrade() {
-                update(&app, |i| {
-                    if x < 0.0 || y < 0.0 {
-                        i.hover_off();
-                    } else {
-                        i.hover_at(x as f64, y as f64);
-                    }
-                });
-            }
-        });
-    }
-    {
-        let w = app.as_weak();
-        app.on_chart_select(move |a, b| {
-            if let Some(app) = w.upgrade() {
-                update(&app, |i| i.select(a as f64, b as f64));
-            }
-        });
-    }
-    {
-        let w = app.as_weak();
-        app.on_chart_reset(move || {
-            if let Some(app) = w.upgrade() {
-                update(&app, |i| i.reset());
-            }
-        });
-    }
-}
-
-/// Dev seed (only under `CLAUDE_DASHBOARD_FAKE_ROWS`, never in production):
-/// logs a few points for the fake accounts f2/f3 (f1 stays empty so the
-/// "No data yet" state is reachable). Runs on a worker; skips accounts that
-/// already have points.
-pub fn seed_fake_history() {
-    std::thread::spawn(|| {
-        let Ok(mut store) = UsageLogStore::open() else { return };
-        let now = now_ms() / 1000.0;
-        let shapes: [(&str, &[f64]); 2] = [
-            ("f2", &[4.0, 9.0, 15.0, 22.0, 30.0, 41.0, 48.0, 55.0, 60.0, 64.0]),
-            ("f3", &[10.0, 25.0, 38.0, 52.0, 66.0, 75.0, 83.0, 91.0, 96.0, 100.0]),
-        ];
-        for (id, vals) in shapes {
-            for (window, step_s) in [(0_i64, 1500.0_f64), (1, 20000.0)] {
-                if store.count(id, window) > 0 {
-                    continue;
-                }
-                let n = vals.len() as f64;
-                for (k, v) in vals.iter().enumerate() {
-                    let t = now - (n - 1.0 - k as f64) * step_s;
-                    store.record_at(id, window, now + 7200.0, *v, false, t);
-                }
-            }
-        }
-    });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use claude_dashboard_core::store::ResetCycle;
 
     const H: f64 = 3_600_000.0;
     const NOW: f64 = 1_000.0 * 86_400_000.0;
@@ -476,5 +543,159 @@ mod tests {
         let v = i.view(0.0);
         assert!(v.loading && v.preset == "7d");
         assert_eq!(i.range.to_ms - i.range.from_ms, 7.0 * 24.0 * H);
+    }
+
+    // ---- Task 10: container state (presets, custom, pan/zoom, ruler, cycles) ----
+
+    fn cycle(first_h: f64, last_h: f64) -> ResetCycle {
+        ResetCycle {
+            resets_at_unix: (NOW + last_h * H + 600_000.0) / 1000.0,
+            first_unix: (NOW + first_h * H) / 1000.0,
+            last_unix: (NOW + last_h * H) / 1000.0,
+            peak: 60.0,
+            points: 3,
+        }
+    }
+
+    #[test]
+    fn default_preset_is_24h_on_5h_window() {
+        let i = Interaction::new(DEFAULT_PRESET, NOW);
+        assert_eq!(i.preset, "24h");
+        assert_eq!(i.window, 0);
+        assert!(!i.custom && i.mode == Mode::Pan && !i.ruler);
+        assert_eq!(i.range.to_ms - i.range.from_ms, 24.0 * H);
+        assert_eq!(i.range.to_ms, NOW);
+    }
+
+    #[test]
+    fn zoom_never_below_five_minutes() {
+        let mut i = loaded();
+        let sc = i.scale();
+        // A selection narrower than 5 minutes is ignored.
+        let before = i.range;
+        i.select(sc.x(NOW - 2.0 * H), sc.x(NOW - 2.0 * H + 60_000.0));
+        assert_eq!(i.range, before);
+        // Zoom in repeatedly: the span never drops under 5 minutes.
+        for _ in 0..12 {
+            let sc = i.scale();
+            let mid = (sc.left + sc.right) / 2.0;
+            i.zoom_select(mid - 20.0, mid + 20.0);
+            assert!(i.range.to_ms - i.range.from_ms >= 5.0 * 60_000.0 - 1e-6);
+        }
+        assert!(i.custom);
+    }
+
+    #[test]
+    fn pan_sets_custom_and_stops_following_live_edge() {
+        let mut i = loaded();
+        let span = i.range.to_ms - i.range.from_ms;
+        i.pan_by_px(50.0);
+        assert!(i.custom);
+        // Drag right = back in time, by 50 px of the plot's ms-per-px.
+        let expect = 50.0 * span / i.scale().plot_width;
+        assert!((i.range.from_ms - (NOW - span - expect)).abs() < 1.0, "{:?}", i.range);
+        let frozen = i.range;
+        assert!(!i.live_tick(NOW + H));
+        assert_eq!(i.range, frozen);
+    }
+
+    #[test]
+    fn pan_cannot_pass_now() {
+        let mut i = loaded();
+        i.pan_by_px(-500.0);
+        assert_eq!(i.range.to_ms, NOW);
+        assert_eq!(i.range.to_ms - i.range.from_ms, 5.0 * H);
+    }
+
+    #[test]
+    fn live_tick_follows_now_while_not_custom() {
+        let mut i = loaded();
+        assert!(i.live_tick(NOW + H));
+        assert_eq!(i.range.to_ms, NOW + H);
+        assert_eq!(i.range.to_ms - i.range.from_ms, 5.0 * H);
+    }
+
+    #[test]
+    fn preset_click_clears_custom() {
+        let mut i = loaded();
+        i.pan_by_px(30.0);
+        assert!(i.custom);
+        i.set_preset("24h", NOW + H);
+        assert!(!i.custom);
+        assert_eq!(i.preset, "24h");
+        assert_eq!(i.range.to_ms, NOW + H);
+        assert_eq!(i.range.to_ms - i.range.from_ms, 24.0 * H);
+    }
+
+    #[test]
+    fn measure_two_clicks_gives_delta() {
+        let mut i = loaded();
+        let sc = i.scale();
+        i.measure_click(sc.x(NOW - 4.0 * H), sc.top + 5.0);
+        let (a, b) = i.measure.expect("point A");
+        assert!(b.is_none() && (a.value - 10.0).abs() < 1e-6);
+        i.measure_click(sc.x(NOW - 2.0 * H), sc.top + 5.0);
+        let (a, b) = i.measure.expect("both");
+        let b = b.expect("point B");
+        assert!((b.value - a.value - 30.0).abs() < 1e-6);
+        let v = i.view(0.0);
+        assert!(v.measure_delta.starts_with("+30%"), "{}", v.measure_delta);
+        assert_eq!(v.measure_duration, "2h 0m");
+    }
+
+    #[test]
+    fn measure_third_click_restarts() {
+        let mut i = loaded();
+        let sc = i.scale();
+        i.measure_click(sc.x(NOW - 4.0 * H), 0.0);
+        i.measure_click(sc.x(NOW - 2.0 * H), 0.0);
+        i.measure_click(sc.x(NOW - 1.0 * H), 0.0);
+        assert!(i.measure.is_none());
+        i.measure_click(sc.x(NOW - 3.0 * H), 0.0);
+        assert!(matches!(i.measure, Some((_, None))));
+    }
+
+    #[test]
+    fn selecting_cycle_sets_range_to_cycle() {
+        let mut i = loaded();
+        let c = cycle(-4.0, -1.0);
+        i.select_cycle(Some(c));
+        assert_eq!(i.selected_cycle, Some(c));
+        assert!(i.custom);
+        assert!(i.range.from_ms <= c.first_unix * 1000.0 && i.range.to_ms >= c.last_unix * 1000.0);
+        assert!(i.range.to_ms - i.range.from_ms < 4.0 * H);
+        // Frozen: the live edge does not move it.
+        let frozen = i.range;
+        i.live_tick(NOW + H);
+        assert_eq!(i.range, frozen);
+        // Show All restores the preset window.
+        i.select_cycle(None);
+        assert!(i.selected_cycle.is_none() && !i.custom);
+        assert_eq!(i.range.to_ms - i.range.from_ms, 5.0 * H);
+    }
+
+    #[test]
+    fn set_window_clears_cycle() {
+        let mut i = loaded();
+        i.select_cycle(Some(cycle(-4.0, -1.0)));
+        let sc = i.scale();
+        i.measure_click(sc.x(NOW - 2.0 * H), 0.0);
+        i.set_window(1);
+        assert_eq!(i.window, 1);
+        assert!(i.selected_cycle.is_none() && i.measure.is_none());
+    }
+
+    #[test]
+    fn ruler_off_clears_measure_and_view_has_noon_and_avg() {
+        let mut i = loaded();
+        i.set_preset("24h", NOW);
+        let v = i.view(0.0);
+        assert!(v.avg_text.starts_with("Avg: "), "{}", v.avg_text);
+        assert!(!v.noon_path.is_empty());
+        let sc = i.scale();
+        i.set_ruler(true);
+        i.measure_click(sc.x(NOW - 2.0 * H), 0.0);
+        i.set_ruler(false);
+        assert!(i.measure.is_none());
     }
 }

@@ -1,4 +1,5 @@
 import { Theme, UiRow, UiWindow } from "theme.slint";
+import { HistoryBox } from "chart.slint";
 import { Spinner } from "std-widgets.slint";
 
 // Sidebar row: coloured tile + Segoe Fluent glyph + label. Hover/selected highlight.
@@ -525,7 +526,9 @@ export component AccountPane inherits VerticalLayout {
     callback resync();
     callback toggle-pin(bool /* new pinned state */);
     callback remove();
-    callback view-chart();
+    callback window-picked(string /* "5h" | "7d" | "fable" */);
+    // Only the visible page owns the History chart (one chart state, one pane per row).
+    in property <bool> active: true;
     callback open-window(string /* "5h" | "7d" | "fable" */);
     property <bool> confirming-remove: false;
     property <color> plan-tint: root.data.plan == "Pro" ? #0a84ff
@@ -651,6 +654,11 @@ export component AccountPane inherits VerticalLayout {
                 }
             }
 
+            if root.active: HistoryBox {
+                line-color: root.data.avatar-color;
+                window-picked(w) => { root.window-picked(w); }
+            }
+
             PaneSection {
                 title: "Actions";
                 ActionRow {
@@ -665,12 +673,6 @@ export component AccountPane inherits VerticalLayout {
                 ActionRow {
                     title: "Read a fresh session key from the browser";
                     ActionButton { label: "Re-sync"; clicked => { root.resync(); } }
-                }
-                Rectangle { height: 1px; background: Theme.card-border; }
-                // Temporary until the chart moves into a History box on this page.
-                ActionRow {
-                    title: "Usage history";
-                    ActionButton { label: "View chart"; clicked => { root.view-chart(); } }
                 }
                 Rectangle { height: 1px; background: Theme.card-border; }
                 ActionRow {

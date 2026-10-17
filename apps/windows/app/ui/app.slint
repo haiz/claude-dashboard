@@ -2,10 +2,10 @@ import { AboutSlint, Spinner } from "std-widgets.slint";
 import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "components.slint";
 import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem } from "wizard.slint";
-import { ChartPanel, OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem } from "chart.slint";
+import { OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartPoint, ChartCycle, ChartActions, HistoryData } from "chart.slint";
 import { HelpPane } from "help.slint";
 
-export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem }
+export { Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartPoint, ChartCycle, ChartActions, HistoryData }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
 export enum Pane { dashboard, overview, account, help, settings-accounts, general }
@@ -308,18 +308,6 @@ export component AppWindow inherits Window {
     callback unmute(string);
     callback add-account();
 
-    // Per-account usage chart overlay (state is computed in Rust, chart.rs).
-    in property <ChartState> chart;
-    in-out property <bool> chart-open: false;
-    in-out property <string> chart-title;
-    in-out property <color> chart-color: Theme.accent;
-    callback view-chart(string);
-    callback chart-preset(string);
-    callback chart-close();
-    callback chart-size(float, float);
-    callback chart-hover(float, float);
-    callback chart-select(float, float);
-    callback chart-reset();
     in-out property <ChartState> overview;
     callback overview-open();
     callback overview-close();
@@ -331,11 +319,21 @@ export component AppWindow inherits Window {
     callback overview-select(float, float);
     callback overview-reset();
     changed selection => {
-        root.chart-open = false;
-        root.chart-close();
         if root.selection == Pane.overview { root.overview-open(); } else { root.overview-close(); }
     }
-    changed selected-account-id => { root.chart-open = false; root.chart-close(); }
+    // The account page's History chart: opened with the page's account and the requested
+    // window (a gauge click, the History window picker, or "5h" from a sidebar click) and
+    // closed (empty key) when the page is left. One key, so a burst of property writes
+    // (select account, then requested window) opens the chart once with the final values.
+    property <string> chart-key: root.selection == Pane.account && root.selected-account-id != ""
+        ? root.selected-account-id + "|" + root.requested-window : "";
+    changed chart-key => {
+        if root.chart-key == "" {
+            ChartActions.open("", "");
+        } else {
+            ChartActions.open(root.selected-account-id, root.requested-window);
+        }
+    }
 
     in property <string> app-name;
     in property <string> app-version;
@@ -464,6 +462,7 @@ export component AppWindow inherits Window {
                 // Non-layout container: one pane per row, only the selected one visible.
                 for acct in root.account-rows: AccountPane {
                     visible: root.selected-account-id == acct.id;
+                    active: root.selected-account-id == acct.id;
                     data: acct;
                     refreshing: root.refreshing;
                     width: parent.width;
@@ -475,19 +474,8 @@ export component AppWindow inherits Window {
                         root.remove-account(acct.id);
                         root.selection = Pane.dashboard;
                     }
-                    view-chart => {
-                        root.chart-title = acct.name;
-                        root.chart-color = acct.avatar-color;
-                        root.chart-open = true;
-                        root.view-chart(acct.id);
-                    }
-                    open-window(w) => {
-                        root.requested-window = w;
-                        root.chart-title = acct.name;
-                        root.chart-color = acct.avatar-color;
-                        root.chart-open = true;
-                        root.view-chart(acct.id);
-                    }
+                    open-window(w) => { root.requested-window = w; }
+                    window-picked(w) => { root.requested-window = w; }
                 }
             }
             if root.selection == Pane.dashboard && root.account-rows.length == 0: EmptyState {
@@ -570,21 +558,6 @@ export component AppWindow inherits Window {
             if root.selection == Pane.help: HelpPane { vertical-stretch: 1; }
             if root.selection != Pane.dashboard && root.selection != Pane.account: Rectangle { }
         }
-    }
-
-    if root.chart-open && root.selection == Pane.account: ChartPanel {
-        x: 240px;
-        width: parent.width - 240px;
-        height: parent.height;
-        title: root.chart-title;
-        state: root.chart;
-        line-color: root.chart-color;
-        preset(p) => { root.chart-preset(p); }
-        close => { root.chart-open = false; root.chart-close(); }
-        size-changed(w, h) => { root.chart-size(w, h); }
-        hover(x, y) => { root.chart-hover(x, y); }
-        select(a, b) => { root.chart-select(a, b); }
-        reset => { root.chart-reset(); }
     }
 }
 

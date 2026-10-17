@@ -10,8 +10,8 @@ use claude_dashboard_core::chart::{format_tick, nearest_entry, Entry};
 use claude_dashboard_core::store::UsageLogStore;
 use slint::{ComponentHandle, Model};
 
-use crate::chart::{now_ms, offset_ms, to_state, vis_with_context, Interaction, View};
-use crate::chart_model::{points_to_entries, preset_window_and_span, series_path, x_to_ms};
+use crate::chart::{now_ms, offset_ms, to_state, vis_with_context, Interaction, Mode, View};
+use crate::chart_model::{points_to_entries, preset_span_ms, series_path, x_to_ms};
 use crate::{AppWindow, ChartLegendItem, ChartLine};
 
 const DEFAULT_PRESET: &str = "24h";
@@ -52,8 +52,11 @@ struct Hit {
 
 impl Overview {
     pub fn new(window: &str, preset: &str, accounts: Vec<Account>, now: f64) -> Self {
+        let mut inner = Interaction::new(preset, now);
+        // The Overview has no pan/zoom toggle yet: drag stays "select to zoom".
+        inner.set_mode(Mode::Zoom);
         Self {
-            inner: Interaction::new(preset, now),
+            inner,
             window: window.to_string(),
             accounts,
             series: BTreeMap::new(),
@@ -145,6 +148,8 @@ impl Overview {
             }
         }
         v.line_path.clear();
+        // Overview does not draw the container's noon rules / Avg yet (Task 11).
+        v.noon_path.clear();
         v.empty = self.series.values().all(|s| s.is_empty());
 
         let legend = self
@@ -164,6 +169,8 @@ impl Overview {
 
 thread_local! {
     static STATE: RefCell<Option<Overview>> = const { RefCell::new(None) };
+    /// The chart reports its size on init, possibly before `overview_open` builds the state.
+    static LAST_SIZE: std::cell::Cell<Option<(f64, f64)>> = const { std::cell::Cell::new(None) };
 }
 
 fn push(app: &AppWindow, f: impl FnOnce(&mut Overview)) {
@@ -201,7 +208,7 @@ fn load(app: &AppWindow) {
         return;
     };
     let code = window_code(&window);
-    let (_, span) = preset_window_and_span(&preset);
+    let span = preset_span_ms(&preset);
     let weak = app.as_weak();
     std::thread::spawn(move || {
         let now = now_ms();
@@ -240,6 +247,9 @@ pub fn install(app: &AppWindow) {
                 let hidden = s.as_ref().map(|o| o.hidden.clone()).unwrap_or_default();
                 let mut o = Overview::new(DEFAULT_WINDOW, DEFAULT_PRESET, accounts, now_ms());
                 o.hidden = hidden;
+                if let Some((cw, ch)) = LAST_SIZE.with(|l| l.get()) {
+                    o.inner.set_size(cw, ch);
+                }
                 *s = Some(o);
             });
             push(&app, |_| {});
@@ -292,6 +302,7 @@ pub fn install(app: &AppWindow) {
     {
         let w = app.as_weak();
         app.on_overview_size(move |cw, ch| {
+            LAST_SIZE.with(|l| l.set(Some((cw as f64, ch as f64))));
             if let Some(app) = w.upgrade() {
                 push(&app, |o| o.inner.set_size(cw as f64, ch as f64));
             }
