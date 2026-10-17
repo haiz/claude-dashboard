@@ -100,6 +100,9 @@ fn spawn_refresh_loop(
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs_f64())
                 .unwrap_or(0.0);
+            // Card spinners on until apply_output replaces the rows.
+            let w = weak.clone();
+            let _ = slint::invoke_from_event_loop(move || set_all_loading(&w));
             let fresh = refresh::refresh_once(now);
             let fetched = fresh.is_ok();
             let mut out = refresh::merge_errors(&prev, fresh);
@@ -146,6 +149,19 @@ fn patch_row(weak: &slint::Weak<AppWindow>, id: &str, f: impl FnOnce(&mut UiRow)
     }
 }
 
+/// UI thread: marks every card as refreshing (the next `apply_output` clears it).
+fn set_all_loading(weak: &slint::Weak<AppWindow>) {
+    use slint::Model;
+    let Some(app) = weak.upgrade() else { return };
+    let rows = app.get_account_rows();
+    for i in 0..rows.row_count() {
+        if let Some(mut r) = rows.row_data(i) {
+            r.loading = true;
+            rows.set_row_data(i, r);
+        }
+    }
+}
+
 /// Card pin toggle and per-card Re-sync. Store I/O runs on a worker; a successful
 /// pin or re-sync nudges a refresh, a failed re-sync shows its text in that card's
 /// error line until the next refresh replaces the rows.
@@ -170,12 +186,18 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<()>) 
             }
             return;
         }
-        let tx = tx.clone();
+        let (tx, w) = (tx.clone(), w.clone());
         std::thread::spawn(move || match pin::set_pinned(&id, pinned) {
             Ok(()) => {
                 let _ = tx.send(());
             }
-            Err(e) => eprintln!("pin failed: {e}"),
+            Err(e) => {
+                eprintln!("pin failed: {e}");
+                let msg = format!("Could not change the pin. {e}");
+                let _ = slint::invoke_from_event_loop(move || {
+                    patch_row(&w, &id, |r| r.error = msg.into());
+                });
+            }
         });
     });
     let w = app.as_weak();

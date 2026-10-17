@@ -67,4 +67,6 @@ export struct UiRow {
     sidebar-percent: float,
     sidebar-color: color,
     has-sidebar-percent: bool,
+    // True while a refresh covering this account is in flight (card spinner).
+    loading: bool,
 }

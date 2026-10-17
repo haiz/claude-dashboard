@@ -1,4 +1,5 @@
 import { Theme, UiRow, UiWindow } from "theme.slint";
+import { Spinner } from "std-widgets.slint";
 
 // Sidebar row: coloured tile + Segoe Fluent glyph + label. Hover/selected highlight.
 export component SidebarRow inherits Rectangle {
@@ -303,7 +304,13 @@ export component AccountCard inherits Rectangle {
                     vertical-alignment: center;
                 }
             }
-            if root.data.expired: Text {
+            if root.data.loading: Spinner {
+                width: 16px;
+                height: 16px;
+                y: (parent.height - self.height) / 2;
+                indeterminate: true;
+            }
+            if !root.data.loading && root.data.expired: Text {
                 text: "\u{E7BA}";
                 font-family: "Segoe Fluent Icons";
                 font-size: 14px;
@@ -345,6 +352,12 @@ export component AccountCard inherits Rectangle {
                         clicked => { root.resync(); }
                     }
                 }
+            }
+            if root.data.error != "": Text {
+                text: root.data.error;
+                color: Theme.danger;
+                font-size: 11px;
+                wrap: word-wrap;
             }
         }
         if !root.data.expired && root.data.error != "": Text {

@@ -220,6 +220,7 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
         sidebar_percent: sidebar.unwrap_or(0.0) as f32,
         sidebar_color: to_color(usage_color(sidebar.unwrap_or(0.0))),
         has_sidebar_percent: sidebar.is_some(),
+        loading: false,
     }
 }
 
