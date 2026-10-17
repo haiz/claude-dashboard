@@ -74,4 +74,9 @@ export struct UiRow {
     has-sidebar-percent: bool,
     // True while a refresh covering this account is in flight (card spinner).
     loading: bool,
+    // The account page's Ping row (macOS AccountPane): a ping is running, and the latest
+    // ping's caption, red when it failed.
+    pinging: bool,
+    ping-caption: string,
+    ping-failed: bool,
 }

@@ -12,6 +12,8 @@ mod instance;
 mod migration;
 mod model;
 mod pin;
+mod ping;
+mod ping_log_view;
 mod pipe;
 mod popover;
 mod refresh;
@@ -88,6 +90,7 @@ fn apply_output(
 ) {
     eprintln!("refresh: {} rows, peak {:.0}%", out.rows.len(), out.peak);
     let mut rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
+    set_ping_fields(&mut rows);
     // Re-sync All failures ride this refresh into the cards' error lines (macOS setError).
     let failures = std::mem::take(&mut *RESYNC_FAILURES.lock().unwrap_or_else(|e| e.into_inner()));
     for r in rows.iter_mut().filter(|r| !r.expired) {
@@ -124,6 +127,34 @@ fn apply_output(
     LAST_OUTPUT.with(|l| *l.borrow_mut() = Some((out.clone(), now)));
 }
 
+/// Copies each row's Ping row state (running, latest caption) from the ping controller.
+fn set_ping_fields(rows: &mut [UiRow]) {
+    let offset = model::local_offset_s();
+    let c = ping::controller();
+    for r in rows.iter_mut() {
+        let (pinging, caption, failed) = c.ui_fields(r.id.as_str(), offset);
+        r.pinging = pinging;
+        r.ping_caption = caption.into();
+        r.ping_failed = failed;
+    }
+}
+
+/// UI thread: redraws the Ping rows after a ping started or finished.
+fn refresh_ping_ui(weak: &slint::Weak<AppWindow>) {
+    use slint::Model;
+    let Some(app) = weak.upgrade() else { return };
+    for rows in [app.get_account_rows(), app.get_pane_rows()] {
+        for i in 0..rows.row_count() {
+            let Some(mut r) = rows.row_data(i) else { continue };
+            let before = (r.pinging, r.ping_caption.clone(), r.ping_failed);
+            set_ping_fields(std::slice::from_mut(&mut r));
+            if (r.pinging, r.ping_caption.clone(), r.ping_failed) != before {
+                rows.set_row_data(i, r);
+            }
+        }
+    }
+}
+
 /// Updates the `VecModel` behind `current` in place by account id (see `row_sync`), so the
 /// repeaters keep their components; `set` installs a fresh model the first time.
 fn publish_rows(current: slint::ModelRc<UiRow>, rows: Vec<UiRow>, set: impl FnOnce(slint::ModelRc<UiRow>)) {
@@ -141,6 +172,7 @@ fn publish_rows(current: slint::ModelRc<UiRow>, rows: Vec<UiRow>, set: impl FnOn
 /// burn projections) from the previous output.
 fn spawn_refresh_loop(
     rx: std::sync::mpsc::Receiver<refresh::Nudge>,
+    tx: std::sync::mpsc::Sender<refresh::Nudge>,
     weak: slint::Weak<AppWindow>,
     pop_weak: slint::Weak<PopoverWindow>,
 ) {
@@ -199,6 +231,10 @@ fn spawn_refresh_loop(
                     }
                 };
                 out.peak = claude_dashboard_core::rows::peak_utilization(&out.rows);
+                // Auto Ping on this refresh's own fetches (macOS `refreshAll`); never in dev runs.
+                let enabled = !dev_run() && claude_dashboard_core::settings::load().auto_ping_enabled;
+                let targets = ping::controller().claim_targets(&out.candidates, enabled, now);
+                spawn_auto_pings(targets, tx.clone());
                 prev = out.rows.clone();
                 let (weak, pop_weak) = (weak.clone(), pop_weak.clone());
                 let _ = slint::invoke_from_event_loop(move || apply_output(&weak, &pop_weak, &out, now));
@@ -228,6 +264,63 @@ fn spawn_refresh_loop(
             jobs = refresh::coalesce(batch);
         }
     });
+}
+
+/// Pings the claimed accounts in parallel on a worker, then refreshes them in one pass
+/// (macOS `runAutoPings`). A claim whose ping never ran (one was already running) is released.
+fn spawn_auto_pings(targets: Vec<ping::PingTarget>, tx: std::sync::mpsc::Sender<refresh::Nudge>) {
+    if targets.is_empty() {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::scope(|s| {
+            for t in &targets {
+                s.spawn(move || {
+                    if ping::run_ping(t, claude_dashboard_core::ping_log::PingTrigger::Auto).is_none() {
+                        ping::controller().release_claim(&t.account_id);
+                    }
+                });
+            }
+        });
+        let _ = tx.send(refresh::Nudge::Some(targets.into_iter().map(|t| t.account_id).collect()));
+    });
+}
+
+/// UI thread: reads the Ping Log on a worker and shows it, names from the current rows.
+fn load_ping_log(weak: &slint::Weak<AppWindow>) {
+    use slint::Model;
+    let Some(app) = weak.upgrade() else { return };
+    let names: std::collections::HashMap<String, String> =
+        app.get_account_rows().iter().map(|r| (r.id.to_string(), r.name.to_string())).collect();
+    let w = weak.clone();
+    std::thread::spawn(move || {
+        let entries = if dev_run() {
+            Vec::new()
+        } else {
+            claude_dashboard_core::ping_log::PingLogStore::open()
+                .map(|log| log.fetch(claude_dashboard_core::ping_log::MAX_ENTRIES))
+                .unwrap_or_default()
+        };
+        let offset = model::local_offset_s();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(a) = w.upgrade() {
+                let rows = ping_log_view::rows(&entries, &names, offset);
+                a.set_ping_log_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+            }
+        });
+    });
+}
+
+/// What a manual ping needs for account `id`: an active stored account with an org and a
+/// session key (macOS `pingTarget`).
+fn ping_target(id: &str) -> Option<ping::PingTarget> {
+    use claude_dashboard_core::{model::AccountStatus, store};
+    let a = store::load_accounts().ok()?.into_iter().find(|a| a.id == id)?;
+    if a.status != AccountStatus::Active {
+        return None;
+    }
+    let session_key = a.session_key.as_deref().and_then(store::decrypt_session_key)?;
+    Some(ping::PingTarget { account_id: a.id, org_id: a.org_id?, session_key })
 }
 
 /// The first nudge plus whatever else is already queued (not yet folded: the loop reads
@@ -494,7 +587,7 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         expired("f4", "dave", AccountKind::PastedKey),
         expired("f5", "erin", AccountKind::Scanned { browser: Browser::Edge, profile: "Work".into() }),
     ];
-    refresh::RefreshOutput { peak: 100.0, rows }
+    refresh::RefreshOutput { peak: 100.0, rows, candidates: Vec::new() }
 }
 
 /// Time after a focus-loss hide during which a tray click is treated as the
@@ -809,6 +902,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let tray_nudge = nudge_tx.clone();
     let pop_nudge = nudge_tx.clone();
     let clock_nudge = nudge_tx.clone();
+    let ping_nudge = nudge_tx.clone();
 
     let dark = system_is_dark();
     // Add Account wizard (hidden until opened); its poll timer stops on close.
@@ -921,12 +1015,31 @@ fn main() -> Result<(), slint::PlatformError> {
         std::thread::spawn(move || {
             let (enabled, minutes) = settings_general::current_auto_refresh();
             let launch = settings_general::launch_is_enabled();
+            let auto_ping = settings_general::auto_ping_enabled();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(a) = w.upgrade() {
                     a.set_auto_refresh_enabled(enabled);
                     a.set_auto_refresh_minutes(minutes as i32);
                     a.set_launch_at_startup(launch);
+                    a.set_auto_ping(auto_ping);
                 }
+            });
+        });
+        // Auto Ping: turning it on refreshes now, so idle accounts are pinged without
+        // waiting for the interval (macOS `setAutoPingEnabled`).
+        let tx = nudge_tx.clone();
+        let w = app.as_weak();
+        app.on_set_auto_ping(move |on| {
+            if let Some(a) = w.upgrade() {
+                a.set_auto_ping(on);
+            }
+            let tx = tx.clone();
+            settings_general::writer().submit(move || match settings_general::set_auto_ping(on) {
+                Ok(()) if on => {
+                    let _ = tx.send(refresh::Nudge::All);
+                }
+                Ok(()) => {}
+                Err(e) => eprintln!("save auto ping failed: {e}"),
             });
         });
         let tx = nudge_tx.clone();
@@ -970,6 +1083,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             a.set_auto_refresh_enabled(state.auto_refresh_enabled);
                             a.set_auto_refresh_minutes(state.auto_refresh_minutes as i32);
                             a.set_auto_update(state.auto_update);
+                            a.set_auto_ping(state.auto_ping);
                         }
                     });
                     let _ = tx.send(refresh::Nudge::Reschedule);
@@ -1017,6 +1131,49 @@ fn main() -> Result<(), slint::PlatformError> {
                 return;
             }
             let _ = tx.send(refresh::Nudge::One(id.to_string()));
+        });
+    }
+    {
+        // The account page's Ping: ping, then refresh that account only if the ping ran
+        // (macOS `pingNow`).
+        let tx = nudge_tx.clone();
+        app.on_ping_account(move |id| {
+            let id = id.to_string();
+            if dev_run() {
+                eprintln!("ping {id}: skipped in a dev run");
+                return;
+            }
+            let tx = tx.clone();
+            std::thread::spawn(move || {
+                let Some(target) = ping_target(&id) else { return };
+                if ping::run_ping(&target, claude_dashboard_core::ping_log::PingTrigger::Manual).is_some() {
+                    let _ = tx.send(refresh::Nudge::One(id));
+                }
+            });
+        });
+        // Tools > Ping Log: load on open and on Refresh; Clear All also forgets the captions.
+        let w = app.as_weak();
+        app.on_ping_log_reload(move || load_ping_log(&w));
+        let w = app.as_weak();
+        app.on_ping_log_clear(move || {
+            let w = w.clone();
+            std::thread::spawn(move || {
+                if !dev_run() {
+                    if let Ok(mut log) = claude_dashboard_core::ping_log::PingLogStore::open() {
+                        log.clear();
+                    }
+                }
+                ping::controller().clear_latest();
+                let _ = slint::invoke_from_event_loop(move || {
+                    refresh_ping_ui(&w);
+                    load_ping_log(&w);
+                });
+            });
+        });
+        let w = app.as_weak();
+        ping::set_on_change(move || {
+            let w = w.clone();
+            let _ = slint::invoke_from_event_loop(move || refresh_ping_ui(&w));
         });
     }
     app.on_resync(move || {
@@ -1198,7 +1355,9 @@ fn main() -> Result<(), slint::PlatformError> {
         apply_output(&app.as_weak(), &popover.as_weak(), &fake_rows(now), now);
         history::seed_fake_history();
     } else {
-        spawn_refresh_loop(nudge_rx, app.as_weak(), popover.as_weak());
+        // Each account page's latest ping, from the Ping Log.
+        ping::load_latest();
+        spawn_refresh_loop(nudge_rx, ping_nudge, app.as_weak(), popover.as_weak());
     }
     let _clock = start_clock(app.as_weak(), popover.as_weak(), clock_nudge);
     // Closing the main window hides it; the app lives in the tray and quits

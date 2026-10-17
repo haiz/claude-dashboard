@@ -586,6 +586,7 @@ export component AccountPane inherits VerticalLayout {
     in property <bool> refreshing;
     callback refresh();
     callback resync();
+    callback ping();
     callback toggle-pin(bool /* new pinned state */);
     callback remove();
     callback window-picked(string /* "5h" | "7d" | "fable" */);
@@ -767,6 +768,37 @@ export component AccountPane inherits VerticalLayout {
                         checked: root.data.pinned;
                         y: (parent.height - self.height) / 2;
                         toggled => { root.toggle-pin(!root.data.pinned); }
+                    }
+                }
+                Rectangle { height: 1px; background: Theme.card-border; }
+                // macOS: "Start the 5h window now" with Ping, the latest ping under it.
+                ActionRow {
+                    title: "Start the 5h window now";
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        HorizontalLayout {
+                            alignment: end;
+                            spacing: 6px;
+                            if root.data.pinging: Spinner {
+                                width: 16px;
+                                height: 16px;
+                                y: (parent.height - self.height) / 2;
+                                indeterminate: true;
+                            }
+                            ActionButton {
+                                label: "Ping";
+                                enabled: !root.data.pinging && root.data.status == "Active";
+                                tip: "Send one short message from this account to start its 5h and 7d windows";
+                                clicked => { root.ping(); }
+                            }
+                        }
+                        if root.data.ping-caption != "": Text {
+                            text: root.data.ping-caption;
+                            color: root.data.ping-failed ? Theme.danger : Theme.text-secondary;
+                            font-size: 11px;
+                            horizontal-alignment: right;
+                        }
                     }
                 }
                 Rectangle { height: 1px; background: Theme.card-border; }

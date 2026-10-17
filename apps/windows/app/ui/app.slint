@@ -5,11 +5,12 @@ import { SetupWizardWindow, ScanItem } from "wizard.slint";
 import { OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData } from "chart.slint";
 import { HelpPane, HelpTopic } from "help.slint";
 import { InfoTip, TipStore, TipData } from "info_tip.slint";
+import { UiPingRow, PingLogPane } from "ping_log.slint";
 
-export { TipStore, TipData, HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData }
+export { UiPingRow, TipStore, TipData, HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
-export enum Pane { dashboard, overview, account, help, settings-accounts, general }
+export enum Pane { dashboard, overview, account, ping-log, help, settings-accounts, general }
 
 component GroupHeader inherits Text {
     color: Theme.text-secondary;
@@ -316,6 +317,8 @@ component GeneralSettingsPane inherits Flickable {
     in property <bool> update-busy;
     in property <bool> auto-update;
     callback check-updates();
+    in property <bool> auto-ping;
+    callback set-auto-ping(bool);
     callback set-auto-update(bool);
     callback reset-all-settings();
     property <bool> confirming-reset;
@@ -383,6 +386,24 @@ component GeneralSettingsPane inherits Flickable {
                     }
                 }
             }
+        }
+
+        GroupHeader { text: "Auto Ping"; }
+        SettingsCard {
+            height: 52px;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 4px;
+                Text { text: "Ping when a usage window is not running"; color: Theme.text-primary; vertical-alignment: center; }
+                InfoTip { tip-id: "auto-ping"; y: (parent.height - self.height) / 2; }
+                Rectangle { horizontal-stretch: 1; }
+                SwitchKnob { on: root.auto-ping; y: (parent.height - self.height) / 2; toggled(v) => { root.set-auto-ping(v); } }
+            }
+        }
+        Text {
+            text: "Starts a new window for every active account whose 5h or 7d window is not running. Each ping sends one short message from that account.";
+            color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
         }
 
         GroupHeader { text: "Startup"; }
@@ -480,7 +501,7 @@ component GeneralSettingsPane inherits Flickable {
                     color: Theme.text-primary; font-weight: 600; wrap: word-wrap;
                 }
                 if root.confirming-reset: Text {
-                    text: "Auto refresh and Updates go back to their defaults.";
+                    text: "Auto refresh, Auto Ping and Updates go back to their defaults.";
                     color: Theme.text-secondary; font-size: 12px; wrap: word-wrap;
                 }
                 if root.confirming-reset: HorizontalLayout {
@@ -534,6 +555,13 @@ export component AppWindow inherits Window {
     callback resync-account(string);
     // Refresh one account only (the account page header).
     callback refresh-account(string);
+    // The account page's Ping button.
+    callback ping-account(string);
+    // Tools > Ping Log: rows (Rust loads them on `ping-log-reload`), Clear All's prompt.
+    in property <[UiPingRow]> ping-log-rows;
+    in-out property <bool> ping-log-confirming: false;
+    callback ping-log-reload();
+    callback ping-log-clear();
     // Remove an account (the account page Actions box); same path as Settings > Accounts delete.
     callback remove-account(string);
     // An account page was opened (sidebar row, card, flyout); the chart window resets to 5h.
@@ -593,6 +621,8 @@ export component AppWindow inherits Window {
     in property <bool> update-busy;
     in-out property <bool> auto-update: true;
     callback check-updates();
+    in-out property <bool> auto-ping: false;
+    callback set-auto-ping(bool);
     callback set-auto-update(bool);
 
     // Opens an account's page on the 5h window (macOS `selectFromSidebar` resets the window).
@@ -605,6 +635,7 @@ export component AppWindow inherits Window {
 
     property <string> pane-title: root.selection == Pane.dashboard ? "Dashboard"
         : root.selection == Pane.overview ? "Overview"
+        : root.selection == Pane.ping-log ? "Ping Log"
         : root.selection == Pane.help ? "Help"
         : root.selection == Pane.settings-accounts ? "Accounts"
         : root.selection == Pane.general ? "General"
@@ -658,6 +689,15 @@ export component AppWindow inherits Window {
 
                     SidebarHeader { text: "Tools"; }
                     SidebarRow {
+                        label: "Ping Log"; glyph: "\u{E701}"; tile: #5e5ce6;
+                        text-color: Theme.text-primary;
+                        selected: root.selection == Pane.ping-log;
+                        clicked => {
+                            root.selection = Pane.ping-log;
+                            root.ping-log-reload();
+                        }
+                    }
+                    SidebarRow {
                         label: "Help"; glyph: "\u{E897}"; tile: #30d158;
                         text-color: Theme.text-primary;
                         selected: root.selection == Pane.help;
@@ -696,6 +736,23 @@ export component AppWindow inherits Window {
                     vertical-alignment: center;
                 }
                 Rectangle { horizontal-stretch: 1; }
+                // macOS PingLogView header: Refresh (reload) and Clear All (asks first).
+                if root.selection == Pane.ping-log: PaneButton {
+                    label: "Refresh";
+                    glyph: "\u{E72C}";
+                    tip: "Reload the ping log";
+                    y: (parent.height - self.height) / 2;
+                    clicked => { root.ping-log-reload(); }
+                }
+                if root.selection == Pane.ping-log: PaneButton {
+                    label: "Clear All";
+                    glyph: "\u{E74D}";
+                    tint: Theme.danger;
+                    enabled: root.ping-log-rows.length > 0;
+                    tip: "Delete every ping log entry";
+                    y: (parent.height - self.height) / 2;
+                    clicked => { root.ping-log-confirming = true; }
+                }
                 if root.selection == Pane.dashboard && root.account-rows.length > 0: PaneButton {
                     label: "Refresh";
                     glyph: "\u{E72C}";
@@ -717,6 +774,7 @@ export component AppWindow inherits Window {
                     height: parent.height;
                     refresh => { root.refresh-account(acct.id); }
                     resync => { root.resync-account(acct.id); }
+                    ping => { root.ping-account(acct.id); }
                     toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
                     remove => {
                         root.remove-account(acct.id);
@@ -810,6 +868,14 @@ export component AppWindow inherits Window {
                 auto-update: root.auto-update;
                 check-updates => { root.check-updates(); }
                 set-auto-update(on) => { root.set-auto-update(on); }
+                auto-ping: root.auto-ping;
+                set-auto-ping(on) => { root.set-auto-ping(on); }
+            }
+            if root.selection == Pane.ping-log: PingLogPane {
+                vertical-stretch: 1;
+                rows: root.ping-log-rows;
+                confirming-clear <=> root.ping-log-confirming;
+                clear => { root.ping-log-clear(); }
             }
             if root.selection == Pane.help: HelpPane { vertical-stretch: 1; avail-width: root.width - 240px - 48px; topics: root.help-topics; sample: root.help-sample; focus-topic <=> root.help-focus; }
             if root.selection != Pane.dashboard && root.selection != Pane.account: Rectangle { }

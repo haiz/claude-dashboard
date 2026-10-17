@@ -1,5 +1,5 @@
 //! InfoTip texts for Settings > General, copied from macOS `SettingsTips.swift`
-//! (Auto Refresh, Updates; Ping, Auto Switch and Critical tips come with their projects).
+//! (Auto Refresh, Auto Ping, Updates; Auto Switch and Critical tips come with their projects).
 
 pub struct Tip {
     pub id: &'static str,
@@ -24,6 +24,13 @@ pub const TIPS: &[Tip] = &[
         detail: "Shorter intervals keep cards fresher, at the cost of more requests to claude.ai.",
         example: "At 1 min a card is at most a minute out of date; at 15 min it can be 15 minutes behind.",
         help_topic: "refresh-updates",
+    },
+    Tip {
+        id: "auto-ping",
+        summary: "Start idle usage windows automatically.",
+        detail: "A window only starts counting at the first message. After each refresh, Auto Ping sends one short message from every active account whose 5h or 7d window is not running, so it resets sooner.",
+        example: "An account idle since yesterday shows 5h with no reset time. Auto Ping starts it at 09:00, so it resets at 14:00 instead of five hours after you first use it.",
+        help_topic: "ping",
     },
     Tip {
         id: "auto-update",
@@ -52,6 +59,15 @@ pub fn model() -> slint::ModelRc<crate::TipData> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auto_ping_tip_matches_macos() {
+        let t = TIPS.iter().find(|t| t.id == "auto-ping").expect("auto-ping tip");
+        assert_eq!(t.summary, "Start idle usage windows automatically.");
+        assert!(t.detail.starts_with("A window only starts counting at the first message."));
+        assert!(t.example.contains("Auto Ping starts it at 09:00"));
+        assert_eq!(t.help_topic, "ping");
+    }
 
     #[test]
     fn every_tip_links_an_existing_help_topic() {

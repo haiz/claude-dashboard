@@ -8,6 +8,7 @@ pub const TOPICS: &[(&str, &str)] = &[
     ("reading-a-card", "Reading a Card"),
     ("finding-your-way", "Finding Your Way"),
     ("charts", "Charts"),
+    ("ping", "Ping"),
     ("managing-accounts", "Managing Accounts"),
     ("refresh-updates", "Refresh & Updates"),
     ("troubleshooting", "Troubleshooting"),
@@ -38,11 +39,19 @@ mod tests {
                 ("reading-a-card", "Reading a Card"),
                 ("finding-your-way", "Finding Your Way"),
                 ("charts", "Charts"),
+                ("ping", "Ping"),
                 ("managing-accounts", "Managing Accounts"),
                 ("refresh-updates", "Refresh & Updates"),
                 ("troubleshooting", "Troubleshooting"),
             ]
         );
+    }
+
+    #[test]
+    fn finding_your_way_names_ping_log_and_auto_ping() {
+        let ui = include_str!("../ui/help.slint");
+        assert!(ui.contains("**Tools**: Ping Log and Help."));
+        assert!(ui.contains("**Settings**: accounts, refresh, Auto Ping, updates."));
     }
 
     #[test]

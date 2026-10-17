@@ -620,7 +620,7 @@ The Linux side has no resync. `sync` and `add-key` are its two writers, and
 
 Starting an account's usage windows without Claude Code: one short claude.ai message sent
 with the account's `sessionKey` cookie and the usual `anthropic-client-platform: web_claude_ai`
-header. Implemented on macOS only (`apps/macos/Shared/PingService.swift`). The endpoints are
+header. Implemented on macOS (`apps/macos/Shared/PingService.swift`) and Windows (`core::ping`). The endpoints are
 undocumented claude.ai internals and may change; every outcome is logged so a change shows up.
 
 1. `POST /api/organizations/{orgId}/chat_conversations` with `{"uuid": <new lowercase UUID>, "name": ""}`.

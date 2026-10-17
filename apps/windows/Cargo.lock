@@ -832,6 +832,7 @@ name = "claude-dashboard"
 version = "1.30.0"
 dependencies = [
  "claude-dashboard-core",
+ "iana-time-zone",
  "raw-window-handle",
  "slint",
  "slint-build",

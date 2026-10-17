@@ -199,6 +199,16 @@ settings change restarts it); pinning re-sorts without a fetch; countdowns and t
 tray tooltip move every second; a 5h/7d reset that passed more than 10 s ago
 triggers one refresh. Usage history older than 90 days is pruned at launch.
 
+## Ping
+
+Ping, Auto Ping and the Ping Log follow macOS exactly (`contract/README.md`, "Ping";
+`docs/superpowers/specs/2026-10-17-windows-ping-design.md`). The request sequence is
+`core::ping`; the rules (latch per "window not running" episode, 10-minute retry after a
+failed auto ping, never on a failed fetch or a capped account) are `app/src/ping.rs`.
+`settings.json` key `autoPingEnabled`, default false; Reset All Settings turns it off.
+The log is `ping_logs.db` (SQLite, the macOS schema) beside `usage_logs.db` in
+`%LOCALAPPDATA%\claude-dashboard`, newest 500 kept. Dev runs never ping.
+
 ## App reload pipe
 
 The app serves a named pipe `\\.\pipe\claude-dashboard`; the bridge writes
