@@ -98,7 +98,7 @@ fn apply_output(
     let mut rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
     set_ping_fields(&mut rows);
     set_switch_fields(&mut rows);
-    set_auto_switch_fields(&mut rows, &out.rows, now);
+    set_auto_switch_fields(&mut rows, &out.rows, now, &claude_dashboard_core::settings::load());
     if let Some(pop) = pop_weak.upgrade() {
         set_footer(&pop, &out.rows);
     }
@@ -161,8 +161,12 @@ fn set_switch_fields(rows: &mut [UiRow]) {
 
 /// Copies each row's bolt and flame (macOS `isPriorityTarget`, `canTickPriority`,
 /// `criticalBadge`) from the settings, the Switch states and the current X.
-fn set_auto_switch_fields(rows: &mut [UiRow], display: &[claude_dashboard_core::rows::DisplayRow], now: f64) {
-    let settings = claude_dashboard_core::settings::load();
+fn set_auto_switch_fields(
+    rows: &mut [UiRow],
+    display: &[claude_dashboard_core::rows::DisplayRow],
+    now: f64,
+    settings: &claude_dashboard_core::settings::Settings,
+) {
     let params = claude_dashboard_core::critical::parameters_from(&settings, ratio::current().x);
     for r in rows.iter_mut() {
         let Some(d) = display.iter().find(|d| d.account_id == r.id.as_str()) else { continue };
@@ -233,6 +237,7 @@ fn set_footer(pop: &PopoverWindow, rows: &[claude_dashboard_core::rows::DisplayR
     pop.set_auto_switch_on(f.on);
     pop.set_auto_switch_near(f.near);
     pop.set_auto_switch_event(f.event.into());
+    pop.set_auto_switch_tip(f.tip.into());
     pop.set_auto_switch_event_failed(f.failed);
 }
 
@@ -253,11 +258,12 @@ fn refresh_auto_switch_ui() {
         sync_switch_settings_ui(&a);
     }
     let Some((out, now)) = LAST_OUTPUT.with(|l| l.borrow().clone()) else { return };
+    let settings = claude_dashboard_core::settings::load();
     let patch = |rows: slint::ModelRc<UiRow>| {
         for i in 0..rows.row_count() {
             let Some(mut r) = rows.row_data(i) else { continue };
             let before = (r.is_home, r.can_tick_home, r.critical_level, r.critical_help.clone());
-            set_auto_switch_fields(std::slice::from_mut(&mut r), &out.rows, now);
+            set_auto_switch_fields(std::slice::from_mut(&mut r), &out.rows, now, &settings);
             if (r.is_home, r.can_tick_home, r.critical_level, r.critical_help.clone()) != before {
                 rows.set_row_data(i, r);
             }
@@ -414,6 +420,9 @@ fn spawn_refresh_loop(
                 // 60 s poll of the active account while it is near a limit.
                 poll_target = run_auto_switch(&mut out, now);
                 poll.update(poll_target.is_some(), std::time::Instant::now());
+                if job == Nudge::All {
+                    poll.rearm(std::time::Instant::now());
+                }
                 // Auto Ping on this refresh's own fetches (macOS `refreshAll`); never in dev runs.
                 let enabled = !dev_run() && claude_dashboard_core::settings::load().auto_ping_enabled;
                 let targets = ping::controller().claim_targets(&out.candidates, enabled, now);
@@ -485,7 +494,8 @@ fn run_auto_switch(out: &mut refresh::RefreshOutput, now: f64) -> Option<String>
     }
     // An unreadable store is no evidence of anything: skip this evaluation.
     let stored = claude_dashboard_core::store::load_accounts().ok();
-    if let Some(stored) = stored.filter(|_| cc_state::try_begin_switch()) {
+    let guard = stored.as_ref().and_then(|_| cc_state::try_begin_switch());
+    if let (Some(stored), Some(guard)) = (stored, guard) {
         let ids: Vec<String> = stored.iter().map(|a| a.id.clone()).collect();
         auto_switch::drop_deleted_home(&mut cfg, &ids);
         let log_store = claude_dashboard_core::auto_switch_log::AutoSwitchLogStore::open().ok();
@@ -505,17 +515,18 @@ fn run_auto_switch(out: &mut refresh::RefreshOutput, now: f64) -> Option<String>
             |id| {
                 let target = stored.iter().find(|a| a.id == id).ok_or(SwitchError::NotCaptured)?;
                 let target = SwitchAccount { id: target.id.clone(), email: target.email.clone() };
-                switcher.switch_to(&target, &cc_state::switch_accounts(&stored)).map(|_| ())
+                // The Switch buttons are disabled meanwhile (macOS `isSwitchingClaudeCode`).
+                let _ = slint::invoke_from_event_loop(|| cc_set_switching(true));
+                let result = switcher.switch_to(&target, &cc_state::switch_accounts(&stored)).map(|_| ());
+                let _ = slint::invoke_from_event_loop(|| cc_set_switching(false));
+                result
             },
         );
         *auto_switch::controller() = c;
-        cc_state::end_switch();
+        drop(guard);
         if cfg.priority != before {
-            let p = cfg.priority.clone();
-            let _ = claude_dashboard_core::settings::update(|s| {
-                s.auto_switch_priority_id = p.as_ref().map(|p| p.account_id.clone());
-                s.auto_switch_priority_baseline = p.and_then(|p| p.baseline);
-            });
+            let after = cfg.priority.clone();
+            let _ = claude_dashboard_core::settings::update(|s| auto_switch::write_back_priority(s, &before, &after));
         }
         if switched.is_some() {
             cc_state::refresh(&stored);
@@ -690,9 +701,7 @@ fn cc_start(id: String) {
         return;
     }
     // An auto switch may be running on the refresh thread (macOS disables Switch meanwhile).
-    if !cc_state::try_begin_switch() {
-        return;
-    }
+    let Some(guard) = cc_state::try_begin_switch() else { return };
     let usage = LAST_OUTPUT
         .with(|l| l.borrow().as_ref().and_then(|(o, _)| o.rows.iter().find(|r| r.account_id == id).and_then(auto_switch::usage_of)));
     cc_set_switching(true);
@@ -700,6 +709,7 @@ fn cc_start(id: String) {
     CC_FLOW.with(|f| f.borrow_mut().cancel = Some(cancel.clone()));
     std::thread::spawn(move || {
         let message = cc_run(&id, &cancel, usage);
+        drop(guard);
         let _ = slint::invoke_from_event_loop(move || cc_finish(message));
     });
 }
@@ -751,7 +761,6 @@ fn cc_run(id: &str, cancel: &std::sync::atomic::AtomicBool, usage: Option<claude
 
 fn cc_finish(message: Option<String>) {
     cc_set_switching(false);
-    cc_state::end_switch();
     CC_FLOW.with(|f| f.borrow_mut().cancel = None);
     match message {
         Some(m) => cc_prompt(2, cc_flow::MESSAGE_TITLE, &m),

@@ -48,14 +48,19 @@ pub fn availability(id: &str) -> Option<Availability> {
 /// the two never run together.
 static BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Claims the switch; false while another one runs.
-pub fn try_begin_switch() -> bool {
-    use std::sync::atomic::Ordering;
-    BUSY.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok()
+/// Holds the switch; dropping it (also while a panic unwinds) frees it for the next one.
+pub struct SwitchGuard(());
+
+impl Drop for SwitchGuard {
+    fn drop(&mut self) {
+        BUSY.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
-pub fn end_switch() {
-    BUSY.store(false, std::sync::atomic::Ordering::SeqCst);
+/// Claims the switch; `None` while another one runs.
+pub fn try_begin_switch() -> Option<SwitchGuard> {
+    use std::sync::atomic::Ordering;
+    BUSY.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).ok().map(|_| SwitchGuard(()))
 }
 
 #[cfg(test)]
@@ -81,6 +86,9 @@ pub fn switch_fields(a: Option<Availability>) -> (String, String) {
 mod tests {
     use super::*;
 
+    /// `BUSY` is process-wide: the tests that claim it run one at a time.
+    static BUSY_TEST: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn availability_maps_to_row_fields() {
         assert_eq!(switch_fields(None), (String::new(), String::new()));
@@ -95,14 +103,20 @@ mod tests {
     }
 
     #[test]
-    fn busy_flag_is_exclusive() {
-        assert!(try_begin_switch());
+    fn busy_flag_is_exclusive_and_released_by_the_guard_even_on_panic() {
+        let _l = BUSY_TEST.lock().unwrap_or_else(|e| e.into_inner());
+        let g = try_begin_switch().expect("free");
         assert!(is_switching());
-        assert!(!try_begin_switch(), "a second switch waits");
-        end_switch();
+        assert!(try_begin_switch().is_none(), "a second switch waits");
+        drop(g);
         assert!(!is_switching());
-        assert!(try_begin_switch());
-        end_switch();
+        let g = try_begin_switch().unwrap();
+        let _ = std::thread::spawn(move || {
+            let _g = g;
+            panic!("switch crashed");
+        })
+        .join();
+        assert!(!is_switching(), "a panic does not leave auto switch off for good");
     }
 
     #[test]

@@ -265,11 +265,15 @@ pub fn waits_for_reset(active: &Account, limits: &Thresholds, targets: &[&Accoun
         return false;
     }
     let cutoff = s.now - left - 60.0;
+    // The newest row; the first of equal times, as Swift's `max(by:)` keeps.
     let earlier = active
         .five_hour_log
         .iter()
         .filter(|r| r.t <= cutoff && (r.resets_at - resets).abs() <= RESET_TOLERANCE_S)
-        .max_by(|a, b| a.t.total_cmp(&b.t));
+        .fold(None, |best: Option<&LogPoint>, r| match best {
+            Some(b) if r.t <= b.t => Some(b),
+            _ => Some(r),
+        });
     let Some(earlier) = earlier else { return false };
     let used = u.five_hour.utilization - earlier.utilization;
     used <= 100.0 - u.five_hour.utilization - NEAR_RESET_MARGIN
@@ -763,6 +767,14 @@ mod tests {
         assert_eq!(d(&with_hold(snap(vec![most, crit(acct("c", 0.0, 30.0), C, 10.0)]), "a", 7200.0)), NEAR, "most critical waits");
         let less = crit(a(), C, 5.0);
         assert_eq!(d(&with_hold(snap(vec![less, crit(acct("c", 0.0, 30.0), C, 10.0)]), "a", 7200.0)), to("c", T1));
+    }
+
+    /// Swift's `max(by:)` keeps the first of two rows logged in the same second.
+    #[test]
+    fn near_reset_reads_the_first_of_two_rows_in_the_same_second() {
+        let b = || acct("b", 0.0, 10.0);
+        // First row at 6 minutes ago 91% (fits: 4 <= 4), second at the same time 90% (5 > 4).
+        assert_eq!(d(&home_of(snap(vec![near(95.0, 10.0, 5.0 * MIN, &[(6.0 * MIN, 91.0), (6.0 * MIN, 90.0), (0.0, 95.0)]), b()]))), NEAR);
     }
 
     #[test]

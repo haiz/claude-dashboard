@@ -118,6 +118,14 @@ impl FastPoll {
         self.due.map(|d| d.saturating_duration_since(now))
     }
 
+    /// A full refresh just fetched the active account too: a running poll counts a full
+    /// period from `now`; a stopped one stays stopped.
+    pub fn rearm(&mut self, now: std::time::Instant) {
+        if self.due.is_some() {
+            self.due = Some(now + Self::PERIOD);
+        }
+    }
+
     /// True when the poll is due; schedules the next one a period from `now`.
     pub fn fire(&mut self, now: std::time::Instant) -> bool {
         match self.due {
@@ -563,6 +571,22 @@ mod tests {
         p.update(false, t + Duration::from_secs(61));
         assert_eq!(p.wait(t + Duration::from_secs(61)), None);
         assert!(!p.fire(t + Duration::from_secs(500)));
+    }
+
+    /// An Auto Refresh tick also fetches the active account: the poll that was due with it
+    /// moves a full period on instead of fetching it again (review minor 7).
+    #[test]
+    fn fast_poll_rearm_after_a_full_refresh() {
+        use std::time::{Duration, Instant};
+        let t = Instant::now();
+        let mut p = FastPoll::default();
+        p.update(true, t);
+        p.rearm(t + Duration::from_secs(60));
+        assert!(!p.fire(t + Duration::from_secs(60)), "not due right after the full refresh");
+        assert_eq!(p.wait(t + Duration::from_secs(60)), Some(Duration::from_secs(60)));
+        let mut off = FastPoll::default();
+        off.rearm(t);
+        assert_eq!(off.wait(t), None, "a stopped poll stays stopped");
     }
 
     #[test]

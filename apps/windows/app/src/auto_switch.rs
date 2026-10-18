@@ -384,9 +384,40 @@ pub struct Footer {
     pub shown: bool,
     pub on: bool,
     pub near: bool,
-    /// "{event} · {time}", empty without an event.
+    /// "{event} · {time}", elided in the middle (macOS `.truncationMode(.middle)`); empty
+    /// without an event.
     pub event: String,
+    /// The event's tooltip: its text alone (macOS `.help(event.text)`).
+    pub tip: String,
     pub failed: bool,
+}
+
+/// The footer event's character budget: about what fits between the version and the toggle in
+/// the flyout's right half at 11 px.
+pub const FOOTER_EVENT_CHARS: usize = 12;
+
+/// `s` cut to `max` characters with an ellipsis in the middle.
+pub fn elide_middle(s: &str, max: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max || max < 3 {
+        return s.to_string();
+    }
+    let head = max / 2 + 1;
+    let tail = max - 1 - head;
+    let mut out: String = chars[..head].iter().collect();
+    out.push('\u{2026}');
+    out.extend(&chars[chars.len() - tail..]);
+    out
+}
+
+/// Writes the evaluated home tick back, unless the stored one changed since `before` was read
+/// (a bolt click while a switch ran): the user's tick wins.
+pub fn write_back_priority(s: &mut Settings, before: &Option<Priority>, after: &Option<Priority>) {
+    if Config::from_settings(s).priority != *before {
+        return;
+    }
+    s.auto_switch_priority_id = after.as_ref().map(|p| p.account_id.clone());
+    s.auto_switch_priority_baseline = after.as_ref().and_then(|p| p.baseline);
 }
 
 pub fn footer(settings: &Settings, rows: &[DisplayRow], event: Option<&Event>, local_offset_s: f64) -> Footer {
@@ -402,8 +433,9 @@ pub fn footer(settings: &Settings, rows: &[DisplayRow], event: Option<&Event>, l
         on,
         near,
         event: event
-            .map(|e| format!("{} \u{00B7} {}", e.text(), crate::ping::clock(e.date_unix, local_offset_s)))
+            .map(|e| elide_middle(&format!("{} \u{00B7} {}", e.text(), crate::ping::clock(e.date_unix, local_offset_s)), FOOTER_EVENT_CHARS))
             .unwrap_or_default(),
+        tip: event.map(Event::text).unwrap_or_default(),
         failed: event.is_some_and(Event::is_failure),
     }
 }
@@ -813,7 +845,7 @@ mod tests {
         let mut calm = hot.clone();
         calm.five_hour.as_mut().unwrap().utilization = 79.0;
         let f = footer(&s, &[calm.clone()], None, 0.0);
-        assert_eq!(f, Footer { shown: true, on: true, near: false, event: String::new(), failed: false }, "on: shown, dimmed");
+        assert_eq!(f, Footer { shown: true, on: true, near: false, event: String::new(), tip: String::new(), failed: false }, "on: shown, dimmed");
         s.auto_switch_enabled = false;
         assert!(!footer(&s, &[calm.clone()], None, 0.0).shown, "off and calm: hidden");
         let f = footer(&s, &[hot.clone()], None, 0.0);
@@ -823,7 +855,9 @@ mod tests {
         let s = Settings::default();
         let e = Event { kind: EventKind::Failed("x".into()), account_name: Some("b@x.com".into()), date_unix: 1_000_000.0 };
         let f = footer(&s, &[hot], Some(&e), 0.0);
-        assert_eq!(f.event, "Could not switch to b@x.com: x \u{00B7} 1:46 PM");
+        assert_eq!(f.event, elide_middle("Could not switch to b@x.com: x \u{00B7} 1:46 PM", FOOTER_EVENT_CHARS));
+        assert_eq!(f.event.chars().count(), FOOTER_EVENT_CHARS);
+        assert_eq!(f.tip, "Could not switch to b@x.com: x");
         assert!(f.failed);
         assert!(!footer(&Settings::default(), &[], None, 0.0).near, "no active account: not near");
     }
@@ -859,6 +893,32 @@ mod tests {
         assert!(cfg.priority.is_some());
         drop_deleted_home(&mut cfg, &["x".to_string()]);
         assert_eq!(cfg.priority, None);
+    }
+
+    /// The write-back changes the stored tick only when nobody changed it meanwhile (minor 4).
+    #[test]
+    fn priority_write_back_keeps_a_concurrent_tick() {
+        let p = |id: &str, b: f64| Some(Priority { account_id: id.into(), baseline: Some(b) });
+        let mut s = Settings { auto_switch_priority_id: Some("h".into()), auto_switch_priority_baseline: Some(1.0), ..Settings::default() };
+        write_back_priority(&mut s, &p("h", 1.0), &p("h", 2.0));
+        assert_eq!(s.auto_switch_priority_baseline, Some(2.0), "unchanged meanwhile: written");
+        s.auto_switch_priority_id = Some("other".into());
+        write_back_priority(&mut s, &p("h", 2.0), &p("h", 3.0));
+        assert_eq!(s.auto_switch_priority_id.as_deref(), Some("other"), "the user's new tick wins");
+        write_back_priority(&mut s, &p("other", 9.0), &None);
+        assert_eq!(s.auto_switch_priority_id.as_deref(), Some("other"), "baseline differs: not ours to drop");
+    }
+
+    #[test]
+    fn footer_event_elides_in_the_middle_and_tips_without_the_time() {
+        assert_eq!(elide_middle("short", 10), "short");
+        assert_eq!(elide_middle("Could not switch to bob@example.com: config", 21), "Could not s\u{2026}m: config");
+        let s = Settings::default();
+        let mut hot = row("a", None, Some(80.0), Some((10.0, T0 + 86_400.0)));
+        hot.is_active_claude_code = true;
+        let e = Event { kind: EventKind::NoCandidate, account_name: None, date_unix: 1_000_000.0 };
+        let f = footer(&s, &[hot], Some(&e), 0.0);
+        assert_eq!(f.tip, "No account to switch to", "macOS .help(event.text): no time");
     }
 
     #[test]

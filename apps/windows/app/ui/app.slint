@@ -1271,6 +1271,7 @@ export component PopoverWindow inherits Window {
     in property <bool> auto-switch-on;
     in property <bool> auto-switch-near;
     in property <string> auto-switch-event;
+    in property <string> auto-switch-tip;
     in property <bool> auto-switch-event-failed;
     callback set-auto-switch(bool);
     // Inline Quit confirmation (macOS `confirmingQuit`); Rust clears it when the flyout hides.
@@ -1444,7 +1445,7 @@ export component PopoverWindow inherits Window {
                         horizontal-alignment: right;
                         vertical-alignment: center;
                     }
-                    Tooltip { text: @markdown("\{root.auto-switch-event}"); }
+                    Tooltip { text: @markdown("\{root.auto-switch-tip}"); }
                 }
                 if root.auto-switch-shown: Rectangle {
                     width: toggle-row.preferred-width;

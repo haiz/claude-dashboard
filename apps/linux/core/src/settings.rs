@@ -110,9 +110,9 @@ struct RawSettings {
     auto_ping_enabled: bool,
     #[serde(rename = "autoSwitchEnabled", default = "default_true")]
     auto_switch_enabled: bool,
-    #[serde(rename = "autoSwitchFiveHourThreshold", default)]
+    #[serde(rename = "autoSwitchFiveHourThreshold", default, deserialize_with = "lenient_i64")]
     auto_switch_five_hour: Option<i64>,
-    #[serde(rename = "autoSwitchSevenDayThreshold", default)]
+    #[serde(rename = "autoSwitchSevenDayThreshold", default, deserialize_with = "lenient_i64")]
     auto_switch_seven_day: Option<i64>,
     #[serde(rename = "autoSwitchShowWidgetToggle", default = "default_true")]
     auto_switch_show_widget_toggle: bool,
@@ -120,16 +120,22 @@ struct RawSettings {
     auto_switch_priority_id: Option<String>,
     #[serde(rename = "autoSwitchPriorityBaseline", default)]
     auto_switch_priority_baseline: Option<f64>,
-    #[serde(rename = "criticalPace", default)]
+    #[serde(rename = "criticalPace", default, deserialize_with = "lenient_i64")]
     critical_pace: Option<i64>,
-    #[serde(rename = "criticalHighPace", default)]
+    #[serde(rename = "criticalHighPace", default, deserialize_with = "lenient_i64")]
     critical_high_pace: Option<i64>,
-    #[serde(rename = "criticalQuietStart", default)]
+    #[serde(rename = "criticalQuietStart", default, deserialize_with = "lenient_i64")]
     critical_quiet_start: Option<i64>,
-    #[serde(rename = "criticalQuietEnd", default)]
+    #[serde(rename = "criticalQuietEnd", default, deserialize_with = "lenient_i64")]
     critical_quiet_end: Option<i64>,
     #[serde(rename = "criticalTimeZone", default)]
     critical_time_zone: Option<String>,
+}
+
+/// A number of the wrong type (a float, a string) reads as missing, for that key only
+/// (macOS `as? Int`): one bad value never resets the whole file.
+fn lenient_i64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<i64>, D::Error> {
+    Ok(Option::<serde_json::Value>::deserialize(d)?.and_then(|v| v.as_i64()))
 }
 
 /// A stored value outside `range` (or missing) loads as `default` (macOS `stored(_:in:default:)`).
@@ -564,6 +570,18 @@ mod tests {
         save_to(&p, &Settings::default()).unwrap();
         let raw = fs::read_to_string(&p).unwrap();
         assert!(!raw.contains("autoSwitchPriorityAccountId"), "no home account -> key absent: {raw}");
+    }
+
+    /// macOS reads each key with `as? Int`: a value of the wrong type falls back for that key
+    /// only, never for the whole file (the home account and the other keys are kept).
+    #[test]
+    fn a_non_integer_value_falls_back_for_that_key_only() {
+        let s = load_str(r#"{"autoSwitchFiveHourThreshold":95.5,"autoSwitchSevenDayThreshold":"x","criticalPace":60,
+            "criticalQuietEnd":true,"autoSwitchPriorityAccountId":"home","autoRefreshMinutes":12}"#);
+        assert_eq!((s.auto_switch_five_hour, s.auto_switch_seven_day), (95, 99));
+        assert_eq!((s.critical_pace, s.critical_quiet_end), (60, 7));
+        assert_eq!(s.auto_switch_priority_id.as_deref(), Some("home"));
+        assert_eq!(s.auto_refresh_minutes, 12);
     }
 
     #[test]
