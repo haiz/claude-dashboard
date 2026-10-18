@@ -167,7 +167,7 @@ fn set_auto_switch_fields(
     now: f64,
     settings: &claude_dashboard_core::settings::Settings,
 ) {
-    let params = claude_dashboard_core::critical::parameters_from(&settings, ratio::current().x);
+    let params = claude_dashboard_core::critical::parameters_from(settings, ratio::current().x);
     for r in rows.iter_mut() {
         let Some(d) = display.iter().find(|d| d.account_id == r.id.as_str()) else { continue };
         let f = auto_switch::card_fields(d, settings.auto_switch_priority_id.as_deref(), cc_state::availability(&d.account_id), &params, now);
@@ -879,7 +879,7 @@ fn start_clock(
         tray::update_label(bar.and_then(|r| r.five_hour.as_ref()).map(|w| w.utilization), &model::tray_tooltip(bar, now));
 
         ticks.set(ticks.get() + 1);
-        if ticks.get() % 5 == 0 && !dev_run() {
+        if ticks.get().is_multiple_of(5) && !dev_run() {
             let mut fired = fired.borrow_mut();
             let new = refresh::passed_resets(&rows, now).into_iter().filter(|k| fired.insert(k.clone())).count();
             if new > 0 {
@@ -950,7 +950,7 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
             return;
         }
         // Dev runs: walk the progress over the fake rows without touching the store.
-        let dev_total = dev_run().then(|| ids.len());
+        let dev_total = dev_run().then_some(ids.len());
         app.set_resyncing(true);
         // Until the worker counts the scanned accounts.
         app.set_resync_progress(settings_accounts::progress_text(0, ids.len()).into());
