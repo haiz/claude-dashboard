@@ -6,10 +6,10 @@ async function show() {
 }
 
 document.getElementById('sync').addEventListener('click', async () => {
-  // The worker owns syncing; a cookies call wakes it and triggers onChanged,
-  // but the simplest reliable nudge is to re-read after a short delay.
-  await chrome.runtime.sendMessage?.({ type: 'syncNow' }).catch(() => {});
-  setTimeout(show, 500);
+  // The worker owns syncing and replies once the new status is stored.
+  document.getElementById('status').textContent = 'Syncing…';
+  await chrome.runtime.sendMessage({ type: 'syncNow' }).catch(() => {});
+  show();
 });
 
 show();

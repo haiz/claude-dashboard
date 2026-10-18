@@ -160,8 +160,11 @@ This installs the latest per-user `ClaudeDashboard-x64.msi` into
 `%LOCALAPPDATA%\Programs\ClaudeDashboard`, starts the app in the system tray,
 and unpacks the browser extension to `%LOCALAPPDATA%\claude-dashboard\extension`.
 Re-run it to upgrade (the app also updates itself). To use the extension, open
-`chrome://extensions` (or `edge://extensions`), turn on **Developer mode**,
-click **Load unpacked** and pick that folder. Uninstall from **Settings > Apps**;
+**Settings > Accounts > Add Account**: the **Browser extension** tab lists every
+Chrome, Edge and Brave profile with an **Install** button that opens the
+extension's page in that profile (until the store listing is live it opens a
+setup page there instead, which walks through **Developer mode** and **Load
+unpacked**). Uninstall from **Settings > Apps**;
 your accounts and settings are kept.
 
 ## Terminal CLI

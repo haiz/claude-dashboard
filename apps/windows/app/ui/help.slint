@@ -377,7 +377,7 @@ export component HelpPane inherits Flickable {
                 spacing: 8px;
                 HelpStep { n: 1; body: @markdown("Sign in to claude.ai in **Chrome, Chrome Dev, Edge, Brave or Arc**. Use one browser profile per account."); }
                 HelpStep { n: 2; body: @markdown("Open **Settings › Accounts** and click **Add Account…**"); }
-                HelpStep { n: 3; body: @markdown("Pick **Browser extension** (recommended, works with Chrome, Edge, Brave and Arc). In the browser's extensions page turn on Developer mode, click **Load unpacked** and select `%LOCALAPPDATA%\\claude-dashboard\\extension` (if you used the installer script; otherwise the folder you unzipped claude-dashboard-extension.zip to). Then open claude.ai: the extension sends the key by itself."); }
+                HelpStep { n: 3; body: @markdown("Pick **Browser extension** (recommended). It lists every Chrome, Chrome Dev, Edge and Brave profile; click **Install** on each profile you use Claude in, then **Open claude.ai**: the extension sends the key by itself. Until the store listing is live, Install opens a setup page in that profile that walks through Developer mode and **Load unpacked**."); }
                 HelpStep { n: 4; body: @markdown("Or pick **Scan browser** (Chrome, Chrome Dev, Edge and Brave), check the accounts it finds, then click **Add Selected**."); }
             }
             HelpCallout { kind: "tip"; body: @markdown("Scan cannot read profiles that use Chrome's app-bound (`v20`) cookies. For those, use the **Browser extension**."); }

@@ -115,10 +115,10 @@ function Install-ClaudeDashboard {
     if ($extDir) {
         Write-Host ''
         Write-Host '  Browser extension (recommended, keeps session keys in sync):'
-        Write-Host '    1. Open chrome://extensions (or edge://extensions) and turn on Developer mode.'
-        Write-Host '    2. Click "Load unpacked" and select:'
-        Write-Host "         $extDir"
-        Write-Host '    3. Open claude.ai while signed in; the account appears in the dashboard.'
+        Write-Host '    In Claude Dashboard open Settings > Accounts > Add Account. The Browser'
+        Write-Host '    extension tab lists your browser profiles; click Install on each one.'
+        Write-Host '    (Before the store listing: Developer mode > Load unpacked, then select'
+        Write-Host "     $extDir)"
     }
     Write-Host ''
 }

@@ -10,6 +10,7 @@ mod cc_flow;
 mod cc_state;
 mod chart;
 mod chart_model;
+mod ext_install;
 mod help;
 mod history;
 mod overview;

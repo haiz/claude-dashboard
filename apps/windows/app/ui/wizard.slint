@@ -12,6 +12,14 @@ export struct ScanItem {
     checked: bool,
 }
 
+// One browser profile on the extension tab; `state` is 0 not installed,
+// 1 installed, 2 turned off (Rust `ExtState::ui`).
+export struct ExtProfile {
+    label: string,
+    detail: string,
+    state: int,
+}
+
 component WizButton inherits Rectangle {
     in property <string> label;
     in property <bool> enabled: true;
@@ -94,6 +102,11 @@ export component SetupWizardWindow inherits Window {
     // Extension tab
     in property <string> ext-status: "Waiting for a key\u{2026}";
     in property <bool> ext-done: false;
+    in property <[ExtProfile]> ext-profiles;
+    // No store listing yet: Install unpacks the extension here and the tab shows
+    // the Load unpacked steps (empty hides them).
+    in property <string> ext-unpacked-path;
+    in property <string> ext-message;
     // Scan tab: installed browsers (display names) and the picked one.
     in property <[string]> browsers;
     in-out property <int> browser-index: 0;
@@ -113,6 +126,7 @@ export component SetupWizardWindow inherits Window {
     in property <bool> paste-hold: false;
 
     callback tab-changed(int);
+    callback ext-action(int);
     callback choose-browser(int);
     callback browser-changed(int);
     callback scan();
@@ -155,15 +169,95 @@ export component SetupWizardWindow inherits Window {
             if root.tab == 0: VerticalLayout {
                 spacing: 10px;
                 vertical-stretch: 1;
-                alignment: start;
                 Text {
-                    text: "Recommended. Works with Chrome, Edge, Brave and Arc, including profiles the scan cannot read.";
+                    text: "Recommended. Install the extension in each browser profile you use Claude in. It keeps that profile's session key in sync, including profiles the scan cannot read.";
                     color: Theme.text-secondary; wrap: word-wrap;
                 }
-                Text { text: "How to install"; color: Theme.text-primary; font-weight: 600; }
-                Text {
-                    text: "1. In your browser, open the extensions page (chrome://extensions or edge://extensions) and turn on Developer mode.\n2. Choose Load unpacked and select %LOCALAPPDATA%\\claude-dashboard\\extension (the install.ps1 one-liner puts it there; if you installed the MSI by hand, unzip claude-dashboard-extension.zip from the release into any folder and select that).\n3. Open claude.ai in that browser while signed in. The extension sends the key automatically.\n\n(Dev builds: load apps\\windows\\extension from the repository and run apps\\windows\\scripts\\register-dev-host.ps1 once. A store link will replace these steps once the extension is published.)";
+                if root.ext-profiles.length == 0: Text {
+                    vertical-stretch: 1;
+                    text: "No Chrome, Edge or Brave profile found. In Arc, install Claude Dashboard Sync from the Chrome Web Store.";
                     color: Theme.text-secondary; wrap: word-wrap;
+                    horizontal-alignment: center; vertical-alignment: center;
+                }
+                if root.ext-profiles.length > 0: Flickable {
+                    vertical-stretch: 1;
+                    content-height: ext-list.preferred-height;
+                    ext-list := VerticalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        for p[i] in root.ext-profiles: Rectangle {
+                            height: 52px;
+                            border-radius: 8px;
+                            background: Theme.card-bg;
+                            border-width: 1px;
+                            border-color: Theme.card-border;
+                            HorizontalLayout {
+                                padding: 10px;
+                                spacing: 10px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    horizontal-stretch: 1;
+                                    Text { text: p.label; color: Theme.text-primary; font-weight: 600; overflow: elide; }
+                                    Text {
+                                        text: (p.state == 1 ? "Installed" : p.state == 2 ? "Turned off" : "Not installed") + (p.detail != "" ? "  \u{00B7}  " + p.detail : "");
+                                        color: p.state == 1 ? Theme.ok : p.state == 2 ? Theme.warn : Theme.text-secondary;
+                                        font-size: 11px;
+                                        overflow: elide;
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    WizButton {
+                                        label: p.state == 1 ? "Open claude.ai" : p.state == 2 ? "Turn on" : "Install";
+                                        primary: p.state == 0;
+                                        tip: p.state == 1 ? "Open claude.ai in this profile; the extension sends its key"
+                                            : p.state == 2 ? "Open a page in this profile that shows how to turn the extension back on"
+                                            : root.ext-unpacked-path != "" ? "Open a page in this profile that walks through loading the extension"
+                                            : "Open the extension's store page in this profile";
+                                        clicked => { root.ext-action(i); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if root.ext-unpacked-path != "": VerticalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: "Until the store listing is live, Install opens a setup page in that profile: open the extensions page, turn on Developer mode, choose Load unpacked and paste this folder.";
+                        color: Theme.text-secondary; font-size: 12px; wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle {
+                            height: 32px;
+                            border-radius: 6px;
+                            background: Theme.card-bg;
+                            border-width: 1px;
+                            border-color: Theme.card-border;
+                            path-input := TextInput {
+                                x: 10px;
+                                width: parent.width - 20px;
+                                height: parent.height;
+                                vertical-alignment: center;
+                                color: Theme.text-primary;
+                                font-size: 12px;
+                                single-line: true;
+                                read-only: true;
+                                text: root.ext-unpacked-path;
+                            }
+                        }
+                        WizButton {
+                            label: "Copy";
+                            tip: "Copy the folder path";
+                            clicked => { path-input.select-all(); path-input.copy(); }
+                        }
+                    }
+                }
+                if root.ext-message != "": Text {
+                    text: root.ext-message;
+                    color: Theme.danger;
+                    wrap: word-wrap;
                 }
                 Rectangle {
                     height: 44px;

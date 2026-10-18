@@ -4,6 +4,9 @@
 //! The Scan and Paste tabs follow macOS `SetupView` / `PasteKeyView`: the scan
 //! reads one browser, picked once and remembered in `preferredScanBrowser`, and
 //! a successful add closes the window.
+//!
+//! The Extension tab lists every browser profile with its extension state and
+//! one button per row (`ext_install`); its poll also refreshes those states.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -19,8 +22,9 @@ use claude_dashboard_core::scan::{installed_windows_browsers, scan_windows_brows
 use claude_dashboard_core::{settings, store};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
+use crate::ext_install::{self, ExtRow, StateCache};
 use crate::setup::{self, DetectedAccount, RealScanEnv};
-use crate::{ScanItem, SetupWizardWindow};
+use crate::{ExtProfile, ScanItem, SetupWizardWindow};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 const WAITING: &str = "Waiting for a key\u{2026}";
@@ -84,6 +88,59 @@ fn account_ids() -> Vec<(String, String)> {
         .unwrap_or_default()
 }
 
+/// Reads the extension rows off-thread and shows them when they changed.
+fn refresh_ext_rows(
+    weak: slint::Weak<SetupWizardWindow>,
+    rows: Arc<Mutex<Vec<ExtRow>>>,
+    cache: Arc<Mutex<StateCache>>,
+) {
+    let fresh = match cache.lock() {
+        Ok(mut c) => ext_install::current_rows(&mut c),
+        Err(_) => return,
+    };
+    let Ok(mut held) = rows.lock() else { return };
+    if *held == fresh {
+        return;
+    }
+    let ui: Vec<ExtProfile> = fresh
+        .iter()
+        .map(|r| ExtProfile {
+            label: r.label.clone().into(),
+            detail: r.detail.clone().into(),
+            state: r.state.ui(),
+        })
+        .collect();
+    *held = fresh;
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(w) = weak.upgrade() {
+            w.set_ext_profiles(ModelRc::new(VecModel::from(ui)));
+        }
+    });
+}
+
+/// Opens `url` in one browser profile; false when the browser can't be started.
+fn open_in_profile(browser: &Browser, profile_dir: &str, url: &str) -> bool {
+    let roots = crate::cc_login::install_roots();
+    let Some((exe, args)) = crate::cc_login::browser_command(browser, Some(profile_dir), url, &roots) else {
+        return false;
+    };
+    std::process::Command::new(exe).args(args).spawn().is_ok()
+}
+
+/// Writes the setup page (and with `unpack` the unpacked copy) and returns its URL.
+fn write_guide(browser: &Browser, unpack: bool) -> Result<String, String> {
+    const FAILED: &str = "Could not write the extension setup files.";
+    let (Some(dir), Some(page)) = (ext_install::unpacked_dir(), ext_install::guide_path()) else {
+        return Err(FAILED.to_string());
+    };
+    if unpack {
+        ext_install::write_unpacked(&dir).map_err(|_| FAILED.to_string())?;
+    }
+    let html = ext_install::guide_html(browser, unpack.then_some(dir.as_path()));
+    std::fs::write(&page, html).map_err(|_| FAILED.to_string())?;
+    Ok(ext_install::file_url(&page))
+}
+
 /// Builds the (hidden) wizard window and returns the function that opens it.
 pub fn install(
     dark: bool,
@@ -103,14 +160,19 @@ pub fn install(
     // Bumped by every scan (and on open), so a superseded scan's result is dropped
     // (macOS cancels the previous `scanTask`).
     let generation = Arc::new(AtomicU64::new(0));
+    // The extension tab's rows as last shown (ext-action indexes this).
+    let ext_rows: Arc<Mutex<Vec<ExtRow>>> = Arc::new(Mutex::new(Vec::new()));
+    let ext_cache: Arc<Mutex<StateCache>> = Arc::new(Mutex::new(StateCache::default()));
 
-    // ---- extension tab poll ----
+    // ---- extension tab poll: new accounts, and the profiles' extension states ----
     let start_poll: Rc<dyn Fn()> = {
         let (timer, baseline, polling) = (timer.clone(), baseline.clone(), polling.clone());
         let (weak, nudge) = (win.as_weak(), nudge.clone());
+        let (ext_rows, ext_cache) = (ext_rows.clone(), ext_cache.clone());
         Rc::new(move || {
             let (baseline, polling) = (baseline.clone(), polling.clone());
             let (weak, nudge) = (weak.clone(), nudge.clone());
+            let (ext_rows, ext_cache) = (ext_rows.clone(), ext_cache.clone());
             timer.start(slint::TimerMode::Repeated, POLL_INTERVAL, move || {
                 let Some(w) = weak.upgrade() else { return };
                 if w.get_tab() != 0 || polling.swap(true, Ordering::SeqCst) {
@@ -118,7 +180,9 @@ pub fn install(
                 }
                 let (baseline, polling) = (baseline.clone(), polling.clone());
                 let (weak, nudge) = (weak.clone(), nudge.clone());
+                let (ext_rows, ext_cache) = (ext_rows.clone(), ext_cache.clone());
                 std::thread::spawn(move || {
+                    refresh_ext_rows(weak.clone(), ext_rows, ext_cache);
                     let current = account_ids();
                     let mut new_name = None;
                     if let Ok(mut b) = baseline.lock() {
@@ -144,6 +208,41 @@ pub fn install(
             });
         })
     };
+
+    // A row's button: claude.ai, Install (the store page), or the local setup page
+    // (turn on, or load the unpacked copy written first while unpublished).
+    {
+        let (weak, ext_rows) = (win.as_weak(), ext_rows.clone());
+        win.on_ext_action(move |i| {
+            let Some(row) = ext_rows.lock().ok().and_then(|r| r.get(i.max(0) as usize).cloned()) else {
+                return;
+            };
+            if let Some(w) = weak.upgrade() {
+                w.set_ext_message(SharedString::from(""));
+            }
+            let weak = weak.clone();
+            std::thread::spawn(move || {
+                let url = match ext_install::action(&row) {
+                    ext_install::Action::Open(url) => Ok(url),
+                    ext_install::Action::Guide { unpack } => write_guide(&row.browser, unpack),
+                };
+                let error = match url {
+                    Err(e) => Some(e),
+                    Ok(url) if !open_in_profile(&row.browser, &row.profile_dir, &url) => {
+                        Some(format!("Could not open {}.", row.browser.display_name()))
+                    }
+                    Ok(_) => None,
+                };
+                if let Some(e) = error {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(w) = weak.upgrade() {
+                            w.set_ext_message(SharedString::from(e));
+                        }
+                    });
+                }
+            });
+        });
+    }
 
     // ---- scan tab ----
     // Scans the picked browser: read its profiles, check each key with claude.ai,
@@ -363,6 +462,18 @@ pub fn install(
         win.set_tab(0);
         win.set_ext_status(SharedString::from(WAITING));
         win.set_ext_done(false);
+        win.set_ext_message(SharedString::from(""));
+        let unpacked = ext_install::CHROME_WEB_STORE_ID
+            .is_none()
+            .then(ext_install::unpacked_dir)
+            .flatten()
+            .map(|d| d.display().to_string())
+            .unwrap_or_default();
+        win.set_ext_unpacked_path(SharedString::from(unpacked));
+        {
+            let (weak, ext_rows, ext_cache) = (win.as_weak(), ext_rows.clone(), ext_cache.clone());
+            std::thread::spawn(move || refresh_ext_rows(weak, ext_rows, ext_cache));
+        }
         win.set_paste_key(SharedString::from(""));
         win.set_paste_result(SharedString::from(""));
         win.set_paste_ok(false);

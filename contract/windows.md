@@ -170,6 +170,29 @@ re-checks dedupe, refreshes and closes the wizard. A pasted key that is saved
 closes the wizard too, unless the account has no organization with chat
 access: then the warning stays on screen.
 
+## Extension tab
+
+The Add Account wizard's first tab lists every profile under the scan roots below
+(one row each: `<Browser> · <profile name, else dir>`, the Google e-mail, the
+extension state) and refreshes the states on its 2 s poll. State comes from the
+profile's `Secure Preferences`, then `Preferences`, `extensions.settings.<id>` for
+the unpacked id and the store ids (`CHROME_WEB_STORE_ID`, `EDGE_ADDONS_ID` in
+`app/src/ext_install.rs`, unset until published; each must also be in both host
+manifests' `allowed_origins`, a test checks). An entry without `location` is a
+tombstone (not installed); a non-empty `disable_reasons` (list, or a non-zero
+legacy bitmask) or `state: 0` is **Turned off**; otherwise **Installed**. Installed
+wins across ids and files. The row's button opens, in that profile
+(`--profile-directory`): claude.ai when installed; otherwise the store page (Edge
+Add-ons for Edge when its id is set, else the Chrome Web Store). Browsers ignore
+`chrome://` URLs on the command line (verified: Chrome opens a New Tab), so when
+turned off, or not installed with no store id, it writes
+`%LOCALAPPDATA%\claude-dashboard\extension-setup.html` and opens that as a `file:///`
+URL: copy buttons for the browser's extensions page (`chrome://`, `edge://`,
+`brave://extensions`) and, when installing, for the folder. Installing with no store
+id first writes the embedded extension to `%LOCALAPPDATA%\claude-dashboard\extension`
+(files already identical are left alone); the tab also shows that folder with a Copy
+button. No silent install exists without enterprise policy, which is not used.
+
 Scan roots, under `%LOCALAPPDATA%`: `Google\Chrome\User Data`,
 `Google\Chrome Dev\User Data` (shown as "Chrome Dev", stored as `"chromeDev"`),
 `Microsoft\Edge\User Data` and `BraveSoftware\Brave-Browser\User Data`. Arc is
@@ -327,10 +350,13 @@ Cargo workspace version, which `scripts/sync-version.sh` keeps equal to `/VERSIO
   `apps/windows/scripts/test-install-ps1.ps1` checks it.
 - **Artifacts:** `ClaudeDashboard-x64.msi` and `claude-dashboard-extension.zip`.
   The zip is built by `apps/windows/scripts/pack-extension.ps1` with .NET
-  `ZipArchive`, using `/` entry names and an allowlist of seven files
+  `ZipArchive`, using `/` entry names and an allowlist of eleven files
   (`manifest.json`, `background.js`, `popup.html`, `popup.js`, `lib/extension-id.js`,
-  `lib/status.js`, `lib/sync.js`), so a local `extension-private.pem` can never be
-  packed. `test-pack-extension.ps1` checks it.
+  `lib/status.js`, `lib/sync.js`, `icons/icon-{16,32,48,128}.png`), so a local
+  `extension-private.pem` can never be packed. `-Store` writes the store-upload
+  zip: the same files with the manifest `key` line removed (the store assigns its
+  own id). `test-pack-extension.ps1` checks both. The app embeds the same files
+  (`app/src/ext_install.rs`) for the wizard's unpacked fallback.
 
 ## Updates
 

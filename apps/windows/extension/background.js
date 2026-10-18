@@ -29,6 +29,15 @@ chrome.runtime.onInstalled.addListener(() => {
   runSync();
 });
 
+// The popup's Sync now: reply once the sync has finished and its status is stored.
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg && msg.type === 'syncNow') {
+    runSync().then(() => sendResponse({ done: true }));
+    return true;
+  }
+  return false;
+});
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'sync') runSync();
 });

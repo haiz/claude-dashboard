@@ -173,7 +173,9 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
     refresh loop, a single-instance mutex, and the consumer of the `\\.\pipe\claude-dashboard`
     reload pipe. Closing the window hides it; the app lives in the tray. GUI rendering is
     verified by run-checks, not CI. Sub-project 3 adds the Add Account wizard (extension / scan /
-    paste tabs) and the Settings Accounts (delete + mute, re-sync) and General (auto refresh,
+    paste tabs; the extension tab lists every browser profile with its extension state and an
+    Install button, `src/ext_install.rs`, see `contract/windows.md`, "Extension tab", and
+    `extension/STORE.md` for the store submission) and the Settings Accounts (delete + mute, re-sync) and General (auto refresh,
     launch at startup) panes. Sub-project 4 adds charts: the per-account interactive usage chart
     (`ui/chart.slint`, `src/chart.rs`, pure helpers in `chart_model.rs`), shown in the History
     box on the account page (`src/history.rs`, with the Reset Cycles list), and the Overview multi-account chart opened from the sidebar "Overview" item. Sub-project 5 adds
