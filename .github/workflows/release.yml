@@ -1,0 +1,68 @@
+name: release
+
+# Cut a release from any machine: Actions > release > Run workflow, with the new version
+# and optional notes. It runs scripts/release.sh unchanged on a macOS runner (bump, build,
+# test, artifacts, Homebrew sha256, commit, tag, push, gh release create), so that script
+# stays the one place the release logic lives and can still be run by hand on a Mac.
+#
+# A release created with GITHUB_TOKEN does not fire `release: published` (GitHub's rule
+# against workflow loops), so release-linux.yml and release-windows.yml are started here
+# through their workflow_dispatch retry path, which GITHUB_TOKEN may trigger.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "New version, X.Y.Z (e.g. 1.31.0)"
+        required: true
+      notes:
+        description: "Release notes; write \\n between bullets (empty = GitHub's generated notes)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run release.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          NOTES: ${{ inputs.notes }}
+          # CDReleaseDate is the maintainer's day, not the runner's UTC one.
+          TZ: Asia/Ho_Chi_Minh
+        run: |
+          if [ -n "$NOTES" ]; then
+            ./scripts/release.sh "$VERSION" --notes "$(printf '%b' "$NOTES")"
+          else
+            ./scripts/release.sh "$VERSION"
+          fi
+
+      - name: Build Linux and Windows artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh workflow run release-linux.yml --ref main -f tag="v$VERSION"
+          gh workflow run release-windows.yml --ref main -f tag="v$VERSION"

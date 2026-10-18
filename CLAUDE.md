@@ -259,7 +259,14 @@ When asked to create a release:
    git log "v$(cat VERSION)..HEAD" --pretty=format:"%s" --no-merges | grep -v "chore: release"
    ```
    Write 2-5 plain-English bullet points from a user perspective (what users notice/benefit from). Use `-` bullets, no header.
-4. Pass the notes directly to the script:
+4. Run the release, from any machine, with the **release** workflow
+   (`.github/workflows/release.yml`): Actions > release > Run workflow, or
+   ```bash
+   gh workflow run release.yml --ref main -f version=<new-version> -f notes="- Fixed X\n- Added Y"
+   ```
+   It runs `scripts/release.sh` unchanged on a `macos-latest` runner, then starts
+   `release-linux.yml` and `release-windows.yml` (a release made with `GITHUB_TOKEN` fires no
+   `release: published` event). On a Mac you can still run the script yourself instead:
    ```bash
    ./scripts/release.sh <new-version> --notes "- Fixed X\n- Added Y"
    ```
@@ -278,6 +285,6 @@ If no `--notes` flag is passed, the script falls back to GitHub's auto-generated
 4. Update `sha256` in `Formula/claude-dashboard-cli.rb` and `Casks/claude-dashboard.rb`.
 5. Commit, tag, push, `gh release create` with both artifacts.
 
-After `release.sh` publishes, `.github/workflows/release-windows.yml` builds and attaches `ClaudeDashboard-x64.msi` and `claude-dashboard-extension.zip`; if it fails, re-run it by hand with `workflow_dispatch` and the tag. `scripts/test-release-workflow.sh` enforces its upload-only guardrails.
+After `release.sh` publishes, `.github/workflows/release-windows.yml` builds and attaches `ClaudeDashboard-x64.msi` and `claude-dashboard-extension.zip` (and `release-linux.yml` the Linux CLI tarballs); if one fails, re-run it by hand with `workflow_dispatch` and the tag. `scripts/test-release-workflow.sh` enforces their upload-only guardrails and the release workflow's own rules (dispatch only, main only, macOS runner, release logic only in `release.sh`, inputs through `env:`, both platform builds started).
 
 Validate version sync at any time with `./scripts/test-sync-version.sh`.

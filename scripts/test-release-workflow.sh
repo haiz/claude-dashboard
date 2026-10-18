@@ -127,6 +127,34 @@ check_windows() {
     grep -q 'throw' "$STRIPPED" || fail "windows: Verify version never throws on a mismatch"
 }
 
+# release.yml is the one workflow that does create the release, by running release.sh on a
+# Mac runner; it is held to its own rules instead of the upload-only five.
+check_release() {
+    WF=.github/workflows/release.yml
+    [[ -f "$WF" ]] || fail "$WF does not exist"
+    rm -f "$STRIPPED"
+    STRIPPED="$(mktemp)"
+    grep -v '^[[:space:]]*#' "$WF" > "$STRIPPED"
+    # Started by hand only: never by a tag push, a release event or a schedule.
+    grep -q 'workflow_dispatch:' "$STRIPPED" || fail "release: no workflow_dispatch trigger"
+    awk '/^on:/{f=1;next} /^[^[:space:]]/{f=0} f' "$STRIPPED" | grep -qE '^  (push|release|schedule|pull_request|workflow_run):'         && fail "release: triggers on something other than workflow_dispatch"
+    grep -q 'runs-on: macos-latest' "$STRIPPED" || fail "release: not on a macOS runner"
+    grep -qF "if: github.ref == 'refs/heads/main'" "$STRIPPED" || fail "release: may run from a branch other than main"
+    # The release logic lives in release.sh alone.
+    grep -q './scripts/release.sh' "$STRIPPED" || fail "release: does not run scripts/release.sh"
+    grep -q 'gh release' "$STRIPPED" && fail "release: creates or edits a release itself instead of through release.sh"
+    # Inputs reach the shell through env:, never pasted into the script.
+    grep -qE 'run:.*\$\{\{ *inputs\.' "$STRIPPED" && fail "release: an input is interpolated into a run script"
+    grep -qE '^[[:space:]]+(gh|\./scripts).*\$\{\{ *inputs\.' "$STRIPPED" && fail "release: an input is interpolated into a run script"
+    # A GITHUB_TOKEN release fires no release event: both builds must be dispatched.
+    grep -q 'gh workflow run release-linux.yml' "$STRIPPED" || fail "release: does not start release-linux.yml"
+    grep -q 'gh workflow run release-windows.yml' "$STRIPPED" || fail "release: does not start release-windows.yml"
+    grep -q 'group: release$' "$STRIPPED" || fail "release: two releases could run at once"
+}
+
+check_release
+echo "PASS: release workflow runs release.sh on macOS and starts both platform builds"
+
 check_common .github/workflows/release-linux.yml
 check_linux
 echo "PASS: release-linux workflow satisfies all five guardrails"
