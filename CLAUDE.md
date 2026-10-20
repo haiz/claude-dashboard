@@ -97,7 +97,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   active one reaches 5h >= T5 or 7d >= T7 (Settings, default 95/99), or to a ticked account
   right after its 5h reset. `AutoSwitchPlanner` is pure (three tiers, score = 7d days elapsed
   x (98 - 7d%), random within 85% of the top); `AutoSwitchController` holds the in-memory lock,
-  a 10-minute failure cooldown, the footer event and the Switch Log (`AutoSwitchLogStore`,
+  a 10-minute failure cooldown, the last event (`lastEvent`, no longer shown in the footer) and the Switch Log (`AutoSwitchLogStore`,
   `auto_switch_logs.db`: each switch and failed attempt, and one row per no-candidate stretch). It only uses `.ready` accounts via
   `ClaudeCodeSwitcher.switchTo`: never a browser, never `switchMessage`.
   Spec: `docs/superpowers/specs/2026-10-13-auto-switch-design.md`.

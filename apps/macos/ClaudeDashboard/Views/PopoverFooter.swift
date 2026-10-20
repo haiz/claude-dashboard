@@ -1,10 +1,9 @@
 import SwiftUI
 
-/// The popover's bottom row: Quit on the left, the auto switch toggle on the right and its
-/// last event between them. The toggle shows only while `showsAutoSwitchToggle` (on, or near
-/// a limit with the widget toggle allowed), dimmed while the active account is not near a limit.
-/// The app version sits at the exact center: both sides take equal halves of the rest, so the
-/// event text truncates inside the right half instead of running under the version.
+/// The popover's bottom row: Quit on the left, the auto switch toggle on the right. The toggle
+/// shows only while `showsAutoSwitchToggle` (on, or near a limit with the widget toggle
+/// allowed), dimmed while the active account is not near a limit. The app version sits at the
+/// exact center: both sides take equal halves of the rest. Switch events live in the Switch Log.
 ///
 ///     PopoverFooter(viewModel: viewModel, onQuit: { confirmingQuit = true })
 struct PopoverFooter: View {
@@ -31,14 +30,6 @@ struct PopoverFooter: View {
 
             HStack(spacing: 8) {
                 if viewModel.showsAutoSwitchToggle {
-                    if let event = viewModel.autoSwitch.lastEvent {
-                        (Text(event.text) + Text(" \u{00B7} ") + Text(event.date, style: .time))
-                            .font(.caption)
-                            .foregroundStyle(event.isFailure ? Color.red : Color.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .help(event.text)
-                    }
                     Toggle("Auto switch", isOn: Binding(
                         get: { viewModel.autoSwitchSettings.isEnabled },
                         set: { viewModel.setAutoSwitchEnabled($0) }))
