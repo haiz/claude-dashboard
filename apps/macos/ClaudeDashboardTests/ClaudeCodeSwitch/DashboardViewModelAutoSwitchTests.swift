@@ -95,6 +95,40 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
         XCTAssertEqual(logged.map(\.outcome), [.switched])
         XCTAssertEqual(logged.first?.fromName, "frontend@gotitapp.co")
         XCTAssertEqual(logged.first?.toName, "backend@gotitapp.co")
+        XCTAssertEqual(logged.first?.trigger, .auto)
+    }
+
+    func testManualSwitchIsLoggedAsManual() async throws {
+        let h = try await makeHarness(captureBackend: true)
+        try setUsage(h.vm, h.backend.id, five: 10, seven: 20)
+
+        await h.vm.switchClaudeCode(to: h.backend.id)
+
+        XCTAssertEqual(try h.slot.readOAuth()?.refreshToken, "b1")
+        let logged = await h.vm.autoSwitch.logStore.fetch(limit: 10)
+        XCTAssertEqual(logged.count, 1)
+        XCTAssertEqual(logged.first?.trigger, .manual)
+        XCTAssertEqual(logged.first?.outcome, .switched)
+        XCTAssertEqual(logged.first?.fromName, "frontend@gotitapp.co")
+        XCTAssertEqual(logged.first?.toName, "backend@gotitapp.co")
+        XCTAssertEqual(logged.first?.reason, "Manual switch")
+        XCTAssertEqual(logged.first?.detail, "backend@gotitapp.co: 5h 10%, 7d 20%")
+    }
+
+    func testFailedManualSwitchLogsTheAlertText() async throws {
+        let h = try await makeHarness(captureBackend: true)
+        // Claude Code now holds a login the dashboard does not know: the switch refuses.
+        try JSONSerialization.data(withJSONObject: ["oauthAccount": ["emailAddress": "stranger@x.com"]])
+            .write(to: configURL)
+
+        await h.vm.switchClaudeCode(to: h.backend.id)
+
+        let message = try XCTUnwrap(h.vm.switchMessage)
+        let logged = await h.vm.autoSwitch.logStore.fetch(limit: 10)
+        XCTAssertEqual(logged.map(\.trigger), [.manual])
+        XCTAssertEqual(logged.first?.outcome, .failed)
+        XCTAssertEqual(logged.first?.toName, "backend@gotitapp.co")
+        XCTAssertEqual(logged.first?.detail, message)
     }
 
     /// The home account at 95% four minutes before its 5h reset, with a backend to move to.

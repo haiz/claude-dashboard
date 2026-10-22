@@ -10,7 +10,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 use claude_dashboard_core::auto_switch::{
     self as planner, Account, Decision, Hold, Lock, Priority, Reason, Snapshot, StayReason, Thresholds, Usage,
 };
-use claude_dashboard_core::auto_switch_log::{NewEntry, Outcome};
+use claude_dashboard_core::auto_switch_log::{NewEntry, Outcome, Trigger};
 use claude_dashboard_core::cc_switch::switcher::SwitchError;
 use claude_dashboard_core::critical::CriticalLevel;
 use claude_dashboard_core::auto_switch::Window;
@@ -156,6 +156,7 @@ impl Controller {
                     self.logged_no_candidate = true;
                     log(NewEntry {
                         date_unix: now,
+                        trigger: Trigger::Auto,
                         outcome: Outcome::NoCandidate,
                         from_name,
                         to_name: None,
@@ -185,7 +186,7 @@ impl Controller {
                         self.cooldown_until.insert(id.clone(), now + FAILURE_COOLDOWN_S);
                     }
                     self.last_event = Some(Event { kind: EventKind::Failed(describe(&e)), account_name: to_name.clone(), date_unix: now });
-                    log(NewEntry { date_unix: now, outcome: Outcome::Failed, from_name, to_name, reason: reason_text, detail: Some(describe(&e)) });
+                    log(NewEntry { date_unix: now, trigger: Trigger::Auto, outcome: Outcome::Failed, from_name, to_name, reason: reason_text, detail: Some(describe(&e)) });
                     return None;
                 }
                 self.lock = target.and_then(|t| t.usage).and_then(|u| planner::make_lock(&id, &u, &cfg.thresholds));
@@ -196,6 +197,7 @@ impl Controller {
                 self.last_event = Some(Event { kind: EventKind::Switched(reason), account_name: to_name.clone(), date_unix: now });
                 log(NewEntry {
                     date_unix: now,
+                    trigger: Trigger::Auto,
                     outcome: Outcome::Switched,
                     from_name,
                     to_name,
@@ -297,7 +299,7 @@ pub fn accounts_from(
             };
             Account {
                 id: r.account_id.clone(),
-                display_name: r.email.clone().filter(|e| !e.is_empty()).unwrap_or_else(|| r.name.clone()),
+                display_name: display_name(r),
                 usage: usage_of(r),
                 availability: availability(&r.account_id),
                 is_usable,
@@ -449,6 +451,32 @@ pub fn usage_text(a: &Account) -> String {
     format!("5h {}, 7d {}", percent(a.five_hour()), percent(a.seven_day()))
 }
 
+/// Email when known, else the account name (macOS `AutoSwitchAccount.displayName`).
+fn display_name(r: &DisplayRow) -> String {
+    r.email.clone().filter(|e| !e.is_empty()).unwrap_or_else(|| r.name.clone())
+}
+
+/// A Switch button press for the Switch Log (macOS `logManualSwitch`), from the rows as they
+/// were before the switch: `error` is the message the user saw, `None` for a switch that
+/// went through.
+///
+///     log.insert(&manual_entry(&rows, "b-id", None, now));   // "a → b", "b@x.com: 5h 10%, 7d 20%"
+pub fn manual_entry(rows: &[DisplayRow], target_id: &str, error: Option<String>, now: f64) -> NewEntry {
+    let target = rows.iter().find(|r| r.account_id == target_id);
+    let pct = |w: Option<&claude_dashboard_core::rows::WindowView>| percent(w.map_or(100.0, |v| v.utilization));
+    NewEntry {
+        date_unix: now,
+        trigger: Trigger::Manual,
+        outcome: if error.is_some() { Outcome::Failed } else { Outcome::Switched },
+        from_name: rows.iter().find(|r| r.is_active_claude_code).map(display_name),
+        to_name: target.map(display_name),
+        reason: "Manual switch".into(),
+        detail: error.or_else(|| {
+            target.map(|t| format!("{}: 5h {}, 7d {}", display_name(t), pct(t.five_hour.as_ref()), pct(t.seven_day.as_ref())))
+        }),
+    }
+}
+
 /// The reason a failed switch gives (macOS `describe`).
 pub fn describe(e: &SwitchError) -> String {
     match e {
@@ -536,6 +564,7 @@ mod tests {
             r.logged,
             vec![NewEntry {
                 date_unix: T0,
+                trigger: Trigger::Auto,
                 outcome: Outcome::Switched,
                 from_name: Some("a@x.com".into()),
                 to_name: Some("b@x.com".into()),
@@ -756,6 +785,27 @@ mod tests {
             kind_label: String::new(),
             expired_hint: String::new(),
         }
+    }
+
+    #[test]
+    fn manual_entry_names_both_accounts_and_the_targets_usage_or_the_error() {
+        let mut active = row("a", Some("a@x.com"), Some(96.0), Some((40.0, T0)));
+        active.is_active_claude_code = true;
+        let rows = [active, row("b", None, Some(10.0), Some((20.0, T0)))];
+        assert_eq!(
+            manual_entry(&rows, "b", None, T0),
+            NewEntry {
+                date_unix: T0,
+                trigger: Trigger::Manual,
+                outcome: Outcome::Switched,
+                from_name: Some("a@x.com".into()),
+                to_name: Some("b-name".into()),
+                reason: "Manual switch".into(),
+                detail: Some("b-name: 5h 10%, 7d 20%".into()),
+            }
+        );
+        let failed = manual_entry(&rows, "b", Some("Run /login".into()), T0);
+        assert_eq!((failed.outcome, failed.detail.as_deref()), (Outcome::Failed, Some("Run /login")));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Tools > Switch Log: every auto switch, failed attempt and no-candidate stretch, newest first.
+/// Tools > Switch Log: every auto switch, failed attempt and no-candidate stretch, and every
+/// Switch button press, newest first. Each row is tagged Auto or Manual.
 ///
 ///     AutoSwitchLogView(viewModel: switchLogViewModel)
 struct AutoSwitchLogView: View {
@@ -59,6 +60,7 @@ struct AutoSwitchLogView: View {
                     Text(Self.dateFormatter.string(from: entry.date))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                    triggerBadge(entry.trigger)
                     Text(accounts(entry))
                         .font(.caption.weight(.medium))
                 }
@@ -82,6 +84,18 @@ struct AutoSwitchLogView: View {
         .padding(.vertical, 10)
     }
 
+    /// Same badge as the Ping Log: Manual blue, Auto purple.
+    private func triggerBadge(_ trigger: AutoSwitchTrigger) -> some View {
+        let color: Color = trigger == .manual ? .blue : .purple
+        return Text(trigger.label)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.18))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
+
     private func accounts(_ entry: AutoSwitchLogEntry) -> String {
         let from = entry.fromName ?? "Unknown account"
         guard let to = entry.toName else { return from }
@@ -102,7 +116,7 @@ struct AutoSwitchLogView: View {
             Image(systemName: "arrow.left.arrow.right")
                 .font(.system(size: 40))
                 .foregroundStyle(.secondary)
-            Text("No auto switches yet.")
+            Text("No switches yet.")
                 .foregroundStyle(.secondary)
             Spacer()
         }

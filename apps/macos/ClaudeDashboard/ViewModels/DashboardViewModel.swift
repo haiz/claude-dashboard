@@ -678,10 +678,17 @@ final class DashboardViewModel: ObservableObject {
     func switchClaudeCode(to accountId: UUID) async {
         guard let ccSwitcher,
               let target = accountStore.accounts.first(where: { $0.id == accountId }) else { return }
+        // The Switch Log row: names and usage as they were before the switch.
+        let before = autoSwitchAccounts
+        let log = { (error: String?) in
+            await self.autoSwitch.logManualSwitch(from: before.first(where: \.isActive),
+                                                  to: before.first { $0.id == accountId }, error: error)
+        }
         // Active but Claude Code blanked the credential: only a fresh /login in Claude Code
         // restores the active slot (the switcher's `store` writes the vault, not the slot).
         if switchAvailability[accountId] == .needsLogin {
             switchMessage = "Claude Code lost the login for \(target.email ?? target.name). Run /login once with it."
+            await log(switchMessage)
             return
         }
         guard !isSwitchingClaudeCode else { return }
@@ -694,7 +701,11 @@ final class DashboardViewModel: ObservableObject {
         // Switching to an already-captured account never reaches this: it just swaps the token.
         let availability = switchAvailability[accountId]
         if availability == .notCaptured || availability == .loginExpired {
-            guard await provisionLogin(for: target) else { return }
+            guard await provisionLogin(for: target) else {
+                // No message: the user cancelled the browser wait, which is not logged.
+                if let switchMessage { await log(switchMessage) }
+                return
+            }
         }
 
         do {
@@ -703,10 +714,13 @@ final class DashboardViewModel: ObservableObject {
                 + "Running sessions pick it up within about 30 seconds."
             scrollToTopOnDismiss = true
             autoSwitch.noteManualSwitch(to: accountId, usage: accountStates.first { $0.id == accountId }?.usage)
+            await log(nil)
         } catch let error as SwitchError {
             switchMessage = Self.message(for: error, target: target)
+            await log(switchMessage)
         } catch {
             switchMessage = "Switch failed: \(error.localizedDescription)"
+            await log(switchMessage)
         }
         activeClaudeCodeEmail = ccDetector.activeEmail()
         // Re-sort so the newly-active account floats to the top now, not only after a refresh.

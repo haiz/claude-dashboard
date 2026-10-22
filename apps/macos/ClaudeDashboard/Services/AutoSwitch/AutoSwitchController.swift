@@ -75,6 +75,17 @@ final class AutoSwitchController: ObservableObject {
         hold = Self.makeHold(for: id, usage: usage, now: now())
     }
 
+    /// Logs a Switch button press: `error` is the alert the user saw, nil for a switch that
+    /// went through. Logged whether auto switch is on or not.
+    ///
+    ///     await autoSwitch.logManualSwitch(from: active, to: target, error: nil)
+    func logManualSwitch(from active: AutoSwitchAccount?, to target: AutoSwitchAccount?, error: String?) async {
+        await logStore.insert(date: now(), trigger: .manual, outcome: error == nil ? .switched : .failed,
+                              fromName: active?.displayName, toName: target?.displayName,
+                              reason: "Manual switch",
+                              detail: error ?? target.map { "\($0.displayName): \(Self.usageText($0))" })
+    }
+
     /// True while auto switch is on and the active account is in the warning zone.
     func shouldFastPoll(_ accounts: [AutoSwitchAccount]) -> Bool {
         guard settings.isEnabled, let active = accounts.first(where: \.isActive), active.isFresh,
@@ -106,7 +117,7 @@ final class AutoSwitchController: ObservableObject {
             lastEvent = AutoSwitchEvent(kind: .noCandidate, accountName: nil, date: t)
             if !loggedNoCandidate {
                 loggedNoCandidate = true
-                await logStore.insert(date: t, outcome: .noCandidate, fromName: active?.displayName,
+                await logStore.insert(date: t, trigger: .auto, outcome: .noCandidate, fromName: active?.displayName,
                                       toName: nil, reason: triggerText(active), detail: nil)
             }
             return nil
@@ -133,7 +144,7 @@ final class AutoSwitchController: ObservableObject {
                 }
                 lastEvent = AutoSwitchEvent(kind: .failed(Self.describe(error)),
                                             accountName: target?.displayName, date: t)
-                await logStore.insert(date: t, outcome: .failed, fromName: active?.displayName,
+                await logStore.insert(date: t, trigger: .auto, outcome: .failed, fromName: active?.displayName,
                                       toName: target?.displayName, reason: reasonText,
                                       detail: Self.describe(error))
                 return nil
@@ -147,7 +158,7 @@ final class AutoSwitchController: ObservableObject {
                 hold = nil
             }
             lastEvent = AutoSwitchEvent(kind: .switched(reason), accountName: target?.displayName, date: t)
-            await logStore.insert(date: t, outcome: .switched, fromName: active?.displayName,
+            await logStore.insert(date: t, trigger: .auto, outcome: .switched, fromName: active?.displayName,
                                   toName: target?.displayName, reason: reasonText,
                                   detail: target.map { "\($0.displayName): \(Self.usageText($0))" })
             return id
