@@ -947,7 +947,8 @@ final class DashboardViewModel: ObservableObject {
     /// nil`), and a failure is only logged: the CLI switch already succeeded.
     private func desktopLookAhead(to target: Account, accounts: [Account]) async {
         guard autoSwitchDesktopEnabled, let desktopSwitcher, !desktopSwitcher.isDesktopRunning else { return }
-        guard desktopSwitcher.availability(for: accounts)[target.id] == .ready else {
+        let avail = await Task.detached { desktopSwitcher.availability(for: accounts) }.value
+        guard avail[target.id] == .ready else {
             await logDesktopSwitch(trigger: .auto, outcome: .skipped, toName: target.email ?? target.name,
                              reason: "Desktop look-ahead", detail: "Not captured for Desktop")
             return

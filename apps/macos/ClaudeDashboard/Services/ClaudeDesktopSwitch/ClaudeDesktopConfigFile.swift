@@ -63,8 +63,10 @@ struct ClaudeDesktopConfigFile: ClaudeDesktopConfigReadingWriting {
 
     func writeGrant(_ oauth: OAuthCredential, accountUuid: String, orgUuid: String) throws {
         var root: [String: Any] = [:]
-        if let data = try? Data(contentsOf: fileURL) {
-            guard let existing = OAuthAccountJSON.object(data) else { throw ClaudeDesktopConfigError.unreadableConfig }
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            // Present but unreadable (e.g. permissions) must not be treated as absent.
+            guard let data = try? Data(contentsOf: fileURL),
+                  let existing = OAuthAccountJSON.object(data) else { throw ClaudeDesktopConfigError.unreadableConfig }
             root = existing
         }
         let source = oauth.object

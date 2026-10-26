@@ -74,4 +74,17 @@ final class ClaudeDesktopConfigFileTests: XCTestCase {
         }
         XCTAssertEqual(try Data(contentsOf: tmp), Data("not json".utf8))
     }
+
+    /// A config that exists but cannot be read is not "absent": it must not be replaced.
+    func testWriteToPresentButUnreadableConfigThrowsAndLeavesFile() throws {
+        try Data(#"{"keep":1}"#.utf8).write(to: tmp)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: tmp.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tmp.path) }
+        XCTAssertThrowsError(try ClaudeDesktopConfigFile(fileURL: tmp, password: pw)
+            .writeGrant(sample, accountUuid: "A", orgUuid: "O")) {
+            XCTAssertEqual($0 as? ClaudeDesktopConfigError, .unreadableConfig)
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tmp.path)
+        XCTAssertEqual(try Data(contentsOf: tmp), Data(#"{"keep":1}"#.utf8))
+    }
 }
