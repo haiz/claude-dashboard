@@ -839,7 +839,7 @@ dependencies = [
 
 [[package]]
 name = "claude-dashboard"
-version = "1.32.0"
+version = "1.33.0"
 dependencies = [
  "claude-dashboard-core",
  "iana-time-zone",
@@ -858,7 +858,7 @@ dependencies = [
 
 [[package]]
 name = "claude-dashboard-bridge"
-version = "1.32.0"
+version = "1.33.0"
 dependencies = [
  "claude-dashboard-core",
  "serde",
@@ -869,7 +869,7 @@ dependencies = [
 
 [[package]]
 name = "claude-dashboard-core"
-version = "1.32.0"
+version = "1.33.0"
 dependencies = [
  "aes",
  "aes-gcm",
