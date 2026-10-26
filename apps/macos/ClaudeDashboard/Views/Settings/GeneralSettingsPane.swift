@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// Settings > General: app identity (icon, name, version), auto refresh
-/// (on/off plus a 1-60 minute interval), Auto Ping (on/off), auto switch (on/off, 5h and 7d thresholds, menu bar toggle),
+/// (on/off plus a 1-60 minute interval), Auto Ping (on/off), Claude Desktop switch (two toggles), auto switch (on/off, 5h and 7d thresholds, menu bar toggle),
 /// Critical Accounts (paces, quiet hours, time zone), updates (daily toggle plus the manual check)
 /// and Reset All Settings (asks first, then `resetSettingsToDefaults`).
 /// Every setting carries an `InfoTip` (hover summary, click for detail and example, link to Help).
@@ -65,6 +65,20 @@ struct GeneralSettingsPane: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Section {
+                    Toggle(isOn: $viewModel.switchDesktopEnabled) {
+                        tipLabel("Switch Claude Desktop with Switch", SettingsTips.switchDesktop)
+                    }
+                    Toggle(isOn: $viewModel.autoSwitchDesktopEnabled) {
+                        tipLabel("Let auto switch move Desktop when it is closed", SettingsTips.autoSwitchDesktop)
+                    }
+                } header: {
+                    Text("Claude Desktop")
+                } footer: {
+                    Text("Both are off by default. Auto switch never quits a running Claude Desktop.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 CriticalSettingsSection(settings: viewModel.criticalSettings, openHelp: openHelp)
                 Section {
                     Toggle(isOn: $updateViewModel.autoUpdateEnabled) { tipLabel("Auto-update daily", SettingsTips.autoUpdate) }
@@ -110,7 +124,7 @@ struct GeneralSettingsPane: View {
                 updateViewModel.autoUpdateEnabled = true
             }
         } message: {
-            Text("Auto refresh, Auto Ping, Auto Switch, Critical Accounts and Updates go back to their defaults.")
+            Text("Auto refresh, Auto Ping, Claude Desktop, Auto Switch, Critical Accounts and Updates go back to their defaults.")
         }
     }
 

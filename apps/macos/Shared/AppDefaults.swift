@@ -25,6 +25,11 @@ enum AppDefaults {
     /// name stays inspectable after a failure.
     static let testSuiteName = "com.claude-dashboard.app.tests"
 
+    /// Claude Desktop switch settings; both default off. The first enables the Desktop path in
+    /// the manual Switch flow, the second lets Auto Switch move Desktop while it is not running.
+    static let switchDesktopEnabledKey = "switchDesktopEnabled"
+    static let autoSwitchDesktopEnabledKey = "autoSwitchDesktopEnabled"
+
     /// The suite to open, or nil to stay on the standard domain.
     ///
     /// Pure so the decision is testable; `shared` supplies the real inputs.

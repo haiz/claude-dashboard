@@ -71,6 +71,15 @@ extension ManualKeyOutcome {
 struct PendingSwitch: Equatable {
     let targetId: UUID
     let message: String
+    /// Claude Desktop was running when the prompt was built.
+    var desktopRunning = false
+    /// The "Switch Claude Desktop too" box; pre-ticked when the setting is on and Desktop runs.
+    var switchDesktop = false
+}
+
+/// A Desktop switch held back until the user agrees to close Claude Desktop.
+struct PendingDesktopClose: Equatable {
+    let targetId: UUID
 }
 
 @MainActor
@@ -95,9 +104,19 @@ final class DashboardViewModel: ObservableObject {
     /// Non-nil while a Switch waits for the user to confirm leaving an active account
     /// that still has quota left; the UI shows `message` with Switch / Cancel.
     @Published private(set) var pendingSwitch: PendingSwitch?
+    /// Non-nil while a Desktop switch waits for the user to agree to close Claude Desktop.
+    @Published private(set) var pendingDesktopClose: PendingDesktopClose?
+    /// True while a Desktop switch (quit, capture, write) runs.
+    @Published private(set) var isSwitchingDesktop = false
+    /// Claude Desktop is signed in as another account than Claude Code. Stored, not computed in a
+    /// view body (the read decrypts `config.json`); `refreshDesktopDiffers` updates it after a
+    /// refresh and after each Claude Code or Desktop switch.
+    @Published private(set) var desktopDiffers = false
     /// Auto switch settings and tick; views bind to them through this model.
     let autoSwitchSettings: AutoSwitchSettings
     let autoSwitch: AutoSwitchController
+    /// The Switch Log, shared with `autoSwitch`; Desktop switches are logged here.
+    private let switchLogStore: AutoSwitchLogStore
     /// Paces and quiet hours for critical accounts (`DashboardViewModel+Critical`).
     let criticalSettings: CriticalSettings
     /// Fetches the active account every 60 s while it is near a limit (`updateAutoSwitchPoll`).
@@ -105,6 +124,14 @@ final class DashboardViewModel: ObservableObject {
 
     @Published var autoRefreshEnabled: Bool {
         didSet { AppDefaults.shared.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
+    }
+    /// Settings > General > Claude Desktop (default off): the manual Switch also moves Desktop.
+    @Published var switchDesktopEnabled: Bool {
+        didSet { AppDefaults.shared.set(switchDesktopEnabled, forKey: AppDefaults.switchDesktopEnabledKey) }
+    }
+    /// Settings > General > Claude Desktop (default off): Auto Switch moves Desktop only while it is not running.
+    @Published var autoSwitchDesktopEnabled: Bool {
+        didSet { AppDefaults.shared.set(autoSwitchDesktopEnabled, forKey: AppDefaults.autoSwitchDesktopEnabledKey) }
     }
     static let defaultAutoRefreshMinutes = 5
     @Published var autoRefreshMinutes: Int {
@@ -126,6 +153,8 @@ final class DashboardViewModel: ObservableObject {
     private let apiService: UsageAPIService
     private let ccDetector: ClaudeCodeAccountDetector
     private let ccSwitcher: ClaudeCodeSwitcher?
+    /// Nil under XCTest unless a test injects one built on fakes.
+    private let desktopSwitcher: ClaudeDesktopSwitcher?
     /// Mints Claude Code logins via the account's browser profile so Switch works without
     /// `/login`. Nil under XCTest (the test host is the real app; its startup must launch no
     /// browser), like the switcher.
@@ -155,6 +184,7 @@ final class DashboardViewModel: ObservableObject {
         cookieProvider: @escaping (String, Browser) -> ChromeCookieResult
             = BrowserCookieService.extractCookies(for:browser:),
         ccSwitcher: ClaudeCodeSwitcher? = ClaudeCodeSwitcher.live(isRunningTests: AppDefaults.isRunningTests()),
+        desktopSwitcher: ClaudeDesktopSwitcher? = ClaudeDesktopSwitcher.live(isRunningTests: AppDefaults.isRunningTests()),
         ccProvisioner: ClaudeCodeLoginProvisioner? =
             AppDefaults.isRunningTests() ? nil : ClaudeCodeLoginProvisioner.live(),
         autoSwitchSettings: AutoSwitchSettings? = nil,
@@ -163,6 +193,8 @@ final class DashboardViewModel: ObservableObject {
         criticalSettings: CriticalSettings? = nil
     ) {
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
+        self.switchDesktopEnabled = AppDefaults.shared.bool(forKey: AppDefaults.switchDesktopEnabledKey)
+        self.autoSwitchDesktopEnabled = AppDefaults.shared.bool(forKey: AppDefaults.autoSwitchDesktopEnabledKey)
         self.autoRefreshMinutes = {
             let val = AppDefaults.shared.integer(forKey: "autoRefreshMinutes")
             return val > 0 ? val : Self.defaultAutoRefreshMinutes
@@ -172,6 +204,7 @@ final class DashboardViewModel: ObservableObject {
         self.ccDetector = ccDetector
         self.cookieProvider = cookieProvider
         self.ccSwitcher = ccSwitcher
+        self.desktopSwitcher = desktopSwitcher
         self.ccProvisioner = ccProvisioner
         let store = logStore ?? UsageLogStore()
         self.logStore = store
@@ -179,8 +212,9 @@ final class DashboardViewModel: ObservableObject {
         self.ratioController = UsageRatioController.live(logStore: store, isRunningTests: AppDefaults.isRunningTests())
         let switchSettings = autoSwitchSettings ?? AutoSwitchSettings(defaults: AppDefaults.shared)
         self.autoSwitchSettings = switchSettings
-        self.autoSwitch = AutoSwitchController(settings: switchSettings,
-                                               logStore: autoSwitchLogStore ?? AutoSwitchLogStore())
+        let switchLog = autoSwitchLogStore ?? AutoSwitchLogStore()
+        self.switchLogStore = switchLog
+        self.autoSwitch = AutoSwitchController(settings: switchSettings, logStore: switchLog)
         self.criticalSettings = criticalSettings ?? CriticalSettings(defaults: AppDefaults.shared)
         self.pingController = pingController ?? PingController(
             service: PingService(), logStore: PingLogStore(), defaults: AppDefaults.shared)
@@ -227,6 +261,8 @@ final class DashboardViewModel: ObservableObject {
     func resetSettingsToDefaults() {
         autoRefreshEnabled = true
         autoRefreshMinutes = Self.defaultAutoRefreshMinutes
+        switchDesktopEnabled = false
+        autoSwitchDesktopEnabled = false
         setAutoPingEnabled(false)
         criticalSettings.resetToDefaults()
         autoSwitchSettings.resetToDefaults()
@@ -293,7 +329,9 @@ final class DashboardViewModel: ObservableObject {
         // and be filtered out, a freshly added one would be missing entirely.
         syncStates(with: accountStore.accounts)
         activeClaudeCodeEmail = ccDetector.activeEmail()
+        refreshDesktopDiffers()
         await refreshClaudeCodeSwitchState()
+        await captureDesktopGrant()
 
         // Accounts whose fresh usage shows a window not running (see PingController).
         var autoPings: [PingTarget] = []
@@ -627,6 +665,18 @@ final class DashboardViewModel: ObservableObject {
         }.value
     }
 
+    /// Keeps the Desktop vault's copy of the account Desktop is signed in as fresh, so a later
+    /// Desktop switch stays browserless. A failure only logs. Off the main actor (file and
+    /// Keychain reads).
+    private func captureDesktopGrant() async {
+        guard let desktopSwitcher else { return }
+        let accounts = accountStore.accounts
+        await Task.detached {
+            do { try desktopSwitcher.captureActive(accounts: accounts) }
+            catch { print("[ClaudeDesktopSwitcher] capture failed: \(error)") }
+        }.value
+    }
+
     /// Every removal path (Settings, the account pane) goes through `AccountStore`, whose
     /// publisher lands in `syncStates`; the vault copies of removed accounts are dropped
     /// there. Off the main actor: each delete spawns `security`.
@@ -639,6 +689,8 @@ final class DashboardViewModel: ObservableObject {
     /// quota left (see `hasQuotaLeft`), it parks the switch in `pendingSwitch` for the user
     /// to confirm or cancel; otherwise it switches straight away.
     func requestSwitchClaudeCode(to accountId: UUID) async {
+        let desktopRunning = desktopSwitcher?.isDesktopRunning ?? false
+        let ticked = switchDesktopEnabled && desktopRunning
         if let active = accountStates.first(where: isActiveClaudeCodeAccount),
            active.id != accountId,
            let usage = active.usage,
@@ -649,10 +701,11 @@ final class DashboardViewModel: ObservableObject {
                 targetId: accountId,
                 message: "\(activeName) still has quota left "
                     + "(5h \(Int(usage.fiveHour.utilization))%, 7d \(Int(usage.sevenDay.utilization))%). "
-                    + "Switch Claude Code to \(target.account.email ?? target.account.name) anyway?")
+                    + "Switch Claude Code to \(target.account.email ?? target.account.name) anyway?",
+                desktopRunning: desktopRunning, switchDesktop: ticked)
             return
         }
-        await switchClaudeCode(to: accountId)
+        await switchClaudeCodeThenDesktop(to: accountId, desktopRunning: desktopRunning, switchDesktop: ticked)
     }
 
     /// Runs the switch the confirm prompt showed. Takes `pending` from the prompt, not from
@@ -662,8 +715,33 @@ final class DashboardViewModel: ObservableObject {
     ///     Button("Switch") { Task { await viewModel.confirmSwitch(pending) } }
     func confirmSwitch(_ pending: PendingSwitch) async {
         pendingSwitch = nil
-        await switchClaudeCode(to: pending.targetId)
+        await switchClaudeCodeThenDesktop(to: pending.targetId, desktopRunning: pending.desktopRunning,
+                                          switchDesktop: pending.switchDesktop)
     }
+
+    /// The Claude Code switch, then (only if it succeeded) the Desktop part. A Desktop failure
+    /// never undoes the Claude Code switch. Desktop running + ticked only parks a close
+    /// confirmation: nothing is quit or written until the user agrees.
+    private func switchClaudeCodeThenDesktop(to accountId: UUID, desktopRunning: Bool,
+                                             switchDesktop: Bool) async {
+        guard await switchClaudeCode(to: accountId) else { return }
+        if switchDesktop {
+            pendingDesktopClose = PendingDesktopClose(targetId: accountId)
+        } else if switchDesktopEnabled, !desktopRunning,
+                  let target = accountStore.accounts.first(where: { $0.id == accountId }) {
+            // Look-ahead: Desktop is closed, so no close step. If it launched meanwhile,
+            // the switcher refuses (`desktopRunning`) and nothing is written.
+            await runDesktopSwitch(to: target, quitFirst: false)
+        }
+    }
+
+    /// The sheet's "Switch Claude Desktop too" box.
+    func setPendingSwitchDesktop(_ on: Bool) {
+        pendingSwitch?.switchDesktop = on
+    }
+
+    static let desktopCloseMessage = "Claude Desktop must be closed to switch it. Close it now and switch? "
+        + "Unsaved work in Desktop may be lost."
 
     func cancelPendingSwitch() {
         pendingSwitch = nil
@@ -675,9 +753,11 @@ final class DashboardViewModel: ObservableObject {
         usage.fiveHour.utilization < 95 && usage.sevenDay.utilization < 99
     }
 
-    func switchClaudeCode(to accountId: UUID) async {
+    /// True when Claude Code now uses the target.
+    @discardableResult
+    func switchClaudeCode(to accountId: UUID) async -> Bool {
         guard let ccSwitcher,
-              let target = accountStore.accounts.first(where: { $0.id == accountId }) else { return }
+              let target = accountStore.accounts.first(where: { $0.id == accountId }) else { return false }
         // The Switch Log row: names and usage as they were before the switch.
         let before = autoSwitchAccounts
         let log = { (error: String?) in
@@ -689,9 +769,9 @@ final class DashboardViewModel: ObservableObject {
         if switchAvailability[accountId] == .needsLogin {
             switchMessage = "Claude Code lost the login for \(target.email ?? target.name). Run /login once with it."
             await log(switchMessage)
-            return
+            return false
         }
-        guard !isSwitchingClaudeCode else { return }
+        guard !isSwitchingClaudeCode else { return false }
         isSwitchingClaudeCode = true
         defer { isSwitchingClaudeCode = false; awaitingBrowserAccount = nil }
         let accounts = accountStore.accounts
@@ -704,10 +784,11 @@ final class DashboardViewModel: ObservableObject {
             guard await provisionLogin(for: target) else {
                 // No message: the user cancelled the browser wait, which is not logged.
                 if let switchMessage { await log(switchMessage) }
-                return
+                return false
             }
         }
 
+        var switched = false
         do {
             try await Task.detached { try await ccSwitcher.switchTo(target, accounts: accounts) }.value
             switchMessage = "Claude Code now uses \(target.email ?? target.name). "
@@ -715,6 +796,7 @@ final class DashboardViewModel: ObservableObject {
             scrollToTopOnDismiss = true
             autoSwitch.noteManualSwitch(to: accountId, usage: accountStates.first { $0.id == accountId }?.usage)
             await log(nil)
+            switched = true
         } catch let error as SwitchError {
             switchMessage = Self.message(for: error, target: target)
             await log(switchMessage)
@@ -723,9 +805,121 @@ final class DashboardViewModel: ObservableObject {
             await log(switchMessage)
         }
         activeClaudeCodeEmail = ccDetector.activeEmail()
+        refreshDesktopDiffers()
         // Re-sort so the newly-active account floats to the top now, not only after a refresh.
         sortStates()
         switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
+        return switched
+    }
+
+    // MARK: - Claude Desktop Switch
+
+    /// Recomputes `desktopDiffers`. Never call from a view body.
+    func refreshDesktopDiffers() {
+        desktopDiffers = desktopDiffersFromClaudeCode()
+    }
+
+    /// True when Claude Desktop is signed in as a different account than Claude Code.
+    func desktopDiffersFromClaudeCode() -> Bool {
+        guard let desktopUuid = desktopSwitcher?.activeAccountUuid(),
+              let codeUuid = accountStates.first(where: isActiveClaudeCodeAccount)?.account.accountUuid
+        else { return false }
+        return desktopUuid != codeUuid
+    }
+
+    /// The account page's "Switch Desktop to this account". Quits nothing by itself: a running
+    /// Desktop parks a close confirmation, a closed one is switched straight away.
+    func switchDesktop(to accountId: UUID) async {
+        guard let desktopSwitcher, !isSwitchingDesktop,
+              let target = accountStore.accounts.first(where: { $0.id == accountId }) else { return }
+        if desktopSwitcher.isDesktopRunning {
+            pendingDesktopClose = PendingDesktopClose(targetId: accountId)
+        } else {
+            await runDesktopSwitch(to: target, quitFirst: false)
+        }
+    }
+
+    /// The user agreed to close Claude Desktop: the only place a Desktop quit is requested.
+    /// Takes `pending` from the prompt for the same reason as `confirmSwitch`.
+    func confirmDesktopClose(_ pending: PendingDesktopClose) async {
+        pendingDesktopClose = nil
+        guard let target = accountStore.accounts.first(where: { $0.id == pending.targetId }) else { return }
+        await runDesktopSwitch(to: target, quitFirst: true)
+    }
+
+    func cancelDesktopClose() {
+        pendingDesktopClose = nil
+    }
+
+    /// Quits Desktop first when `quitFirst` (consent already given), then switches it. Reports
+    /// through `switchMessage`; never touches the Claude Code switch.
+    private func runDesktopSwitch(to target: Account, quitFirst: Bool) async {
+        guard let desktopSwitcher, !isSwitchingDesktop else { return }
+        isSwitchingDesktop = true
+        defer { isSwitchingDesktop = false; awaitingBrowserAccount = nil; refreshDesktopDiffers() }
+        let name = target.email ?? target.name
+        if quitFirst, desktopSwitcher.isDesktopRunning {
+            // Blocks up to ~6 s: off the main actor.
+            let closed = await Task.detached { desktopSwitcher.quitDesktop() }.value
+            guard closed else {
+                noteDesktop("Claude Desktop did not close, so it was not switched to \(name).")
+                return
+            }
+        }
+        let accounts = accountStore.accounts
+        let input = provisionInput(for: target)
+        var provision: ((ProvisionInput) async throws -> VaultEntry)?
+        if let ccProvisioner, input != nil {
+            provision = { [weak self] input in
+                guard let self else { throw OAuthCallbackError.cancelled }
+                return try await self.runProvision(ccProvisioner, input: input, target: target).get()
+            }
+        }
+        do {
+            try await desktopSwitcher.switchTo(target, accounts: accounts, provision: provision)
+            noteDesktop("Claude Desktop now uses \(name). Open it to continue.")
+            await logDesktopSwitch(trigger: .manual, outcome: .switched, toName: name, reason: "Manual switch", detail: nil)
+        } catch let error as DesktopSwitchError {
+            noteDesktop(Self.desktopMessage(for: error, target: target, hasProfile: input != nil))
+            await logDesktopSwitch(trigger: .manual, outcome: .failed, toName: name, reason: "Manual switch",
+                             detail: "\(error)")
+        } catch {
+            if let text = Self.provisionMessage(for: error, target: target) {
+                noteDesktop(text)
+            }
+            await logDesktopSwitch(trigger: .manual, outcome: .failed, toName: name, reason: "Manual switch",
+                             detail: "\(error)")
+        }
+    }
+
+    /// Records a Claude Desktop switch in the Switch Log (Claude Code rows are logged by
+    /// `AutoSwitchController`). The insert is a quick local write and never throws.
+    private func logDesktopSwitch(trigger: AutoSwitchTrigger, outcome: AutoSwitchOutcome, toName: String,
+                                  reason: String, detail: String?) async {
+        await switchLogStore.insert(date: Date(), trigger: trigger, outcome: outcome, fromName: nil,
+                                    toName: toName, reason: reason, detail: detail, target: .claudeDesktop)
+    }
+
+    /// Adds a Desktop outcome to `switchMessage` without hiding the Claude Code one.
+    private func noteDesktop(_ text: String) {
+        switchMessage = [switchMessage, text].compactMap { $0 }.joined(separator: "\n")
+    }
+
+    static func desktopMessage(for error: DesktopSwitchError, target: Account, hasProfile: Bool) -> String {
+        let name = target.email ?? target.name
+        switch error {
+        case .desktopRunning:
+            return "Claude Desktop is running, so it was not switched to \(name). Close it and try again."
+        case .notCaptured, .loginExpired:
+            return hasProfile
+                ? "Could not sign Claude Desktop in as \(name). Try the Desktop switch again."
+                : "Re-sync \(name) first so the dashboard knows its browser profile."
+        case .unknownOutgoingAccount(let email):
+            return "Claude Desktop is signed in as \(email ?? "an account the dashboard does not know"), "
+                + "whose login cannot be saved, so it was left alone."
+        case .config, .verifyFailed:
+            return "Could not write Claude Desktop's login for \(name). Claude Desktop was left as it was."
+        }
     }
 
     /// Auto switch's path: swaps in a captured login only. Unlike `switchClaudeCode` it never
@@ -741,8 +935,33 @@ final class DashboardViewModel: ObservableObject {
         let accounts = accountStore.accounts
         try await Task.detached { try await ccSwitcher.switchTo(target, accounts: accounts) }.value
         activeClaudeCodeEmail = ccDetector.activeEmail()
+        refreshDesktopDiffers()
         sortStates()
         switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
+        await desktopLookAhead(to: target, accounts: accounts)
+    }
+
+    /// After an auto switch moved Claude Code: with Desktop closed, the setting on and the target
+    /// captured for Desktop, also write Desktop so its next launch lands on the same account.
+    /// A running Desktop is left alone (never quit here), nothing opens a browser (`provision:
+    /// nil`), and a failure is only logged: the CLI switch already succeeded.
+    private func desktopLookAhead(to target: Account, accounts: [Account]) async {
+        guard autoSwitchDesktopEnabled, let desktopSwitcher, !desktopSwitcher.isDesktopRunning else { return }
+        let avail = await Task.detached { desktopSwitcher.availability(for: accounts) }.value
+        guard avail[target.id] == .ready else {
+            await logDesktopSwitch(trigger: .auto, outcome: .skipped, toName: target.email ?? target.name,
+                             reason: "Desktop look-ahead", detail: "Not captured for Desktop")
+            return
+        }
+        do {
+            try await desktopSwitcher.switchTo(target, accounts: accounts, provision: nil)
+            await logDesktopSwitch(trigger: .auto, outcome: .switched, toName: target.email ?? target.name,
+                             reason: "Desktop look-ahead", detail: nil)
+        } catch {
+            await logDesktopSwitch(trigger: .auto, outcome: .failed, toName: target.email ?? target.name,
+                             reason: "Desktop look-ahead", detail: "\(error)")
+        }
+        refreshDesktopDiffers()
     }
 
     /// Clears `switchMessage` (its alert was dismissed) and, after a successful Switch,
@@ -770,20 +989,7 @@ final class DashboardViewModel: ObservableObject {
             switchMessage = "Re-sync \(target.email ?? target.name) first so the dashboard knows its browser profile."
             return false
         }
-        let task = Task { () -> Result<VaultEntry, Error> in
-            do {
-                let entry = try await ccProvisioner.provision(input) {
-                    self.awaitingBrowserAccount = target.id
-                }
-                return .success(entry)
-            } catch {
-                return .failure(error)
-            }
-        }
-        provisionTask = task
-        let result = await task.value
-        provisionTask = nil
-        awaitingBrowserAccount = nil
+        let result = await runProvision(ccProvisioner, input: input, target: target)
 
         switch result {
         case .success(let entry):
@@ -798,6 +1004,26 @@ final class DashboardViewModel: ObservableObject {
             switchMessage = Self.provisionMessage(for: error, target: target)
             return false
         }
+    }
+
+    /// One interactive provision, registered in `provisionTask` so Cancel can abort the wait.
+    private func runProvision(_ provisioner: ClaudeCodeLoginProvisioner, input: ProvisionInput,
+                              target: Account) async -> Result<VaultEntry, Error> {
+        let task = Task { () -> Result<VaultEntry, Error> in
+            do {
+                let entry = try await provisioner.provision(input) {
+                    self.awaitingBrowserAccount = target.id
+                }
+                return .success(entry)
+            } catch {
+                return .failure(error)
+            }
+        }
+        provisionTask = task
+        let result = await task.value
+        provisionTask = nil
+        awaitingBrowserAccount = nil
+        return result
     }
 
     /// Everything the provisioner needs for one account, or nil for a record with no browser
