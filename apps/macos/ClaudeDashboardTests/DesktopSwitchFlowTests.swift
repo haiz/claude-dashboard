@@ -35,6 +35,8 @@ final class DesktopSwitchFlowTests: XCTestCase {
     private let desktopVault = FakeVault()
     private let process = FakeProcess()
     private var vm: DashboardViewModel!
+    private var logStore: AutoSwitchLogStore!
+    private var logPath: String!
     private var frontend: Account!
     private var backend: Account!
 
@@ -43,6 +45,8 @@ final class DesktopSwitchFlowTests: XCTestCase {
         configURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("DesktopSwitchFlowTests-\(UUID().uuidString).json")
         AppDefaults.shared.removeObject(forKey: AppDefaults.switchDesktopEnabledKey)
+        logPath = NSTemporaryDirectory() + "desktop_flow_logs_\(UUID().uuidString).db"
+        logStore = AutoSwitchLogStore(dbPath: logPath)
 
         let kc = InMemoryKeychain()
         let slot = KeychainClaudeCodeSlot(keychain: kc, account: "me")
@@ -75,7 +79,8 @@ final class DesktopSwitchFlowTests: XCTestCase {
                                             now: Date.init)
 
         vm = DashboardViewModel(accountStore: store, ccDetector: ClaudeCodeAccountDetector(fileURL: configURL),
-                                ccSwitcher: ccSwitcher, desktopSwitcher: desktop)
+                                ccSwitcher: ccSwitcher, desktopSwitcher: desktop,
+                                autoSwitchLogStore: logStore)
         await vm.refreshAll()
         // Frontend still has quota left, so a Switch asks first.
         let index = try XCTUnwrap(vm.accountStates.firstIndex { $0.id == frontend.id })
@@ -87,6 +92,7 @@ final class DesktopSwitchFlowTests: XCTestCase {
         AppDefaults.shared.removeObject(forKey: AppDefaults.switchDesktopEnabledKey)
         StoreFixture.destroy(suite: suite)
         try? FileManager.default.removeItem(at: configURL)
+        try? FileManager.default.removeItem(atPath: logPath)
     }
 
     func testRefreshCapturesDesktopGrant() async throws {
@@ -143,6 +149,19 @@ final class DesktopSwitchFlowTests: XCTestCase {
         XCTAssertNil(vm.pendingDesktopClose)
         XCTAssertFalse(vm.desktopDiffersFromClaudeCode())
         XCTAssertFalse(vm.desktopDiffers)
+    }
+
+    func testManualDesktopSwitchLogsADesktopRow() async throws {
+        vm.switchDesktopEnabled = true
+        process.isRunning = false
+        await vm.requestSwitchClaudeCode(to: backend.id)
+        await vm.confirmSwitch(try XCTUnwrap(vm.pendingSwitch))
+
+        let desktopRows = await logStore.fetch(limit: 10).filter { $0.target == .claudeDesktop }
+        XCTAssertEqual(desktopRows.count, 1)
+        XCTAssertEqual(desktopRows.first?.trigger, .manual)
+        XCTAssertEqual(desktopRows.first?.outcome, .switched)
+        XCTAssertEqual(desktopRows.first?.toName, "backend@gotitapp.co")
     }
 
     func testLookAheadWritesWhenDesktopClosed() async throws {

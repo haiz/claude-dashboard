@@ -115,6 +115,8 @@ final class DashboardViewModel: ObservableObject {
     /// Auto switch settings and tick; views bind to them through this model.
     let autoSwitchSettings: AutoSwitchSettings
     let autoSwitch: AutoSwitchController
+    /// The Switch Log, shared with `autoSwitch`; Desktop switches are logged here.
+    private let switchLogStore: AutoSwitchLogStore
     /// Paces and quiet hours for critical accounts (`DashboardViewModel+Critical`).
     let criticalSettings: CriticalSettings
     /// Fetches the active account every 60 s while it is near a limit (`updateAutoSwitchPoll`).
@@ -210,8 +212,9 @@ final class DashboardViewModel: ObservableObject {
         self.ratioController = UsageRatioController.live(logStore: store, isRunningTests: AppDefaults.isRunningTests())
         let switchSettings = autoSwitchSettings ?? AutoSwitchSettings(defaults: AppDefaults.shared)
         self.autoSwitchSettings = switchSettings
-        self.autoSwitch = AutoSwitchController(settings: switchSettings,
-                                               logStore: autoSwitchLogStore ?? AutoSwitchLogStore())
+        let switchLog = autoSwitchLogStore ?? AutoSwitchLogStore()
+        self.switchLogStore = switchLog
+        self.autoSwitch = AutoSwitchController(settings: switchSettings, logStore: switchLog)
         self.criticalSettings = criticalSettings ?? CriticalSettings(defaults: AppDefaults.shared)
         self.pingController = pingController ?? PingController(
             service: PingService(), logStore: PingLogStore(), defaults: AppDefaults.shared)
@@ -875,13 +878,26 @@ final class DashboardViewModel: ObservableObject {
         do {
             try await desktopSwitcher.switchTo(target, accounts: accounts, provision: provision)
             noteDesktop("Claude Desktop now uses \(name). Open it to continue.")
+            await logDesktopSwitch(trigger: .manual, outcome: .switched, toName: name, reason: "Manual switch", detail: nil)
         } catch let error as DesktopSwitchError {
             noteDesktop(Self.desktopMessage(for: error, target: target, hasProfile: input != nil))
+            await logDesktopSwitch(trigger: .manual, outcome: .failed, toName: name, reason: "Manual switch",
+                             detail: "\(error)")
         } catch {
             if let text = Self.provisionMessage(for: error, target: target) {
                 noteDesktop(text)
             }
+            await logDesktopSwitch(trigger: .manual, outcome: .failed, toName: name, reason: "Manual switch",
+                             detail: "\(error)")
         }
+    }
+
+    /// Records a Claude Desktop switch in the Switch Log (Claude Code rows are logged by
+    /// `AutoSwitchController`). The insert is a quick local write and never throws.
+    private func logDesktopSwitch(trigger: AutoSwitchTrigger, outcome: AutoSwitchOutcome, toName: String,
+                                  reason: String, detail: String?) async {
+        await switchLogStore.insert(date: Date(), trigger: trigger, outcome: outcome, fromName: nil,
+                                    toName: toName, reason: reason, detail: detail, target: .claudeDesktop)
     }
 
     /// Adds a Desktop outcome to `switchMessage` without hiding the Claude Code one.
@@ -932,13 +948,17 @@ final class DashboardViewModel: ObservableObject {
     private func desktopLookAhead(to target: Account, accounts: [Account]) async {
         guard autoSwitchDesktopEnabled, let desktopSwitcher, !desktopSwitcher.isDesktopRunning else { return }
         guard desktopSwitcher.availability(for: accounts)[target.id] == .ready else {
-            print("[AutoSwitch] Desktop look-ahead skipped for \(target.id): not captured for Desktop")
+            await logDesktopSwitch(trigger: .auto, outcome: .skipped, toName: target.email ?? target.name,
+                             reason: "Desktop look-ahead", detail: "Not captured for Desktop")
             return
         }
         do {
             try await desktopSwitcher.switchTo(target, accounts: accounts, provision: nil)
+            await logDesktopSwitch(trigger: .auto, outcome: .switched, toName: target.email ?? target.name,
+                             reason: "Desktop look-ahead", detail: nil)
         } catch {
-            print("[AutoSwitch] Desktop look-ahead failed for \(target.id): \(error)")
+            await logDesktopSwitch(trigger: .auto, outcome: .failed, toName: target.email ?? target.name,
+                             reason: "Desktop look-ahead", detail: "\(error)")
         }
         refreshDesktopDiffers()
     }
