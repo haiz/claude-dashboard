@@ -50,6 +50,7 @@
 		42EFE2D3029A8067005D2135 /* ClaudeDesktopConfigFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CE5B6A7F181D233686CC4E2 /* ClaudeDesktopConfigFileTests.swift */; };
 		452031F4CA41F34A18331D2D /* DashboardViewModel+AutoSwitch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA1E9D0BCC00C9ABCD8F6BF /* DashboardViewModel+AutoSwitch.swift */; };
 		46022E5A9168DBFFE3140E9E /* LoopbackServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93D74BE08A4E3E9EB082405A /* LoopbackServer.swift */; };
+		461D4020A13B0D19AA564B0B /* ClaudeDesktopProcess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C0CF38FFFAB2C9C27F3BEC /* ClaudeDesktopProcess.swift */; };
 		4643BBD702D297406C8B3DD5 /* PingLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A13471E54BDEEA14818A35E /* PingLogView.swift */; };
 		46ACA4D872B48395C5A010F6 /* UsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */; };
 		49F45640C3EB1048441C4F49 /* ClaudeCodeCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADDFE458A047B94A7BDECE60 /* ClaudeCodeCredential.swift */; };
@@ -189,6 +190,7 @@
 		D8E4C3734EF770A9574C0194 /* ClaudeCodeOAuthClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2E021E6A7AAD0A4DCC9F0B /* ClaudeCodeOAuthClientTests.swift */; };
 		DB36C85108500684823E76F6 /* PingLogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88EBE6888FCD1A377372D9FB /* PingLogModels.swift */; };
 		DB632700951205ACE0A3C952 /* HelperProcess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E80DA8175A0D4CB1C886FE4 /* HelperProcess.swift */; };
+		DC866C6D464B0F717BE0E88C /* ClaudeDesktopProcessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCCF925CF97753E0C28E1CB0 /* ClaudeDesktopProcessTests.swift */; };
 		DFE233BEB879527F51838818 /* InfoTip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF5955977F933195581B1AE /* InfoTip.swift */; };
 		E31B51A27092F17B0C752A22 /* PaneHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FE432C84E62A7FE9684E5A4 /* PaneHeader.swift */; };
 		E497B0E528DF69D36BD96883 /* DashboardViewModel+Critical.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A6C3D557EACAE9350D87814 /* DashboardViewModel+Critical.swift */; };
@@ -355,6 +357,7 @@
 		86AC4B09025CCFBC088F61A5 /* InteractiveChartContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractiveChartContainer.swift; sourceTree = "<group>"; };
 		86C331555DFE3C22C7C80810 /* CriticalWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticalWiringTests.swift; sourceTree = "<group>"; };
 		875FA3BA15A42F1CB2292656 /* ClaudeCodeLoginProvisionerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeLoginProvisionerTests.swift; sourceTree = "<group>"; };
+		87C0CF38FFFAB2C9C27F3BEC /* ClaudeDesktopProcess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDesktopProcess.swift; sourceTree = "<group>"; };
 		88EBE6888FCD1A377372D9FB /* PingLogModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingLogModels.swift; sourceTree = "<group>"; };
 		8A21ACC6D2E73D5CCD5BEE2D /* BrowserCookieServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserCookieServiceTests.swift; sourceTree = "<group>"; };
 		8C66707D08388FB1A9081646 /* AppDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDefaults.swift; sourceTree = "<group>"; };
@@ -424,6 +427,7 @@
 		FACF8748FE497218E8A12DE4 /* SettingsTips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTips.swift; sourceTree = "<group>"; };
 		FC1E08FAF5239CE8AE48B898 /* CredentialVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialVault.swift; sourceTree = "<group>"; };
 		FC6B7044313E37D1A46EFB3C /* APIBaseURLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIBaseURLTests.swift; sourceTree = "<group>"; };
+		FCCF925CF97753E0C28E1CB0 /* ClaudeDesktopProcessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDesktopProcessTests.swift; sourceTree = "<group>"; };
 		FCCFAC39E6AB87092AEC2D54 /* CriticalSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticalSettings.swift; sourceTree = "<group>"; };
 		FE366562BDB7D1A8CDE6FD20 /* CriticalPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticalPlannerTests.swift; sourceTree = "<group>"; };
 		FF4D3349D7E712D70BE8BB5D /* PingLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingLogStore.swift; sourceTree = "<group>"; };
@@ -514,6 +518,7 @@
 				95A99A9BA83C1C687A1C2E17 /* BurnRateTrackerTests.swift */,
 				75A3660023E6BA291B7932FE /* ClaudeCodeAccountDetectorTests.swift */,
 				0CE5B6A7F181D233686CC4E2 /* ClaudeDesktopConfigFileTests.swift */,
+				FCCF925CF97753E0C28E1CB0 /* ClaudeDesktopProcessTests.swift */,
 				EBD514ABE055A23551792E65 /* ClaudeDesktopSafeStorageTests.swift */,
 				EB898235004A852EE1A7CDA7 /* ClaudeDesktopVaultTests.swift */,
 				25E51410A9645A70619053EF /* ContractFixtures.swift */,
@@ -650,6 +655,7 @@
 			isa = PBXGroup;
 			children = (
 				22852C4BF281EFE3D942EFC7 /* ClaudeDesktopConfigFile.swift */,
+				87C0CF38FFFAB2C9C27F3BEC /* ClaudeDesktopProcess.swift */,
 				42703485F19F6578FD7F9ED8 /* ClaudeDesktopSafeStorage.swift */,
 				0B6B6000425EF724813A4173 /* ClaudeDesktopVault.swift */,
 			);
@@ -995,6 +1001,7 @@
 				96A707A76AACFD173F0FA7E0 /* ClaudeCodeSwitcherTests.swift in Sources */,
 				42520EE864030FCF5608DA96 /* ClaudeConfigFileTests.swift in Sources */,
 				42EFE2D3029A8067005D2135 /* ClaudeDesktopConfigFileTests.swift in Sources */,
+				DC866C6D464B0F717BE0E88C /* ClaudeDesktopProcessTests.swift in Sources */,
 				C77EE5CA1026BD66F3B8F511 /* ClaudeDesktopSafeStorageTests.swift in Sources */,
 				2787BE64FA225F5B807759A3 /* ClaudeDesktopVaultTests.swift in Sources */,
 				F27FC866A1F7BAFB51308009 /* ContractFixtures.swift in Sources */,
@@ -1150,6 +1157,7 @@
 				73078C5A3195A5D87CC980CC /* ClaudeConfigFile.swift in Sources */,
 				18B4F69185821E78B8E6139C /* ClaudeDashboardApp.swift in Sources */,
 				191472CEC6766D0994E0D997 /* ClaudeDesktopConfigFile.swift in Sources */,
+				461D4020A13B0D19AA564B0B /* ClaudeDesktopProcess.swift in Sources */,
 				AA72E48E60E8F05C7CB6AF8B /* ClaudeDesktopSafeStorage.swift in Sources */,
 				9E0803227E668084B9FBD768 /* ClaudeDesktopVault.swift in Sources */,
 				704A15B7C670F724A96F5CB4 /* CredentialVault.swift in Sources */,
