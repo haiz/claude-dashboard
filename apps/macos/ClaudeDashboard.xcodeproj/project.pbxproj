@@ -196,6 +196,7 @@
 		DB632700951205ACE0A3C952 /* HelperProcess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E80DA8175A0D4CB1C886FE4 /* HelperProcess.swift */; };
 		DC866C6D464B0F717BE0E88C /* ClaudeDesktopProcessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCCF925CF97753E0C28E1CB0 /* ClaudeDesktopProcessTests.swift */; };
 		DFE233BEB879527F51838818 /* InfoTip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF5955977F933195581B1AE /* InfoTip.swift */; };
+		E14E787ED8AAADA813FA42F0 /* AutoSwitchDesktopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E296F7F3DAECAD782BF8A0 /* AutoSwitchDesktopTests.swift */; };
 		E31B51A27092F17B0C752A22 /* PaneHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FE432C84E62A7FE9684E5A4 /* PaneHeader.swift */; };
 		E497B0E528DF69D36BD96883 /* DashboardViewModel+Critical.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A6C3D557EACAE9350D87814 /* DashboardViewModel+Critical.swift */; };
 		E5305F7BB5F35DD4A630FBF5 /* CriticalSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85466D536408CB51A8662E02 /* CriticalSettingsTests.swift */; };
@@ -430,6 +431,7 @@
 		EB898235004A852EE1A7CDA7 /* ClaudeDesktopVaultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDesktopVaultTests.swift; sourceTree = "<group>"; };
 		EBD514ABE055A23551792E65 /* ClaudeDesktopSafeStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDesktopSafeStorageTests.swift; sourceTree = "<group>"; };
 		EC57209CDF950797EE227167 /* PingMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingMigrationTests.swift; sourceTree = "<group>"; };
+		F0E296F7F3DAECAD782BF8A0 /* AutoSwitchDesktopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchDesktopTests.swift; sourceTree = "<group>"; };
 		F18125C2FC57514FC75F0308 /* AutoSwitchLogModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchLogModels.swift; sourceTree = "<group>"; };
 		F6F81212F82265B50442FF18 /* UsageWindowPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageWindowPicker.swift; sourceTree = "<group>"; };
 		FACF8748FE497218E8A12DE4 /* SettingsTips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTips.swift; sourceTree = "<group>"; };
@@ -520,6 +522,7 @@
 				23BC8C5FEAB151AECA15BE09 /* AccountStoreTests.swift */,
 				45A46883EF2F0ABE27EC8EC7 /* AppDefaultsTests.swift */,
 				D99517C3BBF094ACC2BA1B74 /* AppVersionTests.swift */,
+				F0E296F7F3DAECAD782BF8A0 /* AutoSwitchDesktopTests.swift */,
 				8A21ACC6D2E73D5CCD5BEE2D /* BrowserCookieServiceTests.swift */,
 				E78303A2B3B9A1F15A814671 /* BrowserTests.swift */,
 				9AEE29987B849E18AFE5E428 /* BurnRateContractTests.swift */,
@@ -997,6 +1000,7 @@
 				EA2D655C3363DACEE2AA5C8C /* AppDefaultsTests.swift in Sources */,
 				A695D976DBF8E5BBF704DC8D /* AppVersionTests.swift in Sources */,
 				9ABEC1784D916F22BCDC0786 /* AutoSwitchControllerTests.swift in Sources */,
+				E14E787ED8AAADA813FA42F0 /* AutoSwitchDesktopTests.swift in Sources */,
 				AEE0A79BD59AE75A452A3B7B /* AutoSwitchLogStoreTests.swift in Sources */,
 				C1EBCFB4688B8106C910642D /* AutoSwitchPlannerTests.swift in Sources */,
 				4D01A2531154E711C067D3F7 /* AutoSwitchSettingsTests.swift in Sources */,

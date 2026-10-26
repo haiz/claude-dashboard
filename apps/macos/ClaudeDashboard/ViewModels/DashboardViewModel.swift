@@ -922,6 +922,25 @@ final class DashboardViewModel: ObservableObject {
         refreshDesktopDiffers()
         sortStates()
         switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
+        await desktopLookAhead(to: target, accounts: accounts)
+    }
+
+    /// After an auto switch moved Claude Code: with Desktop closed, the setting on and the target
+    /// captured for Desktop, also write Desktop so its next launch lands on the same account.
+    /// A running Desktop is left alone (never quit here), nothing opens a browser (`provision:
+    /// nil`), and a failure is only logged: the CLI switch already succeeded.
+    private func desktopLookAhead(to target: Account, accounts: [Account]) async {
+        guard autoSwitchDesktopEnabled, let desktopSwitcher, !desktopSwitcher.isDesktopRunning else { return }
+        guard desktopSwitcher.availability(for: accounts)[target.id] == .ready else {
+            print("[AutoSwitch] Desktop look-ahead skipped for \(target.id): not captured for Desktop")
+            return
+        }
+        do {
+            try await desktopSwitcher.switchTo(target, accounts: accounts, provision: nil)
+        } catch {
+            print("[AutoSwitch] Desktop look-ahead failed for \(target.id): \(error)")
+        }
+        refreshDesktopDiffers()
     }
 
     /// Clears `switchMessage` (its alert was dismissed) and, after a successful Switch,
