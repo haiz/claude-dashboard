@@ -89,6 +89,12 @@ final class DesktopSwitchFlowTests: XCTestCase {
         try? FileManager.default.removeItem(at: configURL)
     }
 
+    func testRefreshCapturesDesktopGrant() async throws {
+        // setUp refreshed once: Desktop's live grant (frontend) landed in the desktop vault.
+        let saved = try XCTUnwrap(desktopVault.items[frontend.id])
+        XCTAssertEqual(saved.oauth.refreshToken, "df")
+    }
+
     func testCheckboxPreTickedWhenDesktopRunningAndEnabled() async throws {
         vm.switchDesktopEnabled = true
         process.isRunning = true

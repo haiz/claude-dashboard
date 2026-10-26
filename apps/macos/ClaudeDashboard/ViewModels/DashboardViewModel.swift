@@ -328,6 +328,7 @@ final class DashboardViewModel: ObservableObject {
         activeClaudeCodeEmail = ccDetector.activeEmail()
         refreshDesktopDiffers()
         await refreshClaudeCodeSwitchState()
+        await captureDesktopGrant()
 
         // Accounts whose fresh usage shows a window not running (see PingController).
         var autoPings: [PingTarget] = []
@@ -658,6 +659,18 @@ final class DashboardViewModel: ObservableObject {
             do { try ccSwitcher.capture(accounts: accounts) }
             catch { print("[ClaudeCodeSwitcher] capture failed: \(error)") }
             return ccSwitcher.availability(for: accounts)
+        }.value
+    }
+
+    /// Keeps the Desktop vault's copy of the account Desktop is signed in as fresh, so a later
+    /// Desktop switch stays browserless. A failure only logs. Off the main actor (file and
+    /// Keychain reads).
+    private func captureDesktopGrant() async {
+        guard let desktopSwitcher else { return }
+        let accounts = accountStore.accounts
+        await Task.detached {
+            do { try desktopSwitcher.captureActive(accounts: accounts) }
+            catch { print("[ClaudeDesktopSwitcher] capture failed: \(error)") }
         }.value
     }
 
