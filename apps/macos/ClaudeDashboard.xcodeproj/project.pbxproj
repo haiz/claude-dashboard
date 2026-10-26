@@ -97,6 +97,7 @@
 		74AAC2BB9743F4E1DDA24F4B /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */; };
 		76BA8139F5DCA27C87F3D8D1 /* AccountAvatarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67AC5563CF36D085E954208F /* AccountAvatarTests.swift */; };
 		773DC5318E35F74CC255551A /* ClaudeCodeLoginProvisioner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A466FBD387F8F0F01866D2D /* ClaudeCodeLoginProvisioner.swift */; };
+		778AEDD47FE25842B4C722AB /* DesktopSwitchFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97C7A111F9FB5CE6E67CD60 /* DesktopSwitchFlowTests.swift */; };
 		78FE8A4C073CCC5DE40FB5BE /* PingLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF4D3349D7E712D70BE8BB5D /* PingLogStore.swift */; };
 		799960A4D530BF35FAB68326 /* UsageLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A9C824A446A4513554E6BC5 /* UsageLogStore.swift */; };
 		7C270378E7A24C8959633F69 /* APIBaseURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BF0A4FB04BB2713656EADBF /* APIBaseURL.swift */; };
@@ -388,6 +389,7 @@
 		B42BC9B8252B2535837CCBF3 /* ScanOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanOutcome.swift; sourceTree = "<group>"; };
 		B4ED0121EB136414664B103B /* BrowserCookieService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserCookieService.swift; sourceTree = "<group>"; };
 		B55EE2FE0BB5EEA5EE32220A /* UsageRatioStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageRatioStoreTests.swift; sourceTree = "<group>"; };
+		B97C7A111F9FB5CE6E67CD60 /* DesktopSwitchFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopSwitchFlowTests.swift; sourceTree = "<group>"; };
 		BA09806794F5E11A193DC9E0 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		BD2F60A213BB9D946C30DC73 /* AutoSwitchPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchPlannerTests.swift; sourceTree = "<group>"; };
 		BECC61A0A2C32E0517453B33 /* ClaudeConfigFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeConfigFileTests.swift; sourceTree = "<group>"; };
@@ -531,6 +533,7 @@
 				25E51410A9645A70619053EF /* ContractFixtures.swift */,
 				690E18B51A43CF7A0BFFA627 /* DashboardViewModelTests.swift */,
 				AFD4C1EC6F97C4F34F204E5E /* DedupeContractTests.swift */,
+				B97C7A111F9FB5CE6E67CD60 /* DesktopSwitchFlowTests.swift */,
 				E79F99E6791ECFF919869DD5 /* DesktopSwitchSettingsTests.swift */,
 				D627736A32F2282084F78A58 /* ManualKeyContractTests.swift */,
 				AE57E5139A296611CB7F49C2 /* ManualKeyInputTests.swift */,
@@ -1023,6 +1026,7 @@
 				4DE5C82CED65AD27400B202E /* DashboardViewModelSwitchTests.swift in Sources */,
 				9759697B6C02F84B6EF06C09 /* DashboardViewModelTests.swift in Sources */,
 				4F550FFDA427DD1820FBEF6C /* DedupeContractTests.swift in Sources */,
+				778AEDD47FE25842B4C722AB /* DesktopSwitchFlowTests.swift in Sources */,
 				14E1A2437A2103B2A0DE0F20 /* DesktopSwitchSettingsTests.swift in Sources */,
 				0F3D68AF3F3645FE3E1BFD0C /* FakePinger.swift in Sources */,
 				390BB1B38D799B09D2603F36 /* InMemoryKeychain.swift in Sources */,

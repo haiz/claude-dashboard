@@ -77,6 +77,10 @@ final class ClaudeDesktopSwitcher: @unchecked Sendable {
 
     var isDesktopRunning: Bool { process.isRunning }
 
+    /// Quits Claude Desktop (blocks up to ~6 s: call off the main actor). Only after the user
+    /// agreed to close it. True when no Desktop process remains.
+    func quitDesktop() -> Bool { process.quit() }
+
     /// Desktop's `lastKnownAccountUuid`, when it holds a readable grant.
     func activeAccountUuid() -> String? {
         (try? config.readActiveGrant())?.accountUuid

@@ -39,6 +39,15 @@ struct AccountPane: View {
                     .disabled(dashboardViewModel.isSwitchingClaudeCode)
                     .help(help)
                 }
+                if dashboardViewModel.isActiveClaudeCodeAccount(state), dashboardViewModel.desktopDiffersFromClaudeCode() {
+                    Button {
+                        Task { await dashboardViewModel.switchDesktop(to: state.id) }
+                    } label: {
+                        Label("Switch Desktop to this account", systemImage: "macwindow")
+                    }
+                    .disabled(dashboardViewModel.isSwitchingDesktop)
+                    .help("Claude Desktop uses another account than Claude Code. Asks before closing Desktop.")
+                }
                 // Scoped to this account: a whole-fleet pass would re-fetch usage
                 // nobody asked for and clear the error other cards are showing.
                 // `refreshAll` skips expired accounts, so Re-sync is the way back.
