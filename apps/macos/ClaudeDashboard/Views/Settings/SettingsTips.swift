@@ -23,12 +23,12 @@ enum SettingsTips {
         topic: .refreshUpdates)
     static let switchDesktop = SettingTip(
         summary: "Also move Claude Desktop when you press Switch.",
-        detail: "When on, Switch signs Claude Desktop in to the same account as Claude Code. Desktop is quit and reopened for the change, and only accounts already captured for Desktop can be used.",
+        detail: "When on, Switch also signs Claude Desktop in to the same account as Claude Code. A running Desktop is closed only after you agree; a closed one is switched straight away. The first switch to an account opens its browser profile so you can authorize Desktop.",
         example: "Switching to B moves Claude Code and Claude Desktop to B; with this off only Claude Code moves.",
-        topic: .switchClaudeCode)
+        topic: .switchClaudeDesktop)
     static let autoSwitchDesktop = SettingTip(
         summary: "Let auto switch move Claude Desktop when it is not running.",
-        detail: "When on, an auto switch also moves Claude Desktop, but only while Desktop is closed. A running Desktop is never quit automatically and stays on its account.",
+        detail: "When on, an auto switch also moves Claude Desktop, but only while Desktop is closed and only to an account Desktop has signed in to before. A running Desktop is never quit automatically and stays on its account.",
         example: "Desktop is closed when auto switch moves Claude Code to B, so Desktop moves to B too. If Desktop is open, it stays on A.",
         topic: .autoSwitch)
     static let autoPing = SettingTip(

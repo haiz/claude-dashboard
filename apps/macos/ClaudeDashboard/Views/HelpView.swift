@@ -62,6 +62,7 @@ struct HelpView: View {
         case .findingYourWay: findingYourWay
         case .charts: charts
         case .switchClaudeCode: switchClaudeCode
+        case .switchClaudeDesktop: switchClaudeDesktop
         case .autoSwitch: autoSwitch
         case .criticalAccounts: criticalAccounts
         case .ping: ping
@@ -133,7 +134,7 @@ struct HelpView: View {
             HelpRow(symbol: "arrow.clockwise", "**Refresh**: fetch the latest usage for every account.")
             HelpRow(symbol: "rectangle.expand.vertical", "**Open window**: the full dashboard.")
             HelpRow(symbol: "questionmark.circle", "**Help**: this page.")
-            HelpRow(symbol: "gearshape", "**Settings**: accounts, refresh, Auto Ping, Auto Switch, updates.")
+            HelpRow(symbol: "gearshape", "**Settings**: accounts, refresh, Auto Ping, Claude Desktop, Auto Switch, updates.")
             HelpRow(symbol: "power", "**Quit** (bottom left). The **Auto switch** toggle sits bottom right with its latest event.")
 
             HelpSubheading("Main window sidebar")
@@ -169,6 +170,42 @@ struct HelpView: View {
             ], color: .pink)
             HelpRow(symbol: "bolt", color: .orange, "**Switch after reset**: tick \(Image(systemName: "bolt")) on a card (or the toggle on its page) to move Claude Code there each time its 5h limit resets. The tick stays until you untick it, and the active account can be ticked too. Only one account can be ticked.")
             HelpCallout(.warning, "Don't also use the same account through another `CLAUDE_CONFIG_DIR`. Two copies of one login sign each other out.")
+        }
+    }
+
+    private var switchClaudeDesktop: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HelpText("Turn on **Switch Claude Desktop with Switch** in **Settings › General › Claude Desktop** (off by default). **Switch** then moves Claude Desktop to the same account as Claude Code.")
+            HelpRow("**Desktop open**: the confirm box gets **Switch Claude Desktop too**, already ticked. Desktop must be closed to switch, so the app asks first: **Close and Switch** quits it (unsaved work in Desktop may be lost). Untick the box to move only Claude Code.") {
+                HelpSymbol(name: "macwindow", color: .mint)
+            }
+            HelpRow("**Desktop closed**: it is switched straight away, with no question. Open it and it starts on the new account.") {
+                HelpSymbol(name: "moon.zzz", color: .secondary)
+            }
+            HelpSubheading("The first time for an account")
+            HelpText("Claude Desktop gets **its own login**, separate from Claude Code's, so the two never sign each other out. The first switch to an account opens its browser profile once more: sign in and click **Authorize**. After that it is instant for about 30 days, and each refresh keeps Desktop's login fresh.")
+            HelpRow(symbol: "arrow.left.arrow.right", color: .mint, "**Switch Desktop to this account**: on the page of the account Claude Code uses, shown when Desktop is on another account. Use it to move Desktop later, for example after unticking the box mid-conversation.")
+            HelpRow(symbol: "arrow.triangle.swap", color: .teal, "**Let auto switch move Desktop when it is closed** (off by default): an auto switch also moves Desktop, only while Desktop is closed and only to an account Desktop has signed in to before. A running Desktop is never quit.")
+            HelpCallout(.note, "If Desktop is signed in to an account that is not on the dashboard, the switch leaves Desktop alone so that login is not lost. Add that account first.")
+
+            HelpSubheading("Recommended: Claude Code and Claude Desktop")
+            HelpSteps([
+                "Turn on **Switch Claude Desktop with Switch** and **Let auto switch move Desktop when it is closed**. Keep **Auto Switch** on.",
+                "Once, while you have a few minutes, **Switch** to each account with **Switch Claude Desktop too** ticked and authorize it. Auto switch can then move Desktop to any of them without a browser.",
+                "Quit Desktop when you step away. An auto switch then moves it too, so it opens on the same account as Claude Code.",
+                "Mid-conversation in Desktop? Untick **Switch Claude Desktop too** and move it later with **Switch Desktop to this account**.",
+            ], color: .mint)
+
+            HelpSubheading("Recommended: Claude Desktop only")
+            HelpSteps([
+                "Turn **Auto Switch** off: it follows Claude Code's account, not Desktop's (see **Auto Switch**). Leave **Let auto switch move Desktop when it is closed** off too.",
+                "Turn on **Switch Claude Desktop with Switch**. **Switch** also moves Claude Code; that does no harm if you don't use it.",
+                "**Pin** the account Desktop uses (right-click its card): the menu bar then shows its 5h usage, so you see a limit coming.",
+                "Switch to each account once ahead of time. The first time asks you to authorize twice, once for Claude Code and once for Desktop; later switches need no browser.",
+                "Before you press **Switch**, finish or save what you are doing in Desktop, then close it yourself.",
+            ], color: .mint)
+
+            HelpCallout(.tip, "Add accounts from the browser, not with a pasted key: the first switch needs the account's own browser profile. About once a month an account's login runs out and its next switch opens the browser again; that is expected.")
         }
     }
 
@@ -220,7 +257,11 @@ struct HelpView: View {
             HelpRow("**On failure**: that account is skipped for 10 minutes.") {
                 HelpSymbol(name: "clock.arrow.circlepath", color: .secondary)
             }
-            HelpCallout(.tip, "**Switch Log** (Tools) lists every switch and every failed attempt, and why nothing happened when no account was available.")
+            HelpRow("**Claude Desktop**: moved only with **Let auto switch move Desktop when it is closed** on, and only while Desktop is closed. A running Desktop stays where it is.") {
+                HelpSymbol(name: "macwindow", color: .mint)
+            }
+            HelpCallout(.warning, "**Only use Claude Desktop?** Turn Auto Switch off. It watches the account **Claude Code** uses, and Desktop is open while you work, so it never moves Desktop away from a limit. It can still move Claude Code, and a closed Desktop, to an account picked from Claude Code's usage, not yours.")
+            HelpCallout(.tip, "**Switch Log** (Tools) lists every switch and every failed attempt, and why nothing happened when no account was available. Claude Desktop rows carry a **Desktop** tag.")
         }
     }
 
@@ -266,6 +307,8 @@ struct HelpView: View {
                     "Claude Code lost that login. Run `/login` in Claude Code and sign in with that account.")
             HelpFAQ("Switch is refused",
                     "Claude Code is signed in to an account that is not on the dashboard. Add that account first so its login is kept safe.")
+            HelpFAQ("Claude Desktop was not switched",
+                    "Desktop must be closed to switch: agree to **Close and Switch**, or close it and use **Switch Desktop to this account**. If Desktop is signed in to an account that is not on the dashboard, add that account first. The switch message says which case it was.")
             HelpFAQ("Auto Switch did nothing",
                     "Check **Switch Log**. Usually no account was ready: switch to each account once by hand, or every other account is also at its limit. Within 5 minutes of a 5h reset, the home or most critical account waits for the reset on purpose.")
             HelpFAQ("Usage is not updating",
@@ -336,7 +379,7 @@ private struct TopicChip: View {
 
 /// The Help pane's topics, in display order.
 enum HelpTopic: String, CaseIterable, Identifiable {
-    case gettingStarted, readingCard, findingYourWay, charts, switchClaudeCode
+    case gettingStarted, readingCard, findingYourWay, charts, switchClaudeCode, switchClaudeDesktop
     case autoSwitch, criticalAccounts, ping, accounts, refreshUpdates, troubleshooting
 
     var id: String { rawValue }
@@ -348,6 +391,7 @@ enum HelpTopic: String, CaseIterable, Identifiable {
         case .findingYourWay: return "Finding Your Way"
         case .charts: return "Charts"
         case .switchClaudeCode: return "Switch Claude Code"
+        case .switchClaudeDesktop: return "Switch Claude Desktop"
         case .autoSwitch: return "Auto Switch"
         case .criticalAccounts: return "Critical Accounts"
         case .ping: return "Ping"
@@ -364,6 +408,7 @@ enum HelpTopic: String, CaseIterable, Identifiable {
         case .findingYourWay: return "The menu bar popover and the main window."
         case .charts: return "Look back at how each account was used."
         case .switchClaudeCode: return "Move Claude Code to another account in one click."
+        case .switchClaudeDesktop: return "Move Claude Desktop along with Claude Code."
         case .autoSwitch: return "Let the app switch before you hit a limit."
         case .criticalAccounts: return "Spend weekly quota before it expires unused."
         case .ping: return "Start a usage window now so it resets sooner."
@@ -380,6 +425,7 @@ enum HelpTopic: String, CaseIterable, Identifiable {
         case .findingYourWay: return "menubar.rectangle"
         case .charts: return "chart.xyaxis.line"
         case .switchClaudeCode: return "arrow.left.arrow.right"
+        case .switchClaudeDesktop: return "macwindow"
         case .autoSwitch: return "arrow.triangle.swap"
         case .criticalAccounts: return "flame"
         case .ping: return "dot.radiowaves.left.and.right"
@@ -396,6 +442,7 @@ enum HelpTopic: String, CaseIterable, Identifiable {
         case .findingYourWay: return .gray
         case .charts: return .orange
         case .switchClaudeCode: return .pink
+        case .switchClaudeDesktop: return .mint
         case .autoSwitch: return .teal
         case .criticalAccounts: return .red
         case .ping: return .indigo
