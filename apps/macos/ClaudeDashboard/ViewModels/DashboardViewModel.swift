@@ -108,6 +108,10 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var pendingDesktopClose: PendingDesktopClose?
     /// True while a Desktop switch (quit, capture, write) runs.
     @Published private(set) var isSwitchingDesktop = false
+    /// Claude Desktop is signed in as another account than Claude Code. Stored, not computed in a
+    /// view body (the read decrypts `config.json`); `refreshDesktopDiffers` updates it after a
+    /// refresh and after each Claude Code or Desktop switch.
+    @Published private(set) var desktopDiffers = false
     /// Auto switch settings and tick; views bind to them through this model.
     let autoSwitchSettings: AutoSwitchSettings
     let autoSwitch: AutoSwitchController
@@ -322,6 +326,7 @@ final class DashboardViewModel: ObservableObject {
         // and be filtered out, a freshly added one would be missing entirely.
         syncStates(with: accountStore.accounts)
         activeClaudeCodeEmail = ccDetector.activeEmail()
+        refreshDesktopDiffers()
         await refreshClaudeCodeSwitchState()
 
         // Accounts whose fresh usage shows a window not running (see PingController).
@@ -784,6 +789,7 @@ final class DashboardViewModel: ObservableObject {
             await log(switchMessage)
         }
         activeClaudeCodeEmail = ccDetector.activeEmail()
+        refreshDesktopDiffers()
         // Re-sort so the newly-active account floats to the top now, not only after a refresh.
         sortStates()
         switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
@@ -791,6 +797,11 @@ final class DashboardViewModel: ObservableObject {
     }
 
     // MARK: - Claude Desktop Switch
+
+    /// Recomputes `desktopDiffers`. Never call from a view body.
+    func refreshDesktopDiffers() {
+        desktopDiffers = desktopDiffersFromClaudeCode()
+    }
 
     /// True when Claude Desktop is signed in as a different account than Claude Code.
     func desktopDiffersFromClaudeCode() -> Bool {
@@ -829,7 +840,7 @@ final class DashboardViewModel: ObservableObject {
     private func runDesktopSwitch(to target: Account, quitFirst: Bool) async {
         guard let desktopSwitcher, !isSwitchingDesktop else { return }
         isSwitchingDesktop = true
-        defer { isSwitchingDesktop = false; awaitingBrowserAccount = nil }
+        defer { isSwitchingDesktop = false; awaitingBrowserAccount = nil; refreshDesktopDiffers() }
         let name = target.email ?? target.name
         if quitFirst, desktopSwitcher.isDesktopRunning {
             // Blocks up to ~6 s: off the main actor.
@@ -895,6 +906,7 @@ final class DashboardViewModel: ObservableObject {
         let accounts = accountStore.accounts
         try await Task.detached { try await ccSwitcher.switchTo(target, accounts: accounts) }.value
         activeClaudeCodeEmail = ccDetector.activeEmail()
+        refreshDesktopDiffers()
         sortStates()
         switchAvailability = await Task.detached { ccSwitcher.availability(for: accounts) }.value
     }

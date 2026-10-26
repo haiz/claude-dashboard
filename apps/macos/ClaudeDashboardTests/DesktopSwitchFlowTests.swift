@@ -136,6 +136,7 @@ final class DesktopSwitchFlowTests: XCTestCase {
         XCTAssertEqual(desktopConfig.writes, ["uuid-b"])
         XCTAssertNil(vm.pendingDesktopClose)
         XCTAssertFalse(vm.desktopDiffersFromClaudeCode())
+        XCTAssertFalse(vm.desktopDiffers)
     }
 
     func testLookAheadWritesWhenDesktopClosed() async throws {
@@ -161,7 +162,12 @@ final class DesktopSwitchFlowTests: XCTestCase {
 
     func testDetailButtonVisibleWhenAccountsDiffer() async throws {
         XCTAssertFalse(vm.desktopDiffersFromClaudeCode())
+        XCTAssertFalse(vm.desktopDiffers)
         await vm.switchClaudeCode(to: backend.id)
         XCTAssertTrue(vm.desktopDiffersFromClaudeCode())
+        // The stored flag the pane reads follows the CLI switch, then the Desktop switch.
+        XCTAssertTrue(vm.desktopDiffers)
+        await vm.switchDesktop(to: backend.id)
+        XCTAssertFalse(vm.desktopDiffers)
     }
 }

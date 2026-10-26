@@ -39,7 +39,7 @@ struct AccountPane: View {
                     .disabled(dashboardViewModel.isSwitchingClaudeCode)
                     .help(help)
                 }
-                if dashboardViewModel.isActiveClaudeCodeAccount(state), dashboardViewModel.desktopDiffersFromClaudeCode() {
+                if dashboardViewModel.isActiveClaudeCodeAccount(state), dashboardViewModel.desktopDiffers {
                     Button {
                         Task { await dashboardViewModel.switchDesktop(to: state.id) }
                     } label: {
