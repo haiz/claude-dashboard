@@ -21,6 +21,16 @@ enum SettingsTips {
         detail: "Shorter intervals keep cards fresher and let auto switch react sooner, at the cost of more requests to claude.ai.",
         example: "At 1 min, auto switch sees a 5h window reach 95% within a minute; at 15 min it can be 15 minutes late.",
         topic: .refreshUpdates)
+    static let switchDesktop = SettingTip(
+        summary: "Also move Claude Desktop when you press Switch.",
+        detail: "When on, Switch signs Claude Desktop in to the same account as Claude Code. Desktop is quit and reopened for the change, and only accounts already captured for Desktop can be used.",
+        example: "Switching to B moves Claude Code and Claude Desktop to B; with this off only Claude Code moves.",
+        topic: .switchClaudeCode)
+    static let autoSwitchDesktop = SettingTip(
+        summary: "Let auto switch move Claude Desktop when it is not running.",
+        detail: "When on, an auto switch also moves Claude Desktop, but only while Desktop is closed. A running Desktop is never quit automatically and stays on its account.",
+        example: "Desktop is closed when auto switch moves Claude Code to B, so Desktop moves to B too. If Desktop is open, it stays on A.",
+        topic: .autoSwitch)
     static let autoPing = SettingTip(
         summary: "Start idle usage windows automatically.",
         detail: "A window only starts counting at the first message. After each refresh, Auto Ping sends one short message from every active account whose 5h or 7d window is not running, so it resets sooner.",

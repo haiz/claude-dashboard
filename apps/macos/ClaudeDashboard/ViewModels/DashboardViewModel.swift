@@ -106,6 +106,14 @@ final class DashboardViewModel: ObservableObject {
     @Published var autoRefreshEnabled: Bool {
         didSet { AppDefaults.shared.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
     }
+    /// Settings > General > Claude Desktop (default off): the manual Switch also moves Desktop.
+    @Published var switchDesktopEnabled: Bool {
+        didSet { AppDefaults.shared.set(switchDesktopEnabled, forKey: AppDefaults.switchDesktopEnabledKey) }
+    }
+    /// Settings > General > Claude Desktop (default off): Auto Switch moves Desktop only while it is not running.
+    @Published var autoSwitchDesktopEnabled: Bool {
+        didSet { AppDefaults.shared.set(autoSwitchDesktopEnabled, forKey: AppDefaults.autoSwitchDesktopEnabledKey) }
+    }
     static let defaultAutoRefreshMinutes = 5
     @Published var autoRefreshMinutes: Int {
         didSet { AppDefaults.shared.set(autoRefreshMinutes, forKey: "autoRefreshMinutes"); scheduleAutoRefresh() }
@@ -163,6 +171,8 @@ final class DashboardViewModel: ObservableObject {
         criticalSettings: CriticalSettings? = nil
     ) {
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
+        self.switchDesktopEnabled = AppDefaults.shared.bool(forKey: AppDefaults.switchDesktopEnabledKey)
+        self.autoSwitchDesktopEnabled = AppDefaults.shared.bool(forKey: AppDefaults.autoSwitchDesktopEnabledKey)
         self.autoRefreshMinutes = {
             let val = AppDefaults.shared.integer(forKey: "autoRefreshMinutes")
             return val > 0 ? val : Self.defaultAutoRefreshMinutes
@@ -227,6 +237,8 @@ final class DashboardViewModel: ObservableObject {
     func resetSettingsToDefaults() {
         autoRefreshEnabled = true
         autoRefreshMinutes = Self.defaultAutoRefreshMinutes
+        switchDesktopEnabled = false
+        autoSwitchDesktopEnabled = false
         setAutoPingEnabled(false)
         criticalSettings.resetToDefaults()
         autoSwitchSettings.resetToDefaults()
