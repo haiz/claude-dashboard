@@ -220,32 +220,27 @@ enum BrowserCookieService {
         return derivedKey
     }
 
-    static func decryptCookieValue(_ encrypted: Data, withKey key: Data) -> String? {
-        guard encrypted.count > 3,
-              encrypted[0] == 0x76, encrypted[1] == 0x31, encrypted[2] == 0x30 else {
-            return nil
-        }
+    /// AES-128-CBC with PKCS7 padding, one direction. Shared by cookie decryption
+    /// and Claude Desktop's safeStorage blobs. Returns nil when CommonCrypto fails
+    /// (bad key/IV size, or bad padding on decrypt).
+    static func aes128CBC(_ data: Data, key: Data, iv: Data, encrypt: Bool) -> Data? {
+        var out = Data(count: data.count + kCCBlockSizeAES128)
+        let outCapacity = out.count
+        var outLength = 0
 
-        let ciphertext = encrypted.dropFirst(3)
-        let iv = Data(repeating: 0x20, count: 16)
-
-        var decryptedData = Data(count: ciphertext.count + kCCBlockSizeAES128)
-        let decryptedDataCapacity = decryptedData.count
-        var decryptedLength = 0
-
-        let status = decryptedData.withUnsafeMutableBytes { decryptedBytes in
-            ciphertext.withUnsafeBytes { ciphertextBytes in
+        let status = out.withUnsafeMutableBytes { outBytes in
+            data.withUnsafeBytes { dataBytes in
                 key.withUnsafeBytes { keyBytes in
                     iv.withUnsafeBytes { ivBytes in
                         CCCrypt(
-                            CCOperation(kCCDecrypt),
+                            CCOperation(encrypt ? kCCEncrypt : kCCDecrypt),
                             CCAlgorithm(kCCAlgorithmAES128),
                             CCOptions(kCCOptionPKCS7Padding),
                             keyBytes.baseAddress, key.count,
                             ivBytes.baseAddress,
-                            ciphertextBytes.baseAddress, ciphertext.count,
-                            decryptedBytes.baseAddress, decryptedDataCapacity,
-                            &decryptedLength
+                            dataBytes.baseAddress, data.count,
+                            outBytes.baseAddress, outCapacity,
+                            &outLength
                         )
                     }
                 }
@@ -253,8 +248,23 @@ enum BrowserCookieService {
         }
 
         guard status == kCCSuccess else { return nil }
+        out.count = outLength
+        return out
+    }
 
-        decryptedData.count = decryptedLength
+    static func decryptCookieValue(_ encrypted: Data, withKey key: Data) -> String? {
+        guard encrypted.count > 3,
+              encrypted[0] == 0x76, encrypted[1] == 0x31, encrypted[2] == 0x30 else {
+            return nil
+        }
+
+        guard let decryptedData = aes128CBC(
+            Data(encrypted.dropFirst(3)),
+            key: key,
+            iv: Data(repeating: 0x20, count: 16),
+            encrypt: false
+        ) else { return nil }
+        let decryptedLength = decryptedData.count
 
         // Try full data as UTF-8 first
         if let result = String(data: decryptedData, encoding: .utf8) {
