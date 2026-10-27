@@ -58,8 +58,9 @@ of it.
   account-scoped ten-minute activity window described in
   `cases/animal-display.json`. The visual assets and rendering remain platform
   detail. The `showBurnAnimals` setting defaults to off; when enabled, only
-  active 5-hour rows with a recognized burn-rate animal may animate. Seven-day
-  rows continue to show their percentage.
+  active 5-hour rows with a recognized burn-rate animal may animate (10 s shared
+  phase, 600 s activity window). Seven-day and Fable rows show their percentage
+  only, and a missing or unreadable asset falls back to the percentage.
 
 **Platform detail (deliberately free to differ):**
 - **Cookie decryption.** How a session key is extracted from the browser's

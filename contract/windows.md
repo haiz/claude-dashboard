@@ -131,11 +131,13 @@ starts a fetch. Writes from the Settings pane run one at a time, in click order.
 `hasLaunchedBefore` (default false) is set on the first launch and survives Reset
 All Settings.
 `showBurnAnimals` (bool, default false; macOS key and default) is Settings > General >
-Display > Show burn-rate animals: when false no burn-rate animal shows anywhere (card,
-account page and flyout gauges, and the Overview legend's animal column is hidden); the
-Help pane's sample gauge and animal scale stay. Display only: the burn-rate tracker and
-the burn-rate sort order run the same either way. Toggling redraws the shown rows and the
-Overview legend in place from the last refresh (no fetch). Reset All Settings turns it off.
+Display > Show burn-rate animals: when true, the large 5h ring of a card, the account
+page and the flyout alternates between the percentage and the animal (10 s shared phase,
+12 fps sprite sheets, only while that account's 5h usage changed in the last 600 s; see
+`contract/README.md`). The 7d and Fable rings, the Overview legend and the Help sample
+gauge show no animal; the Help animal scale (a static legend) stays. Display only: the
+burn-rate tracker and the burn-rate sort order run the same either way. Toggling redraws the
+shown rows in place from the last refresh (no fetch). Reset All Settings turns it off.
 Auto Switch and Critical Accounts use the macOS keys and defaults: `autoSwitchEnabled`
 (true), `autoSwitchFiveHourThreshold` (95, 50...99), `autoSwitchSevenDayThreshold` (99,
 50...100), `autoSwitchShowWidgetToggle` (true), `autoSwitchPriorityAccountId` and

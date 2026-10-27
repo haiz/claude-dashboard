@@ -125,6 +125,15 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   `ping_logs.db` (Tools > Ping Log). `PingMigration` deletes Run Command leftovers
   (`command_logs.db`, `runCommand_*` keys) at launch. Windows removed Run Command too and deletes its leftovers at launch (`apps/windows/app/src/migration.rs`).
   Spec: `docs/superpowers/specs/2026-10-14-ping-design.md`.
+- **Burn animal animation** — with `showBurnAnimals` on, only the 5h ring alternates percentage and
+  animal (10 s shared phase, 12 fps, 600 s activity window; 7d/Fable/Overview legend/Help sample
+  show none). Rules and fixture: `contract/cases/animal-display.json`; pure model in Swift
+  `AnimalDisplayModels` and Rust `core::animal_display`. macOS: `AnimalDisplayClock`,
+  `BurnAnimalAssetCatalog`, `Resources/BurnAnimals`; Windows: `app/src/animal_clock.rs`,
+  `animal_assets.rs`, `ui/assets/burn-animals`. Sprite sheets are generated from
+  `tools/burn-animal-animation/` (Blender, build time only); after changing them run
+  `python3 -I tools/burn-animal-animation/validate_assets.py` on the tool dir and both app copies.
+  Spec: `docs/superpowers/specs/2026-10-27-burn-animal-animation-design.md`.
 
 ### ViewModel
 - **DashboardViewModel** — `@MainActor` observable. Parallel refresh via `TaskGroup`. Sorts accounts by burn rate (utilization / time-remaining). Computes menu bar label from highest utilization.

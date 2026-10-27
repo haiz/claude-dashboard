@@ -2,8 +2,9 @@
 
 ## Status
 
-Approved design, ready for spec review. This document describes the cross-platform
-behaviour and the asset/runtime boundaries. It does not implement the feature.
+Approved design, implemented on macOS and Windows (2026-10-27). Windows GUI run-check
+is still open; see `tasks/todo.md`. This document describes the cross-platform behaviour
+and the asset/runtime boundaries.
 
 ## Goal
 
@@ -169,7 +170,7 @@ only successful 5-hour observations into the activity tracker. The existing
 `UsageGaugeRow` passes an animation payload only for its 5-hour `UsageBar`.
 `CircularProgressView` keeps the percentage and animated animal in a fixed `ZStack`
 inside the existing ring. The old bottom-right emoji overlay is removed from the
-5-hour path. The 7-day and Fable paths keep their existing inputs and layout.
+5-hour path. The 7-day and Fable paths show no animal at all (the static corner emoji is removed there too; user-approved), and they keep their existing percentage layout.
 
 The sprite sheet is decoded and cached once per animal. Frame selection uses the
 shared phase and does not decode image data during every refresh. The view keeps
