@@ -321,8 +321,11 @@ export component AccountCard inherits Rectangle {
     property <color> plan-tint: root.data.plan == "Pro" ? #0a84ff
         : root.data.plan == "Max 20x" ? #ff9f0a
         : #bf5af2;
-    // Claude Code Switch (macOS AccountCard `onSwitchClaudeCode`); `cc-switching` disables it.
+    // Claude Code Switch (macOS AccountCard `onSwitchClaudeCode`); `cc-switching` disables it,
+    // and so does `desktop-switching` (a Switch would also move Claude Desktop, which is busy).
     in property <bool> cc-switching;
+    in property <bool> desktop-switching;
+    property <bool> switch-busy: root.cc-switching || root.desktop-switching;
     callback switch-cc();
     callback toggle-home();
     callback toggle-pin(bool /* new pinned state */);
@@ -427,8 +430,8 @@ export component AccountCard inherits Rectangle {
                 height: 22px;
                 y: (parent.height - self.height) / 2;
                 border-radius: 4px;
-                opacity: root.cc-switching ? 0.4 : 1.0;
-                background: sw-touch.has-hover && !root.cc-switching ? Theme.text-primary.with-alpha(0.10) : transparent;
+                opacity: root.switch-busy ? 0.4 : 1.0;
+                background: sw-touch.has-hover && !root.switch-busy ? Theme.text-primary.with-alpha(0.10) : transparent;
                 Text {
                     text: "\u{E8AB}";
                     font-family: "Segoe Fluent Icons";
@@ -438,7 +441,7 @@ export component AccountCard inherits Rectangle {
                     vertical-alignment: center;
                 }
                 sw-touch := TouchArea {
-                    enabled: !root.cc-switching;
+                    enabled: !root.switch-busy;
                     mouse-cursor: pointer;
                     clicked => { root.switch-cc(); }
                 }

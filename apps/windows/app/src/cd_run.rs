@@ -142,7 +142,22 @@ pub fn look_ahead(id: &str, accounts: &[Account], now: f64) {
     if !enabled || switcher.is_running() {
         return;
     }
-    let Some(_guard) = cd_state::try_begin() else { return };
+    let Some(guard) = cd_state::try_begin() else { return };
+    // While the guard is held, Switch buttons are disabled (a click would be dropped).
+    let _ = slint::invoke_from_event_loop(|| set_switching(true));
+    look_ahead_locked(id, accounts, now, switcher, enabled);
+    drop(guard);
+    let _ = slint::invoke_from_event_loop(|| set_switching(false));
+}
+
+/// `look_ahead` with the Desktop switch guard held.
+fn look_ahead_locked(
+    id: &str,
+    accounts: &[Account],
+    now: f64,
+    switcher: &claude_dashboard_core::cd_switch::switcher::DesktopSwitcher,
+    enabled: bool,
+) {
     let Some(account) = accounts.iter().find(|a| a.id == id) else { return };
     let name = account.email.clone().filter(|e| !e.is_empty()).unwrap_or_else(|| account.name.clone());
     // Availability right before, not the last refresh's: Desktop may have changed since.

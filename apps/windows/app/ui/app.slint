@@ -1158,6 +1158,7 @@ export component AppWindow inherits Window {
                             toggle-pin(pinned) => { root.toggle-pin(self.acct.id, pinned); }
                             resync => { root.resync-account(self.acct.id); }
                             cc-switching: root.cc-switching;
+                            desktop-switching: root.desktop-switching;
                             switch-cc => { root.switch-claude-code(self.acct.id); }
                             toggle-home => { root.toggle-home(self.acct.id); }
                             open-window(w) => {
@@ -1454,6 +1455,7 @@ export component PopoverWindow inherits Window {
                     resync => { root.resync-account(acct.id); }
                     open-window(w) => { root.open-account-window(acct.id, w); }
                     cc-switching: root.cc-switching;
+                    desktop-switching: root.desktop-switching;
                     switch-cc => { root.switch-claude-code(acct.id); } toggle-home => { root.toggle-home(acct.id); }
                 }
             }
