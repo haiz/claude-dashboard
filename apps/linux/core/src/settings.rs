@@ -57,6 +57,12 @@ pub struct Settings {
     /// macOS `autoPingEnabled`: ping every active account whose 5h or 7d window is not running.
     #[serde(rename = "autoPingEnabled")]
     pub auto_ping_enabled: bool,
+    /// macOS `switchDesktopEnabled`: the Switch button also moves Claude Desktop.
+    #[serde(rename = "switchDesktopEnabled")]
+    pub switch_desktop_enabled: bool,
+    /// macOS `autoSwitchDesktopEnabled`: auto switch also moves Claude Desktop.
+    #[serde(rename = "autoSwitchDesktopEnabled")]
+    pub auto_switch_desktop_enabled: bool,
     #[serde(rename = "autoSwitchEnabled")]
     pub auto_switch_enabled: bool,
     #[serde(rename = "autoSwitchFiveHourThreshold")]
@@ -108,6 +114,10 @@ struct RawSettings {
     has_launched_before: bool,
     #[serde(rename = "autoPingEnabled", default)]
     auto_ping_enabled: bool,
+    #[serde(rename = "switchDesktopEnabled", default)]
+    switch_desktop_enabled: bool,
+    #[serde(rename = "autoSwitchDesktopEnabled", default)]
+    auto_switch_desktop_enabled: bool,
     #[serde(rename = "autoSwitchEnabled", default = "default_true")]
     auto_switch_enabled: bool,
     #[serde(rename = "autoSwitchFiveHourThreshold", default, deserialize_with = "lenient_i64")]
@@ -160,6 +170,8 @@ impl From<RawSettings> for Settings {
             last_auto_update_check_unix: r.last_auto_update_check_unix,
             has_launched_before: r.has_launched_before,
             auto_ping_enabled: r.auto_ping_enabled,
+            switch_desktop_enabled: r.switch_desktop_enabled,
+            auto_switch_desktop_enabled: r.auto_switch_desktop_enabled,
             auto_switch_enabled: r.auto_switch_enabled,
             auto_switch_five_hour: in_range(r.auto_switch_five_hour, AUTO_SWITCH_FIVE_HOUR_RANGE, DEFAULT_AUTO_SWITCH_FIVE_HOUR),
             auto_switch_seven_day: in_range(r.auto_switch_seven_day, AUTO_SWITCH_SEVEN_DAY_RANGE, DEFAULT_AUTO_SWITCH_SEVEN_DAY),
@@ -189,6 +201,8 @@ impl Default for Settings {
             last_auto_update_check_unix: None,
             has_launched_before: false,
             auto_ping_enabled: false,
+            switch_desktop_enabled: false,
+            auto_switch_desktop_enabled: false,
             auto_switch_enabled: true,
             auto_switch_five_hour: DEFAULT_AUTO_SWITCH_FIVE_HOUR,
             auto_switch_seven_day: DEFAULT_AUTO_SWITCH_SEVEN_DAY,
@@ -230,6 +244,8 @@ pub fn reset_general(s: &mut Settings) {
     s.auto_refresh_enabled = true;
     s.auto_refresh_minutes = DEFAULT_REFRESH_MINUTES;
     s.auto_ping_enabled = false;
+    s.switch_desktop_enabled = false;
+    s.auto_switch_desktop_enabled = false;
     s.auto_update = true;
     s.auto_switch_enabled = d.auto_switch_enabled;
     s.auto_switch_five_hour = d.auto_switch_five_hour;
@@ -325,6 +341,35 @@ mod tests {
         let p = dir.path().join("settings.json");
         fs::write(&p, json).unwrap();
         load_from(&p)
+    }
+
+    #[test]
+    fn desktop_keys_default_off() {
+        let s = load_str("{}");
+        assert!(!s.switch_desktop_enabled && !s.auto_switch_desktop_enabled);
+    }
+
+    #[test]
+    fn desktop_keys_round_trip_with_macos_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        update_at(&p, |s| {
+            s.switch_desktop_enabled = true;
+            s.auto_switch_desktop_enabled = true;
+        })
+        .unwrap();
+        let json = fs::read_to_string(&p).unwrap();
+        assert!(json.contains("\"switchDesktopEnabled\": true"), "{json}");
+        assert!(json.contains("\"autoSwitchDesktopEnabled\": true"), "{json}");
+        let s = load_from(&p);
+        assert!(s.switch_desktop_enabled && s.auto_switch_desktop_enabled);
+    }
+
+    #[test]
+    fn reset_turns_desktop_keys_off() {
+        let mut s = Settings { switch_desktop_enabled: true, auto_switch_desktop_enabled: true, ..Settings::default() };
+        reset_general(&mut s);
+        assert!(!s.switch_desktop_enabled && !s.auto_switch_desktop_enabled);
     }
 
     #[test]

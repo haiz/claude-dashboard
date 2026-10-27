@@ -17,6 +17,8 @@ pub enum Outcome {
     Failed = 1,
     /// Logged once per stretch, not on every refresh.
     NoCandidate = 2,
+    /// A Desktop look-ahead that had no captured login to write.
+    Skipped = 3,
 }
 
 impl Outcome {
@@ -25,6 +27,7 @@ impl Outcome {
             Outcome::Switched => "Switched",
             Outcome::Failed => "Failed",
             Outcome::NoCandidate => "No candidate",
+            Outcome::Skipped => "Skipped",
         }
     }
 
@@ -33,6 +36,7 @@ impl Outcome {
             0 => Some(Outcome::Switched),
             1 => Some(Outcome::Failed),
             2 => Some(Outcome::NoCandidate),
+            3 => Some(Outcome::Skipped),
             _ => None,
         }
     }
@@ -63,6 +67,32 @@ impl Trigger {
     }
 }
 
+/// What a switch moved: Claude Code's login or Claude Desktop's. Raw values are stored in
+/// `auto_switch_logs.target`; rows logged before the column existed, and unknown values, read as
+/// `ClaudeCode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SwitchTarget {
+    ClaudeCode = 0,
+    ClaudeDesktop = 1,
+}
+
+impl SwitchTarget {
+    pub fn label(self) -> &'static str {
+        match self {
+            SwitchTarget::ClaudeCode => "Claude Code",
+            SwitchTarget::ClaudeDesktop => "Claude Desktop",
+        }
+    }
+
+    fn from_i64(v: i64) -> Self {
+        if v == 1 {
+            SwitchTarget::ClaudeDesktop
+        } else {
+            SwitchTarget::ClaudeCode
+        }
+    }
+}
+
 /// One row. Account names are copied in when logged, so a row still reads right after the
 /// account is renamed or removed.
 #[derive(Debug, Clone, PartialEq)]
@@ -70,6 +100,7 @@ pub struct Entry {
     pub id: i64,
     pub date_unix: f64,
     pub trigger: Trigger,
+    pub target: SwitchTarget,
     pub outcome: Outcome,
     pub from_name: Option<String>,
     pub to_name: Option<String>,
@@ -85,6 +116,7 @@ pub struct Entry {
 pub struct NewEntry {
     pub date_unix: f64,
     pub trigger: Trigger,
+    pub target: SwitchTarget,
     pub outcome: Outcome,
     pub from_name: Option<String>,
     pub to_name: Option<String>,
@@ -123,19 +155,22 @@ impl AutoSwitchLogStore {
                  to_name TEXT,
                  reason TEXT NOT NULL,
                  detail TEXT,
-                 trig INTEGER NOT NULL DEFAULT 0)",
+                 trig INTEGER NOT NULL DEFAULT 0,
+                 target INTEGER NOT NULL DEFAULT 0)",
         )?;
         // A table from before manual switches were logged: add the column (its rows are all
         // auto). Fails harmlessly with "duplicate column" once it exists.
         let _ = conn.execute("ALTER TABLE auto_switch_logs ADD COLUMN trig INTEGER NOT NULL DEFAULT 0", []);
+        // Same for the target column (its rows are all Claude Code).
+        let _ = conn.execute("ALTER TABLE auto_switch_logs ADD COLUMN target INTEGER NOT NULL DEFAULT 0", []);
         Ok(AutoSwitchLogStore { conn, max_entries })
     }
 
     /// Best-effort: a SQLite failure returns -1 and logs nothing.
     pub fn insert(&self, e: &NewEntry) -> i64 {
         let inserted = self.conn.execute(
-            "INSERT INTO auto_switch_logs (date, outcome, from_name, to_name, reason, detail, trig) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![e.date_unix, e.outcome as i64, e.from_name, e.to_name, e.reason, e.detail, e.trigger as i64],
+            "INSERT INTO auto_switch_logs (date, outcome, from_name, to_name, reason, detail, trig, target) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![e.date_unix, e.outcome as i64, e.from_name, e.to_name, e.reason, e.detail, e.trigger as i64, e.target as i64],
         );
         if inserted.is_err() {
             return -1;
@@ -152,7 +187,7 @@ impl AutoSwitchLogStore {
     pub fn fetch(&self, limit: i64) -> Vec<Entry> {
         let run = || -> rusqlite::Result<Vec<Entry>> {
             let mut stmt = self.conn.prepare(
-                "SELECT id, date, outcome, from_name, to_name, reason, detail, trig FROM auto_switch_logs ORDER BY id DESC LIMIT ?1",
+                "SELECT id, date, outcome, from_name, to_name, reason, detail, trig, target FROM auto_switch_logs ORDER BY id DESC LIMIT ?1",
             )?;
             let rows = stmt.query_map(params![limit], |r| {
                 Ok((
@@ -164,13 +199,14 @@ impl AutoSwitchLogStore {
                     r.get::<_, Option<String>>(5)?,
                     r.get::<_, Option<String>>(6)?,
                     r.get::<_, i64>(7)?,
+                    r.get::<_, i64>(8)?,
                 ))
             })?;
             let mut out = Vec::new();
             for row in rows {
-                let (id, date_unix, outcome, from_name, to_name, reason, detail, trigger) = row?;
+                let (id, date_unix, outcome, from_name, to_name, reason, detail, trigger, target) = row?;
                 let (Some(outcome), Some(trigger)) = (Outcome::from_i64(outcome), Trigger::from_i64(trigger)) else { continue };
-                out.push(Entry { id, date_unix, trigger, outcome, from_name, to_name, reason: reason.unwrap_or_default(), detail });
+                out.push(Entry { id, date_unix, trigger, target: SwitchTarget::from_i64(target), outcome, from_name, to_name, reason: reason.unwrap_or_default(), detail });
             }
             Ok(out)
         };
@@ -192,6 +228,7 @@ mod tests {
         NewEntry {
             date_unix: t,
             trigger: Trigger::Auto,
+            target: SwitchTarget::ClaudeCode,
             outcome,
             from_name: from.map(Into::into),
             to_name: to.map(Into::into),
@@ -216,6 +253,7 @@ mod tests {
                 id: rows[1].id,
                 date_unix: T0,
                 trigger: Trigger::Auto,
+                target: SwitchTarget::ClaudeCode,
                 outcome: Outcome::Switched,
                 from_name: Some("a@x.com".into()),
                 to_name: Some("b@x.com".into()),
@@ -282,6 +320,35 @@ mod tests {
         let rows = s.fetch(10);
         assert_eq!(rows.iter().map(|e| e.reason.as_str()).collect::<Vec<_>>(), vec!["Manual switch", "old"]);
         assert_eq!(rows.iter().map(|e| e.trigger).collect::<Vec<_>>(), vec![Trigger::Manual, Trigger::Auto]);
+        assert_eq!(rows.iter().map(|e| e.target).collect::<Vec<_>>(), vec![SwitchTarget::ClaudeCode, SwitchTarget::ClaudeCode]);
+    }
+
+    #[test]
+    fn skipped_round_trips() {
+        assert_eq!(Outcome::Skipped as i64, 3);
+        assert_eq!(Outcome::Skipped.label(), "Skipped");
+        let s = AutoSwitchLogStore::open_in_memory(MAX_ENTRIES).unwrap();
+        s.insert(&entry(T0, Outcome::Skipped, Some("a"), Some("b"), "r", Some("no captured login")));
+        assert_eq!(s.fetch(10)[0].outcome, Outcome::Skipped);
+    }
+
+    #[test]
+    fn desktop_target_round_trips() {
+        assert_eq!([SwitchTarget::ClaudeCode as i64, SwitchTarget::ClaudeDesktop as i64], [0, 1]);
+        assert_eq!((SwitchTarget::ClaudeCode.label(), SwitchTarget::ClaudeDesktop.label()), ("Claude Code", "Claude Desktop"));
+        let s = AutoSwitchLogStore::open_in_memory(MAX_ENTRIES).unwrap();
+        s.insert(&NewEntry { target: SwitchTarget::ClaudeDesktop, ..entry(T0, Outcome::Switched, Some("a"), Some("b"), "r", None) });
+        s.insert(&entry(T0 + 1.0, Outcome::Switched, Some("b"), Some("a"), "r", None));
+        assert_eq!(s.fetch(10).iter().map(|e| e.target).collect::<Vec<_>>(), vec![SwitchTarget::ClaudeCode, SwitchTarget::ClaudeDesktop]);
+    }
+
+    #[test]
+    fn unknown_target_value_reads_as_claude_code() {
+        let s = AutoSwitchLogStore::open_in_memory(MAX_ENTRIES).unwrap();
+        s.conn
+            .execute("INSERT INTO auto_switch_logs (date, outcome, reason, target) VALUES (?1, 0, 'x', 9)", params![T0])
+            .unwrap();
+        assert_eq!(s.fetch(10)[0].target, SwitchTarget::ClaudeCode);
     }
 
     #[test]

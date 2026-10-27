@@ -10,7 +10,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 use claude_dashboard_core::auto_switch::{
     self as planner, Account, Decision, Hold, Lock, Priority, Reason, Snapshot, StayReason, Thresholds, Usage,
 };
-use claude_dashboard_core::auto_switch_log::{NewEntry, Outcome, Trigger};
+use claude_dashboard_core::auto_switch_log::{NewEntry, Outcome, SwitchTarget, Trigger};
 use claude_dashboard_core::cc_switch::switcher::SwitchError;
 use claude_dashboard_core::critical::CriticalLevel;
 use claude_dashboard_core::auto_switch::Window;
@@ -157,6 +157,7 @@ impl Controller {
                     log(NewEntry {
                         date_unix: now,
                         trigger: Trigger::Auto,
+                        target: SwitchTarget::ClaudeCode,
                         outcome: Outcome::NoCandidate,
                         from_name,
                         to_name: None,
@@ -186,7 +187,7 @@ impl Controller {
                         self.cooldown_until.insert(id.clone(), now + FAILURE_COOLDOWN_S);
                     }
                     self.last_event = Some(Event { kind: EventKind::Failed(describe(&e)), account_name: to_name.clone(), date_unix: now });
-                    log(NewEntry { date_unix: now, trigger: Trigger::Auto, outcome: Outcome::Failed, from_name, to_name, reason: reason_text, detail: Some(describe(&e)) });
+                    log(NewEntry { date_unix: now, trigger: Trigger::Auto, target: SwitchTarget::ClaudeCode, outcome: Outcome::Failed, from_name, to_name, reason: reason_text, detail: Some(describe(&e)) });
                     return None;
                 }
                 self.lock = target.and_then(|t| t.usage).and_then(|u| planner::make_lock(&id, &u, &cfg.thresholds));
@@ -198,6 +199,7 @@ impl Controller {
                 log(NewEntry {
                     date_unix: now,
                     trigger: Trigger::Auto,
+                    target: SwitchTarget::ClaudeCode,
                     outcome: Outcome::Switched,
                     from_name,
                     to_name,
@@ -474,6 +476,7 @@ pub fn manual_entry(rows: &[DisplayRow], target_id: &str, error: Option<String>,
     NewEntry {
         date_unix: now,
         trigger: Trigger::Manual,
+        target: SwitchTarget::ClaudeCode,
         outcome: if error.is_some() { Outcome::Failed } else { Outcome::Switched },
         from_name: rows.iter().find(|r| r.is_active_claude_code).map(display_name),
         to_name: target.map(display_name),
@@ -572,6 +575,7 @@ mod tests {
             vec![NewEntry {
                 date_unix: T0,
                 trigger: Trigger::Auto,
+                target: SwitchTarget::ClaudeCode,
                 outcome: Outcome::Switched,
                 from_name: Some("a@x.com".into()),
                 to_name: Some("b@x.com".into()),
@@ -804,6 +808,7 @@ mod tests {
             NewEntry {
                 date_unix: T0,
                 trigger: Trigger::Manual,
+                target: SwitchTarget::ClaudeCode,
                 outcome: Outcome::Switched,
                 from_name: Some("a@x.com".into()),
                 to_name: Some("b-name".into()),

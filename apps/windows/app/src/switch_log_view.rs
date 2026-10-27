@@ -20,7 +20,7 @@ pub fn rows(entries: &[Entry], local_offset_s: f64) -> Vec<UiSwitchRow> {
             kind: match e.outcome {
                 Outcome::Switched => 0,
                 Outcome::Failed => 1,
-                Outcome::NoCandidate => 2,
+                Outcome::NoCandidate | Outcome::Skipped => 2,
             },
         })
         .collect()
@@ -38,7 +38,7 @@ pub fn accounts(from: Option<&str>, to: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claude_dashboard_core::auto_switch_log::Trigger;
+    use claude_dashboard_core::auto_switch_log::{SwitchTarget, Trigger};
 
     fn e(outcome: Outcome, from: Option<&str>, to: Option<&str>, detail: Option<&str>) -> Entry {
         Entry {
@@ -46,6 +46,7 @@ mod tests {
             // 2026-10-17 03:44:03 UTC
             date_unix: 1_792_208_643.0,
             trigger: Trigger::Auto,
+            target: SwitchTarget::ClaudeCode,
             outcome,
             from_name: from.map(Into::into),
             to_name: to.map(Into::into),
