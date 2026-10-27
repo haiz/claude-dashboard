@@ -951,13 +951,19 @@ mod tests {
     fn backfilled_errored_rows_never_extend_animal_activity() {
         use claude_dashboard_core::animal_display::AnimalActivityTracker;
         let mut t = AnimalActivityTracker::new();
-        let prev = rows(&[]);
-        crate::animal_assets::record_activity(&mut t, &prev, 0.0);
+        let prev = rows(&[]); // b at 70%
+        // Baseline: b was last measured at 60%, so the 70% restored below would count as a
+        // change if an errored row were recorded.
+        let mut baseline = prev.clone();
+        baseline.iter_mut().find(|r| r.account_id == "b").unwrap().five_hour.as_mut().unwrap().utilization = 60.0;
+        crate::animal_assets::record_activity(&mut t, &baseline, 0.0);
         // b errors with no windows of its own, then takes its last-good 70% back from `prev`.
         let mut fresh = rows(&[("b", "HTTP 500")]);
         let b = fresh.iter_mut().find(|r| r.account_id == "b").unwrap();
         (b.five_hour, b.seven_day, b.fable) = (None, None, None);
         let merged = merge_errors(&prev, Ok(out(fresh)), NOW);
+        let b = merged.rows.iter().find(|r| r.account_id == "b").unwrap();
+        assert_eq!(b.five_hour.as_ref().map(|w| w.utilization), Some(70.0), "backfilled");
         crate::animal_assets::record_activity(&mut t, &merged.rows, 100.0);
         assert_eq!(t.last_change_at("b"), None, "backfilled error row records nothing");
         // A genuinely changed success on a does record.

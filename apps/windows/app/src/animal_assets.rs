@@ -8,18 +8,18 @@
 //!   `ui/theme.slint` (`BurnAnimalSheets`), so a missing PNG fails the build.
 //! * Time: activity expires 600 s after the last change even with no refresh, so it is stored
 //!   as a timestamp on a monotonic clock ([`monotonic_now`], seconds since the first call)
-//!   and re-checked by whoever draws ([`is_active`]). Callers pass the time in; tests never sleep.
+//!   and re-checked by whoever draws (core's `AnimalActivityTracker::is_active`). Callers pass the time in; tests never sleep.
 //!
 //!     let t = monotonic_now();
 //!     record_activity(&mut tracker, &rows, t);          // after a successful fetch
-//!     is_active(tracker.last_change_at("id"), t + 599.0) // true; false at +601
+//!     tracker.is_active("id", t + 599.0)               // true; false at +601 (core's rule)
 
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
 use claude_dashboard_core::animal_display::{
-    asset_id, AnimalActivityTracker, ACTIVITY_SECONDS, FRAME_COUNT, FRAME_RATE,
+    asset_id, AnimalActivityTracker, FRAME_COUNT, FRAME_RATE,
 };
 use claude_dashboard_core::model::AccountStatus;
 use claude_dashboard_core::rows::DisplayRow;
@@ -99,11 +99,6 @@ pub fn monotonic_now() -> f64 {
     ORIGIN.get_or_init(Instant::now).elapsed().as_secs_f64()
 }
 
-/// Recent activity: `changed_at` (monotonic seconds, `None` = never changed) is within 600 s of `now`.
-pub fn is_active(changed_at: Option<f64>, now: f64) -> bool {
-    changed_at.is_some_and(|c| now - c <= ACTIVITY_SECONDS)
-}
-
 /// Feeds the 5h window of every row this fetch measured successfully to `tracker`. Errored or
 /// non-active rows (including ones backfilled with their last-good windows) are skipped, so a
 /// failed refresh never extends activity. Same row filter as `refresh::apply_projections`.
@@ -172,21 +167,21 @@ mod tests {
 
     #[test]
     fn missing_entry_disables_only_that_animal() {
-        let bad = valid().replace(
-            "    {\n      \"id\": \"snail\",\n      \"sheet\": \"snail.png\"\n    },\n",
-            "",
-        );
-        assert_ne!(bad, valid(), "fixture edit applied");
-        let c = validate_manifest(&bad).expect("four animals still valid");
+        // Edited as JSON, not text, so line endings (CRLF checkouts) cannot matter.
+        let mut v: serde_json::Value = serde_json::from_str(MANIFEST_JSON).unwrap();
+        v["animals"].as_array_mut().unwrap().retain(|a| a["id"] != "snail");
+        let c = validate_manifest(&v.to_string()).expect("four animals still valid");
         assert!(!c.has("snail") && c.has("turtle"));
     }
 
     #[test]
     fn activity_expires_at_600_seconds_without_refresh() {
-        assert!(!is_active(None, 5.0));
-        assert!(is_active(Some(100.0), 100.0));
-        assert!(is_active(Some(100.0), 700.0));
-        assert!(!is_active(Some(100.0), 700.001));
+        let mut t = AnimalActivityTracker::new();
+        assert!(!t.is_active("a", 5.0));
+        record_activity(&mut t, &[row("a", 10.0, AccountStatus::Active, None)], 0.0);
+        record_activity(&mut t, &[row("a", 20.0, AccountStatus::Active, None)], 100.0);
+        assert!(t.is_active("a", 700.0));
+        assert!(!t.is_active("a", 700.001));
     }
 
     fn row(id: &str, util: f64, status: AccountStatus, error: Option<&str>) -> DisplayRow {
@@ -227,6 +222,6 @@ mod tests {
         // Unchanged success does not extend.
         record_activity(&mut t, &[row("a", 20.0, AccountStatus::Active, None)], 400.0);
         assert_eq!(t.last_change_at("a"), Some(100.0));
-        assert!(!is_active(t.last_change_at("a"), 701.0));
+        assert!(!t.is_active("a", 701.0));
     }
 }
