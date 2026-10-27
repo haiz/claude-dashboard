@@ -1,5 +1,6 @@
 //! Tools > Switch Log (macOS `AutoSwitchLogView` / `AutoSwitchLogViewModel`): every auto
-//! switch, failed attempt and no-candidate stretch, newest first.
+//! switch, failed attempt and no-candidate stretch, and every Switch button press, newest
+//! first, each tagged Auto or Manual.
 
 use claude_dashboard_core::auto_switch_log::{Entry, Outcome};
 
@@ -11,6 +12,7 @@ pub fn rows(entries: &[Entry], local_offset_s: f64) -> Vec<UiSwitchRow> {
         .iter()
         .map(|e| UiSwitchRow {
             time: crate::ping_log_view::medium_date_time(e.date_unix + local_offset_s).into(),
+            trigger: e.trigger.label().into(),
             accounts: accounts(e.from_name.as_deref(), e.to_name.as_deref()).into(),
             reason: e.reason.as_str().into(),
             detail: e.detail.clone().unwrap_or_default().into(),
@@ -36,12 +38,14 @@ pub fn accounts(from: Option<&str>, to: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use claude_dashboard_core::auto_switch_log::Trigger;
 
     fn e(outcome: Outcome, from: Option<&str>, to: Option<&str>, detail: Option<&str>) -> Entry {
         Entry {
             id: 1,
             // 2026-10-17 03:44:03 UTC
             date_unix: 1_792_208_643.0,
+            trigger: Trigger::Auto,
             outcome,
             from_name: from.map(Into::into),
             to_name: to.map(Into::into),
@@ -58,6 +62,9 @@ mod tests {
         assert_eq!(r.reason.as_str(), "5h 96% >= 95%, tier 1");
         assert_eq!(r.detail.as_str(), "b@x.com: 5h 10%, 7d 20%");
         assert_eq!((r.outcome.as_str(), r.kind), ("Switched", 0));
+        assert_eq!(r.trigger.as_str(), "Auto");
+        let manual = &rows(&[Entry { trigger: Trigger::Manual, ..e(Outcome::Switched, Some("a"), Some("b"), None) }], 0.0)[0];
+        assert_eq!(manual.trigger.as_str(), "Manual");
         let failed = &rows(&[e(Outcome::Failed, None, Some("b"), None)], 0.0)[0];
         assert_eq!((failed.outcome.as_str(), failed.kind, failed.detail.as_str()), ("Failed", 1, ""));
         let none = &rows(&[e(Outcome::NoCandidate, Some("a"), None, None)], 0.0)[0];

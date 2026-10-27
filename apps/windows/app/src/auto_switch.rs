@@ -10,7 +10,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 use claude_dashboard_core::auto_switch::{
     self as planner, Account, Decision, Hold, Lock, Priority, Reason, Snapshot, StayReason, Thresholds, Usage,
 };
-use claude_dashboard_core::auto_switch_log::{NewEntry, Outcome};
+use claude_dashboard_core::auto_switch_log::{NewEntry, Outcome, Trigger};
 use claude_dashboard_core::cc_switch::switcher::SwitchError;
 use claude_dashboard_core::critical::CriticalLevel;
 use claude_dashboard_core::auto_switch::Window;
@@ -156,6 +156,7 @@ impl Controller {
                     self.logged_no_candidate = true;
                     log(NewEntry {
                         date_unix: now,
+                        trigger: Trigger::Auto,
                         outcome: Outcome::NoCandidate,
                         from_name,
                         to_name: None,
@@ -185,7 +186,7 @@ impl Controller {
                         self.cooldown_until.insert(id.clone(), now + FAILURE_COOLDOWN_S);
                     }
                     self.last_event = Some(Event { kind: EventKind::Failed(describe(&e)), account_name: to_name.clone(), date_unix: now });
-                    log(NewEntry { date_unix: now, outcome: Outcome::Failed, from_name, to_name, reason: reason_text, detail: Some(describe(&e)) });
+                    log(NewEntry { date_unix: now, trigger: Trigger::Auto, outcome: Outcome::Failed, from_name, to_name, reason: reason_text, detail: Some(describe(&e)) });
                     return None;
                 }
                 self.lock = target.and_then(|t| t.usage).and_then(|u| planner::make_lock(&id, &u, &cfg.thresholds));
@@ -196,6 +197,7 @@ impl Controller {
                 self.last_event = Some(Event { kind: EventKind::Switched(reason), account_name: to_name.clone(), date_unix: now });
                 log(NewEntry {
                     date_unix: now,
+                    trigger: Trigger::Auto,
                     outcome: Outcome::Switched,
                     from_name,
                     to_name,
@@ -297,7 +299,7 @@ pub fn accounts_from(
             };
             Account {
                 id: r.account_id.clone(),
-                display_name: r.email.clone().filter(|e| !e.is_empty()).unwrap_or_else(|| r.name.clone()),
+                display_name: display_name(r),
                 usage: usage_of(r),
                 availability: availability(&r.account_id),
                 is_usable,
@@ -332,6 +334,9 @@ pub struct CardFields {
     /// A tick needs the active account or one auto switch could move to, with usage loaded
     /// (macOS `canTickPriority`).
     pub can_tick: bool,
+    /// The bolt shows only while auto switch is on, the only thing that reads the tick; off
+    /// hides it but keeps the tick (macOS `showsPriorityControl`).
+    pub shows_home: bool,
     /// 0 none, 1 critical, 2 high critical.
     pub critical_level: i32,
     pub critical_help: String,
@@ -341,6 +346,7 @@ pub fn card_fields(
     row: &DisplayRow,
     home_id: Option<&str>,
     availability: Option<Availability>,
+    auto_switch_on: bool,
     params: &CriticalParameters,
     now: f64,
 ) -> CardFields {
@@ -349,9 +355,12 @@ pub fn card_fields(
     } else {
         CriticalAssessment::NONE
     };
+    let is_home = home_id == Some(row.account_id.as_str());
+    let can_tick = (availability == Some(Availability::Ready) || row.is_active_claude_code) && usage_of(row).is_some();
     CardFields {
-        is_home: home_id == Some(row.account_id.as_str()),
-        can_tick: (availability == Some(Availability::Ready) || row.is_active_claude_code) && usage_of(row).is_some(),
+        is_home,
+        can_tick,
+        shows_home: auto_switch_on && (can_tick || is_home),
         critical_level: match assessment.level {
             CriticalLevel::None => 0,
             CriticalLevel::Critical => 1,
@@ -449,6 +458,32 @@ pub fn usage_text(a: &Account) -> String {
     format!("5h {}, 7d {}", percent(a.five_hour()), percent(a.seven_day()))
 }
 
+/// Email when known, else the account name (macOS `AutoSwitchAccount.displayName`).
+fn display_name(r: &DisplayRow) -> String {
+    r.email.clone().filter(|e| !e.is_empty()).unwrap_or_else(|| r.name.clone())
+}
+
+/// A Switch button press for the Switch Log (macOS `logManualSwitch`), from the rows as they
+/// were before the switch: `error` is the message the user saw, `None` for a switch that
+/// went through.
+///
+///     log.insert(&manual_entry(&rows, "b-id", None, now));   // "a → b", "b@x.com: 5h 10%, 7d 20%"
+pub fn manual_entry(rows: &[DisplayRow], target_id: &str, error: Option<String>, now: f64) -> NewEntry {
+    let target = rows.iter().find(|r| r.account_id == target_id);
+    let pct = |w: Option<&claude_dashboard_core::rows::WindowView>| percent(w.map_or(100.0, |v| v.utilization));
+    NewEntry {
+        date_unix: now,
+        trigger: Trigger::Manual,
+        outcome: if error.is_some() { Outcome::Failed } else { Outcome::Switched },
+        from_name: rows.iter().find(|r| r.is_active_claude_code).map(display_name),
+        to_name: target.map(display_name),
+        reason: "Manual switch".into(),
+        detail: error.or_else(|| {
+            target.map(|t| format!("{}: 5h {}, 7d {}", display_name(t), pct(t.five_hour.as_ref()), pct(t.seven_day.as_ref())))
+        }),
+    }
+}
+
 /// The reason a failed switch gives (macOS `describe`).
 pub fn describe(e: &SwitchError) -> String {
     match e {
@@ -536,6 +571,7 @@ mod tests {
             r.logged,
             vec![NewEntry {
                 date_unix: T0,
+                trigger: Trigger::Auto,
                 outcome: Outcome::Switched,
                 from_name: Some("a@x.com".into()),
                 to_name: Some("b@x.com".into()),
@@ -759,6 +795,27 @@ mod tests {
     }
 
     #[test]
+    fn manual_entry_names_both_accounts_and_the_targets_usage_or_the_error() {
+        let mut active = row("a", Some("a@x.com"), Some(96.0), Some((40.0, T0)));
+        active.is_active_claude_code = true;
+        let rows = [active, row("b", None, Some(10.0), Some((20.0, T0)))];
+        assert_eq!(
+            manual_entry(&rows, "b", None, T0),
+            NewEntry {
+                date_unix: T0,
+                trigger: Trigger::Manual,
+                outcome: Outcome::Switched,
+                from_name: Some("a@x.com".into()),
+                to_name: Some("b-name".into()),
+                reason: "Manual switch".into(),
+                detail: Some("b-name: 5h 10%, 7d 20%".into()),
+            }
+        );
+        let failed = manual_entry(&rows, "b", Some("Run /login".into()), T0);
+        assert_eq!((failed.outcome, failed.detail.as_deref()), (Outcome::Failed, Some("Run /login")));
+    }
+
+    #[test]
     fn accounts_from_rows() {
         use claude_dashboard_core::model::AccountStatus;
         let params = CriticalParameters { x: 16.0, pace: 50.0, high_pace: 80.0, quiet: None };
@@ -803,23 +860,37 @@ mod tests {
     fn card_fields_for_bolt_and_flame() {
         let params = CriticalParameters { x: 16.0, pace: 50.0, high_pace: 80.0, quiet: None };
         let critical = row("a", None, Some(10.0), Some((55.0, T0 + 25.0 * H)));
-        let f = card_fields(&critical, Some("a"), Some(Availability::Ready), &params, T0);
+        let f = card_fields(&critical, Some("a"), Some(Availability::Ready), true, &params, T0);
         assert!(f.is_home && f.can_tick);
         assert_eq!(f.critical_level, 1);
         assert_eq!(f.critical_help, "Critical: at 50% of 5h per window around the clock, 7d reaches 95% by its reset (5% unused)");
         let high = row("b", None, Some(10.0), Some((60.0, T0 + 10.0 * H)));
-        assert_eq!(card_fields(&high, None, Some(Availability::Ready), &params, T0).critical_level, 2);
+        assert_eq!(card_fields(&high, None, Some(Availability::Ready), true, &params, T0).critical_level, 2);
         let calm = row("c", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
-        let f = card_fields(&calm, Some("a"), Some(Availability::NotCaptured), &params, T0);
+        let f = card_fields(&calm, Some("a"), Some(Availability::NotCaptured), true, &params, T0);
         assert_eq!((f.is_home, f.can_tick, f.critical_level, f.critical_help.as_str()), (false, false, 0, ""));
         let mut active = calm.clone();
         active.is_active_claude_code = true;
-        assert!(card_fields(&active, None, Some(Availability::Active), &params, T0).can_tick, "the active account can be ticked");
+        assert!(card_fields(&active, None, Some(Availability::Active), true, &params, T0).can_tick, "the active account can be ticked");
         let no_usage = row("d", None, None, None);
-        assert!(!card_fields(&no_usage, None, Some(Availability::Ready), &params, T0).can_tick, "needs usage for the baseline");
+        assert!(!card_fields(&no_usage, None, Some(Availability::Ready), true, &params, T0).can_tick, "needs usage for the baseline");
         let mut stale = critical.clone();
         stale.error = Some("x".into());
-        assert_eq!(card_fields(&stale, None, None, &params, T0).critical_level, 0, "stale: no flame");
+        assert_eq!(card_fields(&stale, None, None, true, &params, T0).critical_level, 0, "stale: no flame");
+    }
+
+    #[test]
+    fn the_bolt_shows_only_while_auto_switch_is_on() {
+        let params = CriticalParameters { x: 16.0, pace: 50.0, high_pace: 80.0, quiet: None };
+        let home = row("a", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
+        let other = row("b", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
+        let on = |r: &DisplayRow| card_fields(r, Some("a"), Some(Availability::Ready), true, &params, T0);
+        let off = |r: &DisplayRow| card_fields(r, Some("a"), Some(Availability::Ready), false, &params, T0);
+        assert!(on(&home).shows_home && on(&other).shows_home);
+        assert!(!off(&home).shows_home && !off(&other).shows_home, "off: no bolt");
+        assert!(off(&home).is_home, "off keeps the tick");
+        let calm = row("c", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
+        assert!(!card_fields(&calm, None, Some(Availability::NotCaptured), true, &params, T0).shows_home, "on, not tickable");
     }
 
     #[test]

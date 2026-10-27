@@ -7,6 +7,8 @@ struct InlinePrompt: View {
     let button: String
     /// Tooltip for `button`.
     let buttonHelp: String
+    /// Non-nil adds a checkbox above the buttons.
+    var toggle: (title: String, isOn: Binding<Bool>)? = nil
     /// Non-nil adds a Cancel button beside `button`.
     var onCancel: (() -> Void)? = nil
     let action: () -> Void
@@ -17,6 +19,7 @@ struct InlinePrompt: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text(title).font(.headline)
                 Text(message).fixedSize(horizontal: false, vertical: true)
+                if let toggle { Toggle(toggle.title, isOn: toggle.isOn) }
                 HStack {
                     if let onCancel {
                         Button(action: onCancel) {

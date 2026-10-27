@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Tools > Switch Log: every auto switch, failed attempt and no-candidate stretch, newest first.
+/// Tools > Switch Log: every auto switch, failed attempt and no-candidate stretch, and every
+/// Switch button press, newest first. Each row is tagged Auto or Manual, and Claude Desktop rows carry a Desktop badge.
 ///
 ///     AutoSwitchLogView(viewModel: switchLogViewModel)
 struct AutoSwitchLogView: View {
@@ -59,6 +60,8 @@ struct AutoSwitchLogView: View {
                     Text(Self.dateFormatter.string(from: entry.date))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                    triggerBadge(entry.trigger)
+                    if entry.target == .claudeDesktop { desktopBadge }
                     Text(accounts(entry))
                         .font(.caption.weight(.medium))
                 }
@@ -82,7 +85,32 @@ struct AutoSwitchLogView: View {
         .padding(.vertical, 10)
     }
 
+    /// Same badge as the Ping Log: Manual blue, Auto purple.
+    private func triggerBadge(_ trigger: AutoSwitchTrigger) -> some View {
+        let color: Color = trigger == .manual ? .blue : .purple
+        return Text(trigger.label)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.18))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
+
+    /// Marks a Claude Desktop row; Claude Code rows (the original kind) carry no badge.
+    private var desktopBadge: some View {
+        Text("Desktop")
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.teal.opacity(0.18))
+            .foregroundStyle(Color.teal)
+            .clipShape(Capsule())
+    }
+
     private func accounts(_ entry: AutoSwitchLogEntry) -> String {
+        // Desktop rows do not record the account Desktop was on.
+        if entry.target == .claudeDesktop, entry.fromName == nil, let to = entry.toName { return "\u{2192} \(to)" }
         let from = entry.fromName ?? "Unknown account"
         guard let to = entry.toName else { return from }
         return "\(from) \u{2192} \(to)"
@@ -92,7 +120,7 @@ struct AutoSwitchLogView: View {
         switch outcome {
         case .switched: return .green
         case .failed: return .red
-        case .noCandidate: return .orange
+        case .noCandidate, .skipped: return .orange
         }
     }
 
@@ -102,7 +130,7 @@ struct AutoSwitchLogView: View {
             Image(systemName: "arrow.left.arrow.right")
                 .font(.system(size: 40))
                 .foregroundStyle(.secondary)
-            Text("No auto switches yet.")
+            Text("No switches yet.")
                 .foregroundStyle(.secondary)
             Spacer()
         }

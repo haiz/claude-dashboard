@@ -12,9 +12,10 @@ export struct UiPingRow {
 }
 
 // One Switch Log row, built in Rust (`switch_log_view::rows`); `kind` 0 switched (green),
-// 1 failed (red), 2 no candidate (orange).
+// 1 failed (red), 2 no candidate (orange). `trigger` is "Auto" or "Manual".
 export struct UiSwitchRow {
     time: string,
+    trigger: string,
     accounts: string,
     reason: string,
     detail: string,
@@ -147,7 +148,7 @@ export component PingLogPane inherits VerticalLayout {
 }
 
 // Tools > Switch Log (macOS AutoSwitchLogView): every auto switch, failed attempt and
-// no-candidate stretch, newest first. Refresh and Clear All live in the pane header.
+// no-candidate stretch, and every Switch button press, newest first. Refresh and Clear All live in the pane header.
 export component SwitchLogPane inherits VerticalLayout {
     in property <[UiSwitchRow]> rows;
     in-out property <bool> confirming-clear;
@@ -199,7 +200,7 @@ export component SwitchLogPane inherits VerticalLayout {
             color: Theme.text-secondary;
             horizontal-alignment: center;
         }
-        Text { text: "No auto switches yet."; color: Theme.text-secondary; horizontal-alignment: center; }
+        Text { text: "No switches yet."; color: Theme.text-secondary; horizontal-alignment: center; }
     }
 
     if root.rows.length > 0: Flickable {
@@ -221,6 +222,16 @@ export component SwitchLogPane inherits VerticalLayout {
                             spacing: 8px;
                             alignment: start;
                             Text { text: r.time; color: Theme.text-secondary; font-size: 11px; vertical-alignment: center; }
+                            // Same badge as the Ping Log: Manual blue, Auto purple.
+                            Rectangle {
+                                property <color> tint: r.trigger == "Manual" ? #0a84ff : #bf5af2;
+                                width: switch-badge.preferred-width + 12px;
+                                height: 16px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 8px;
+                                background: self.tint.with-alpha(0.18);
+                                switch-badge := Text { text: r.trigger; color: parent.tint; font-size: 10px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                            }
                             Text { text: r.accounts; color: Theme.text-primary; font-size: 11px; font-weight: 500; vertical-alignment: center; }
                         }
                         Text { text: r.reason; color: Theme.text-secondary; font-size: 13px; wrap: word-wrap; }

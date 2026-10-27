@@ -49,7 +49,7 @@ struct DashboardPane: View {
                                     onSwitchClaudeCode: { Task { await viewModel.requestSwitchClaudeCode(to: state.id) } },
                                     isSwitchingClaudeCode: viewModel.isSwitchingClaudeCode,
                                     isPriorityTarget: viewModel.isPriorityTarget(state.id),
-                                    onTogglePriority: viewModel.canTickPriority(state) || viewModel.isPriorityTarget(state.id)
+                                    onTogglePriority: viewModel.showsPriorityControl(state)
                                         ? { viewModel.togglePriority(for: state.id) } : nil,
                                     critical: viewModel.criticalBadge(for: state),
                                     isCompact: false

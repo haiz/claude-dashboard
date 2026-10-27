@@ -215,14 +215,32 @@ extension View {
                 + "click Authorize to finish, then it switches automatically.")
         }
         // `presenting` hands the button its own copy of the pending switch (see `confirmSwitch`).
+        // With Desktop running a checkbox is needed, which an `.alert` cannot hold: a sheet instead.
         .alert("Switch Claude Code?", isPresented: Binding(
-            get: { viewModel.pendingSwitch != nil },
+            get: { viewModel.pendingSwitch?.desktopRunning == false },
             set: { if !$0 { viewModel.cancelPendingSwitch() } }
         ), presenting: viewModel.pendingSwitch) { pending in
             Button("Switch") { Task { await viewModel.confirmSwitch(pending) } }
             Button("Cancel", role: .cancel) {}
         } message: { pending in
             Text(pending.message)
+        }
+        .sheet(isPresented: Binding(
+            get: { viewModel.pendingSwitch?.desktopRunning == true },
+            set: { if !$0 { viewModel.cancelPendingSwitch() } }
+        )) {
+            DesktopSwitchConfirmSheet(viewModel: viewModel)
+        }
+        // Shown after the Claude Code message is dismissed, so two prompts never stack.
+        .alert("Close Claude Desktop?", isPresented: Binding(
+            get: { viewModel.pendingDesktopClose != nil && viewModel.switchMessage == nil
+                && viewModel.pendingSwitch == nil },
+            set: { if !$0 { viewModel.cancelDesktopClose() } }
+        ), presenting: viewModel.pendingDesktopClose) { pending in
+            Button("Close and Switch") { Task { await viewModel.confirmDesktopClose(pending) } }
+            Button("Not Now", role: .cancel) {}
+        } message: { _ in
+            Text(DashboardViewModel.desktopCloseMessage)
         }
     }
 
@@ -235,6 +253,11 @@ extension View {
             if let pending = viewModel.pendingSwitch {
                 InlinePrompt(title: "Switch Claude Code?", message: pending.message, button: "Switch",
                              buttonHelp: "Switch Claude Code to this account",
+                             toggle: pending.desktopRunning
+                                ? ("Switch Claude Desktop too", Binding(
+                                    get: { viewModel.pendingSwitch?.switchDesktop ?? false },
+                                    set: { viewModel.setPendingSwitchDesktop($0) }))
+                                : nil,
                              onCancel: { viewModel.cancelPendingSwitch() }) {
                     Task { await viewModel.confirmSwitch(pending) }
                 }
@@ -242,6 +265,12 @@ extension View {
                 InlinePrompt(title: "Claude Code", message: message, button: "OK",
                              buttonHelp: "Dismiss this message") {
                     viewModel.dismissSwitchMessage()
+                }
+            } else if let close = viewModel.pendingDesktopClose {
+                InlinePrompt(title: "Close Claude Desktop?", message: DashboardViewModel.desktopCloseMessage,
+                             button: "Close and Switch", buttonHelp: "Quit Claude Desktop and switch it",
+                             onCancel: { viewModel.cancelDesktopClose() }) {
+                    Task { await viewModel.confirmDesktopClose(close) }
                 }
             } else if viewModel.awaitingBrowserAccount != nil {
                 InlinePrompt(title: "Finish signing in",
@@ -260,5 +289,36 @@ extension View {
         onChange(of: viewModel.scrollToTopRequest) { _ in
             withAnimation { proxy.scrollTo(id, anchor: .top) }
         }
+    }
+}
+
+/// The manual Switch confirmation when Claude Desktop is running: the message, the
+/// "Switch Claude Desktop too" box (pre-ticked from the setting), Switch and Cancel.
+private struct DesktopSwitchConfirmSheet: View {
+    @ObservedObject var viewModel: DashboardViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Switch Claude Code?").font(.headline)
+            Text(viewModel.pendingSwitch?.message ?? "").fixedSize(horizontal: false, vertical: true)
+            Toggle("Switch Claude Desktop too", isOn: Binding(
+                get: { viewModel.pendingSwitch?.switchDesktop ?? false },
+                set: { viewModel.setPendingSwitchDesktop($0) }))
+                .help("Claude Desktop is running. It is closed only after you confirm.")
+            HStack {
+                Spacer()
+                Button("Cancel") { viewModel.cancelPendingSwitch() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Switch") {
+                    // Read before the sheet's dismissal clears `pendingSwitch`.
+                    if let pending = viewModel.pendingSwitch {
+                        Task { await viewModel.confirmSwitch(pending) }
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 380)
     }
 }

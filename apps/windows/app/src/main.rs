@@ -160,7 +160,7 @@ fn set_switch_fields(rows: &mut [UiRow]) {
     }
 }
 
-/// Copies each row's bolt and flame (macOS `isPriorityTarget`, `canTickPriority`,
+/// Copies each row's bolt and flame (macOS `isPriorityTarget`, `showsPriorityControl`,
 /// `criticalBadge`) from the settings, the Switch states and the current X.
 fn set_auto_switch_fields(
     rows: &mut [UiRow],
@@ -171,9 +171,16 @@ fn set_auto_switch_fields(
     let params = claude_dashboard_core::critical::parameters_from(settings, ratio::current().x);
     for r in rows.iter_mut() {
         let Some(d) = display.iter().find(|d| d.account_id == r.id.as_str()) else { continue };
-        let f = auto_switch::card_fields(d, settings.auto_switch_priority_id.as_deref(), cc_state::availability(&d.account_id), &params, now);
+        let f = auto_switch::card_fields(
+            d,
+            settings.auto_switch_priority_id.as_deref(),
+            cc_state::availability(&d.account_id),
+            settings.auto_switch_enabled,
+            &params,
+            now,
+        );
         r.is_home = f.is_home;
-        r.can_tick_home = f.can_tick;
+        r.shows_home = f.shows_home;
         r.critical_level = f.critical_level;
         r.critical_help = f.critical_help.into();
     }
@@ -263,9 +270,9 @@ fn refresh_auto_switch_ui() {
     let patch = |rows: slint::ModelRc<UiRow>| {
         for i in 0..rows.row_count() {
             let Some(mut r) = rows.row_data(i) else { continue };
-            let before = (r.is_home, r.can_tick_home, r.critical_level, r.critical_help.clone());
+            let before = (r.is_home, r.shows_home, r.critical_level, r.critical_help.clone());
             set_auto_switch_fields(std::slice::from_mut(&mut r), &out.rows, now, &settings);
-            if (r.is_home, r.can_tick_home, r.critical_level, r.critical_help.clone()) != before {
+            if (r.is_home, r.shows_home, r.critical_level, r.critical_help.clone()) != before {
                 rows.set_row_data(i, r);
             }
         }
@@ -695,29 +702,45 @@ fn cc_start(id: String) {
     if cc_state::switcher().is_none() || CC_FLOW.with(|f| f.borrow().switching) {
         return;
     }
+    // The Switch Log row: names and usage as they were before the switch.
+    let rows = LAST_OUTPUT.with(|l| l.borrow().as_ref().map(|(o, _)| o.rows.clone())).unwrap_or_default();
     if cc_state::availability(&id) == Some(Availability::NeedsLogin) {
-        let rows = LAST_OUTPUT.with(|l| l.borrow().as_ref().map(|(o, _)| o.rows.clone())).unwrap_or_default();
         let name = rows.iter().find(|r| r.account_id == id).map(row_name).unwrap_or_default();
-        cc_prompt(2, cc_flow::MESSAGE_TITLE, &cc_flow::needs_login_message(&name));
+        let message = cc_flow::needs_login_message(&name);
+        log_manual_switch(&rows, &id, Some(message.clone()));
+        cc_prompt(2, cc_flow::MESSAGE_TITLE, &message);
         return;
     }
     // An auto switch may be running on the refresh thread (macOS disables Switch meanwhile).
     let Some(guard) = cc_state::try_begin_switch() else { return };
-    let usage = LAST_OUTPUT
-        .with(|l| l.borrow().as_ref().and_then(|(o, _)| o.rows.iter().find(|r| r.account_id == id).and_then(auto_switch::usage_of)));
+    let usage = rows.iter().find(|r| r.account_id == id).and_then(auto_switch::usage_of);
     cc_set_switching(true);
     let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     CC_FLOW.with(|f| f.borrow_mut().cancel = Some(cancel.clone()));
     std::thread::spawn(move || {
-        let message = cc_run(&id, &cancel, usage);
+        let message = cc_run(&id, &cancel, usage, |error| log_manual_switch(&rows, &id, error));
         drop(guard);
         let _ = slint::invoke_from_event_loop(move || cc_finish(message));
     });
 }
 
+/// A Switch button press into the Switch Log; `error` is the message the user saw.
+fn log_manual_switch(rows: &[claude_dashboard_core::rows::DisplayRow], id: &str, error: Option<String>) {
+    if let Ok(store) = claude_dashboard_core::auto_switch_log::AutoSwitchLogStore::open() {
+        store.insert(&auto_switch::manual_entry(rows, id, error, unix_now()));
+    }
+}
+
 /// Worker: signs the account in first when its vault copy is missing or expired, then
-/// switches. The message to show, or `None` (the user cancelled the browser wait).
-fn cc_run(id: &str, cancel: &std::sync::atomic::AtomicBool, usage: Option<claude_dashboard_core::auto_switch::Usage>) -> Option<String> {
+/// switches. The message to show, or `None` (the user cancelled the browser wait). `log`
+/// gets the Switch Log outcome: `None` for a switch, the message for a failure; a cancel
+/// is not logged.
+fn cc_run(
+    id: &str,
+    cancel: &std::sync::atomic::AtomicBool,
+    usage: Option<claude_dashboard_core::auto_switch::Usage>,
+    log: impl Fn(Option<String>),
+) -> Option<String> {
     use claude_dashboard_core::cc_switch::switcher::{Availability, SwitchAccount};
     let switcher = cc_state::switcher()?;
     let accounts = claude_dashboard_core::store::load_accounts().unwrap_or_default();
@@ -727,7 +750,9 @@ fn cc_run(id: &str, cancel: &std::sync::atomic::AtomicBool, usage: Option<claude
         let sources = claude_dashboard_core::extension_sources::load(&claude_dashboard_core::extension_sources::sources_path())
             .unwrap_or_default();
         let Some(input) = cc_flow::provision_input(account, &sources) else {
-            return Some(cc_flow::resync_first_message(&name));
+            let message = cc_flow::resync_first_message(&name);
+            log(Some(message.clone()));
+            return Some(message);
         };
         let on_awaiting = || {
             let _ = slint::invoke_from_event_loop(|| cc_prompt(3, cc_flow::WAITING_TITLE, cc_flow::WAITING_TEXT));
@@ -738,10 +763,18 @@ fn cc_run(id: &str, cancel: &std::sync::atomic::AtomicBool, usage: Option<claude
                     return None;
                 }
                 if switcher.store(id, &entry).is_err() {
-                    return Some(cc_flow::store_failed_message(&name));
+                    let message = cc_flow::store_failed_message(&name);
+                    log(Some(message.clone()));
+                    return Some(message);
                 }
             }
-            Err(e) => return e.message(&name),
+            Err(e) => {
+                let message = e.message(&name);
+                if message.is_some() {
+                    log(message.clone());
+                }
+                return message;
+            }
         }
     }
     let target = SwitchAccount { id: account.id.clone(), email: account.email.clone() };
@@ -749,9 +782,14 @@ fn cc_run(id: &str, cancel: &std::sync::atomic::AtomicBool, usage: Option<claude
         Ok(_) => {
             // Hold Claude Code here until its 5h reset, so the critical rules do not undo it.
             auto_switch::controller().note_manual_switch(id, usage, unix_now());
+            log(None);
             cc_flow::success_message(&name)
         }
-        Err(e) => e.message(&name),
+        Err(e) => {
+            let message = e.message(&name);
+            log(Some(message.clone()));
+            message
+        }
     };
     cc_state::refresh(&accounts);
     if let Some(tx) = CC_NUDGE.get() {
@@ -1960,7 +1998,7 @@ mod tests {
         assert_eq!(out.rows.len(), 5);
         assert_eq!(out.rows.iter().filter(|r| r.status == claude_dashboard_core::model::AccountStatus::Expired).count(), 2);
         let params = claude_dashboard_core::critical::parameters_from(&claude_dashboard_core::settings::Settings::default(), 16.0);
-        let level = |i: usize| crate::auto_switch::card_fields(&out.rows[i], None, None, &params, 1_000_000.0).critical_level;
+        let level = |i: usize| crate::auto_switch::card_fields(&out.rows[i], None, None, true, &params, 1_000_000.0).critical_level;
         assert_eq!((level(0), level(1)), (2, 1), "alice high critical, bob critical");
     }
 }
