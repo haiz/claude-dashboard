@@ -256,6 +256,38 @@ before write, rollback on failure). An account with no usable copy signs in once
 browser profile (`--profile-directory`; extension-fed accounts open their browser without a
 profile; pasted keys cannot). Dev runs have no switcher.
 
+## Claude Desktop switch
+
+Follows macOS (`ClaudeDesktopSwitcher`; Windows design
+`docs/superpowers/specs/2026-10-27-windows-claude-desktop-switch-design.md`; core `cd_switch`,
+app `cd_state.rs` / `cd_flow.rs` / `cd_run.rs`). Claude Desktop's data dir is the newest-`config.json`
+one of every `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude` (MSIX) and
+`%APPDATA%\Claude` (Squirrel) that holds `Local State` (a tie or no config prefers MSIX); none found
+means no Desktop switcher. It holds `config.json` (`oauth:tokenCacheV2`, `lastKnownAccountUuid`, other
+keys kept) and the Chromium cookie DB `Network\Cookies` (else `Cookies` at the root). Everything is
+Chromium OSCrypt: `v10` + 12-byte nonce + AES-256-GCM, the key from `Local State`
+(`os_crypt.encrypted_key`, DPAPI); `tokenCacheV2` is the base64 of that blob with no host prefix, a
+cookie value carries `sha256(host_key)` first when `meta.version >= 24`; `v20` (app-bound) values are
+unreadable and never written over. The cookie write is one `BEGIN IMMEDIATE` transaction (delete then
+insert `sessionKey`, `lastActiveOrg`, `routingHint`, `sessionKeyLC`), and both the grant and the cookie
+are verified by reading them back. Claude Desktop is the process whose full image path is exactly
+`...\AnthropicClaudepp-*\claude.exe` or `...\WindowsApps\Claude_*pp\claude.exe` (helpers
+included); Claude Code's `claude.exe` (`~\.localin`, npm, a data-dir download) never matches, so
+it is never closed. Quit posts `WM_CLOSE` to Desktop's visible windows, waits 5 s, then terminates what
+is left and waits 1 s. Desktop has its own DPAPI vault, one file per account in
+`%LOCALAPPDATA%\claude-dashboard\desktop-vault\<account id>.bin` (deleted with the account),
+never sharing a refresh-token chain with Claude Code. Settings keys `switchDesktopEnabled` and
+`autoSwitchDesktopEnabled` (both false; Reset All Settings clears them); the Switch Log gains a
+`target` column (0 Claude Code, 1 Claude Desktop) and the `Skipped` outcome. Nothing writes while
+Desktop runs; it is quit only after "Close and Switch", never by Auto Switch. Prompt order (one modal
+slot): when Desktop runs and is ticked, the Claude Code message shows first, its OK opens "Close Claude
+Desktop?", and Close and Switch runs the Desktop step and shows its message; when Desktop is closed and
+the setting is on, the Desktop step runs right after the Claude Code switch and one message shows both
+results (a browser capture shows "Finish signing in" first). A Desktop failure never undoes the Claude
+Code switch. Dev runs (`CLAUDE_DASHBOARD_FAKE_ROWS=1`) have no Desktop switcher. Unverified live (no
+Desktop on the build machine): the MSIX dir, `Network\Cookies`, `v10` GCM in `config.json`, and that
+`WM_CLOSE` quits rather than hides to tray.
+
 ## Auto Switch and Critical accounts
 
 Follows macOS (`docs/superpowers/specs/2026-10-16-critical-accounts-design.md` and the macOS
