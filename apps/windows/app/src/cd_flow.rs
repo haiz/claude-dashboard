@@ -9,6 +9,8 @@ pub const CLOSE_TITLE: &str = "Close Claude Desktop?";
 pub const CLOSE_MESSAGE: &str =
     "Claude Desktop must be closed to switch it. Close it now and switch? Unsaved work in Desktop may be lost.";
 pub const CLOSE_BUTTON: &str = "Close and Switch";
+/// A Desktop switch was asked for while another one (or an auto switch look-ahead) holds it.
+pub const BUSY_MESSAGE: &str = "A Claude Desktop switch is already running. Try again in a moment.";
 /// Shown by `CcPrompt` in app.slint; kept here with the other macOS texts.
 #[allow(dead_code)]
 pub const CHECKBOX: &str = "Switch Claude Desktop too";
@@ -201,6 +203,7 @@ mod tests {
         );
         assert_eq!(CLOSE_BUTTON, "Close and Switch");
         assert_eq!(CHECKBOX, "Switch Claude Desktop too");
+        assert_eq!(BUSY_MESSAGE, "A Claude Desktop switch is already running. Try again in a moment.");
         assert_eq!(success_message("b@x.com"), "Claude Desktop now uses b@x.com. Open it to continue.");
         assert_eq!(
             did_not_close_message("b@x.com"),

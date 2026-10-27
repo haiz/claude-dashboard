@@ -27,7 +27,11 @@ pub fn enabled() -> bool {
 pub fn request(id: String) {
     let Some(s) = cd_state::switcher() else { return };
     // One flow at a time: the prompt slot and its cancel flag belong to a running switch.
-    if cd_state::is_busy() || crate::cc_is_switching() {
+    if crate::cc_is_switching() {
+        return;
+    }
+    if cd_state::is_busy() {
+        crate::cc_prompt(2, cc_flow::MESSAGE_TITLE, cd_flow::BUSY_MESSAGE);
         return;
     }
     if s.is_running() {
@@ -40,7 +44,11 @@ pub fn request(id: String) {
 /// UI thread: runs the Desktop step on a worker (`quit_first` once the user agreed to close
 /// it), then shows its message, or nothing when the user cancelled the browser wait.
 pub fn start(id: String, quit_first: bool) {
-    let Some(guard) = cd_state::try_begin() else { return };
+    // The "Close and Switch" click must never just vanish: say why nothing happens.
+    let Some(guard) = cd_state::try_begin() else {
+        crate::cc_prompt(2, cc_flow::MESSAGE_TITLE, cd_flow::BUSY_MESSAGE);
+        return;
+    };
     set_switching(true);
     let cancel = Arc::new(AtomicBool::new(false));
     crate::cc_set_cancel(Some(cancel.clone()));
@@ -78,7 +86,11 @@ fn set_switching(on: bool) {
 /// logging the attempt; then recomputes whether Desktop differs from Claude Code.
 fn run(id: &str, quit_first: bool, cancel: &AtomicBool) -> Option<String> {
     let accounts = claude_dashboard_core::store::load_accounts().unwrap_or_default();
-    let account = accounts.iter().find(|a| a.id == id)?;
+    let Some(account) = accounts.iter().find(|a| a.id == id) else {
+        // Removed meanwhile: the prompt just closes.
+        eprintln!("[cd-switch] switch -> {id}: account not found");
+        return None;
+    };
     let message = attempt(account, &accounts, quit_first, cancel);
     refresh_differs(&accounts);
     message
@@ -92,7 +104,10 @@ fn attempt(account: &Account, accounts: &[Account], quit_first: bool, cancel: &A
         return Some(cd_flow::did_not_close_message(&name));
     }
     let all = cd_state::desktop_accounts(accounts);
-    let target = all.iter().find(|a| a.id == account.id)?;
+    let Some(target) = all.iter().find(|a| a.id == account.id) else {
+        eprintln!("[cd-switch] switch -> {}: account not found", account.id);
+        return None;
+    };
     // Without a browser profile no capture is possible: core then reports NotCaptured /
     // LoginExpired, worded as "Re-sync first".
     let sources = claude_dashboard_core::extension_sources::load(&claude_dashboard_core::extension_sources::sources_path())
