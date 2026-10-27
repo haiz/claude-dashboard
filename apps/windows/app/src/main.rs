@@ -8,6 +8,7 @@ mod ratio;
 mod cc_login;
 mod cc_flow;
 mod cc_state;
+mod cd_state;
 mod chart;
 mod chart_model;
 mod ext_install;
@@ -422,6 +423,16 @@ fn spawn_refresh_loop(
                 if cc_state::switcher().is_some() {
                     if let Ok(accounts) = claude_dashboard_core::store::load_accounts() {
                         cc_state::refresh(&accounts);
+                        // Claude Desktop: same, plus whether it differs from Claude Code's account.
+                        if cd_state::switcher().is_some() {
+                            let cc_uuid = out
+                                .rows
+                                .iter()
+                                .find(|r| r.is_active_claude_code)
+                                .and_then(|r| accounts.iter().find(|a| a.id == r.account_id))
+                                .and_then(|a| a.account_uuid.clone());
+                            cd_state::refresh(&accounts, cc_uuid.as_deref());
+                        }
                     }
                 }
                 // Auto Switch after every refresh (macOS `refreshAll` -> `runAutoSwitch`), then the
@@ -1505,6 +1516,9 @@ fn main() -> Result<(), slint::PlatformError> {
                         if let Some(s) = cc_state::switcher() {
                             s.forget(&id);
                         }
+                        if let Some(s) = cd_state::switcher() {
+                            s.forget(&id);
+                        }
                         let _ = tx.send(refresh::Nudge::All);
                     }
                     Err(e) => eprintln!("delete account failed: {e}"),
@@ -1738,6 +1752,7 @@ fn main() -> Result<(), slint::PlatformError> {
     OPEN_WIZARD.with(|o| *o.borrow_mut() = Some(open_wizard.clone()));
     // The Claude Code switcher reads and writes Claude Code's own files: never in dev runs.
     cc_state::init(!dev_run());
+    cd_state::init(!dev_run());
     MAIN_APP.with(|m| *m.borrow_mut() = Some(app.as_weak()));
     let _ = CC_NUDGE.set(cc_nudge);
     app.on_switch_claude_code(|id| cc_request(id.to_string()));
