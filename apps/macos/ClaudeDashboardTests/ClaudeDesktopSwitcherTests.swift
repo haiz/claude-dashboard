@@ -14,6 +14,21 @@ private final class FakeConfig: ClaudeDesktopConfigReadingWriting {
     }
 }
 
+private final class FakeSession: ClaudeDesktopSessionWriting {
+    var sessionKey: String?
+    var writes: [(sessionKey: String, orgUuid: String)] = []
+    var failWrite = false
+    /// Simulates a write that does not read back.
+    var dropWrites = false
+
+    func readSessionKey() -> String? { sessionKey }
+    func writeSession(sessionKey: String, orgUuid: String) throws {
+        if failWrite { throw ClaudeDesktopConfigError.unreadableConfig }
+        writes.append((sessionKey, orgUuid))
+        if !dropWrites { self.sessionKey = sessionKey }
+    }
+}
+
 private final class FakeVault: CredentialVaulting {
     var items: [UUID: VaultEntry] = [:]
     var failSave = false
@@ -35,17 +50,19 @@ final class ClaudeDesktopSwitcherTests: XCTestCase {
     private let config = FakeConfig()
     private let vault = FakeVault()
     private let process = FakeProcess()
+    private let session = FakeSession()
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private var switcher: ClaudeDesktopSwitcher!
 
     private let a = Account(id: UUID(), name: "a", email: "a@x.co", chromeProfilePath: "/p/a", chromeProfileName: nil,
-                             orgId: "org-a", accountUuid: "uuid-a", plan: .max5x, status: .active, source: .browser)
+                             orgId: "org-a", accountUuid: "uuid-a", sessionKey: "sk-a", plan: .max5x, status: .active, source: .browser)
     private let b = Account(id: UUID(), name: "b", email: "b@x.co", chromeProfilePath: "/p/b", chromeProfileName: nil,
-                             orgId: "org-b", accountUuid: "uuid-b", plan: .max5x, status: .active, source: .browser)
+                             orgId: "org-b", accountUuid: "uuid-b", sessionKey: "sk-b", plan: .max5x, status: .active, source: .browser)
     private var accounts: [Account] { [a, b] }
 
     override func setUp() {
-        switcher = ClaudeDesktopSwitcher(config: config, vault: vault, process: process, now: { self.now })
+        switcher = ClaudeDesktopSwitcher(config: config, session: session, vault: vault, process: process,
+                                         plainSessionKey: { $0.sessionKey }, now: { self.now })
     }
 
     private func oauth(_ refresh: String, refreshExpiresMs: Int? = nil) -> OAuthCredential {
@@ -199,11 +216,64 @@ final class ClaudeDesktopSwitcherTests: XCTestCase {
         await assertThrows(.config) { try await switcher.switchTo(a, accounts: accounts, provision: nil) }
     }
 
-    func testAlreadyActiveLiveGrantIsNoOp() async throws {
+    func testAlreadyActiveLiveGrantKeepsTokenButStillWritesSession() async throws {
         vault.items[a.id] = entry("ra", email: "a@x.co")
         config.grant = ("uuid-a", oauth("ra-live"))
+        session.sessionKey = "sk-b"
         try await switcher.switchTo(a, accounts: accounts, provision: nil)
         XCTAssertTrue(config.writes.isEmpty)
+        XCTAssertEqual(session.sessionKey, "sk-a")
+    }
+
+    // Desktop signs in as the account of its claude.ai `sessionKey` cookie, not the token cache:
+    // a token-only write reopened Desktop as the old account (2026-10-27).
+    func testSwitchWritesTargetSessionCookie() async throws {
+        vault.items[a.id] = entry("ra", email: "a@x.co")
+        vault.items[b.id] = entry("rb", email: "b@x.co")
+        config.grant = ("uuid-b", oauth("rb"))
+        session.sessionKey = "sk-b"
+        try await switcher.switchTo(a, accounts: accounts, provision: nil)
+        XCTAssertEqual(session.writes.count, 1)
+        XCTAssertEqual(session.writes.first?.sessionKey, "sk-a")
+        XCTAssertEqual(session.writes.first?.orgUuid, "org-a")
+        XCTAssertEqual(config.grant?.accountUuid, "uuid-a")
+    }
+
+    func testSwitchWithoutSessionKeyIsRefusedBeforeAnything() async {
+        var bare = a
+        bare.sessionKey = nil
+        config.grant = ("uuid-b", oauth("rb"))
+        var provisioned = false
+        await assertThrows(.noSessionKey) {
+            try await switcher.switchTo(bare, accounts: [bare, b], provision: { _ in
+                provisioned = true
+                return self.entry("r-new", email: "a@x.co")
+            })
+        }
+        XCTAssertFalse(provisioned)
+        XCTAssertTrue(config.writes.isEmpty)
+        XCTAssertTrue(session.writes.isEmpty)
+    }
+
+    func testStoredSessionKeyIsDecrypted() throws {
+        var stored = a
+        stored.sessionKey = try XCTUnwrap(CryptoService.encrypt("sk-plain"))
+        XCTAssertNotEqual(stored.sessionKey, "sk-plain")
+        XCTAssertEqual(ClaudeDesktopSwitcher.storedSessionKey(of: stored), "sk-plain")
+        stored.sessionKey = nil
+        XCTAssertNil(ClaudeDesktopSwitcher.storedSessionKey(of: stored))
+    }
+
+    func testSessionWriteFailureIsConfigError() async {
+        vault.items[a.id] = entry("ra", email: "a@x.co")
+        session.failWrite = true
+        await assertThrows(.config) { try await switcher.switchTo(a, accounts: accounts, provision: nil) }
+    }
+
+    func testSessionThatDoesNotReadBackFailsVerify() async {
+        vault.items[a.id] = entry("ra", email: "a@x.co")
+        session.dropWrites = true
+        await assertThrows(.verifyFailed) { try await switcher.switchTo(a, accounts: accounts, provision: nil) }
     }
 
     func testAvailabilityNotCaptured() {

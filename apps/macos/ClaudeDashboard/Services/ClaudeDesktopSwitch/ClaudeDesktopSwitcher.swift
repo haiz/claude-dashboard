@@ -17,6 +17,8 @@ enum DesktopSwitchError: Error, Equatable {
     /// No usable vault grant and no way to capture one (no provisioner, or no browser profile).
     case notCaptured
     case loginExpired
+    /// The target has no claude.ai session key, which is what Desktop signs in with.
+    case noSessionKey
     /// Desktop holds a live login the dashboard cannot save (unknown account, or the save
     /// failed); overwriting it would discard its refresh token.
     case unknownOutgoingAccount(email: String?)
@@ -31,6 +33,7 @@ enum DesktopSwitchError: Error, Equatable {
         case .desktopRunning: return "desktopRunning"
         case .notCaptured: return "notCaptured"
         case .loginExpired: return "loginExpired"
+        case .noSessionKey: return "noSessionKey"
         case .unknownOutgoingAccount: return "unknownOutgoingAccount"
         case .config: return "config"
         case .verifyFailed: return "verifyFailed"
@@ -41,6 +44,9 @@ enum DesktopSwitchError: Error, Equatable {
 /// Swaps Claude Desktop's signed-in account using one independent grant per account, kept
 /// in its own vault so Desktop and Claude Code never share a refresh-token chain.
 ///
+/// Desktop signs in as the account of its claude.ai `sessionKey` cookie, so `switchTo` writes
+/// both the target's grant (`config.json`) and its session (`Cookies`).
+///
 /// `captureActive` and the synchronous part of `switchTo` share one lock. `switchTo` never
 /// writes while Desktop runs (Electron rewrites `config.json` on quit) and never overwrites
 /// a live outgoing grant it could not first save.
@@ -50,17 +56,23 @@ enum DesktopSwitchError: Error, Equatable {
 ///     try await switcher?.switchTo(account, accounts: store.accounts, provision: provisionClosure)
 final class ClaudeDesktopSwitcher: @unchecked Sendable {
     private let config: ClaudeDesktopConfigReadingWriting
+    private let session: ClaudeDesktopSessionWriting
     private let vault: CredentialVaulting
     private let process: ClaudeDesktopProcessControlling
+    /// The account's claude.ai session key in plain text (`Account.sessionKey` is stored encrypted).
+    private let plainSessionKey: (Account) -> String?
     private let now: () -> Date
     /// Never held across an `await`.
     private let lock = NSLock()
 
-    init(config: ClaudeDesktopConfigReadingWriting, vault: CredentialVaulting,
-         process: ClaudeDesktopProcessControlling, now: @escaping () -> Date) {
+    init(config: ClaudeDesktopConfigReadingWriting, session: ClaudeDesktopSessionWriting,
+         vault: CredentialVaulting, process: ClaudeDesktopProcessControlling,
+         plainSessionKey: @escaping (Account) -> String?, now: @escaping () -> Date) {
         self.config = config
+        self.session = session
         self.vault = vault
         self.process = process
+        self.plainSessionKey = plainSessionKey
         self.now = now
     }
 
@@ -70,8 +82,11 @@ final class ClaudeDesktopSwitcher: @unchecked Sendable {
         guard !isRunningTests, let password = ClaudeDesktopSafeStorage.password() else { return nil }
         return ClaudeDesktopSwitcher(
             config: ClaudeDesktopConfigFile(fileURL: ClaudeDesktopConfigFile.defaultURL, password: password),
+            session: ClaudeDesktopCookieFile(fileURL: ClaudeDesktopCookieFile.defaultURL, password: password,
+                                             now: Date.init),
             vault: KeychainDesktopVault(keychain: SecurityCLIKeychain()),
             process: ClaudeDesktopProcess(),
+            plainSessionKey: storedSessionKey(of:),
             now: Date.init)
     }
 
@@ -123,6 +138,7 @@ final class ClaudeDesktopSwitcher: @unchecked Sendable {
         do {
             // Browser capture can take minutes: outside the lock, before anything is touched.
             try guardNotRunning()
+            _ = try sessionKey(of: target)
             let entry = try await resolveGrant(for: target, provision: provision)
             try performWrite(entry, target: target, accounts: accounts)
         } catch let error as DesktopSwitchError {
@@ -163,6 +179,7 @@ final class ClaudeDesktopSwitcher: @unchecked Sendable {
 
         // Re-check under the lock: Desktop may have launched during the browser capture.
         try guardNotRunning()
+        let sessionKey = try sessionKey(of: target)
         guard let accountUuid = target.accountUuid, let orgUuid = target.orgId else {
             throw DesktopSwitchError.config
         }
@@ -171,9 +188,10 @@ final class ClaudeDesktopSwitcher: @unchecked Sendable {
         do { outgoing = try config.readActiveGrant() } catch {
             throw DesktopSwitchError.unknownOutgoingAccount(email: nil)
         }
-        if let outgoing, !outgoing.oauth.isBlank {
-            // Already signed in as the target with a live grant: nothing to do.
-            if outgoing.accountUuid == accountUuid { return }
+        // Already holding a live grant for the target: keep it (its chain may be newer than the
+        // vault's), but the session cookie below may still name another account.
+        let hasTargetGrant = outgoing.map { !$0.oauth.isBlank && $0.accountUuid == accountUuid } ?? false
+        if let outgoing, !outgoing.oauth.isBlank, !hasTargetGrant {
             guard let account = Self.account(uuid: outgoing.accountUuid, in: accounts) else {
                 throw DesktopSwitchError.unknownOutgoingAccount(email: nil)
             }
@@ -182,13 +200,21 @@ final class ClaudeDesktopSwitcher: @unchecked Sendable {
             }
         }
 
-        do { try config.writeGrant(entry.oauth, accountUuid: accountUuid, orgUuid: orgUuid) } catch {
+        if !hasTargetGrant {
+            do { try config.writeGrant(entry.oauth, accountUuid: accountUuid, orgUuid: orgUuid) } catch {
+                throw DesktopSwitchError.config
+            }
+            guard let written = try? config.readActiveGrant(), written.accountUuid == accountUuid,
+                  written.oauth.refreshToken == entry.oauth.refreshToken else {
+                throw DesktopSwitchError.verifyFailed
+            }
+        }
+
+        // Desktop signs in as the account of this cookie; the grant alone is ignored.
+        do { try session.writeSession(sessionKey: sessionKey, orgUuid: orgUuid) } catch {
             throw DesktopSwitchError.config
         }
-        guard let written = try? config.readActiveGrant(), written.accountUuid == accountUuid,
-              written.oauth.refreshToken == entry.oauth.refreshToken else {
-            throw DesktopSwitchError.verifyFailed
-        }
+        guard session.readSessionKey() == sessionKey else { throw DesktopSwitchError.verifyFailed }
     }
 
     // MARK: Store / Forget
@@ -229,6 +255,17 @@ final class ClaudeDesktopSwitcher: @unchecked Sendable {
     private func isExpired(_ entry: VaultEntry) -> Bool {
         guard let deadline = entry.oauth.refreshTokenExpiresAt else { return false }
         return deadline <= now()
+    }
+
+    /// The claude.ai session Desktop is moved to; checked before any browser capture.
+    private func sessionKey(of target: Account) throws -> String {
+        guard let key = plainSessionKey(target), !key.isEmpty else { throw DesktopSwitchError.noSessionKey }
+        return key
+    }
+
+    /// Decrypts an account's stored session key, by the same rule as `AccountStore.loadSessionKey`.
+    static func storedSessionKey(of account: Account) -> String? {
+        account.sessionKey.map { CryptoService.decrypt($0) ?? $0 }
     }
 
     private static func account(uuid: String, in accounts: [Account]) -> Account? {

@@ -914,6 +914,8 @@ final class DashboardViewModel: ObservableObject {
             return hasProfile
                 ? "Could not sign Claude Desktop in as \(name). Try the Desktop switch again."
                 : "Re-sync \(name) first so the dashboard knows its browser profile."
+        case .noSessionKey:
+            return "Re-sync \(name) first so the dashboard has its claude.ai session for Claude Desktop."
         case .unknownOutgoingAccount(let email):
             return "Claude Desktop is signed in as \(email ?? "an account the dashboard does not know"), "
                 + "whose login cannot be saved, so it was left alone."

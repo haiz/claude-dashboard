@@ -11,6 +11,12 @@ private final class FakeConfig: ClaudeDesktopConfigReadingWriting {
     }
 }
 
+private final class FakeSession: ClaudeDesktopSessionWriting {
+    var sessionKey: String?
+    func readSessionKey() -> String? { sessionKey }
+    func writeSession(sessionKey: String, orgUuid: String) throws { self.sessionKey = sessionKey }
+}
+
 private final class FakeVault: CredentialVaulting {
     var items: [UUID: VaultEntry] = [:]
     func load(_ accountId: UUID) throws -> VaultEntry? { items[accountId] }
@@ -32,6 +38,7 @@ final class DesktopSwitchFlowTests: XCTestCase {
     private var suite: String!
     private var configURL: URL!
     private let desktopConfig = FakeConfig()
+    private let desktopSession = FakeSession()
     private let desktopVault = FakeVault()
     private let process = FakeProcess()
     private var vm: DashboardViewModel!
@@ -55,9 +62,9 @@ final class DesktopSwitchFlowTests: XCTestCase {
                                             now: Date.init, sleep: { _ in })
         let store = AccountStore(defaults: try XCTUnwrap(UserDefaults(suiteName: suite)))
         frontend = Account(id: UUID(), name: "fe", email: "frontend@gotitapp.co", chromeProfilePath: "",
-                           orgId: "org-f", accountUuid: "uuid-f", plan: .max5x, status: .active, source: .manual)
+                           orgId: "org-f", accountUuid: "uuid-f", sessionKey: "sk-f", plan: .max5x, status: .active, source: .manual)
         backend = Account(id: UUID(), name: "be", email: "backend@gotitapp.co", chromeProfilePath: "",
-                          orgId: "org-b", accountUuid: "uuid-b", plan: .max5x, status: .active, source: .manual)
+                          orgId: "org-b", accountUuid: "uuid-b", sessionKey: "sk-b", plan: .max5x, status: .active, source: .manual)
         store.addAccount(frontend)
         store.addAccount(backend)
         let soon = Int((Date().timeIntervalSince1970 + 8 * 3600) * 1000)
@@ -75,8 +82,8 @@ final class DesktopSwitchFlowTests: XCTestCase {
         desktopVault.items[backend.id] = VaultEntry(
             oauth: OAuthCredential(object: ["refreshToken": "db", "expiresAt": soon])!,
             oauthAccount: OAuthAccountJSON.canonical(["emailAddress": "backend@gotitapp.co"])!)
-        let desktop = ClaudeDesktopSwitcher(config: desktopConfig, vault: desktopVault, process: process,
-                                            now: Date.init)
+        let desktop = ClaudeDesktopSwitcher(config: desktopConfig, session: desktopSession, vault: desktopVault, process: process,
+                                            plainSessionKey: { $0.sessionKey }, now: Date.init)
 
         vm = DashboardViewModel(accountStore: store, ccDetector: ClaudeCodeAccountDetector(fileURL: configURL),
                                 ccSwitcher: ccSwitcher, desktopSwitcher: desktop,
