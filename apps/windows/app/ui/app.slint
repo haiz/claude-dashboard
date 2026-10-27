@@ -701,7 +701,8 @@ component GeneralSettingsPane inherits Flickable {
 // The Claude Code Switch prompts (macOS `claudeCodeSwitchAlert` / `claudeCodeSwitchOverlay`):
 // kind 1 asks to confirm a switch, 2 shows its outcome, 3 waits for the browser sign-in,
 // 4 asks before closing Claude Desktop ("Close Claude Desktop?", button `ok-label`).
-// Esc cancels (OK on a message), Enter confirms.
+// Esc cancels (OK on a message), Enter confirms, except on kind 4: quitting Desktop takes a click
+// on the button, so an Enter meant for an earlier prompt never closes it.
 component CcPrompt inherits Rectangle {
     in property <int> kind;
     in property <string> title;
@@ -725,7 +726,7 @@ component CcPrompt inherits Rectangle {
                 return accept;
             }
             if e.text == Key.Return {
-                if root.kind == 3 { root.cancel(); } else { root.ok(); }
+                if root.kind == 3 { root.cancel(); } else if root.kind != 4 { root.ok(); }
                 return accept;
             }
             reject
