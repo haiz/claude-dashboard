@@ -270,7 +270,7 @@ pub fn read_claude_cookie_db(cookies_db: &Path) -> Option<(i64, Vec<RawCookie>)>
 
 /// `meta.version` (the Chromium cookie DB schema version), cast to an
 /// integer. `None` if the `meta` table or `version` row is absent.
-fn read_schema_version(conn: &Connection) -> Option<i64> {
+pub(crate) fn read_schema_version(conn: &Connection) -> Option<i64> {
     conn.query_row(
         "SELECT CAST(value AS INTEGER) FROM meta WHERE key = 'version'",
         [],
@@ -280,7 +280,7 @@ fn read_schema_version(conn: &Connection) -> Option<i64> {
 }
 
 /// A `SystemTime` on Chromium's cookie clock: microseconds since 1601-01-01.
-fn chrome_time(at: SystemTime) -> i64 {
+pub(crate) fn chrome_time(at: SystemTime) -> i64 {
     let secs = at
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
