@@ -130,6 +130,12 @@ refresh timer with the new interval (as macOS reschedules its timer); it never
 starts a fetch. Writes from the Settings pane run one at a time, in click order.
 `hasLaunchedBefore` (default false) is set on the first launch and survives Reset
 All Settings.
+`showBurnAnimals` (bool, default false; macOS key and default) is Settings > General >
+Display > Show burn-rate animals: when false no burn-rate animal shows anywhere (card,
+account page and flyout gauges, and the Overview legend's animal column is hidden); the
+Help pane's sample gauge and animal scale stay. Display only: the burn-rate tracker and
+the burn-rate sort order run the same either way. Toggling redraws the shown rows and the
+Overview legend in place from the last refresh (no fetch). Reset All Settings turns it off.
 Auto Switch and Critical Accounts use the macOS keys and defaults: `autoSwitchEnabled`
 (true), `autoSwitchFiveHourThreshold` (95, 50...99), `autoSwitchSevenDayThreshold` (99,
 50...100), `autoSwitchShowWidgetToggle` (true), `autoSwitchPriorityAccountId` and
@@ -239,6 +245,7 @@ Ping, Auto Ping and the Ping Log follow macOS exactly (`contract/README.md`, "Pi
 `core::ping`; the rules (latch per "window not running" episode, 10-minute retry after a
 failed auto ping, never on a failed fetch or a capped account) are `app/src/ping.rs`.
 `settings.json` key `autoPingEnabled`, default false; Reset All Settings turns it off.
+(Its neighbour in Settings > General, `showBurnAnimals`, is described under "settings.json".)
 The log is `ping_logs.db` (SQLite, the macOS schema) beside `usage_logs.db` in
 `%LOCALAPPDATA%\claude-dashboard`, newest 500 kept. Dev runs never ping.
 

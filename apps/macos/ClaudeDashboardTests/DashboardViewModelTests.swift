@@ -218,6 +218,7 @@ final class DashboardViewModelTests: XCTestCase {
         vm.setAutoPingEnabled(true)
         vm.autoSwitchSettings.fiveHourThreshold = 60
         vm.criticalSettings.pace = 90
+        vm.showBurnAnimals = true
 
         vm.resetSettingsToDefaults()
 
@@ -226,6 +227,19 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertFalse(vm.pingController.isAutoPingEnabled)
         XCTAssertEqual(vm.autoSwitchSettings.fiveHourThreshold, 95)
         XCTAssertEqual(vm.criticalSettings.pace, 50)
+        XCTAssertFalse(vm.showBurnAnimals)
+    }
+
+    func testShowBurnAnimals_defaultsOffAndPersists() throws {
+        AppDefaults.shared.removeObject(forKey: AppDefaults.showBurnAnimalsKey)
+        defer { AppDefaults.shared.removeObject(forKey: AppDefaults.showBurnAnimalsKey) }
+        let (vm, _) = try makeViewModelWithStore()
+        XCTAssertFalse(vm.showBurnAnimals)
+
+        vm.showBurnAnimals = true
+        XCTAssertTrue(AppDefaults.shared.bool(forKey: AppDefaults.showBurnAnimalsKey))
+        let (reloaded, _) = try makeViewModelWithStore()
+        XCTAssertTrue(reloaded.showBurnAnimals)
     }
 
     // MARK: - Identity backfill

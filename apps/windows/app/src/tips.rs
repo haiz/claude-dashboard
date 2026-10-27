@@ -26,6 +26,13 @@ pub const TIPS: &[Tip] = &[
         help_topic: "refresh-updates",
     },
     Tip {
+        id: "show-burn-animals",
+        summary: "Show a small animal on each gauge for how fast that window is being used.",
+        detail: "The animal is the time until the window reaches 100% at the current pace: snail over 5h, turtle 3-5h, rabbit 1.5-3h, horse 30m-1.5h, cheetah under 30m. It appears once two refreshes in a row show usage rising. Off by default; sorting by burn rate works either way.",
+        example: "5h goes from 20% to 40% in 10 minutes: at that pace 100% is 30 minutes away, so the gauge shows a horse.",
+        help_topic: "reading-a-card",
+    },
+    Tip {
         id: "auto-ping",
         summary: "Start idle usage windows automatically.",
         detail: "A window only starts counting at the first message. After each refresh, Auto Ping sends one short message from every active account whose 5h or 7d window is not running, so it resets sooner.",
@@ -123,6 +130,15 @@ mod tests {
         assert!(t.detail.starts_with("A window only starts counting at the first message."));
         assert!(t.example.contains("Auto Ping starts it at 09:00"));
         assert_eq!(t.help_topic, "ping");
+    }
+
+    #[test]
+    fn show_burn_animals_tip_matches_macos() {
+        let t = TIPS.iter().find(|t| t.id == "show-burn-animals").expect("show-burn-animals tip");
+        assert_eq!(t.summary, "Show a small animal on each gauge for how fast that window is being used.");
+        assert!(t.detail.contains("cheetah under 30m"));
+        assert!(t.detail.contains("Off by default"));
+        assert_eq!(t.help_topic, "reading-a-card");
     }
 
     #[test]

@@ -310,11 +310,13 @@ struct OverviewChartView: View {
                                     .foregroundStyle(.tertiary)
                             }
                             Spacer()
-                            if let animal = animalForSelectedWindow(state.burnRates) {
-                                Text(animal)
-                            } else {
-                                Text("—")
-                                    .foregroundStyle(.tertiary)
+                            if viewModel.showBurnAnimals {
+                                if let animal = animalForSelectedWindow(state.burnRates) {
+                                    Text(animal)
+                                } else {
+                                    Text("—")
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
                         }
                         .padding(.horizontal)

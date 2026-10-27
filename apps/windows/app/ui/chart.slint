@@ -24,6 +24,8 @@ export struct ChartLegendItem {
     on: bool,
     // Burn animal for the selected window ("" = unknown, shown as a dash).
     animal: string,
+    // Settings > General > Show burn-rate animals: off hides the column (dash included).
+    show-animal: bool,
 }
 
 // One row of the hover card: History has one unnamed row, the Overview one
@@ -917,7 +919,7 @@ export component OverviewPane inherits VerticalLayout {
                         vertical-alignment: center;
                     }
                     Rectangle { horizontal-stretch: 1; }
-                    Text {
+                    if item.show-animal: Text {
                         text: item.animal != "" ? item.animal : "\u{2014}";
                         color: item.animal != "" ? Theme.text-primary : ChartColors.tertiary;
                         font-size: 13px;

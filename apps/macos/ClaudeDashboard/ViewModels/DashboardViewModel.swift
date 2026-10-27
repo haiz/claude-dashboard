@@ -129,6 +129,11 @@ final class DashboardViewModel: ObservableObject {
     @Published var switchDesktopEnabled: Bool {
         didSet { AppDefaults.shared.set(switchDesktopEnabled, forKey: AppDefaults.switchDesktopEnabledKey) }
     }
+    /// Settings > General > Display (default off): show the burn-rate animal on each gauge.
+    /// Display only: the tracker keeps running either way.
+    @Published var showBurnAnimals: Bool {
+        didSet { AppDefaults.shared.set(showBurnAnimals, forKey: AppDefaults.showBurnAnimalsKey) }
+    }
     /// Settings > General > Claude Desktop (default off): Auto Switch moves Desktop only while it is not running.
     @Published var autoSwitchDesktopEnabled: Bool {
         didSet { AppDefaults.shared.set(autoSwitchDesktopEnabled, forKey: AppDefaults.autoSwitchDesktopEnabledKey) }
@@ -195,6 +200,7 @@ final class DashboardViewModel: ObservableObject {
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.switchDesktopEnabled = AppDefaults.shared.bool(forKey: AppDefaults.switchDesktopEnabledKey)
         self.autoSwitchDesktopEnabled = AppDefaults.shared.bool(forKey: AppDefaults.autoSwitchDesktopEnabledKey)
+        self.showBurnAnimals = AppDefaults.shared.bool(forKey: AppDefaults.showBurnAnimalsKey)
         self.autoRefreshMinutes = {
             let val = AppDefaults.shared.integer(forKey: "autoRefreshMinutes")
             return val > 0 ? val : Self.defaultAutoRefreshMinutes
@@ -263,6 +269,7 @@ final class DashboardViewModel: ObservableObject {
         autoRefreshMinutes = Self.defaultAutoRefreshMinutes
         switchDesktopEnabled = false
         autoSwitchDesktopEnabled = false
+        showBurnAnimals = false
         setAutoPingEnabled(false)
         criticalSettings.resetToDefaults()
         autoSwitchSettings.resetToDefaults()

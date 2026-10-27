@@ -304,6 +304,12 @@ per window per refresh and returns `BurnRateResult?`. A `nil` return means
 "no animal to display yet" — it is not an error. `recordedAt` defaults to
 `Date()` (line 33) but is injectable, which is how the Swift tests drive it.
 
+Whether an animal is *shown* is a separate, display-only switch: the setting
+`showBurnAnimals` (Settings > General, **default off**, Reset All Settings
+turns it off). When off, no gauge or legend shows an animal, but the tracker
+still runs on every refresh and its last results stay on the account, so
+turning the switch on shows the current animals straight away.
+
 ### History key and lifetime
 
 - History is a dictionary keyed by

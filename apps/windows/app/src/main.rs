@@ -96,7 +96,9 @@ fn apply_output(
     now: f64,
 ) {
     eprintln!("refresh: {} rows, peak {:.0}%", out.rows.len(), out.peak);
-    let mut rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
+    // Settings > General > Show burn-rate animals; the app property is set at launch and on toggle.
+    let show_animals = weak.upgrade().is_some_and(|a| a.get_show_burn_animals());
+    let mut rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now, show_animals)).collect();
     set_ping_fields(&mut rows);
     set_switch_fields(&mut rows);
     set_auto_switch_fields(&mut rows, &out.rows, now, &claude_dashboard_core::settings::load());
@@ -284,6 +286,38 @@ fn refresh_auto_switch_ui() {
     if let Some(p) = POPOVER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade())) {
         patch(p.get_account_rows());
         set_footer(&p, &out.rows);
+    }
+}
+
+/// UI thread: Show burn-rate animals changed (toggle or Reset All). Sets the app property and
+/// rewrites every visible row's animals in place from the last refresh, then the Overview
+/// legend; no fetch, and the burn-rate tracker is untouched (display only).
+fn refresh_burn_animals_ui(show: bool) {
+    use slint::Model;
+    let app = MAIN_APP.with(|m| m.borrow().as_ref().and_then(|w| w.upgrade()));
+    if let Some(a) = &app {
+        a.set_show_burn_animals(show);
+    }
+    if let Some((out, now)) = LAST_OUTPUT.with(|l| l.borrow().clone()) {
+        let patch = |rows: slint::ModelRc<UiRow>| {
+            for i in 0..rows.row_count() {
+                let Some(mut r) = rows.row_data(i) else { continue };
+                let Some(row) = out.rows.iter().find(|d| d.account_id == r.id.as_str()) else { continue };
+                if model::set_animals(&mut r, row, now, show) {
+                    rows.set_row_data(i, r);
+                }
+            }
+        };
+        if let Some(a) = &app {
+            patch(a.get_account_rows());
+            patch(a.get_pane_rows());
+        }
+        if let Some(p) = POPOVER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade())) {
+            patch(p.get_account_rows());
+        }
+    }
+    if let Some(a) = &app {
+        overview::on_show_animals(a);
     }
 }
 
@@ -1535,6 +1569,9 @@ fn main() -> Result<(), slint::PlatformError> {
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
         app.set_help_sample(model::sample_window(62.0, 8100.0, 18000.0, "\u{1F407}", now));
+        // Read now, before the first rows are built (the refresh loop or the dev seed below):
+        // `apply_output` builds every row from this property.
+        app.set_show_burn_animals(settings_general::show_burn_animals());
         app.set_app_name(settings_general::APP_NAME.into());
         app.set_app_version(settings_general::APP_VERSION.into());
         app.set_release_date(settings_general::format_release_date(settings_general::RELEASE_DATE).into());
@@ -1559,6 +1596,15 @@ fn main() -> Result<(), slint::PlatformError> {
                     a.set_auto_refresh_minutes(minutes as i32);
                     a.set_launch_at_startup(launch);
                     a.set_auto_ping(auto_ping);
+                }
+            });
+        });
+        // Show burn-rate animals: display only, so the shown rows are redrawn in place (no fetch).
+        app.on_set_show_burn_animals(move |on| {
+            refresh_burn_animals_ui(on);
+            settings_general::writer().submit(move || {
+                if let Err(e) = settings_general::set_show_burn_animals(on) {
+                    eprintln!("save show burn animals failed: {e}");
                 }
             });
         });
@@ -1622,6 +1668,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             a.set_auto_update(state.auto_update);
                             a.set_auto_ping(state.auto_ping);
                         }
+                        refresh_burn_animals_ui(state.show_burn_animals);
                         refresh_auto_switch_ui();
                     });
                     let _ = tx.send(refresh::Nudge::Reschedule);

@@ -156,7 +156,7 @@ struct AccountPane: View {
 
     @ViewBuilder private var gauges: some View {
         if let usage = state.usage {
-            UsageGaugeRow(usage: usage, burnRates: state.burnRates, isCompact: false,
+            UsageGaugeRow(usage: usage, burnRates: dashboardViewModel.showBurnAnimals ? state.burnRates : nil, isCompact: false,
                           onOpenChart: { window in dashboardViewModel.openAccount(state.id, window: window) })
                 .fixedSize()
         } else {

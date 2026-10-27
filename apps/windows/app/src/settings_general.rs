@@ -64,6 +64,7 @@ pub struct GeneralState {
     pub auto_refresh_minutes: u64,
     pub auto_update: bool,
     pub auto_ping: bool,
+    pub show_burn_animals: bool,
 }
 
 /// Build date of the running release (`yyyy-MM-dd`), "" for local builds. See `build.rs`.
@@ -79,6 +80,7 @@ pub fn reset_all() -> Result<GeneralState, String> {
         auto_refresh_minutes: s.effective_refresh_minutes(),
         auto_update: s.auto_update,
         auto_ping: s.auto_ping_enabled,
+        show_burn_animals: s.show_burn_animals,
     })
 }
 
@@ -184,6 +186,15 @@ pub fn set_auto_ping(on: bool) -> Result<(), String> {
     settings::update(|s| s.auto_ping_enabled = on)
 }
 
+/// Settings > General "Show burn-rate animals" (default off). Display only.
+pub fn show_burn_animals() -> bool {
+    settings::load().show_burn_animals
+}
+
+pub fn set_show_burn_animals(on: bool) -> Result<(), String> {
+    settings::update(|s| s.show_burn_animals = on)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,6 +224,19 @@ mod tests {
     }
 
     #[test]
+    fn show_burn_animals_defaults_off_and_round_trips() {
+        let _env = crate::testenv::lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("APPDATA", dir.path());
+        std::env::set_var("LOCALAPPDATA", dir.path());
+        assert!(!show_burn_animals(), "off by default");
+        set_show_burn_animals(true).unwrap();
+        assert!(show_burn_animals());
+        set_show_burn_animals(false).unwrap();
+        assert!(!show_burn_animals());
+    }
+
+    #[test]
     fn reset_all_restores_refresh_and_update_keeps_startup() {
         let _env = crate::testenv::lock();
         let dir = tempfile::tempdir().unwrap();
@@ -223,6 +247,8 @@ mod tests {
         set_auto_update(false).unwrap();
         set_auto_ping(true).unwrap();
         assert!(auto_ping_enabled());
+        set_show_burn_animals(true).unwrap();
+        assert!(show_burn_animals());
         settings::update(|s| s.launch_at_startup = true).unwrap();
 
         let after = reset_all().unwrap();
@@ -233,9 +259,11 @@ mod tests {
                 auto_refresh_minutes: 5,
                 auto_update: true,
                 auto_ping: false,
+                show_burn_animals: false,
             }
         );
         assert!(!auto_ping_enabled());
+        assert!(!show_burn_animals());
         assert_eq!(current_auto_refresh(), (true, 5));
         assert!(auto_update_enabled());
         assert!(

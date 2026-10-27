@@ -34,7 +34,7 @@ final class AccountCardLayoutTests: XCTestCase {
         )
         let card = AccountCard(
             state: AccountUsageState(id: account.id, account: account, usage: usage),
-            onResync: {}, onTogglePin: {}, isCompact: true
+            onResync: {}, onTogglePin: {}, showBurnAnimals: true, isCompact: true
         )
 
         let host = NSHostingController(rootView: card)

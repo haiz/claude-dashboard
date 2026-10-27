@@ -57,6 +57,10 @@ pub struct Settings {
     /// macOS `autoPingEnabled`: ping every active account whose 5h or 7d window is not running.
     #[serde(rename = "autoPingEnabled")]
     pub auto_ping_enabled: bool,
+    /// macOS `showBurnAnimals`: show the burn-rate animal on each gauge and in the Overview
+    /// legend. Display only: the burn-rate tracker and the sort order run either way.
+    #[serde(rename = "showBurnAnimals")]
+    pub show_burn_animals: bool,
     #[serde(rename = "autoSwitchEnabled")]
     pub auto_switch_enabled: bool,
     #[serde(rename = "autoSwitchFiveHourThreshold")]
@@ -108,6 +112,8 @@ struct RawSettings {
     has_launched_before: bool,
     #[serde(rename = "autoPingEnabled", default)]
     auto_ping_enabled: bool,
+    #[serde(rename = "showBurnAnimals", default)]
+    show_burn_animals: bool,
     #[serde(rename = "autoSwitchEnabled", default = "default_true")]
     auto_switch_enabled: bool,
     #[serde(rename = "autoSwitchFiveHourThreshold", default, deserialize_with = "lenient_i64")]
@@ -160,6 +166,7 @@ impl From<RawSettings> for Settings {
             last_auto_update_check_unix: r.last_auto_update_check_unix,
             has_launched_before: r.has_launched_before,
             auto_ping_enabled: r.auto_ping_enabled,
+            show_burn_animals: r.show_burn_animals,
             auto_switch_enabled: r.auto_switch_enabled,
             auto_switch_five_hour: in_range(r.auto_switch_five_hour, AUTO_SWITCH_FIVE_HOUR_RANGE, DEFAULT_AUTO_SWITCH_FIVE_HOUR),
             auto_switch_seven_day: in_range(r.auto_switch_seven_day, AUTO_SWITCH_SEVEN_DAY_RANGE, DEFAULT_AUTO_SWITCH_SEVEN_DAY),
@@ -189,6 +196,7 @@ impl Default for Settings {
             last_auto_update_check_unix: None,
             has_launched_before: false,
             auto_ping_enabled: false,
+            show_burn_animals: false,
             auto_switch_enabled: true,
             auto_switch_five_hour: DEFAULT_AUTO_SWITCH_FIVE_HOUR,
             auto_switch_seven_day: DEFAULT_AUTO_SWITCH_SEVEN_DAY,
@@ -222,7 +230,7 @@ impl Settings {
     }
 }
 
-/// Settings > General "Reset": auto refresh back to on / 5 min, Auto Ping off, Auto Switch
+/// Settings > General "Reset": auto refresh back to on / 5 min, Auto Ping and burn-rate animals off, Auto Switch
 /// and Critical Accounts back to their defaults, auto update on. Launch at startup, the scan
 /// browser, the update-check stamp and the home account stay (macOS `resetSettingsToDefaults`).
 pub fn reset_general(s: &mut Settings) {
@@ -230,6 +238,7 @@ pub fn reset_general(s: &mut Settings) {
     s.auto_refresh_enabled = true;
     s.auto_refresh_minutes = DEFAULT_REFRESH_MINUTES;
     s.auto_ping_enabled = false;
+    s.show_burn_animals = false;
     s.auto_update = true;
     s.auto_switch_enabled = d.auto_switch_enabled;
     s.auto_switch_five_hour = d.auto_switch_five_hour;
@@ -337,6 +346,19 @@ mod tests {
         assert!(fs::read_to_string(&p).unwrap().contains("autoPingEnabled"));
         update_at(&p, reset_general).unwrap();
         assert!(!load_from(&p).auto_ping_enabled, "Reset turns Auto Ping off (macOS)");
+    }
+
+    #[test]
+    fn show_burn_animals_defaults_off_round_trips_and_reset_turns_off() {
+        assert!(!load_str("{}").show_burn_animals);
+        assert!(!Settings::default().show_burn_animals);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        update_at(&p, |s| s.show_burn_animals = true).unwrap();
+        assert!(load_from(&p).show_burn_animals);
+        assert!(fs::read_to_string(&p).unwrap().contains("\"showBurnAnimals\": true"));
+        update_at(&p, reset_general).unwrap();
+        assert!(!load_from(&p).show_burn_animals, "Reset turns burn-rate animals off (macOS)");
     }
 
     #[test]
