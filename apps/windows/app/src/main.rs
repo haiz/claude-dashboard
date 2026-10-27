@@ -552,8 +552,9 @@ fn run_auto_switch(out: &mut refresh::RefreshOutput, now: f64) -> Option<String>
             let after = cfg.priority.clone();
             let _ = claude_dashboard_core::settings::update(|s| auto_switch::write_back_priority(s, &before, &after));
         }
-        if switched.is_some() {
+        if let Some(target) = &switched {
             cc_state::refresh(&stored);
+            cd_run::look_ahead(target, &stored, now);
             let candidates = std::mem::take(&mut out.candidates);
             *out = refresh::relabel(&out.rows, &stored, now);
             out.candidates = candidates;

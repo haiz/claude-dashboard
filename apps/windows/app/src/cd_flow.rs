@@ -2,7 +2,7 @@
 //! Switch section): what follows a Claude Code switch, and the Desktop texts.
 
 use claude_dashboard_core::auto_switch_log::{NewEntry, Outcome, SwitchTarget, Trigger};
-use claude_dashboard_core::cd_switch::switcher::DesktopSwitchError;
+use claude_dashboard_core::cd_switch::switcher::{DesktopAvailability, DesktopSwitchError};
 
 pub const CLOSE_TITLE: &str = "Close Claude Desktop?";
 /// macOS `desktopCloseMessage`.
@@ -96,6 +96,49 @@ pub fn log_entry(name: &str, error: Option<&DesktopSwitchError>, now: f64) -> Ne
         to_name: Some(name.to_string()),
         reason: "Manual switch".into(),
         detail: error.map(|e| e.log_name().to_string()),
+    }
+}
+
+/// What Auto Switch does for Claude Desktop after moving Claude Code (macOS `desktopLookAhead`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LookAhead {
+    /// Setting off, or Desktop runs: leave it alone and log nothing.
+    Off,
+    /// Desktop has no usable captured login for the target: log a skip.
+    Skip,
+    /// Write the target's login into the closed Desktop.
+    Run,
+}
+
+pub fn look_ahead(enabled: bool, running: bool, availability: Option<DesktopAvailability>) -> LookAhead {
+    if !enabled || running {
+        LookAhead::Off
+    } else if availability == Some(DesktopAvailability::Ready) {
+        LookAhead::Run
+    } else {
+        LookAhead::Skip
+    }
+}
+
+/// An Auto Switch look-ahead's Switch Log row: `error` is the failure of a `Run`, `skipped`
+/// marks a `Skip` (no Desktop capture); otherwise it switched.
+pub fn look_ahead_entry(name: &str, skipped: bool, error: Option<&DesktopSwitchError>, now: f64) -> NewEntry {
+    let (outcome, detail) = if skipped {
+        (Outcome::Skipped, Some("Not captured for Desktop".to_string()))
+    } else if let Some(e) = error {
+        (Outcome::Failed, Some(e.log_name().to_string()))
+    } else {
+        (Outcome::Switched, None)
+    };
+    NewEntry {
+        date_unix: now,
+        trigger: Trigger::Auto,
+        target: SwitchTarget::ClaudeDesktop,
+        outcome,
+        from_name: None,
+        to_name: Some(name.to_string()),
+        reason: "Desktop look-ahead".into(),
+        detail,
     }
 }
 
@@ -216,6 +259,33 @@ mod tests {
         let failed = log_entry("b@x.com", Some(&DesktopSwitchError::VerifyFailed), 12.0);
         assert_eq!(failed.outcome, Outcome::Failed);
         assert_eq!(failed.detail.as_deref(), Some("verifyFailed"));
+    }
+
+    #[test]
+    fn look_ahead_table() {
+        use DesktopAvailability::*;
+        assert_eq!(look_ahead(true, false, Some(Ready)), LookAhead::Run); // writes_when_closed
+        assert_eq!(look_ahead(true, true, Some(Ready)), LookAhead::Off); // skipped_when_running
+        assert_eq!(look_ahead(false, false, Some(Ready)), LookAhead::Off); // off_when_disabled
+        for a in [Some(NotCaptured), Some(LoginExpired), Some(Active), None] {
+            assert_eq!(look_ahead(true, false, a), LookAhead::Skip, "{a:?}"); // skips_uncaptured
+            assert_eq!(look_ahead(true, true, a), LookAhead::Off);
+            assert_eq!(look_ahead(false, false, a), LookAhead::Off);
+        }
+    }
+
+    #[test]
+    fn look_ahead_rows() {
+        let ok = look_ahead_entry("b@x.com", false, None, 5.0);
+        assert_eq!((ok.trigger, ok.target, ok.outcome), (Trigger::Auto, SwitchTarget::ClaudeDesktop, Outcome::Switched));
+        assert_eq!((ok.reason.as_str(), ok.detail.as_deref(), ok.from_name.as_deref()), ("Desktop look-ahead", None, None));
+        let failed = look_ahead_entry("b@x.com", false, Some(&DesktopSwitchError::DesktopRunning), 5.0);
+        assert_eq!(failed.outcome, Outcome::Failed);
+        assert_eq!(failed.detail.as_deref(), Some("desktopRunning"));
+        let skipped = look_ahead_entry("b@x.com", true, None, 5.0);
+        assert_eq!(skipped.outcome, Outcome::Skipped);
+        assert_eq!(skipped.detail.as_deref(), Some("Not captured for Desktop"));
+        assert_eq!(skipped.to_name.as_deref(), Some("b@x.com"));
     }
 
     #[test]

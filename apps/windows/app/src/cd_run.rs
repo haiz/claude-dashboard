@@ -133,14 +133,52 @@ fn attempt(account: &Account, accounts: &[Account], quit_first: bool, cancel: &A
     })
 }
 
+/// Refresh thread, after Auto Switch moved Claude Code to `id` (macOS `desktopLookAhead`):
+/// writes that account's login into Claude Desktop when it is closed and the account has a
+/// captured login, logging the attempt. Skipped silently while a manual Desktop switch runs.
+pub fn look_ahead(id: &str, accounts: &[Account], now: f64) {
+    let Some(switcher) = cd_state::switcher() else { return };
+    let enabled = claude_dashboard_core::settings::load().auto_switch_desktop_enabled;
+    if !enabled || switcher.is_running() {
+        return;
+    }
+    let Some(_guard) = cd_state::try_begin() else { return };
+    let Some(account) = accounts.iter().find(|a| a.id == id) else { return };
+    let name = account.email.clone().filter(|e| !e.is_empty()).unwrap_or_else(|| account.name.clone());
+    // Availability right before, not the last refresh's: Desktop may have changed since.
+    let cc_uuid = cc_active_uuid(accounts);
+    cd_state::refresh(accounts, cc_uuid.as_deref());
+    let step = cd_flow::look_ahead(enabled, switcher.is_running(), cd_state::availability(id));
+    let log = |skipped: bool, error: Option<&DesktopSwitchError>| {
+        if let Ok(store) = claude_dashboard_core::auto_switch_log::AutoSwitchLogStore::open() {
+            store.insert(&cd_flow::look_ahead_entry(&name, skipped, error, now));
+        }
+    };
+    match step {
+        cd_flow::LookAhead::Off => {}
+        cd_flow::LookAhead::Skip => log(true, None),
+        cd_flow::LookAhead::Run => {
+            let all = cd_state::desktop_accounts(accounts);
+            let Some(target) = all.iter().find(|a| a.id == id) else { return };
+            let result = switcher.switch_to(target, &all, None);
+            log(false, result.as_ref().err());
+            refresh_differs(accounts);
+        }
+    }
+}
+
 /// Worker: recomputes whether Desktop differs from Claude Code's active account and shows it.
 fn refresh_differs(accounts: &[Account]) {
-    let email = claude_dashboard_core::claude_code::active_email();
-    let cc_uuid = email
-        .and_then(|e| accounts.iter().find(|a| a.email.as_deref().is_some_and(|m| m.eq_ignore_ascii_case(&e))))
-        .and_then(|a| a.account_uuid.clone());
-    cd_state::refresh(accounts, cc_uuid.as_deref());
+    cd_state::refresh(accounts, cc_active_uuid(accounts).as_deref());
     push_differs();
+}
+
+/// The account uuid of Claude Code's active login, when it is a dashboard account.
+fn cc_active_uuid(accounts: &[Account]) -> Option<String> {
+    let email = claude_dashboard_core::claude_code::active_email();
+    email
+        .and_then(|e| accounts.iter().find(|a| a.email.as_deref().is_some_and(|m| m.eq_ignore_ascii_case(&e))))
+        .and_then(|a| a.account_uuid.clone())
 }
 
 /// Shows `cd_state::differs()` in both windows; callable from any thread.
