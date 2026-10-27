@@ -36,13 +36,16 @@ pub use win::Win32DesktopProcess;
 mod win {
     use super::{is_desktop_exe, DesktopProcess};
     use std::time::{Duration, Instant};
-    use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HWND, INVALID_HANDLE_VALUE, LPARAM};
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, BOOL, HANDLE, HWND, INVALID_HANDLE_VALUE, LPARAM, WAIT_OBJECT_0,
+    };
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
     use windows_sys::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        OpenProcess, QueryFullProcessImageNameW, TerminateProcess, WaitForSingleObject,
+        PROCESS_ACCESS_RIGHTS, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
         PROCESS_TERMINATE,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -51,34 +54,64 @@ mod win {
 
     const POLL: Duration = Duration::from_millis(100);
     const GRACE: Duration = Duration::from_secs(5);
+    const FORCE_WAIT: Duration = Duration::from_secs(1);
+    /// Enough to wait on and to force-quit.
+    const QUIT_ACCESS: PROCESS_ACCESS_RIGHTS =
+        PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | PROCESS_SYNCHRONIZE;
 
     pub struct Win32DesktopProcess;
 
-    /// Full image path of `pid`, or None when it can't be opened or queried.
-    fn image_path(pid: u32) -> Option<String> {
-        unsafe {
-            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-            if h.is_null() {
-                return None;
-            }
-            let mut buf = [0u16; 1024];
-            let mut len = buf.len() as u32;
-            let ok = QueryFullProcessImageNameW(h, 0, buf.as_mut_ptr(), &mut len);
-            CloseHandle(h);
-            if ok == 0 {
-                return None;
-            }
-            Some(String::from_utf16_lossy(&buf[..len as usize]))
+    /// An open handle to a process whose image was checked through that same handle. While it
+    /// is open the pid cannot be reused, so WM_CLOSE and TerminateProcess only ever reach the
+    /// Claude Desktop process that was checked, never a later process (e.g. Claude Code's
+    /// `claude.exe`) that got the same pid.
+    struct Held {
+        pid: u32,
+        handle: HANDLE,
+    }
+
+    impl Held {
+        fn exited(&self) -> bool {
+            unsafe { WaitForSingleObject(self.handle, 0) == WAIT_OBJECT_0 }
         }
     }
 
-    /// Pids of every process whose image is a Claude Desktop executable.
-    fn desktop_pids() -> Vec<u32> {
-        let mut pids = Vec::new();
+    impl Drop for Held {
+        fn drop(&mut self) {
+            unsafe { CloseHandle(self.handle) };
+        }
+    }
+
+    /// Full image path of the process behind `h`, or None when it can't be queried.
+    fn image_path(h: HANDLE) -> Option<String> {
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let ok = unsafe { QueryFullProcessImageNameW(h, 0, buf.as_mut_ptr(), &mut len) };
+        if ok == 0 {
+            return None;
+        }
+        Some(String::from_utf16_lossy(&buf[..len as usize]))
+    }
+
+    /// Opens `pid` with the first access mask that succeeds and keeps the handle only when its
+    /// image is a Claude Desktop executable.
+    fn open_desktop(pid: u32, access: &[PROCESS_ACCESS_RIGHTS]) -> Option<Held> {
+        let handle = access.iter().find_map(|&a| {
+            let h = unsafe { OpenProcess(a, 0, pid) };
+            (!h.is_null()).then_some(h)
+        })?;
+        let held = Held { pid, handle };
+        is_desktop_exe(&image_path(held.handle)?).then_some(held)
+    }
+
+    /// Every running Claude Desktop process, each opened with the first mask in `access` that
+    /// succeeds.
+    fn desktop_processes(access: &[PROCESS_ACCESS_RIGHTS]) -> Vec<Held> {
+        let mut held = Vec::new();
         unsafe {
             let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
             if snap == INVALID_HANDLE_VALUE {
-                return pids;
+                return held;
             }
             let mut entry: PROCESSENTRY32W = std::mem::zeroed();
             entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
@@ -88,66 +121,83 @@ mod win {
                 let name = String::from_utf16_lossy(&entry.szExeFile[..name_len]);
                 // Cheap name filter first; the path check is what decides.
                 if name.eq_ignore_ascii_case("claude.exe") {
-                    if let Some(path) = image_path(entry.th32ProcessID) {
-                        if is_desktop_exe(&path) {
-                            pids.push(entry.th32ProcessID);
-                        }
+                    if let Some(h) = open_desktop(entry.th32ProcessID, access) {
+                        held.push(h);
                     }
                 }
                 more = Process32NextW(snap, &mut entry) != 0;
             }
             CloseHandle(snap);
         }
-        pids
+        held
+    }
+
+    fn any_desktop() -> bool {
+        !desktop_processes(&[PROCESS_QUERY_LIMITED_INFORMATION]).is_empty()
+    }
+
+    /// Opens for quitting; falls back to a wait-only handle so a process that refuses
+    /// PROCESS_TERMINATE still gets WM_CLOSE and is waited on.
+    fn desktop_processes_for_quit() -> Vec<Held> {
+        desktop_processes(&[QUIT_ACCESS, PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE])
     }
 
     struct CloseCtx {
         pids: Vec<u32>,
     }
 
+    /// Posts WM_CLOSE to visible windows of held pids only.
     unsafe extern "system" fn close_if_desktop(hwnd: HWND, lparam: LPARAM) -> BOOL {
         let ctx = &*(lparam as *const CloseCtx);
         let mut pid = 0u32;
         GetWindowThreadProcessId(hwnd, &mut pid);
-        if ctx.pids.contains(&pid) && IsWindowVisible(hwnd) != 0 {
+        if pid != 0 && ctx.pids.contains(&pid) && IsWindowVisible(hwnd) != 0 {
             PostMessageW(hwnd, WM_CLOSE, 0, 0);
         }
         1
     }
 
-    fn wait_until_gone(timeout: Duration) -> bool {
+    /// Polls the held handles until every process has exited or `timeout` passes.
+    fn wait_held(held: &[Held], timeout: Duration) -> bool {
         let deadline = Instant::now() + timeout;
-        while !desktop_pids().is_empty() && Instant::now() < deadline {
+        loop {
+            if held.iter().all(Held::exited) {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
             std::thread::sleep(POLL);
         }
-        desktop_pids().is_empty()
     }
 
     impl DesktopProcess for Win32DesktopProcess {
         fn is_running(&self) -> bool {
-            !desktop_pids().is_empty()
+            any_desktop()
         }
 
         fn quit(&self) -> bool {
-            let pids = desktop_pids();
-            if pids.is_empty() {
+            let mut held = desktop_processes_for_quit();
+            if held.is_empty() {
                 return true;
             }
-            let ctx = CloseCtx { pids };
+            let ctx = CloseCtx { pids: held.iter().map(|h| h.pid).collect() };
             unsafe { EnumWindows(Some(close_if_desktop), &ctx as *const CloseCtx as LPARAM) };
-            if wait_until_gone(GRACE) {
-                return true;
-            }
-            for pid in desktop_pids() {
-                unsafe {
-                    let h = OpenProcess(PROCESS_TERMINATE, 0, pid);
-                    if !h.is_null() {
-                        TerminateProcess(h, 1);
-                        CloseHandle(h);
+            if !wait_held(&held, GRACE) {
+                // Helpers Desktop spawned during the grace period are forced too.
+                for h in desktop_processes_for_quit() {
+                    if !held.iter().any(|o| o.pid == h.pid) {
+                        held.push(h);
                     }
                 }
+                for h in held.iter().filter(|h| !h.exited()) {
+                    unsafe { TerminateProcess(h.handle, 1) };
+                }
+                wait_held(&held, FORCE_WAIT);
             }
-            wait_until_gone(Duration::from_secs(1))
+            drop(held);
+            // A fresh look: a Desktop launched meanwhile still counts as remaining.
+            !any_desktop()
         }
     }
 }
