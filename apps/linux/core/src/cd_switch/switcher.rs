@@ -615,7 +615,7 @@ mod tests {
         assert_eq!(sw.active_account_uuid(), None);
         assert_eq!(sw.availability(&accounts())["id-a"], DesktopAvailability::Ready);
         assert!(sw.capture_active(&accounts()).is_err());
-        assert!(f.s().vault.get("id-b").is_none());
+        assert!(!f.s().vault.contains_key("id-b"));
     }
 
     #[test]
