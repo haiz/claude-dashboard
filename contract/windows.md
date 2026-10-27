@@ -271,8 +271,8 @@ cookie value carries `sha256(host_key)` first when `meta.version >= 24`; `v20` (
 unreadable and never written over. The cookie write is one `BEGIN IMMEDIATE` transaction (delete then
 insert `sessionKey`, `lastActiveOrg`, `routingHint`, `sessionKeyLC`), and both the grant and the cookie
 are verified by reading them back. Claude Desktop is the process whose full image path is exactly
-`...\AnthropicClaudepp-*\claude.exe` or `...\WindowsApps\Claude_*pp\claude.exe` (helpers
-included); Claude Code's `claude.exe` (`~\.localin`, npm, a data-dir download) never matches, so
+`...\AnthropicClaude\app-*\claude.exe` or `...\WindowsApps\Claude_*\app\claude.exe` (helpers
+included); Claude Code's `claude.exe` (`~\.local\bin`, npm, a data-dir download) never matches, so
 it is never closed. Quit posts `WM_CLOSE` to Desktop's visible windows, waits 5 s, then terminates what
 is left and waits 1 s. Desktop has its own DPAPI vault, one file per account in
 `%LOCALAPPDATA%\claude-dashboard\desktop-vault\<account id>.bin` (deleted with the account),
