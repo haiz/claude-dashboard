@@ -460,33 +460,6 @@ component GeneralSettingsPane inherits Flickable {
             color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
         }
 
-        GroupHeader { text: "Claude Desktop"; }
-        SettingsCard {
-            height: dsk.preferred-height;
-            dsk := VerticalLayout {
-                padding: 12px;
-                spacing: 10px;
-                HorizontalLayout {
-                    spacing: 4px;
-                    Text { text: "Switch Claude Desktop with Switch"; color: Theme.text-primary; vertical-alignment: center; }
-                    InfoTip { tip-id: "switch-desktop"; y: (parent.height - self.height) / 2; }
-                    Rectangle { horizontal-stretch: 1; }
-                    SwitchKnob { on: root.switch-desktop; toggled(v) => { root.set-switch-desktop(v); } }
-                }
-                HorizontalLayout {
-                    spacing: 4px;
-                    Text { text: "Let auto switch move Desktop when it is closed"; color: Theme.text-primary; vertical-alignment: center; }
-                    InfoTip { tip-id: "auto-switch-desktop"; y: (parent.height - self.height) / 2; }
-                    Rectangle { horizontal-stretch: 1; }
-                    SwitchKnob { on: root.auto-switch-desktop; toggled(v) => { root.set-auto-switch-desktop(v); } }
-                }
-            }
-        }
-        Text {
-            text: "Both are off by default. Auto switch never quits a running Claude Desktop.";
-            color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
-        }
-
         GroupHeader { text: "Auto Switch"; }
         SettingsCard {
             height: asw.preferred-height;
@@ -521,6 +494,33 @@ component GeneralSettingsPane inherits Flickable {
         }
         Text {
             text: "Moves Claude Code to the account whose weekly quota is closest to expiring unused. Only accounts already signed in to Claude Code are used; no browser opens.";
+            color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
+        }
+
+        GroupHeader { text: "Claude Desktop"; }
+        SettingsCard {
+            height: dsk.preferred-height;
+            dsk := VerticalLayout {
+                padding: 12px;
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 4px;
+                    Text { text: "Switch Claude Desktop with Switch"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "switch-desktop"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    SwitchKnob { on: root.switch-desktop; toggled(v) => { root.set-switch-desktop(v); } }
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    Text { text: "Let auto switch move Desktop when it is closed"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "auto-switch-desktop"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    SwitchKnob { on: root.auto-switch-desktop; toggled(v) => { root.set-auto-switch-desktop(v); } }
+                }
+            }
+        }
+        Text {
+            text: "Both are off by default. Auto switch never quits a running Claude Desktop.";
             color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
         }
 
