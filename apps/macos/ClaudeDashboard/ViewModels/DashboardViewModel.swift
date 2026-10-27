@@ -132,8 +132,16 @@ final class DashboardViewModel: ObservableObject {
     /// Settings > General > Display (default off): show the burn-rate animal on each gauge.
     /// Display only: the tracker keeps running either way.
     @Published var showBurnAnimals: Bool {
-        didSet { AppDefaults.shared.set(showBurnAnimals, forKey: AppDefaults.showBurnAnimalsKey) }
+        didSet {
+            AppDefaults.shared.set(showBurnAnimals, forKey: AppDefaults.showBurnAnimalsKey)
+            animalClock.reevaluate()
+        }
     }
+    /// The single shared display clock (views observe it, not this model, so a 12 fps
+    /// phase does not re-render everything).
+    let animalClock: AnimalDisplayClock
+    /// Recent 5h changes per account (`uuidString`); timestamps come from `animalClock.now`.
+    private var animalActivity = AnimalActivityTracker()
     /// Settings > General > Claude Desktop (default off): Auto Switch moves Desktop only while it is not running.
     @Published var autoSwitchDesktopEnabled: Bool {
         didSet { AppDefaults.shared.set(autoSwitchDesktopEnabled, forKey: AppDefaults.autoSwitchDesktopEnabledKey) }
@@ -195,8 +203,10 @@ final class DashboardViewModel: ObservableObject {
         autoSwitchSettings: AutoSwitchSettings? = nil,
         autoSwitchLogStore: AutoSwitchLogStore? = nil,
         pingController: PingController? = nil,
-        criticalSettings: CriticalSettings? = nil
+        criticalSettings: CriticalSettings? = nil,
+        animalClock: AnimalDisplayClock? = nil
     ) {
+        self.animalClock = animalClock ?? AnimalDisplayClock()
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.switchDesktopEnabled = AppDefaults.shared.bool(forKey: AppDefaults.switchDesktopEnabledKey)
         self.autoSwitchDesktopEnabled = AppDefaults.shared.bool(forKey: AppDefaults.autoSwitchDesktopEnabledKey)
@@ -254,12 +264,31 @@ final class DashboardViewModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         ratioController.start()
+        self.animalClock.shouldRun = { [weak self] in self?.hasEligibleAnimal ?? false }
 
         scheduleAutoRefresh()
         startResetMonitor()
 
         // Auto-load data on launch
         Task { await self.refreshAll() }
+    }
+
+    /// True when the setting is on and the account's 5h usage changed in the last 600 s.
+    func isAnimalActive(accountID: UUID) -> Bool {
+        showBurnAnimals && animalActivity.isActive(accountID: accountID.uuidString, at: animalClock.now())
+    }
+
+    /// Asset id of the animal to draw on the account's 5h ring now, or nil (setting off,
+    /// inactive, or no burn-rate animal yet).
+    func animalAsset(for state: AccountUsageState) -> String? {
+        AnimalDisplayModels.eligibleAsset(
+            showBurnAnimals: showBurnAnimals, isFiveHour: true,
+            emoji: state.burnRates?.fiveHour?.animal,
+            isActive: isAnimalActive(accountID: state.id))
+    }
+
+    private var hasEligibleAnimal: Bool {
+        accountStates.contains { animalAsset(for: $0) != nil }
     }
 
     /// Settings > General > Reset All: every setting on that page except Updates (owned by
@@ -389,6 +418,14 @@ final class DashboardViewModel: ObservableObject {
                 if let index = accountStates.firstIndex(where: { $0.id == accountId }) {
                     accountStates[index].usage = usage ?? accountStates[index].usage
                     accountStates[index].error = error
+                    // Only a successful fetch's 5h value counts as activity.
+                    if let usage, error == nil {
+                        animalActivity.recordSuccess(
+                            accountID: accountId.uuidString,
+                            utilization: usage.fiveHour.utilization,
+                            resetsAt: usage.fiveHour.resetsAt?.timeIntervalSince1970,
+                            at: animalClock.now())
+                    }
 
                     // Auto ping on this refresh's own fetch, never the stored usage:
                     // a failed fetch (usage == nil) must not ping. A successful fetch
@@ -453,6 +490,7 @@ final class DashboardViewModel: ObservableObject {
             }
         }
 
+        animalClock.reevaluate()
         // Fire auto pings without blocking the refresh spinner.
         runAutoPings(autoPings)
 
