@@ -3,3 +3,4 @@
 
 pub mod safe_storage;
 pub mod paths;
+pub mod config;
