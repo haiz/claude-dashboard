@@ -53,6 +53,13 @@ of it.
 - **Which cookie rows count as a session** — this file's "Expired cookie
   rows" section. *How* the rows are decrypted stays platform detail; which
   of them may become an account does not.
+- **5-hour animated animal display behavior** — the animation cycle, frame
+  selection, stable emoji-to-asset identifiers, eligibility, and the
+  account-scoped ten-minute activity window described in
+  `cases/animal-display.json`. The visual assets and rendering remain platform
+  detail. The `showBurnAnimals` setting defaults to off; when enabled, only
+  active 5-hour rows with a recognized burn-rate animal may animate. Seven-day
+  rows continue to show their percentage.
 
 **Platform detail (deliberately free to differ):**
 - **Cookie decryption.** How a session key is extracted from the browser's
@@ -74,9 +81,9 @@ of it.
   `apps/macos/Helper/HelperAccountStore.swift:8-23`). The *shape* of that
   JSON is contract (`account-schema.md`); where and how it is stored is
   not.
-- **UI.** Menu bar layout, window chrome, colors, charts — all platform
-  detail. (The two circles / segmented countdown / animal emoji are
-  intentional macOS UI design choices, not contract material.)
+- **UI.** Menu bar layout, window chrome, colors, charts, and the animal image
+  assets/rendering — all platform detail. The optional 5-hour animation's
+  timing, eligibility, and activity semantics are shared contract behavior.
 
 ## The case-file convention
 
