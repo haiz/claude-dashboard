@@ -6,3 +6,4 @@ pub mod paths;
 pub mod config;
 pub mod cookies;
 pub mod process;
+pub mod switcher;
