@@ -1,4 +1,4 @@
-import { Theme, UiRow, UiWindow } from "theme.slint";
+import { Theme, UiRow, UiWindow, BurnAnimalClock, BurnAnimalSheets } from "theme.slint";
 import { HistoryBox } from "chart.slint";
 import { Spinner } from "std-widgets.slint";
 
@@ -75,10 +75,14 @@ export component SidebarRow inherits Rectangle {
     }
 }
 
-// Ring gauge: track + Rust-built progress arc (core::geometry) + centered percent.
+// Ring gauge: track + Rust-built progress arc (core::geometry) + centered percent. On the 5h
+// ring (`animal-ring`) an eligible burn animal takes turns with the percent, driven by the one
+// app-wide BurnAnimalClock (no per-ring timer or phase).
 export component UsageGauge inherits Rectangle {
     in property <UiWindow> win;
     in property <float> zoom: 1.0;
+    // Only WindowColumn's 5h ring sets this; 7d, Fable and every other gauge never animate.
+    in property <bool> animal-ring: false;
     width: root.win.diameter * root.zoom * 1px;
     height: root.win.diameter * root.zoom * 1px;
     // Track: full circle at the same radius/stroke as the arc.
@@ -107,26 +111,59 @@ export component UsageGauge inherits Rectangle {
     // macOS: the number at 0.33 x diameter (semibold) and a smaller "%" at 0.20 x diameter
     // on its baseline (core::geometry::percent_font_size / percent_sign_font_size).
     property <length> d: root.win.diameter * root.zoom * 1px;
-    HorizontalLayout {
-        alignment: center;
-        Text {
-            text: floor(root.win.percent);
-            color: Theme.text-primary;
-            // macOS `minimumScaleFactor(0.7)`: three digits shrink to stay inside the ring.
-            font-size: root.d * 0.33 * (root.win.percent >= 100 ? 0.8 : 1.0);
-            font-weight: 600;
-            vertical-alignment: center;
-        }
-        VerticalLayout {
+    // Burn animal (spec "Eligibility"): asset set (setting on, packaged manifest valid, a
+    // burn-rate animal known), 5h changed within 600 s, and the shared phase sampling a frame.
+    property <bool> animal-on: root.animal-ring && root.win.animal-asset != ""
+        && BurnAnimalClock.sampled && BurnAnimalClock.clock < root.win.animal-expires-at;
+    property <float> percent-opacity: root.animal-on ? BurnAnimalClock.percent-opacity : 1.0;
+    property <float> animal-opacity: root.animal-on ? BurnAnimalClock.animal-opacity : 0.0;
+    // macOS GaugeCenter: the animal's fixed box inside the stroke (diameter - 2 x stroke - 2),
+    // centred like the percent, so neither the ring nor the layout ever moves.
+    property <length> center-box: root.d - 2 * root.win.line-width * root.zoom * 1px - 2px;
+    // The percent stays laid out exactly as before; only its opacity and scale follow the phase
+    // (each layer grows from 85% as it fades in, as on macOS). It stays the accessible value.
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        opacity: root.percent-opacity;
+        transform-scale: 0.85 + 0.15 * root.percent-opacity;
+        HorizontalLayout {
             alignment: center;
-            // Drop the sign to the number's baseline: half the gap between the two cap heights.
-            padding-top: root.d * (0.33 - 0.20) * 0.5;
             Text {
-                text: "%";
+                text: floor(root.win.percent);
                 color: Theme.text-primary;
-                font-size: root.d * 0.20;
+                // macOS `minimumScaleFactor(0.7)`: three digits shrink to stay inside the ring.
+                font-size: root.d * 0.33 * (root.win.percent >= 100 ? 0.8 : 1.0);
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            VerticalLayout {
+                alignment: center;
+                // Drop the sign to the number's baseline: half the gap between the two cap heights.
+                padding-top: root.d * (0.33 - 0.20) * 0.5;
+                Text {
+                    text: "%";
+                    color: Theme.text-primary;
+                    font-size: root.d * 0.20;
+                }
             }
         }
+    }
+    // One 128 px cell of the 6 x 4 sprite sheet, picked by the clock's frame. Decorative.
+    if root.animal-on: Image {
+        width: root.center-box;
+        height: root.center-box;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        source: BurnAnimalSheets.sheet(root.win.animal-asset);
+        source-clip-x: BurnAnimalClock.clip-x;
+        source-clip-y: BurnAnimalClock.clip-y;
+        source-clip-width: 128;
+        source-clip-height: 128;
+        image-fit: contain;
+        opacity: root.animal-opacity;
+        transform-scale: 0.85 + 0.15 * root.animal-opacity;
+        accessible-role: none;
     }
 }
 
@@ -186,8 +223,8 @@ component RingButton inherits Rectangle {
     Tooltip { text: @markdown("\{root.tip}"); }
 }
 
-// One gauge column on the card (macOS UsageBar, compact): mono label, usage ring with the
-// burn-rate animal at its bottom-right, then the segmented countdown ring beside it with the
+// One gauge column on the card (macOS UsageBar, compact): mono label, usage ring (the 5h one
+// alternates its percent with the animated burn animal), then the segmented countdown ring beside it with the
 // reset label above. Only the two rings open that window's chart, as on macOS.
 export component WindowColumn inherits Rectangle {
     in property <string> label;
@@ -224,13 +261,7 @@ export component WindowColumn inherits Rectangle {
                 glow: root.win.color;
                 tip: root.tip;
                 clicked => { root.clicked(); }
-                UsageGauge { win: root.win; zoom: root.big-zoom; }
-                if root.win.animal != "": Text {
-                    x: parent.width - self.preferred-width + 4px;
-                    y: parent.height - self.preferred-height + 4px;
-                    text: root.win.animal;
-                    font-size: root.compact ? 10px : 13px;
-                }
+                UsageGauge { win: root.win; zoom: root.big-zoom; animal-ring: root.label == "5h"; }
             }
             if root.countdown && root.win.reset-label != "": VerticalLayout {
                 alignment: end;

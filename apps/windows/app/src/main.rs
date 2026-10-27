@@ -4,6 +4,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
 mod animal_assets;
+mod animal_clock;
 mod auto_switch;
 mod ratio;
 mod cc_login;
@@ -144,6 +145,10 @@ fn apply_output(
         &model::tray_tooltip(bar, now),
     );
     LAST_OUTPUT.with(|l| *l.borrow_mut() = Some((out.clone(), now)));
+    // New 5h assets / expiries: start or stop the one burn-animal clock.
+    if let Some(app) = weak.upgrade() {
+        animal_clock::sync(&app, pop_weak.upgrade().as_ref());
+    }
 }
 
 /// Copies each row's Ping row state (running, latest caption) from the ping controller.
@@ -295,8 +300,9 @@ fn refresh_auto_switch_ui() {
 }
 
 /// UI thread: Show burn-rate animals changed (toggle or Reset All). Sets the app property and
-/// rewrites every visible row's animals in place from the last refresh, then the Overview
-/// legend; no fetch, and the burn-rate tracker is untouched (display only).
+/// rewrites every visible row's animals in place from the last refresh, then starts or stops
+/// the animal clock (off removes the 5h animals at once); no fetch, and the burn-rate tracker
+/// is untouched (display only).
 fn refresh_burn_animals_ui(show: bool) {
     use slint::Model;
     let app = MAIN_APP.with(|m| m.borrow().as_ref().and_then(|w| w.upgrade()));
@@ -322,8 +328,14 @@ fn refresh_burn_animals_ui(show: bool) {
         }
     }
     if let Some(a) = &app {
-        overview::on_show_animals(a);
+        sync_animal_clock(a);
     }
+}
+
+/// [`animal_clock::sync`] with the flyout, whichever exists. UI thread only.
+fn sync_animal_clock(app: &AppWindow) {
+    let pop = POPOVER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade()));
+    animal_clock::sync(app, pop.as_ref());
 }
 
 /// Settings > General's Auto Switch and Critical Accounts rows, from settings.json.
@@ -1222,6 +1234,10 @@ fn toggle_flyout(pop: &PopoverWindow, tray_rect: popover::Rect) {
         .set_position(slint::PhysicalPosition::new(origin.x, origin.y));
     popover::focus_flyout(pop.window());
     FLYOUT.with(|f| f.borrow_mut().shown_at = Some(std::time::Instant::now()));
+    // The animal clock stops while both windows are hidden; showing one resumes it.
+    if let Some(a) = MAIN_APP.with(|m| m.borrow().as_ref().and_then(|w| w.upgrade())) {
+        animal_clock::sync(&a, Some(pop));
+    }
 }
 
 thread_local! {
@@ -1236,6 +1252,8 @@ thread_local! {
 fn show_main(app: &AppWindow) {
     let _ = app.show();
     app.window().set_minimized(false);
+    // The animal clock stops while both windows are hidden; showing one resumes it.
+    sync_animal_clock(app);
     if !MAIN_STYLED.with(|s| s.replace(true)) && !apply_mica(app.window()) {
         app.set_use_solid_background(true);
     }
@@ -1577,12 +1595,12 @@ fn main() -> Result<(), slint::PlatformError> {
     // Settings > General: settings/registry I/O on workers, results back on the UI thread.
     {
         app.set_help_topics(help::topic_model());
-        // Reading a Card's sample ring (macOS: 5h at 62%, 2h15m left, a rabbit).
+        // Reading a Card's sample ring (macOS: 5h at 62%, 2h15m left). Static: no animal.
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
-        app.set_help_sample(model::sample_window(62.0, 8100.0, 18000.0, "\u{1F407}", now));
+        app.set_help_sample(model::sample_window(62.0, 8100.0, 18000.0, "", now));
         // Read now, before the first rows are built (the refresh loop or the dev seed below):
         // `apply_output` builds every row from this property.
         app.set_show_burn_animals(settings_general::show_burn_animals());
@@ -2025,7 +2043,16 @@ fn main() -> Result<(), slint::PlatformError> {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
-        apply_output(&app.as_weak(), &popover.as_weak(), &fake_rows(now), now);
+        let out = fake_rows(now);
+        // Mark every 5h value as just changed (a baseline 1% lower, then the seed), so bob's
+        // and carol's 5h rings animate once Show burn-rate animals is on.
+        let mut baseline = out.rows.clone();
+        for w in baseline.iter_mut().filter_map(|r| r.five_hour.as_mut()) {
+            w.utilization -= 1.0;
+        }
+        record_animal_activity(&baseline);
+        record_animal_activity(&out.rows);
+        apply_output(&app.as_weak(), &popover.as_weak(), &out, now);
         history::seed_fake_history();
     } else {
         // Each account page's latest ping, from the Ping Log.

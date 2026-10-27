@@ -399,7 +399,7 @@ export component HelpPane inherits Flickable {
                     alignment: center;
                     HelpText { body: @markdown("**Big ring**: how much of the window you have used, with the percentage inside."); }
                     HelpText { body: @markdown("**Small ring**: time until the window resets. One segment per hour (5h) or per day (7d). It turns green as the reset gets close."); }
-                    HelpText { body: @markdown("**Animal**: how fast you are burning (see below). Off by default; turn on **Show burn-rate animals** in Settings > General."); }
+                    HelpText { body: @markdown("**Animal**: how fast you are burning (see below). It takes turns with the percentage inside the 5h ring while that usage changed in the last 10 minutes. Off by default; turn on **Show burn-rate animals** in Settings > General."); }
                 }
             }
 

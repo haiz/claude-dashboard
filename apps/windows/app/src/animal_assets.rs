@@ -26,6 +26,11 @@ use claude_dashboard_core::rows::DisplayRow;
 
 const MANIFEST_JSON: &str = include_str!("../ui/assets/burn-animals/manifest.json");
 
+/// Sheet grid columns and square cell side, in sheet pixels. `ui/components.slint` clips
+/// 128 px cells, so the validator requires exactly these.
+pub const SHEET_COLUMNS: u32 = 6;
+pub const CELL_PX: u32 = 128;
+
 /// The ids of the validated manifest's animals.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Catalog {
@@ -55,6 +60,9 @@ pub fn validate_manifest(json: &str) -> Result<Catalog, String> {
     if cols * rows != FRAME_COUNT as f64 {
         return Err(format!("grid {cols}x{rows} does not hold {FRAME_COUNT} frames"));
     }
+    expect("columns", SHEET_COLUMNS as f64)?;
+    expect("cellWidth", CELL_PX as f64)?;
+    expect("cellHeight", CELL_PX as f64)?;
     expect("sheetWidth", cols * cw)?;
     expect("sheetHeight", rows * ch)?;
     let animals = v.get("animals").and_then(|a| a.as_array()).ok_or("missing animals")?;
@@ -90,6 +98,15 @@ pub fn catalog() -> Option<&'static Catalog> {
 /// Stable asset id for a burn-rate emoji, only when the manifest lists it.
 pub fn asset_for_emoji(emoji: &str) -> Option<&'static str> {
     asset_id(emoji).filter(|id| catalog().is_some_and(|c| c.has(id)))
+}
+
+/// Top-left sheet pixel of frame `index`'s cell: row-major, [`SHEET_COLUMNS`] cells of
+/// [`CELL_PX`] per row. The Slint ring clips this cell (`source-clip-x` / `-y`).
+///
+///     assert_eq!(cell_origin(7), (128, 128)); // second row, second column
+pub fn cell_origin(index: u32) -> (i32, i32) {
+    let i = index % FRAME_COUNT;
+    ((i % SHEET_COLUMNS * CELL_PX) as i32, (i / SHEET_COLUMNS * CELL_PX) as i32)
 }
 
 /// Seconds on a monotonic clock, zero at the first call (the app origin). Immune to wall-clock
@@ -155,6 +172,22 @@ mod tests {
         assert!(validate_manifest(&bad).unwrap_err().contains("sheetWidth"));
         let bad = valid().replace("\"frameCount\": 24", "\"frameCount\": 12");
         assert!(validate_manifest(&bad).is_err());
+        // A 4 x 6 grid of 192 x 128 cells is self-consistent but not what the ring clips.
+        let mut v: serde_json::Value = serde_json::from_str(MANIFEST_JSON).unwrap();
+        v["columns"] = 4.into();
+        v["rows"] = 6.into();
+        v["cellWidth"] = 192.into();
+        v["sheetHeight"] = 768.into();
+        assert!(validate_manifest(&v.to_string()).unwrap_err().contains("columns"));
+    }
+
+    #[test]
+    fn cell_origin_is_row_major_six_columns() {
+        assert_eq!(cell_origin(0), (0, 0));
+        assert_eq!(cell_origin(5), (640, 0));
+        assert_eq!(cell_origin(6), (0, 128));
+        assert_eq!(cell_origin(7), (128, 128));
+        assert_eq!(cell_origin(23), (640, 384));
     }
 
     #[test]

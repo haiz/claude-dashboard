@@ -45,8 +45,6 @@ pub struct Account {
     pub email: String,
     /// Plan weight for the Avg overlay (macOS `planWeight`).
     pub weight: f64,
-    /// Burn animal per window, in selector order: 5h, 7d, Fable ("" = unknown).
-    pub animals: [String; 3],
 }
 
 /// macOS `OverviewChartView.planWeight`, from the plan label.
@@ -72,12 +70,10 @@ pub struct Overview {
     /// The limited samples per account (red dot + warning).
     limited: BTreeMap<String, Vec<Entry>>,
     hidden: HashSet<String>,
-    /// Settings > General > Show burn-rate animals: off hides the legend's animal column.
-    show_animals: bool,
 }
 
 impl Overview {
-    pub fn new(window: &str, preset: &str, accounts: Vec<Account>, show_animals: bool, now: f64) -> Self {
+    pub fn new(window: &str, preset: &str, accounts: Vec<Account>, now: f64) -> Self {
         // Same container as History: Pan by default, toggle to Zoom.
         let inner = Interaction::new(preset, now);
         Self {
@@ -87,7 +83,6 @@ impl Overview {
             series: BTreeMap::new(),
             limited: BTreeMap::new(),
             hidden: HashSet::new(),
-            show_animals,
         }
     }
 
@@ -119,20 +114,6 @@ impl Overview {
         if !self.hidden.remove(id) {
             self.hidden.insert(id.to_string());
         }
-    }
-
-    /// The animal for the active window selector (macOS `animalForSelectedWindow`);
-    /// "" when Show burn-rate animals is off.
-    fn animal(&self, a: &Account) -> String {
-        if !self.show_animals {
-            return String::new();
-        }
-        let i = match self.window.as_str() {
-            "7d" => 1,
-            "fable" => 2,
-            _ => 0,
-        };
-        a.animals[i].clone()
     }
 
     pub fn view(&self, local_offset_ms: f64) -> OverviewView {
@@ -212,8 +193,6 @@ impl Overview {
                 },
                 slot: palette_slot(i),
                 on: !self.hidden.contains(&a.id),
-                animal: self.animal(a).as_str().into(),
-                show_animal: self.show_animals,
             })
             .collect();
         (v, lines, legend, limits)
@@ -261,11 +240,6 @@ fn accounts_of(app: &AppWindow) -> Vec<Account> {
             name: r.name.to_string(),
             email: r.email.to_string(),
             weight: plan_weight(r.plan.as_str()),
-            animals: [
-                r.five_hour.animal.to_string(),
-                r.seven_day.animal.to_string(),
-                r.fable.animal.to_string(),
-            ],
         })
         .collect()
 }
@@ -334,8 +308,7 @@ pub fn install(app: &AppWindow) {
             // As macOS (@State): every visit starts on 5h with all accounts shown.
             STATE.with(|s| {
                 let mut s = s.borrow_mut();
-                let show = app.get_show_burn_animals();
-                let mut o = Overview::new(DEFAULT_WINDOW, DEFAULT_PRESET, accounts, show, now_ms());
+                let mut o = Overview::new(DEFAULT_WINDOW, DEFAULT_PRESET, accounts, now_ms());
                 if let Some((cw, ch)) = LAST_SIZE.with(|l| l.get()) {
                     o.inner.set_size(cw, ch);
                 }
@@ -449,34 +422,18 @@ pub fn install(app: &AppWindow) {
     }
 }
 
-/// A refresh finished: refresh the legend animals, slide a following range to
+/// A refresh finished: refresh the legend accounts, slide a following range to
 /// "now" and reload so fresh points show. No-op when the pane is not open.
 pub fn on_refresh(app: &AppWindow) {
     if app.get_selection() != crate::Pane::Overview || STATE.with(|s| s.borrow().is_none()) {
         return;
     }
     let accounts = accounts_of(app);
-    let show = app.get_show_burn_animals();
     push(app, |o| {
         o.accounts = accounts;
-        o.show_animals = show;
         o.inner.live_tick(now_ms());
     });
     load(app);
-}
-
-/// Show burn-rate animals was toggled: redraw the legend from the (already patched) account
-/// rows, without reloading the history. No-op when the pane is not open.
-pub fn on_show_animals(app: &AppWindow) {
-    if STATE.with(|s| s.borrow().is_none()) {
-        return;
-    }
-    let accounts = accounts_of(app);
-    let show = app.get_show_burn_animals();
-    push(app, |o| {
-        o.accounts = accounts;
-        o.show_animals = show;
-    });
 }
 
 #[cfg(test)]
@@ -492,12 +449,11 @@ mod tests {
             name: id.to_uppercase(),
             email: format!("{id}@x.dev"),
             weight: 1.0,
-            animals: [format!("{id}-5h"), format!("{id}-7d"), format!("{id}-f")],
         }
     }
 
     fn ov() -> Overview {
-        let mut o = Overview::new("5h", "5h", vec![acct("a"), acct("b"), acct("c")], true, NOW);
+        let mut o = Overview::new("5h", "5h", vec![acct("a"), acct("b"), acct("c")], NOW);
         o.inner.set_size(536.0, 336.0);
         let mut m = BTreeMap::new();
         m.insert(
@@ -527,7 +483,7 @@ mod tests {
     #[test]
     fn opens_on_the_5h_preset_like_macos() {
         assert_eq!(DEFAULT_PRESET, "5h");
-        let o = Overview::new(DEFAULT_WINDOW, DEFAULT_PRESET, Vec::new(), true, NOW);
+        let o = Overview::new(DEFAULT_WINDOW, DEFAULT_PRESET, Vec::new(), NOW);
         assert_eq!(o.inner.preset, "5h");
     }
 
@@ -612,7 +568,7 @@ mod tests {
     fn avg_rate_text_uses_weighted_rate() {
         // Task 3's literal: a (w1) climbs 10 -> 30 (+20) and 20 -> 50 (+30);
         // b (w5) +10; c (w20) has one point. Sum = (50*1 + 10*5 + 0*20) / 26 per 10h.
-        let mut o = Overview::new("5h", "5h", vec![acct("a"), acct("b"), acct("c")], true, NOW);
+        let mut o = Overview::new("5h", "5h", vec![acct("a"), acct("b"), acct("c")], NOW);
         o.accounts[1].weight = 5.0;
         o.accounts[2].weight = 20.0;
         o.inner.range = claude_dashboard_core::chart::Range {
@@ -645,36 +601,6 @@ mod tests {
         );
         o.toggle("a");
         assert_eq!(o.view(0.0).0.avg_text, "Avg: --");
-    }
-
-    #[test]
-    fn legend_carries_animal() {
-        let mut o = ov();
-        assert_eq!(o.view(0.0).2[0].animal.as_str(), "a-5h");
-        o.window = "7d".into();
-        assert_eq!(o.view(0.0).2[1].animal.as_str(), "b-7d");
-        o.window = "fable".into();
-        assert_eq!(o.view(0.0).2[2].animal.as_str(), "c-f");
-    }
-
-    #[test]
-    fn show_animals_off_blanks_and_hides_the_legend_animal() {
-        let mut o = ov();
-        o.show_animals = false;
-        for window in ["5h", "7d", "fable"] {
-            o.window = window.into();
-            let legend = o.view(0.0).2;
-            assert_eq!(legend.len(), 3, "every account keeps its legend row");
-            for item in &legend {
-                assert!(item.animal.is_empty(), "{window}: no animal, got {}", item.animal);
-                assert!(!item.show_animal, "{window}: the column is hidden");
-            }
-        }
-        o.show_animals = true;
-        o.window = "5h".into();
-        let legend = o.view(0.0).2;
-        assert_eq!(legend[0].animal.as_str(), "a-5h");
-        assert!(legend.iter().all(|i| i.show_animal));
     }
 
     #[test]

@@ -43,7 +43,8 @@ export struct UiWindow {
     segments-compact: [UiSegment],
     track: [string],
     track-compact: [string],
-    // Burn-rate animal placed on the ring ("" when unknown).
+    // Burn-rate animal emoji of this window ("" when unknown or the setting is off). Data only:
+    // no gauge draws it; the 5h ring animates `animal-asset` instead.
     animal: string,
     // 5h window only. Stable asset id ("snail" .. "cheetah") of the animal to animate, "" when
     // the setting is off, no burn-rate animal is known or the packaged manifest is invalid.
@@ -58,7 +59,7 @@ export struct UiWindow {
 // Compile-time references so every burn-animal sprite sheet (768x512, 6x4 cells of 128 px,
 // row-major, 24 frames) is packaged in the Windows build.
 export global BurnAnimalSheets {
-    pure function sheet(id: string) -> image {
+    public pure function sheet(id: string) -> image {
         if id == "snail" { return @image-url("assets/burn-animals/snail.png"); }
         if id == "turtle" { return @image-url("assets/burn-animals/turtle.png"); }
         if id == "rabbit" { return @image-url("assets/burn-animals/rabbit.png"); }
@@ -66,6 +67,21 @@ export global BurnAnimalSheets {
         if id == "cheetah" { return @image-url("assets/burn-animals/cheetah.png"); }
         return @image-url("assets/burn-animals/snail.png");
     }
+}
+
+// The one app-wide burn-animal clock, published from Rust (`animal_clock.rs`, core
+// AnimalDisplayPhase) by a single 12 fps UI-thread timer; every 5h ring reads it, so all cards
+// share one phase. The defaults are the stopped clock: percentage only.
+export global BurnAnimalClock {
+    // Monotonic app seconds (animal_assets::monotonic_now), compared with `animal-expires-at`.
+    in property <float> clock;
+    // The phase samples an animal frame (5.5 s to 10 s of the 10 s cycle).
+    in property <bool> sampled;
+    in property <float> percent-opacity: 1.0;
+    in property <float> animal-opacity;
+    // Top-left sheet pixel of the frame's 128 px cell (animal_assets::cell_origin).
+    in property <int> clip-x;
+    in property <int> clip-y;
 }
 
 export struct UiRow {
