@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import ClaudeDashboard
 
 @MainActor
@@ -18,6 +19,7 @@ final class AnimalDisplayClockTests: XCTestCase {
                 return { self.cancels += 1; self.tick = nil }
             })
         clock.shouldRun = { self.eligible }
+        clock.gaugeAppeared()           // one 5h gauge center on screen
         return clock
     }
 
@@ -54,6 +56,49 @@ final class AnimalDisplayClockTests: XCTestCase {
         clock.reevaluate()
         XCTAssertEqual(schedules, 2)
         XCTAssertTrue(clock.isRunning)
+    }
+
+    func testRunsOnlyWhileAGaugeIsMounted() {
+        let clock = makeClock()
+        clock.gaugeDisappeared()        // nothing on screen
+        eligible = true
+        clock.reevaluate()
+        XCTAssertFalse(clock.isRunning, "eligible but no gauge mounted")
+        XCTAssertEqual(schedules, 0)
+        clock.gaugeAppeared()
+        XCTAssertTrue(clock.isRunning, "a mounted gauge starts it")
+        clock.gaugeAppeared()           // a second gauge: still one timer
+        clock.gaugeDisappeared()
+        XCTAssertTrue(clock.isRunning, "one gauge still mounted")
+        XCTAssertEqual(schedules, 1)
+        clock.gaugeDisappeared()
+        XCTAssertFalse(clock.isRunning, "the last gauge left")
+        XCTAssertEqual(cancels, 1)
+        clock.gaugeDisappeared()        // unbalanced: never negative
+        XCTAssertEqual(clock.mountedGauges, 0)
+    }
+
+    func testPercentageOnlyTicksPublishNothing_animalTicksPublishEachFrame() {
+        let clock = makeClock()
+        eligible = true
+        time = 101                      // 1 s into the cycle: percentage only
+        clock.reevaluate()
+        var publishes = 0
+        let sub = clock.objectWillChange.sink { publishes += 1 }
+        defer { sub.cancel() }
+        var t = 101.0
+        while t < 105.4 {               // the rest of the percentage-only part, at 12 fps
+            t += 1 / 12; time = t
+            tick?()
+        }
+        XCTAssertEqual(publishes, 0, "no redraw while only the percentage shows")
+        time = 107; tick?()             // animal frame 12
+        time = 107.1; tick?()           // frame 13
+        XCTAssertEqual(publishes, 2)
+        XCTAssertEqual(clock.phase.frameIndex, 13)
+        eligible = false                // expiry is still re-checked on a quiet tick
+        time = 111; tick?()
+        XCTAssertFalse(clock.isRunning)
     }
 
     func testReevaluateStopsWhenSettingTurnsOff() {

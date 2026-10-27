@@ -103,7 +103,7 @@ fn apply_output(
     let mut rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now, show_animals)).collect();
     // Last 5h change per account (monotonic seconds): Slint re-checks the 600 s expiry on its tick.
     for r in rows.iter_mut() {
-        model::set_animal_activity(r, animal_assets::last_change(r.id.as_str()));
+        model::set_animal_activity(r, out.last_changes.get(r.id.as_str()).copied());
     }
     set_ping_fields(&mut rows);
     set_switch_fields(&mut rows);
@@ -415,6 +415,8 @@ fn spawn_refresh_loop(
     std::thread::spawn(move || {
         let mut prev: Vec<claude_dashboard_core::rows::DisplayRow> = Vec::new();
         let mut tracker = claude_dashboard_core::burn_rate::BurnRateTracker::default();
+        // Burn-animal activity: only real fetches feed it; each output carries its last changes.
+        let mut animals = claude_dashboard_core::animal_display::AnimalActivityTracker::new();
         let mut timer = refresh::AutoTimer::default();
         let mut poll = refresh::FastPoll::default();
         let mut poll_target: Option<String> = None;
@@ -447,7 +449,7 @@ fn spawn_refresh_loop(
                         // Only a real fetch is a new measurement; a failed refresh keeps the previous projections.
                         if fetched {
                             refresh::apply_projections(&mut tracker, &mut out.rows, now);
-                            record_animal_activity(&out.rows);
+                            animal_assets::record_activity(&mut animals, &out.rows, animal_assets::monotonic_now());
                         }
                         out
                     }
@@ -462,7 +464,7 @@ fn spawn_refresh_loop(
                             for i in 0..out.rows.len() {
                                 if ids.contains(&out.rows[i].account_id) {
                                     refresh::apply_projections(&mut tracker, &mut out.rows[i..=i], now);
-                                    record_animal_activity(&out.rows[i..=i]);
+                                    animal_assets::record_activity(&mut animals, &out.rows[i..=i], animal_assets::monotonic_now());
                                 }
                             }
                         }
@@ -489,6 +491,8 @@ fn spawn_refresh_loop(
                 let targets = ping::controller().claim_targets(&out.candidates, enabled, now);
                 spawn_auto_pings(targets, tx.clone());
                 prev = out.rows.clone();
+                // After auto switch, which can rebuild `out` (relabel) without them.
+                out.last_changes = animal_assets::last_changes(&animals, &out.rows);
                 let (weak, pop_weak) = (weak.clone(), pop_weak.clone());
                 let _ = slint::invoke_from_event_loop(move || apply_output(&weak, &pop_weak, &out, now));
             }
@@ -531,13 +535,6 @@ fn spawn_refresh_loop(
             jobs = refresh::coalesce(batch);
         }
     });
-}
-
-/// Feeds the rows a real fetch just measured to the shared animal-activity tracker, stamped on
-/// the monotonic clock (a wall-clock jump can neither extend nor cut activity).
-fn record_animal_activity(rows: &[claude_dashboard_core::rows::DisplayRow]) {
-    let mut t = animal_assets::shared_tracker().lock().unwrap_or_else(|e| e.into_inner());
-    animal_assets::record_activity(&mut t, rows, animal_assets::monotonic_now());
 }
 
 pub(crate) fn unix_now() -> f64 {
@@ -1179,7 +1176,7 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         expired("f4", "dave", AccountKind::PastedKey),
         expired("f5", "erin", AccountKind::Scanned { browser: Browser::Edge, profile: "Work".into() }),
     ];
-    refresh::RefreshOutput { peak: 100.0, rows, candidates: Vec::new() }
+    refresh::RefreshOutput { peak: 100.0, rows, candidates: Vec::new(), last_changes: Default::default() }
 }
 
 /// Time after a focus-loss hide during which a tray click is treated as the
@@ -2043,15 +2040,19 @@ fn main() -> Result<(), slint::PlatformError> {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
-        let out = fake_rows(now);
+        let mut out = fake_rows(now);
         // Mark every 5h value as just changed (a baseline 1% lower, then the seed), so bob's
-        // and carol's 5h rings animate once Show burn-rate animals is on.
+        // and carol's 5h rings animate once Show burn-rate animals is on. Filled the way the
+        // refresh loop fills it: a local tracker, then `last_changes` on the output.
         let mut baseline = out.rows.clone();
         for w in baseline.iter_mut().filter_map(|r| r.five_hour.as_mut()) {
             w.utilization -= 1.0;
         }
-        record_animal_activity(&baseline);
-        record_animal_activity(&out.rows);
+        let mut animals = claude_dashboard_core::animal_display::AnimalActivityTracker::new();
+        let t = animal_assets::monotonic_now();
+        animal_assets::record_activity(&mut animals, &baseline, t);
+        animal_assets::record_activity(&mut animals, &out.rows, t);
+        out.last_changes = animal_assets::last_changes(&animals, &out.rows);
         apply_output(&app.as_weak(), &popover.as_weak(), &out, now);
         history::seed_fake_history();
     } else {

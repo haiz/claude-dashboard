@@ -32,10 +32,14 @@ final class AccountCardLayoutTests: XCTestCase {
             orgId: nil, accountUuid: nil, plan: .max5x, lastSynced: nil,
             status: .active, isPinned: false, source: .browser
         )
-        // The animal phase of the shared clock: the widest the 5h center can be.
-        let clock = AnimalDisplayClock(now: { 7 }, scheduler: { _, _ in {} })
+        // The animal phase of the shared clock (7 s into the cycle): the widest the 5h center
+        // can be. The clock's origin is its first `now()`, so time moves after creation.
+        var t = 0.0
+        let clock = AnimalDisplayClock(now: { t }, scheduler: { _, _ in {} })
+        t = 7
         clock.shouldRun = { true }
-        clock.reevaluate()
+        clock.gaugeAppeared()
+        XCTAssertEqual(clock.phase.content, .animal)
         let card = AccountCard(
             state: AccountUsageState(id: account.id, account: account, usage: usage),
             onResync: {}, onTogglePin: {},

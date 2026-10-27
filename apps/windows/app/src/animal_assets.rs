@@ -9,13 +9,19 @@
 //! * Time: activity expires 600 s after the last change even with no refresh, so it is stored
 //!   as a timestamp on a monotonic clock ([`monotonic_now`], seconds since the first call)
 //!   and re-checked by whoever draws (core's `AnimalActivityTracker::is_active`). Callers pass the time in; tests never sleep.
+//!   The tracker is owned by the refresh loop (`main::spawn_refresh_loop`), which hands
+//!   [`last_changes`] to the UI on `RefreshOutput`; this module holds no tracker state.
 //!
-//!     let t = monotonic_now();
-//!     record_activity(&mut tracker, &rows, t);          // after a successful fetch
-//!     tracker.is_active("id", t + 599.0)               // true; false at +601 (core's rule)
+//! Example:
+//!
+//! ```ignore
+//! let t = monotonic_now();
+//! record_activity(&mut tracker, &rows, t);          // after a successful fetch
+//! tracker.is_active("id", t + 599.0)               // true; false at +601 (core's rule)
+//! ```
 
-use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
 use std::time::Instant;
 
 use claude_dashboard_core::animal_display::{
@@ -130,15 +136,15 @@ pub fn record_activity(tracker: &mut AnimalActivityTracker, rows: &[DisplayRow],
     }
 }
 
-/// The app-wide tracker: written by the refresh thread, read by the UI thread.
-pub fn shared_tracker() -> &'static Mutex<AnimalActivityTracker> {
-    static T: OnceLock<Mutex<AnimalActivityTracker>> = OnceLock::new();
-    T.get_or_init(|| Mutex::new(AnimalActivityTracker::new()))
-}
-
-/// Monotonic time of the account's last 5h change in the shared tracker.
-pub fn last_change(account_id: &str) -> Option<f64> {
-    shared_tracker().lock().unwrap_or_else(|e| e.into_inner()).last_change_at(account_id)
+/// Each row's last 5h change in `tracker` (monotonic seconds), for `RefreshOutput::last_changes`.
+/// Rows with no change since launch are absent. The refresh loop owns the tracker; the UI only
+/// reads this map.
+///
+///     out.last_changes = last_changes(&tracker, &out.rows);
+pub fn last_changes(tracker: &AnimalActivityTracker, rows: &[DisplayRow]) -> HashMap<String, f64> {
+    rows.iter()
+        .filter_map(|r| tracker.last_change_at(&r.account_id).map(|t| (r.account_id.clone(), t)))
+        .collect()
 }
 
 #[cfg(test)]
@@ -239,6 +245,19 @@ mod tests {
             kind_label: String::new(),
             expired_hint: String::new(),
         }
+    }
+
+    #[test]
+    fn last_changes_lists_only_rows_with_a_change() {
+        let mut t = AnimalActivityTracker::new();
+        let base = [row("a", 10.0, AccountStatus::Active, None), row("b", 10.0, AccountStatus::Active, None)];
+        record_activity(&mut t, &base, 0.0);
+        assert!(last_changes(&t, &base).is_empty(), "baselines only");
+        let next = [row("a", 11.0, AccountStatus::Active, None), row("b", 10.0, AccountStatus::Active, None)];
+        record_activity(&mut t, &next, 50.0);
+        assert_eq!(last_changes(&t, &next), HashMap::from([("a".to_owned(), 50.0)]));
+        // A row no longer listed (deleted account) is dropped from the map.
+        assert!(last_changes(&t, &next[1..]).is_empty());
     }
 
     #[test]

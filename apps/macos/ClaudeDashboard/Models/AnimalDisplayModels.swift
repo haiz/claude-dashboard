@@ -25,6 +25,13 @@ enum AnimalDisplayModels {
         let animalOpacity: Double
         let frameIndex: Int?
 
+        /// True when a gauge draws the same from both phases: same content, frame and layer
+        /// opacities. Any two percentage-only phases render the same whatever their time.
+        func rendersSame(as other: Phase) -> Bool {
+            content == other.content && frameIndex == other.frameIndex
+                && percentageOpacity == other.percentageOpacity && animalOpacity == other.animalOpacity
+        }
+
         static func at(elapsedSeconds: Double) -> Phase {
             let phase = elapsedSeconds.truncatingRemainder(dividingBy: cycleSeconds)
             let normalized = phase < 0 ? phase + cycleSeconds : phase
@@ -49,6 +56,9 @@ enum AnimalDisplayModels {
                          animalOpacity: 1 - progress, frameIndex: frame)
         }
     }
+
+    /// Every stable asset id `assetID(for:)` can return, in burn-rate order.
+    static let assetIDs = ["snail", "turtle", "rabbit", "horse", "cheetah"]
 
     /// Asset directory names are stable contract identifiers, independent of localized emoji.
     static func assetID(for emoji: String) -> String? {

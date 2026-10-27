@@ -117,6 +117,40 @@ final class BurnAnimalAssetCatalogTests: XCTestCase {
         XCTAssertNil(BurnAnimalAssetCatalog(directory: nil).frame(0, of: "turtle"))
     }
 
+    func testGridOtherThanSixByFourOf128IsNil() throws {
+        // Self-consistent (sheet = grid x cell, room for 24 frames) but not the packaged grid.
+        var m = try bundledManifest()
+        m["columns"] = 4; m["rows"] = 6; m["cellWidth"] = 192; m["sheetHeight"] = 768
+        try writeManifest(m)
+        XCTAssertNil(BurnAnimalAssetCatalog(directory: dir).manifest, "4 x 6 of 192 x 128")
+
+        m = try bundledManifest()
+        m["rows"] = 5; m["sheetHeight"] = 640        // 30 cells for 24 frames
+        try writeManifest(m)
+        XCTAssertNil(BurnAnimalAssetCatalog(directory: dir).manifest, "6 x 5")
+
+        m = try bundledManifest()
+        m["cellWidth"] = 64; m["cellHeight"] = 64; m["sheetWidth"] = 384; m["sheetHeight"] = 256
+        try writeManifest(m)
+        XCTAssertNil(BurnAnimalAssetCatalog(directory: dir).manifest, "64 px cells")
+    }
+
+    func testUnknownAnimalIdOrSheetNameIsNil() throws {
+        var m = try bundledManifest()
+        m["animals"] = [["id": "sloth", "sheet": "sloth.png"]]
+        try writeManifest(m)
+        XCTAssertNil(BurnAnimalAssetCatalog(directory: dir).manifest, "id not in AnimalDisplayModels.assetIDs")
+
+        m["animals"] = [["id": "snail", "sheet": "turtle.png"]]
+        try writeManifest(m)
+        XCTAssertNil(BurnAnimalAssetCatalog(directory: dir).manifest, "sheet must be <id>.png")
+    }
+
+    func testAssetIDsMatchTheEmojiMapping() {
+        let mapped = ["🐌", "🐢", "🐇", "🐎", "🐆"].compactMap(AnimalDisplayModels.assetID(for:))
+        XCTAssertEqual(mapped, AnimalDisplayModels.assetIDs)
+    }
+
     func testSheetPathOutsideDirectoryIsRejected() throws {
         var m = try bundledManifest()
         m["animals"] = [["id": "snail", "sheet": "../snail.png"]]

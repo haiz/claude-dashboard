@@ -51,7 +51,7 @@ export struct UiWindow {
     animal-asset: string,
     // 5h window only. Monotonic app-clock seconds (animal_assets::monotonic_now) at which the
     // 5h value's last change stops counting (+600 s); -1 = no change seen since launch.
-    // Eligible while `animal-asset != "" && clock < animal-expires-at`. The phase is NOT here:
+    // Eligible while `animal-asset != "" && clock <= animal-expires-at`. The phase is NOT here:
     // it is one app-wide property so row refreshes never restart the animation.
     animal-expires-at: float,
 }

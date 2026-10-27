@@ -56,7 +56,7 @@ final class BurnAnimalGaugeTests: XCTestCase {
         let clock = AnimalDisplayClock(now: { t }, scheduler: { _, _ in {} })
         t = elapsed
         clock.shouldRun = { true }
-        clock.reevaluate()
+        clock.gaugeAppeared()       // offscreen renders may never call onAppear
         return BurnAnimalSource(clock: clock, assetID: { asset })
     }
 

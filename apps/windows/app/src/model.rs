@@ -229,7 +229,7 @@ fn five_hour_asset(animal: &str, show_animals: bool) -> slint::SharedString {
 
 /// Stamps the 5h window with when its animal activity lapses: `changed_at` (monotonic seconds,
 /// `animal_assets::monotonic_now` scale) + 600 s, or -1 for "no change seen yet". The Slint
-/// side shows the animal while `clock < animal-expires-at`, so expiry needs no refresh.
+/// side shows the animal while `clock <= animal-expires-at`, so expiry needs no refresh.
 /// Independent of the setting, so re-enabling resumes from the current timestamp.
 pub fn set_animal_activity(ui: &mut UiRow, changed_at: Option<f64>) -> bool {
     let next = changed_at.map_or(NO_EXPIRY, |c| (c + ACTIVITY_SECONDS) as f32);

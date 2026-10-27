@@ -5,8 +5,10 @@ import ImageIO
 /// Loads the burn-animal sprite sheets (`Resources/BurnAnimals`) once and hands out
 /// pre-cropped 128 x 128 frames, so a 12 fps gauge never decodes image data per tick.
 ///
-/// Contract: the manifest is validated once against `AnimalDisplayModels` (schema 1,
-/// 24 frames, 12 fps, numeric `columns`/`rows`, sheet size = grid x cell size). Each sheet
+/// Contract: the manifest is validated once against `AnimalDisplayModels`, with the same
+/// rules as the Windows validator (`animal_assets::validate_manifest`): schema 1, 24 frames at
+/// 12 fps, a 6 x 4 grid of 128 px cells (sheet 768 x 512), and every animal one of
+/// `AnimalDisplayModels.assetIDs` with sheet `<id>.png`. Each sheet
 /// is decoded on first use, checked against `sheetWidth`/`sheetHeight`, and split row-major
 /// from the top-left (frame f = column f % columns, row f / columns). Anything missing or
 /// malformed yields nil, and the caller keeps the percentage visible; failures are cached
@@ -113,16 +115,20 @@ final class BurnAnimalAssetCatalog {
         return manifest
     }
 
+    /// The packaged sheet grid: 6 columns x 4 rows of 128 px cells.
+    static let columns = 6, rows = 4, cellSide = 128
+
     static func isValid(_ m: Manifest) -> Bool {
         m.schemaVersion == 1
             && m.frameCount == AnimalDisplayModels.frameCount
             && Double(m.framesPerSecond) == AnimalDisplayModels.frameRate
-            && m.columns > 0 && m.rows > 0 && m.cellWidth > 0 && m.cellHeight > 0
-            && m.columns * m.rows >= m.frameCount
+            && m.columns == columns && m.rows == rows
+            && m.columns * m.rows == m.frameCount
+            && m.cellWidth == cellSide && m.cellHeight == cellSide
             && m.sheetWidth == m.columns * m.cellWidth
             && m.sheetHeight == m.rows * m.cellHeight
             && !m.animals.isEmpty
-            // A sheet is a bare file name inside the directory, never a path.
-            && m.animals.allSatisfy { !$0.sheet.isEmpty && !$0.sheet.contains("/") && $0.sheet != ".." }
+            // A known animal whose sheet is the bare `<id>.png` inside the directory.
+            && m.animals.allSatisfy { AnimalDisplayModels.assetIDs.contains($0.id) && $0.sheet == "\($0.id).png" }
     }
 }

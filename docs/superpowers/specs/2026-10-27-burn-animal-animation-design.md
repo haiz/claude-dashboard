@@ -2,9 +2,11 @@
 
 ## Status
 
-Approved design, implemented on macOS and Windows (2026-10-27). Windows GUI run-check
-is still open; see `tasks/todo.md`. This document describes the cross-platform behaviour
-and the asset/runtime boundaries.
+Approved design, implemented on macOS and Windows (2026-10-27). Still open: the Windows
+app has not been compiled or run on Windows (GUI run-check: DPI, shared phase, CPU, fonts;
+`cargo test`/`clippy` on a Windows host); see
+`tasks/handoff-2026-10-27-burn-animal-animation.md`. This document describes the
+cross-platform behaviour and the asset/runtime boundaries.
 
 ## Goal
 

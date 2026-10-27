@@ -4,9 +4,13 @@
 //! a card that becomes eligible joins it, and a row refresh never restarts the animation.
 //!
 //! The timer runs only while it shows something: Show burn-rate animals on, a window visible,
-//! and some row's 5h ring eligible (`animal-asset != ""` and the clock before
+//! and some row's 5h ring eligible (`animal-asset != ""` and the clock at or before
 //! `animal-expires-at`). Each tick re-checks, so it stops after the last ring's 600 s lapse
 //! without a refresh. Stopped, the global is [`ClockFrame::IDLE`]: percentages only.
+//!
+//! A tick writes the global only when what it draws changes ([`ClockFrame::drawn`]): during
+//! the 5.5 s percent-only part of the cycle nothing is written, so nothing redraws. A minimized
+//! main window keeps the (cheap) tick but skips the writes, so restoring it resumes at once.
 //!
 //!     animal_clock::sync(&app, pop.as_ref()); // rows, the setting or a window's visibility changed
 
@@ -42,6 +46,13 @@ impl ClockFrame {
         clip_y: 0,
     };
 
+    /// What the rings draw from this frame: while no animal frame is sampled every ring shows
+    /// only its percent whatever the clock, so the clock is dropped and the frame is
+    /// [`ClockFrame::IDLE`]. Two frames with equal `drawn()` render the same.
+    pub fn drawn(self) -> Self {
+        if self.sampled { self } else { ClockFrame::IDLE }
+    }
+
     /// The frame at `clock` monotonic seconds; the phase is `clock` modulo 10 s (core).
     pub fn at(clock: f64) -> Self {
         let p = AnimalDisplayPhase::at(clock);
@@ -61,16 +72,33 @@ impl ClockFrame {
 }
 
 /// Whether the tick must run at `clock`: the setting on, a window visible, and one 5h window
-/// `(has asset, expires at)` eligible. Pure.
+/// `(has asset, expires at)` eligible (the contract keeps a ring eligible at exactly 600 s).
+/// Pure.
 pub fn needs_tick(show: bool, visible: bool, windows: impl IntoIterator<Item = (bool, f32)>, clock: f64) -> bool {
-    show && visible && windows.into_iter().any(|(has_asset, expires)| has_asset && clock < f64::from(expires))
+    show && visible && windows.into_iter().any(|(has_asset, expires)| has_asset && clock <= f64::from(expires))
+}
+
+/// The frame to write after `last` was written, or `None` when the rings would draw the same.
+/// Pure.
+pub fn to_publish(last: Option<ClockFrame>, next: ClockFrame) -> Option<ClockFrame> {
+    let next = next.drawn();
+    (last != Some(next)).then_some(next)
 }
 
 thread_local! {
     static TIMER: slint::Timer = slint::Timer::default();
+    /// The frame last written to the globals; `None` forces the next write.
+    static LAST: std::cell::Cell<Option<ClockFrame>> = const { std::cell::Cell::new(None) };
+}
+
+/// The main window counts as shown only while visible and not minimized; the flyout while visible.
+fn shown(app: &AppWindow, pop: Option<&PopoverWindow>) -> bool {
+    (app.window().is_visible() && !app.window().is_minimized()) || pop.is_some_and(|p| p.window().is_visible())
 }
 
 fn needed(app: &AppWindow, pop: Option<&PopoverWindow>, clock: f64) -> bool {
+    // A minimized window still counts here: the tick keeps running (writing nothing, see
+    // `tick`) because restoring a window triggers no `sync`.
     let visible = app.window().is_visible() || pop.is_some_and(|p| p.window().is_visible());
     let rows = app.get_account_rows();
     let windows = rows.iter().map(|r| (!r.five_hour.animal_asset.is_empty(), r.five_hour.animal_expires_at));
@@ -78,6 +106,8 @@ fn needed(app: &AppWindow, pop: Option<&PopoverWindow>, clock: f64) -> bool {
 }
 
 fn publish(app: &AppWindow, pop: Option<&PopoverWindow>, f: ClockFrame) {
+    let Some(f) = to_publish(LAST.with(|l| l.get()), f) else { return };
+    LAST.with(|l| l.set(Some(f)));
     let set = |g: BurnAnimalClock<'_>| {
         g.set_clock(f.clock);
         g.set_sampled(f.sampled);
@@ -97,7 +127,9 @@ fn publish(app: &AppWindow, pop: Option<&PopoverWindow>, f: ClockFrame) {
 fn tick(app: &AppWindow, pop: Option<&PopoverWindow>) -> bool {
     let now = animal_assets::monotonic_now();
     if needed(app, pop, now) {
-        publish(app, pop, ClockFrame::at(now));
+        if shown(app, pop) {
+            publish(app, pop, ClockFrame::at(now));
+        }
         true
     } else {
         TIMER.with(|t| t.stop());
@@ -110,6 +142,8 @@ fn tick(app: &AppWindow, pop: Option<&PopoverWindow>) -> bool {
 /// changed: starts the one timer when a 5h ring needs it (never a second one), else stops it.
 /// UI thread only.
 pub fn sync(app: &AppWindow, pop: Option<&PopoverWindow>) {
+    // Rows or windows changed (a flyout may be new): write the current frame unconditionally.
+    LAST.with(|l| l.set(None));
     if !tick(app, pop) || TIMER.with(|t| t.running()) {
         return;
     }
@@ -156,11 +190,33 @@ mod tests {
     fn tick_runs_only_for_a_visible_eligible_ring_with_the_setting_on() {
         let live = [(false, 900.0), (true, 700.0)];
         assert!(needs_tick(true, true, live, 699.9));
-        assert!(!needs_tick(true, true, live, 700.0), "expired at 600 s past the change");
+        assert!(needs_tick(true, true, live, 700.0), "still eligible at exactly 600 s (contract)");
+        assert!(!needs_tick(true, true, live, 700.1), "expired after 600 s past the change");
         assert!(!needs_tick(false, true, live, 100.0), "setting off");
         assert!(!needs_tick(true, false, live, 100.0), "no window visible");
         assert!(!needs_tick(true, true, [(false, 900.0)], 100.0), "no asset");
         assert!(!needs_tick(true, true, [(true, -1.0)], 0.0), "no change since launch");
         assert!(!needs_tick(true, true, [], 0.0));
+    }
+
+    #[test]
+    fn percent_only_ticks_write_nothing_and_sampled_ticks_write_each_change() {
+        // First write after a sync always happens.
+        let first = to_publish(None, ClockFrame::at(1.0)).expect("forced write");
+        assert_eq!(first, ClockFrame::IDLE, "percent-only drops the clock");
+        // The rest of the 5.5 s percent-only part writes nothing at 12 fps.
+        let mut t = 1.0 + 1.0 / 12.0;
+        while t < 5.5 {
+            assert_eq!(to_publish(Some(first), ClockFrame::at(t)), None, "t={t}");
+            t += 1.0 / 12.0;
+        }
+        // Sampled ticks change opacity or frame (and the clock the expiry compares) each time.
+        let fade = to_publish(Some(first), ClockFrame::at(5.6)).expect("fade starts");
+        assert!(fade.sampled && fade.clock > 5.5);
+        let next = to_publish(Some(fade), ClockFrame::at(5.6 + 1.0 / 12.0)).expect("next fade step");
+        assert!(next.animal_opacity > fade.animal_opacity);
+        // Back to the percent at the cycle end: one write of IDLE, then quiet again.
+        assert_eq!(to_publish(Some(next), ClockFrame::at(10.0)), Some(ClockFrame::IDLE));
+        assert_eq!(to_publish(Some(ClockFrame::IDLE), ClockFrame::at(10.1)), None);
     }
 }

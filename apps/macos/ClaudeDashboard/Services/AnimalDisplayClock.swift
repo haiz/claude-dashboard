@@ -3,9 +3,12 @@ import Foundation
 /// The one process-wide clock behind the burn-animal display (never one per card).
 ///
 /// It publishes the shared `AnimalDisplayModels.Phase`, sampled at 12 fps while running, and
-/// runs only while `shouldRun()` is true (setting on and some account eligible). Every tick
-/// re-asks `shouldRun`, so an account whose 600 s activity window lapses with no refresh
-/// still stops the clock. `reevaluate()` starts or stops it on demand (refresh, setting).
+/// runs only while some gauge center is mounted (`gaugeAppeared` / `gaugeDisappeared`, so a
+/// closed window and popover cost nothing) and `shouldRun()` is true (setting on and some
+/// account eligible). Every tick re-asks `shouldRun`, so an account whose 600 s activity
+/// window lapses with no refresh still stops the clock. `reevaluate()` starts or stops it on
+/// demand (refresh, setting). A tick publishes only when what a gauge draws changes
+/// (`Phase.rendersSame`), so the 5.5 s percentage-only part of the cycle redraws nothing.
 ///
 /// Time comes from `now`, a monotonic source (`ProcessInfo.systemUptime` by default). The
 /// activity tracker must be fed from the same source. Tests inject `now` and `scheduler`
@@ -13,7 +16,7 @@ import Foundation
 ///
 ///     let clock = AnimalDisplayClock()
 ///     clock.shouldRun = { showBurnAnimals && anyAccountActive }
-///     clock.reevaluate()          // starts the timer
+///     clock.gaugeAppeared()       // a 5h gauge center mounted: starts the timer
 ///     clock.phase.frameIndex      // what a gauge draws
 @MainActor
 final class AnimalDisplayClock: ObservableObject {
@@ -32,6 +35,8 @@ final class AnimalDisplayClock: ObservableObject {
 
     @Published private(set) var phase: AnimalDisplayModels.Phase
     private(set) var isRunning = false
+    /// Gauge centers on screen that observe this clock (`ObservingGaugeCenter`).
+    private(set) var mountedGauges = 0
     var shouldRun: () -> Bool = { false }
 
     let now: () -> TimeInterval
@@ -47,9 +52,22 @@ final class AnimalDisplayClock: ObservableObject {
         self.phase = .at(elapsedSeconds: 0)
     }
 
-    /// Starts the timer when `shouldRun()` and it is stopped; stops it when not.
+    /// A gauge center that observes the clock appeared; starts it when something is eligible.
+    func gaugeAppeared() {
+        mountedGauges += 1
+        reevaluate()
+    }
+
+    /// A gauge center disappeared; the last one stops the clock.
+    func gaugeDisappeared() {
+        mountedGauges = max(0, mountedGauges - 1)
+        reevaluate()
+    }
+
+    /// Starts the timer when a gauge is mounted and `shouldRun()`, and it is stopped; stops
+    /// it when not.
     func reevaluate() {
-        if shouldRun() {
+        if mountedGauges > 0 && shouldRun() {
             guard !isRunning else { return }
             isRunning = true
             phase = .at(elapsedSeconds: now() - origin)
@@ -60,8 +78,10 @@ final class AnimalDisplayClock: ObservableObject {
     }
 
     private func tick() {
-        phase = .at(elapsedSeconds: now() - origin)
-        if !shouldRun() { stop() }
+        let next = AnimalDisplayModels.Phase.at(elapsedSeconds: now() - origin)
+        if !next.rendersSame(as: phase) { phase = next }
+        // Re-checked every tick, published or not: the 600 s expiry needs no refresh.
+        if mountedGauges == 0 || !shouldRun() { stop() }
     }
 
     private func stop() {

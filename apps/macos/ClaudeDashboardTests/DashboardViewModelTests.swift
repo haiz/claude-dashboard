@@ -270,6 +270,7 @@ final class DashboardViewModelTests: XCTestCase {
         store.saveSessionKey("sk-test", for: account.id)
         await Task.yield()
         XCTAssertEqual(vm.accountStates.count, 1)
+        clock.gaugeAppeared()                       // a 5h gauge center on screen
         return (vm, account)
     }
 
@@ -285,9 +286,12 @@ final class DashboardViewModelTests: XCTestCase {
         await vm.refreshAll()                       // baseline
         XCTAssertFalse(vm.isAnimalActive(accountID: account.id))
 
+        XCTAssertFalse(vm.animalClock.isRunning, "nothing eligible yet")
+
         time.value = 1100; five = 20
         await vm.refreshAll()                       // change at 1100
         XCTAssertTrue(vm.isAnimalActive(accountID: account.id))
+        XCTAssertTrue(vm.animalClock.isRunning, "the changing refresh starts the clock")
 
         time.value = 1500                           // unchanged: must not extend
         await vm.refreshAll()
@@ -351,7 +355,9 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertNil(source.assetID())
 
         time.value = 1200
+        XCTAssertTrue(vm.animalClock.isRunning)
         vm.showBurnAnimals = false
+        XCTAssertFalse(vm.animalClock.isRunning, "setting off stops the clock")
         XCTAssertNil(vm.burnAnimalSource(for: state))
         XCTAssertNil(source.assetID(), "an old payload also stops at once")
     }
