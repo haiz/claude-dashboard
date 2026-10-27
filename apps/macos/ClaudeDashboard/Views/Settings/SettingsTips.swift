@@ -32,8 +32,8 @@ enum SettingsTips {
         example: "Desktop is closed when auto switch moves Claude Code to B, so Desktop moves to B too. If Desktop is open, it stays on A.",
         topic: .autoSwitch)
     static let showBurnAnimals = SettingTip(
-        summary: "Show a small animal on each gauge for how fast that window is being used.",
-        detail: "The animal is the time until the window reaches 100% at the current pace: snail over 5h, turtle 3-5h, rabbit 1.5-3h, horse 30m-1.5h, cheetah under 30m. It appears once two refreshes in a row show usage rising. Off by default; sorting by burn rate works either way.",
+        summary: "Show an animated animal in the 5h percentage ring for how fast that window is being used.",
+        detail: "The animal is the time until the window reaches 100% at the current pace: snail over 5h, turtle 3-5h, rabbit 1.5-3h, horse 30m-1.5h, cheetah under 30m. It appears in the 5h percentage ring only, taking turns with the percentage, once two refreshes in a row show usage rising, and only while that 5h usage changed in the last 10 minutes. Off by default; sorting by burn rate works either way.",
         example: "5h goes from 20% to 40% in 10 minutes: at that pace 100% is 30 minutes away, so the gauge shows a horse.",
         topic: .readingCard)
     static let autoPing = SettingTip(

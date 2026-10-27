@@ -32,9 +32,14 @@ final class AccountCardLayoutTests: XCTestCase {
             orgId: nil, accountUuid: nil, plan: .max5x, lastSynced: nil,
             status: .active, isPinned: false, source: .browser
         )
+        // The animal phase of the shared clock: the widest the 5h center can be.
+        let clock = AnimalDisplayClock(now: { 7 }, scheduler: { _, _ in {} })
+        clock.shouldRun = { true }
+        clock.reevaluate()
         let card = AccountCard(
             state: AccountUsageState(id: account.id, account: account, usage: usage),
-            onResync: {}, onTogglePin: {}, showBurnAnimals: true, isCompact: true
+            onResync: {}, onTogglePin: {},
+            burnAnimal: BurnAnimalSource(clock: clock, assetID: { "rabbit" }), isCompact: true
         )
 
         let host = NSHostingController(rootView: card)

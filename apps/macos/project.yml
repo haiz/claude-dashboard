@@ -14,7 +14,13 @@ targets:
     type: application
     platform: macOS
     sources:
-      - ClaudeDashboard
+      - path: ClaudeDashboard
+        excludes: [Resources/BurnAnimals]
+      # Folder reference: the bundle keeps Contents/Resources/BurnAnimals/ (manifest +
+      # sheets) as one directory, read by BurnAnimalAssetCatalog.
+      - path: ClaudeDashboard/Resources/BurnAnimals
+        type: folder
+        buildPhase: resources
       - Shared
     settings:
       base:

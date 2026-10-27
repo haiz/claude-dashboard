@@ -287,6 +287,14 @@ final class DashboardViewModel: ObservableObject {
             isActive: isAnimalActive(accountID: state.id))
     }
 
+    /// What the account's 5h ring needs to animate its animal, or nil while the setting is
+    /// off (so turning it off removes the layer at once; nothing is left frozen). The
+    /// closure re-reads eligibility on every clock tick, so the 600 s expiry needs no refresh.
+    func burnAnimalSource(for state: AccountUsageState) -> BurnAnimalSource? {
+        guard showBurnAnimals else { return nil }
+        return BurnAnimalSource(clock: animalClock) { [weak self] in self?.animalAsset(for: state) }
+    }
+
     private var hasEligibleAnimal: Bool {
         accountStates.contains { animalAsset(for: $0) != nil }
     }

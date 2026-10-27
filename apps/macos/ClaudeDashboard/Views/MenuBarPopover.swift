@@ -120,7 +120,7 @@ struct MenuBarPopover: View {
                                     onTogglePriority: viewModel.showsPriorityControl(state)
                                         ? { viewModel.togglePriority(for: state.id) } : nil,
                                     critical: viewModel.criticalBadge(for: state),
-                                    showBurnAnimals: viewModel.showBurnAnimals,
+                                    burnAnimal: viewModel.burnAnimalSource(for: state),
                                     isCompact: true
                                 )
                             }

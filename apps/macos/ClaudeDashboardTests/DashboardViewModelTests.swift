@@ -327,6 +327,35 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertTrue(vm.isAnimalActive(accountID: account.id), "re-enable uses the retained activity")
     }
 
+    /// The views' payload: nil while the setting is off (the layer goes away at once, not
+    /// frozen), and its asset closure lapses after 600 s with no refresh.
+    func testBurnAnimalSource_followsSettingAndExpiry() async throws {
+        let time = Box<TimeInterval>(1000)
+        var five = 10.0
+        respondFiveHour { (200, five) }
+        let (vm, _) = try await makeAnimalFixture(time: time)
+        await vm.refreshAll()
+        time.value = 1100; five = 20
+        await vm.refreshAll()                       // rising: burn animal + activity at 1100
+        let state = try XCTUnwrap(vm.accountStates.first)
+        XCTAssertNotNil(state.burnRates?.fiveHour?.animal)
+        XCTAssertNil(vm.burnAnimalSource(for: state), "setting off: no payload")
+
+        vm.showBurnAnimals = true
+        let source = try XCTUnwrap(vm.burnAnimalSource(for: state))
+        XCTAssertTrue(source.clock === vm.animalClock, "the one shared clock")
+        XCTAssertEqual(source.assetID(), vm.animalAsset(for: state))
+        XCTAssertNotNil(source.assetID())
+
+        time.value = 1701                           // 601 s after the change, no refresh
+        XCTAssertNil(source.assetID())
+
+        time.value = 1200
+        vm.showBurnAnimals = false
+        XCTAssertNil(vm.burnAnimalSource(for: state))
+        XCTAssertNil(source.assetID(), "an old payload also stops at once")
+    }
+
     func testShowBurnAnimalsDoesNotAffectSorting() throws {
         let vm = try makeViewModel()
         let a = makeAccount(name: "A", email: "a@x.com")
