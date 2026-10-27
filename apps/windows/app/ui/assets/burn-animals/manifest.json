@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "frameCount": 24,
+  "framesPerSecond": 12,
+  "columns": 6,
+  "rows": 4,
+  "cellWidth": 128,
+  "cellHeight": 128,
+  "sheetWidth": 768,
+  "sheetHeight": 512,
+  "frameOrder": "row-major from the top-left cell",
+  "blenderVersion": "Blender 5.2.3 LTS",
+  "sourceRevision": "sha256:c2e10177643833e8748e68a039572c3a400d3eea7a16d11253ffe24f4c58024e",
+  "animals": [
+    {
+      "id": "snail",
+      "sheet": "snail.png"
+    },
+    {
+      "id": "turtle",
+      "sheet": "turtle.png"
+    },
+    {
+      "id": "rabbit",
+      "sheet": "rabbit.png"
+    },
+    {
+      "id": "horse",
+      "sheet": "horse.png"
+    },
+    {
+      "id": "cheetah",
+      "sheet": "cheetah.png"
+    }
+  ]
+}

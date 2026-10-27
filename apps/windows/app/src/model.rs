@@ -12,6 +12,8 @@ use claude_dashboard_core::format::{format_reset_time, formatted_countdown};
 use claude_dashboard_core::model::{AccountPlan, AccountStatus};
 use claude_dashboard_core::rows::{sidebar_percent, DisplayRow, WindowView};
 
+use crate::animal_assets;
+use claude_dashboard_core::animal_display::ACTIVITY_SECONDS;
 use crate::{UiRow, UiSegment, UiWindow};
 
 const FIVE_HOUR_S: f64 = 18000.0;
@@ -149,6 +151,19 @@ fn animal_for(projected: Option<f64>) -> &'static str {
     projected.map(|s| BurnRateResult::from_projected_time(s).animal).unwrap_or("")
 }
 
+/// The 5h, 7d and Fable animals of `row`: "" each when Settings > General > Show burn-rate
+/// animals is off (`show_animals`), else the animal of that window's projection ("" = unknown).
+fn animals(row: &DisplayRow, show_animals: bool) -> [&'static str; 3] {
+    if !show_animals {
+        return ["", "", ""];
+    }
+    [
+        animal_for(row.burn_projected_seconds),
+        animal_for(row.burn_projected_seconds_7d),
+        animal_for(row.burn_projected_seconds_fable),
+    ]
+}
+
 fn window(
     w: &Option<WindowView>,
     total_s: f64,
@@ -195,9 +210,32 @@ fn window(
                 track,
                 track_compact,
                 animal: animal.into(),
+                animal_asset: Default::default(),
+                animal_expires_at: NO_EXPIRY,
             }
         }
     }
+}
+
+/// `UiWindow.animal-expires-at` while the 5h value has not changed since launch.
+const NO_EXPIRY: f32 = -1.0;
+
+/// The animated asset id for the 5h ring: the stable id of `animal` while `show_animals` is on
+/// and the packaged manifest lists it, else "" (percentage only). Activity is separate: see
+/// [`set_animal_activity`].
+fn five_hour_asset(animal: &str, show_animals: bool) -> slint::SharedString {
+    if show_animals { animal_assets::asset_for_emoji(animal).unwrap_or("").into() } else { Default::default() }
+}
+
+/// Stamps the 5h window with when its animal activity lapses: `changed_at` (monotonic seconds,
+/// `animal_assets::monotonic_now` scale) + 600 s, or -1 for "no change seen yet". The Slint
+/// side shows the animal while `clock <= animal-expires-at`, so expiry needs no refresh.
+/// Independent of the setting, so re-enabling resumes from the current timestamp.
+pub fn set_animal_activity(ui: &mut UiRow, changed_at: Option<f64>) -> bool {
+    let next = changed_at.map_or(NO_EXPIRY, |c| (c + ACTIVITY_SECONDS) as f32);
+    let changed = ui.five_hour.animal_expires_at != next;
+    ui.five_hour.animal_expires_at = next;
+    changed
 }
 
 /// One window built from plain values, for the Help pane's sample gauge (macOS shows a
@@ -207,10 +245,11 @@ pub fn sample_window(utilization: f64, resets_in_s: f64, total_s: f64, animal: &
     window(&Some(view), total_s, now_unix_s, local_offset_s(), animal, true)
 }
 
-pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
+/// `show_animals` is Settings > General > Show burn-rate animals: off blanks every animal.
+pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64, show_animals: bool) -> UiRow {
     let shift = local_offset_s();
     let seed = if row.account_id.is_empty() { &row.name } else { &row.account_id };
-    let animal = animal_for(row.burn_projected_seconds);
+    let [animal, animal_7d, animal_fable] = animals(row, show_animals);
     let sidebar = sidebar_percent(row);
     UiRow {
         id: row.account_id.as_str().into(),
@@ -227,13 +266,16 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
         status: status_str(&row.status).into(),
         peak: row.peak_utilization as f32,
         peak_color: to_color(usage_color(row.peak_utilization)),
-        five_hour: window(&row.five_hour, FIVE_HOUR_S, now_unix_s, shift, animal, true),
+        five_hour: UiWindow {
+            animal_asset: five_hour_asset(animal, show_animals),
+            ..window(&row.five_hour, FIVE_HOUR_S, now_unix_s, shift, animal, true)
+        },
         seven_day: window(
             &row.seven_day,
             SEVEN_DAY_S,
             now_unix_s,
             shift,
-            animal_for(row.burn_projected_seconds_7d),
+            animal_7d,
             true,
         ),
         // macOS `showCountdown: false` for Fable: no countdown segments.
@@ -242,7 +284,7 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
             SEVEN_DAY_S,
             now_unix_s,
             shift,
-            animal_for(row.burn_projected_seconds_fable),
+            animal_fable,
             false,
         ),
         avatar_color: to_color(avatar_color(seed)),
@@ -275,8 +317,11 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64) -> UiRow {
 /// three windows of `ui` from `row` at `now` when their countdown text, reset label or
 /// countdown colour changed, leaving every other field (error lines included) alone.
 /// Returns whether anything changed, so callers only touch rows that need a redraw.
+/// The animals are not timing: each window keeps the one it shows, and the 5h animal asset and
+/// expiry (see [`set_animals`], [`set_animal_activity`]).
 pub fn retime(ui: &mut UiRow, row: &DisplayRow, now: f64) -> bool {
-    let fresh = to_ui_row(row, now);
+    // The flag is irrelevant here: the fresh animals are dropped below.
+    let fresh = to_ui_row(row, now, false);
     let mut changed = false;
     for (cur, new) in [
         (&mut ui.five_hour, fresh.five_hour),
@@ -284,6 +329,28 @@ pub fn retime(ui: &mut UiRow, row: &DisplayRow, now: f64) -> bool {
         (&mut ui.fable, fresh.fable),
     ] {
         if cur.countdown != new.countdown || cur.reset_label != new.reset_label || cur.countdown_color != new.countdown_color {
+            let (animal, asset, expires) = (std::mem::take(&mut cur.animal), std::mem::take(&mut cur.animal_asset), cur.animal_expires_at);
+            *cur = new;
+            (cur.animal, cur.animal_asset, cur.animal_expires_at) = (animal, asset, expires);
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Show burn-rate animals was toggled: rewrites the row's and its windows' animals from
+/// `row` for `show_animals`, leaving every other field alone. Returns whether anything changed.
+pub fn set_animals(ui: &mut UiRow, row: &DisplayRow, now: f64, show_animals: bool) -> bool {
+    let fresh = to_ui_row(row, now, show_animals);
+    let mut changed = false;
+    for (cur, new) in [
+        (&mut ui.animal, fresh.animal),
+        (&mut ui.five_hour.animal, fresh.five_hour.animal),
+        (&mut ui.five_hour.animal_asset, fresh.five_hour.animal_asset),
+        (&mut ui.seven_day.animal, fresh.seven_day.animal),
+        (&mut ui.fable.animal, fresh.fable.animal),
+    ] {
+        if *cur != new {
             *cur = new;
             changed = true;
         }
@@ -342,9 +409,9 @@ mod tests {
     #[test]
     fn claude_code_flag_maps_to_ui() {
         let mut r = row();
-        assert!(!to_ui_row(&r, 1e9).claude_code);
+        assert!(!to_ui_row(&r, 1e9, true).claude_code);
         r.is_active_claude_code = true;
-        assert!(to_ui_row(&r, 1e9).claude_code);
+        assert!(to_ui_row(&r, 1e9, true).claude_code);
     }
 
     fn row() -> DisplayRow {
@@ -381,7 +448,7 @@ mod tests {
         assert_ne!(p50, p100);
         let mut r = row();
         r.five_hour = Some(WindowView { utilization: 50.0, resets_at_unix: None, is_limited: false });
-        let ui = to_ui_row(&r, 1e9);
+        let ui = to_ui_row(&r, 1e9, true);
         assert!(!ui.five_hour.gauge_path.is_empty());
         assert!((ui.five_hour.fraction - 0.5).abs() < 1e-6);
     }
@@ -413,7 +480,7 @@ mod tests {
     fn retime_moves_the_countdown_and_keeps_other_fields() {
         let mut r = row();
         r.five_hour = Some(WindowView { utilization: 10.0, resets_at_unix: Some(1e9 + 600.0), is_limited: false });
-        let mut ui = to_ui_row(&r, 1e9);
+        let mut ui = to_ui_row(&r, 1e9, true);
         ui.error = "kept".into();
         assert_eq!(ui.five_hour.countdown.as_str(), "10:00");
         assert!(!retime(&mut ui, &r, 1e9), "same second: nothing to redraw");
@@ -428,7 +495,7 @@ mod tests {
         assert_eq!(countdown_track(SEVEN_DAY_S, 44.0, 5.0).len(), 7);
         let mut r = row();
         r.five_hour = Some(WindowView { utilization: 10.0, resets_at_unix: Some(1e9 + 3600.0), is_limited: false });
-        let ui = to_ui_row(&r, 1e9);
+        let ui = to_ui_row(&r, 1e9, true);
         assert_eq!(ui.five_hour.track.row_count(), 5);
         assert_eq!(ui.five_hour.track_compact.row_count(), 5);
         // Gaps are 2 px at the drawn diameter, so the two sizes differ.
@@ -446,7 +513,7 @@ mod tests {
         r.burn_projected_seconds = Some(600.0);
         r.burn_projected_seconds_7d = Some(1.0e6);
         r.burn_projected_seconds_fable = Some(600.0);
-        let ui = to_ui_row(&r, 1e9);
+        let ui = to_ui_row(&r, 1e9, true);
         assert!(!ui.five_hour.animal.is_empty());
         assert!(!ui.seven_day.animal.is_empty());
         assert!(!ui.fable.animal.is_empty());
@@ -456,18 +523,66 @@ mod tests {
         assert_eq!(ui.fable.segments.row_count(), 0);
     }
 
+    fn burning_row() -> DisplayRow {
+        let mut r = row();
+        let reset = Some(1e9 + 3600.0);
+        r.five_hour = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
+        r.seven_day = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
+        r.fable = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
+        r.burn_projected_seconds = Some(600.0);
+        r.burn_projected_seconds_7d = Some(1.0e6);
+        r.burn_projected_seconds_fable = Some(600.0);
+        r
+    }
+
+    #[test]
+    fn show_animals_off_blanks_every_animal_and_on_keeps_them() {
+        let r = burning_row();
+        let off = to_ui_row(&r, 1e9, false);
+        for a in [&off.animal, &off.five_hour.animal, &off.seven_day.animal, &off.fable.animal] {
+            assert!(a.is_empty(), "off: no animal, got {a}");
+        }
+        let on = to_ui_row(&r, 1e9, true);
+        assert_eq!(on.five_hour.animal.as_str(), animal_for(Some(600.0)));
+        assert_eq!(on.seven_day.animal.as_str(), animal_for(Some(1.0e6)));
+        assert_eq!(on.fable.animal.as_str(), animal_for(Some(600.0)));
+        assert_eq!(on.animal, on.five_hour.animal);
+        // Display only: the gauges themselves are the same either way.
+        assert_eq!(on.five_hour.percent, off.five_hour.percent);
+        assert_eq!(on.five_hour.countdown, off.five_hour.countdown);
+        assert_eq!(on.seven_day.gauge_path, off.seven_day.gauge_path);
+    }
+
+    #[test]
+    fn set_animals_toggles_in_place_and_retime_keeps_them() {
+        let r = burning_row();
+        let mut ui = to_ui_row(&r, 1e9, false);
+        ui.error = "kept".into();
+        assert!(set_animals(&mut ui, &r, 1e9, true));
+        assert!(!ui.seven_day.animal.is_empty());
+        assert!(!set_animals(&mut ui, &r, 1e9, true), "unchanged: nothing to redraw");
+        assert_eq!(ui.error.as_str(), "kept");
+        // The 1 s tick never brings an animal back, nor drops one.
+        assert!(set_animals(&mut ui, &r, 1e9, false));
+        assert!(retime(&mut ui, &r, 1e9 + 1.0));
+        assert!(ui.five_hour.animal.is_empty() && ui.seven_day.animal.is_empty());
+        assert!(set_animals(&mut ui, &r, 1e9, true));
+        assert!(retime(&mut ui, &r, 1e9 + 2.0));
+        assert!(!ui.five_hour.animal.is_empty() && !ui.seven_day.animal.is_empty());
+    }
+
     #[test]
     fn pin_expired_and_sidebar_fields_map_to_ui() {
         let mut r = row();
         r.is_pinned = true;
         r.status = AccountStatus::Expired;
         r.expired_hint = "hint".into();
-        let ui = to_ui_row(&r, 1e9);
+        let ui = to_ui_row(&r, 1e9, true);
         assert!(ui.pinned && ui.expired && !ui.has_sidebar_percent);
         assert_eq!(ui.expired_hint.as_str(), "hint");
         r.status = AccountStatus::Active;
         r.five_hour = Some(WindowView { utilization: 42.0, resets_at_unix: None, is_limited: false });
-        let ui = to_ui_row(&r, 1e9);
+        let ui = to_ui_row(&r, 1e9, true);
         assert!(ui.has_sidebar_percent);
         assert!((ui.sidebar_percent - 42.0).abs() < 1e-6);
     }
@@ -476,18 +591,58 @@ mod tests {
     fn error_maps_to_non_empty_string() {
         let mut r = row();
         r.error = Some("boom".into());
-        assert_eq!(to_ui_row(&r, 1e9).error.as_str(), "boom");
-        assert!(to_ui_row(&row(), 1e9).error.is_empty());
+        assert_eq!(to_ui_row(&r, 1e9, true).error.as_str(), "boom");
+        assert!(to_ui_row(&row(), 1e9, true).error.is_empty());
     }
 
     #[test]
     fn zero_usage_is_green_and_missing_window_absent() {
-        let ui = to_ui_row(&row(), 1e9);
+        let ui = to_ui_row(&row(), 1e9, true);
         assert!(ui.five_hour.present);
         assert!(!ui.seven_day.present);
         let c = ui.five_hour.color;
         assert!(c.green() > c.red() && c.green() > c.blue());
         assert_eq!(ui.plan.as_str(), "Pro");
         assert_eq!(ui.staleness.as_str(), "Never synced");
+    }
+
+    #[test]
+    fn only_the_five_hour_window_carries_an_animal_asset() {
+        let r = burning_row();
+        let on = to_ui_row(&r, 1e9, true);
+        let expected = animal_assets::asset_for_emoji(animal_for(Some(600.0))).unwrap_or("");
+        assert_eq!(on.five_hour.animal_asset.as_str(), expected);
+        assert!(!expected.is_empty(), "600 s projection maps to a packaged animal");
+        assert!(on.seven_day.animal_asset.is_empty() && on.fable.animal_asset.is_empty());
+        // 7d / Fable animals are unchanged.
+        assert_eq!(on.seven_day.animal.as_str(), animal_for(Some(1.0e6)));
+        assert_eq!(on.fable.animal.as_str(), animal_for(Some(600.0)));
+    }
+
+    #[test]
+    fn setting_off_clears_the_asset_and_on_restores_it_with_the_same_expiry() {
+        let r = burning_row();
+        let mut ui = to_ui_row(&r, 1e9, true);
+        assert!(set_animal_activity(&mut ui, Some(100.0)));
+        assert_eq!(ui.five_hour.animal_expires_at, 700.0);
+        assert!(set_animals(&mut ui, &r, 1e9, false));
+        assert!(ui.five_hour.animal_asset.is_empty());
+        assert_eq!(ui.five_hour.animal_expires_at, 700.0, "activity survives the setting");
+        assert!(set_animals(&mut ui, &r, 1e9, true));
+        assert!(!ui.five_hour.animal_asset.is_empty());
+        assert_eq!(ui.five_hour.animal_expires_at, 700.0);
+    }
+
+    #[test]
+    fn retime_keeps_asset_and_expiry_and_no_change_is_minus_one() {
+        let r = burning_row();
+        let mut ui = to_ui_row(&r, 1e9, true);
+        assert_eq!(ui.five_hour.animal_expires_at, -1.0);
+        set_animal_activity(&mut ui, Some(5.0));
+        let asset = ui.five_hour.animal_asset.clone();
+        assert!(retime(&mut ui, &r, 1e9 + 1.0));
+        assert_eq!(ui.five_hour.animal_asset, asset);
+        assert_eq!(ui.five_hour.animal_expires_at, 605.0);
+        assert!(!set_animal_activity(&mut ui, Some(5.0)), "same stamp: nothing to redraw");
     }
 }

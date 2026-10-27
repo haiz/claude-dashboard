@@ -310,12 +310,6 @@ struct OverviewChartView: View {
                                     .foregroundStyle(.tertiary)
                             }
                             Spacer()
-                            if let animal = animalForSelectedWindow(state.burnRates) {
-                                Text(animal)
-                            } else {
-                                Text("—")
-                                    .foregroundStyle(.tertiary)
-                            }
                         }
                         .padding(.horizontal)
                         .padding(.vertical, 4)
@@ -382,14 +376,6 @@ struct OverviewChartView: View {
         }
 
         return before?.utilization ?? after?.utilization
-    }
-
-    private func animalForSelectedWindow(_ rates: BurnRates?) -> String? {
-        switch selectedWindow {
-        case .fiveHour: return rates?.fiveHour?.animal
-        case .sevenDay: return rates?.sevenDay?.animal
-        case .fable: return rates?.fable?.animal
-        }
     }
 
     private func axisMarkDates(for range: ClosedRange<Date>) -> [Date] {

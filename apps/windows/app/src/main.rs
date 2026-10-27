@@ -3,6 +3,8 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
+mod animal_assets;
+mod animal_clock;
 mod auto_switch;
 mod ratio;
 mod cc_login;
@@ -99,7 +101,13 @@ fn apply_output(
     now: f64,
 ) {
     eprintln!("refresh: {} rows, peak {:.0}%", out.rows.len(), out.peak);
-    let mut rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now)).collect();
+    // Settings > General > Show burn-rate animals; the app property is set at launch and on toggle.
+    let show_animals = weak.upgrade().is_some_and(|a| a.get_show_burn_animals());
+    let mut rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now, show_animals)).collect();
+    // Last 5h change per account (monotonic seconds): Slint re-checks the 600 s expiry on its tick.
+    for r in rows.iter_mut() {
+        model::set_animal_activity(r, out.last_changes.get(r.id.as_str()).copied());
+    }
     set_ping_fields(&mut rows);
     set_switch_fields(&mut rows);
     set_auto_switch_fields(&mut rows, &out.rows, now, &claude_dashboard_core::settings::load());
@@ -143,6 +151,10 @@ fn apply_output(
         &model::tray_tooltip(bar, now),
     );
     LAST_OUTPUT.with(|l| *l.borrow_mut() = Some((out.clone(), now)));
+    // New 5h assets / expiries: start or stop the one burn-animal clock.
+    if let Some(app) = weak.upgrade() {
+        animal_clock::sync(&app, pop_weak.upgrade().as_ref());
+    }
 }
 
 /// Copies each row's Ping row state (running, latest caption) from the ping controller.
@@ -293,6 +305,45 @@ fn refresh_auto_switch_ui() {
     }
 }
 
+/// UI thread: Show burn-rate animals changed (toggle or Reset All). Sets the app property and
+/// rewrites every visible row's animals in place from the last refresh, then starts or stops
+/// the animal clock (off removes the 5h animals at once); no fetch, and the burn-rate tracker
+/// is untouched (display only).
+fn refresh_burn_animals_ui(show: bool) {
+    use slint::Model;
+    let app = MAIN_APP.with(|m| m.borrow().as_ref().and_then(|w| w.upgrade()));
+    if let Some(a) = &app {
+        a.set_show_burn_animals(show);
+    }
+    if let Some((out, now)) = LAST_OUTPUT.with(|l| l.borrow().clone()) {
+        let patch = |rows: slint::ModelRc<UiRow>| {
+            for i in 0..rows.row_count() {
+                let Some(mut r) = rows.row_data(i) else { continue };
+                let Some(row) = out.rows.iter().find(|d| d.account_id == r.id.as_str()) else { continue };
+                if model::set_animals(&mut r, row, now, show) {
+                    rows.set_row_data(i, r);
+                }
+            }
+        };
+        if let Some(a) = &app {
+            patch(a.get_account_rows());
+            patch(a.get_pane_rows());
+        }
+        if let Some(p) = POPOVER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade())) {
+            patch(p.get_account_rows());
+        }
+    }
+    if let Some(a) = &app {
+        sync_animal_clock(a);
+    }
+}
+
+/// [`animal_clock::sync`] with the flyout, whichever exists. UI thread only.
+fn sync_animal_clock(app: &AppWindow) {
+    let pop = POPOVER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade()));
+    animal_clock::sync(app, pop.as_ref());
+}
+
 /// Settings > General's Auto Switch and Critical Accounts rows, from settings.json.
 fn sync_switch_settings_ui(app: &AppWindow) {
     let s = settings_general::switch_state(&claude_dashboard_core::settings::load());
@@ -370,6 +421,8 @@ fn spawn_refresh_loop(
     std::thread::spawn(move || {
         let mut prev: Vec<claude_dashboard_core::rows::DisplayRow> = Vec::new();
         let mut tracker = claude_dashboard_core::burn_rate::BurnRateTracker::default();
+        // Burn-animal activity: only real fetches feed it; each output carries its last changes.
+        let mut animals = claude_dashboard_core::animal_display::AnimalActivityTracker::new();
         let mut timer = refresh::AutoTimer::default();
         let mut poll = refresh::FastPoll::default();
         let mut poll_target: Option<String> = None;
@@ -402,6 +455,7 @@ fn spawn_refresh_loop(
                         // Only a real fetch is a new measurement; a failed refresh keeps the previous projections.
                         if fetched {
                             refresh::apply_projections(&mut tracker, &mut out.rows, now);
+                            animal_assets::record_activity(&mut animals, &out.rows, animal_assets::monotonic_now());
                         }
                         out
                     }
@@ -416,6 +470,7 @@ fn spawn_refresh_loop(
                             for i in 0..out.rows.len() {
                                 if ids.contains(&out.rows[i].account_id) {
                                     refresh::apply_projections(&mut tracker, &mut out.rows[i..=i], now);
+                                    animal_assets::record_activity(&mut animals, &out.rows[i..=i], animal_assets::monotonic_now());
                                 }
                             }
                         }
@@ -452,6 +507,8 @@ fn spawn_refresh_loop(
                 let targets = ping::controller().claim_targets(&out.candidates, enabled, now);
                 spawn_auto_pings(targets, tx.clone());
                 prev = out.rows.clone();
+                // After auto switch, which can rebuild `out` (relabel) without them.
+                out.last_changes = animal_assets::last_changes(&animals, &out.rows);
                 let (weak, pop_weak) = (weak.clone(), pop_weak.clone());
                 let _ = slint::invoke_from_event_loop(move || apply_output(&weak, &pop_weak, &out, now));
             }
@@ -1228,7 +1285,7 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         expired("f4", "dave", AccountKind::PastedKey),
         expired("f5", "erin", AccountKind::Scanned { browser: Browser::Edge, profile: "Work".into() }),
     ];
-    refresh::RefreshOutput { peak: 100.0, rows, candidates: Vec::new() }
+    refresh::RefreshOutput { peak: 100.0, rows, candidates: Vec::new(), last_changes: Default::default() }
 }
 
 /// Time after a focus-loss hide during which a tray click is treated as the
@@ -1283,6 +1340,10 @@ fn toggle_flyout(pop: &PopoverWindow, tray_rect: popover::Rect) {
         .set_position(slint::PhysicalPosition::new(origin.x, origin.y));
     popover::focus_flyout(pop.window());
     FLYOUT.with(|f| f.borrow_mut().shown_at = Some(std::time::Instant::now()));
+    // The animal clock stops while both windows are hidden; showing one resumes it.
+    if let Some(a) = MAIN_APP.with(|m| m.borrow().as_ref().and_then(|w| w.upgrade())) {
+        animal_clock::sync(&a, Some(pop));
+    }
 }
 
 thread_local! {
@@ -1297,6 +1358,8 @@ thread_local! {
 fn show_main(app: &AppWindow) {
     let _ = app.show();
     app.window().set_minimized(false);
+    // The animal clock stops while both windows are hidden; showing one resumes it.
+    sync_animal_clock(app);
     if !MAIN_STYLED.with(|s| s.replace(true)) && !apply_mica(app.window()) {
         app.set_use_solid_background(true);
     }
@@ -1641,12 +1704,15 @@ fn main() -> Result<(), slint::PlatformError> {
     // Settings > General: settings/registry I/O on workers, results back on the UI thread.
     {
         app.set_help_topics(help::topic_model());
-        // Reading a Card's sample ring (macOS: 5h at 62%, 2h15m left, a rabbit).
+        // Reading a Card's sample ring (macOS: 5h at 62%, 2h15m left). Static: no animal.
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
-        app.set_help_sample(model::sample_window(62.0, 8100.0, 18000.0, "\u{1F407}", now));
+        app.set_help_sample(model::sample_window(62.0, 8100.0, 18000.0, "", now));
+        // Read now, before the first rows are built (the refresh loop or the dev seed below):
+        // `apply_output` builds every row from this property.
+        app.set_show_burn_animals(settings_general::show_burn_animals());
         app.set_app_name(settings_general::APP_NAME.into());
         app.set_app_version(settings_general::APP_VERSION.into());
         app.set_release_date(settings_general::format_release_date(settings_general::RELEASE_DATE).into());
@@ -1675,6 +1741,15 @@ fn main() -> Result<(), slint::PlatformError> {
                     a.set_auto_refresh_minutes(minutes as i32);
                     a.set_launch_at_startup(launch);
                     a.set_auto_ping(auto_ping);
+                }
+            });
+        });
+        // Show burn-rate animals: display only, so the shown rows are redrawn in place (no fetch).
+        app.on_set_show_burn_animals(move |on| {
+            refresh_burn_animals_ui(on);
+            settings_general::writer().submit(move || {
+                if let Err(e) = settings_general::set_show_burn_animals(on) {
+                    eprintln!("save show burn animals failed: {e}");
                 }
             });
         });
@@ -1763,6 +1838,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             a.set_desktop_switch_on(state.switch_desktop);
                             a.set_desktop_auto_on(state.auto_switch_desktop);
                         }
+                        refresh_burn_animals_ui(state.show_burn_animals);
                         refresh_auto_switch_ui();
                     });
                     let _ = tx.send(refresh::Nudge::Reschedule);
@@ -2110,7 +2186,20 @@ fn main() -> Result<(), slint::PlatformError> {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
-        apply_output(&app.as_weak(), &popover.as_weak(), &fake_rows(now), now);
+        let mut out = fake_rows(now);
+        // Mark every 5h value as just changed (a baseline 1% lower, then the seed), so bob's
+        // and carol's 5h rings animate once Show burn-rate animals is on. Filled the way the
+        // refresh loop fills it: a local tracker, then `last_changes` on the output.
+        let mut baseline = out.rows.clone();
+        for w in baseline.iter_mut().filter_map(|r| r.five_hour.as_mut()) {
+            w.utilization -= 1.0;
+        }
+        let mut animals = claude_dashboard_core::animal_display::AnimalActivityTracker::new();
+        let t = animal_assets::monotonic_now();
+        animal_assets::record_activity(&mut animals, &baseline, t);
+        animal_assets::record_activity(&mut animals, &out.rows, t);
+        out.last_changes = animal_assets::last_changes(&animals, &out.rows);
+        apply_output(&app.as_weak(), &popover.as_weak(), &out, now);
         history::seed_fake_history();
     } else {
         // Each account page's latest ping, from the Ping Log.

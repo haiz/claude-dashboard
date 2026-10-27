@@ -45,8 +45,6 @@ pub struct Account {
     pub email: String,
     /// Plan weight for the Avg overlay (macOS `planWeight`).
     pub weight: f64,
-    /// Burn animal per window, in selector order: 5h, 7d, Fable ("" = unknown).
-    pub animals: [String; 3],
 }
 
 /// macOS `OverviewChartView.planWeight`, from the plan label.
@@ -116,16 +114,6 @@ impl Overview {
         if !self.hidden.remove(id) {
             self.hidden.insert(id.to_string());
         }
-    }
-
-    /// The animal for the active window selector (macOS `animalForSelectedWindow`).
-    fn animal(&self, a: &Account) -> String {
-        let i = match self.window.as_str() {
-            "7d" => 1,
-            "fable" => 2,
-            _ => 0,
-        };
-        a.animals[i].clone()
     }
 
     pub fn view(&self, local_offset_ms: f64) -> OverviewView {
@@ -205,7 +193,6 @@ impl Overview {
                 },
                 slot: palette_slot(i),
                 on: !self.hidden.contains(&a.id),
-                animal: self.animal(a).as_str().into(),
             })
             .collect();
         (v, lines, legend, limits)
@@ -253,11 +240,6 @@ fn accounts_of(app: &AppWindow) -> Vec<Account> {
             name: r.name.to_string(),
             email: r.email.to_string(),
             weight: plan_weight(r.plan.as_str()),
-            animals: [
-                r.five_hour.animal.to_string(),
-                r.seven_day.animal.to_string(),
-                r.fable.animal.to_string(),
-            ],
         })
         .collect()
 }
@@ -440,7 +422,7 @@ pub fn install(app: &AppWindow) {
     }
 }
 
-/// A refresh finished: refresh the legend animals, slide a following range to
+/// A refresh finished: refresh the legend accounts, slide a following range to
 /// "now" and reload so fresh points show. No-op when the pane is not open.
 pub fn on_refresh(app: &AppWindow) {
     if app.get_selection() != crate::Pane::Overview || STATE.with(|s| s.borrow().is_none()) {
@@ -467,7 +449,6 @@ mod tests {
             name: id.to_uppercase(),
             email: format!("{id}@x.dev"),
             weight: 1.0,
-            animals: [format!("{id}-5h"), format!("{id}-7d"), format!("{id}-f")],
         }
     }
 
@@ -620,16 +601,6 @@ mod tests {
         );
         o.toggle("a");
         assert_eq!(o.view(0.0).0.avg_text, "Avg: --");
-    }
-
-    #[test]
-    fn legend_carries_animal() {
-        let mut o = ov();
-        assert_eq!(o.view(0.0).2[0].animal.as_str(), "a-5h");
-        o.window = "7d".into();
-        assert_eq!(o.view(0.0).2[1].animal.as_str(), "b-7d");
-        o.window = "fable".into();
-        assert_eq!(o.view(0.0).2[2].animal.as_str(), "c-f");
     }
 
     #[test]

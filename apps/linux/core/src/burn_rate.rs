@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+/// Two `resets_at` this close (seconds) are the same window, as in `usage_ratio`.
+pub const RESET_TOLERANCE_S: f64 = 60.0;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BurnRateResult {
     pub level: u8,
@@ -72,8 +75,13 @@ impl BurnRateTracker {
             *e = HistoryEntry { prev: None, current: Some(m), last_rate: None };
             return None;
         };
-        // Rule 2: different reset cycle — exact Option<f64> equality.
-        if resets_at != current.resets_at {
+        // Rule 2: different reset cycle — more than RESET_TOLERANCE_S apart, or
+        // only one side known. The API reports a boundary with jitter.
+        let same_cycle = match (resets_at, current.resets_at) {
+            (Some(a), Some(b)) => (a - b).abs() <= RESET_TOLERANCE_S,
+            (a, b) => a == b,
+        };
+        if !same_cycle {
             *e = HistoryEntry { prev: None, current: Some(m), last_rate: None };
             return None;
         }
@@ -145,6 +153,27 @@ mod tracker_tests {
         t.record(K, W, 10.0, Some(1000.0), 0.0);
         // resets_at changed -> full reset, None, even though utilization rose
         assert!(t.record(K, W, 20.0, Some(2000.0), 60.0).is_none());
+    }
+
+    #[test]
+    fn jittered_resets_at_within_tolerance_keeps_cycle() {
+        // The API reports a window boundary with sub-second (sometimes whole-second) jitter.
+        for jitter in [0.000_024, 0.5, 30.0, -60.0] {
+            let mut t = BurnRateTracker::default();
+            t.record(K, W, 10.0, Some(1000.0), 0.0);
+            let r = t.record(K, W, 20.0, Some(1000.0 + jitter), 100.0);
+            assert!(r.is_some(), "jitter {jitter}s is the same cycle");
+        }
+    }
+
+    #[test]
+    fn resets_at_beyond_tolerance_resets_history() {
+        let mut t = BurnRateTracker::default();
+        t.record(K, W, 10.0, Some(1000.0), 0.0);
+        assert!(t.record(K, W, 20.0, Some(1061.0), 100.0).is_none());
+        // A known reset time against an unknown one is a different cycle.
+        t.record(K, W, 10.0, None, 200.0);
+        assert!(t.record(K, W, 20.0, Some(1061.0), 300.0).is_none());
     }
 
     #[test]

@@ -5,18 +5,19 @@ struct UsageBar: View {
     let utilization: Double     // 0-100
     let resetsAt: Date?
     let totalSeconds: TimeInterval
-    let animal: String?
+    /// Only the 5h gauge receives this (from `UsageGaugeRow`); nil draws the percentage alone.
+    let burnAnimal: BurnAnimalSource?
     let showCountdown: Bool
     let isCompact: Bool         // true = widget/popover, false = dashboard
 
     var onTap: (() -> Void)? = nil
 
-    init(label: String, utilization: Double, resetsAt: Date?, totalSeconds: TimeInterval = 18000, animal: String? = nil, showCountdown: Bool = true, isCompact: Bool = true, onTap: (() -> Void)? = nil) {
+    init(label: String, utilization: Double, resetsAt: Date?, totalSeconds: TimeInterval = 18000, burnAnimal: BurnAnimalSource? = nil, showCountdown: Bool = true, isCompact: Bool = true, onTap: (() -> Void)? = nil) {
         self.label = label
         self.utilization = utilization
         self.resetsAt = resetsAt
         self.totalSeconds = totalSeconds
-        self.animal = animal
+        self.burnAnimal = burnAnimal
         self.showCountdown = showCountdown
         self.isCompact = isCompact
         self.onTap = onTap
@@ -48,7 +49,7 @@ struct UsageBar: View {
             HStack(alignment: .bottom, spacing: isCompact ? 5 : 8) {
                 CircularProgressView(
                     utilization: utilization,
-                    animal: animal,
+                    burnAnimal: burnAnimal,
                     diameter: largeDiameter,
                     lineWidth: largeLineWidth,
                     onTap: onTap
@@ -190,7 +191,7 @@ private struct CountdownColumn: View {
 
 private struct CircularProgressView: View {
     let utilization: Double
-    let animal: String?
+    let burnAnimal: BurnAnimalSource?
     let diameter: CGFloat
     let lineWidth: CGFloat
     var onTap: (() -> Void)? = nil
@@ -232,20 +233,17 @@ private struct CircularProgressView: View {
                 )
                 .rotationEffect(.degrees(-90))
 
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text("\(Int(utilization))")
-                    .font(.system(size: diameter * 0.33, weight: .semibold, design: .rounded))
-                    .minimumScaleFactor(0.7)
-                Text("%")
-                    .font(.system(size: diameter * 0.20, weight: .regular))
-            }
-            .lineLimit(1)
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if let animal {
-                Text(animal)
-                    .font(.system(size: 10))
-                    .offset(x: 4, y: 4)
+            // Percentage and animal share this fixed box inside the ring, so the ring
+            // and layout never move between phases.
+            GaugeCenter(source: burnAnimal, side: diameter - 2 * lineWidth - 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text("\(Int(utilization))")
+                        .font(.system(size: diameter * 0.33, weight: .semibold, design: .rounded))
+                        .minimumScaleFactor(0.7)
+                    Text("%")
+                        .font(.system(size: diameter * 0.20, weight: .regular))
+                }
+                .lineLimit(1)
             }
         }
         .frame(width: diameter, height: diameter)

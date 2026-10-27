@@ -18,6 +18,10 @@ pub struct RefreshOutput {
     /// Accounts fetched fine this refresh, for Auto Ping (macOS pings on the refresh's own
     /// fetch, never on stored usage).
     pub candidates: Vec<PingCandidate>,
+    /// Monotonic time (`animal_assets::monotonic_now`) of each account's last 5h change, from
+    /// the refresh loop's own `AnimalActivityTracker`; the UI stamps the burn-animal expiry
+    /// from it (`model::set_animal_activity`). Empty until the loop fills it.
+    pub last_changes: HashMap<String, f64>,
 }
 
 /// An account this refresh fetched successfully, with what a ping for it needs.
@@ -171,7 +175,7 @@ pub fn relabel_with(prev: &[DisplayRow], accounts: &[Account], active_email: Opt
     }
     sort_rows(&mut rows, now_unix_s);
     let peak = peak_utilization(&rows);
-    RefreshOutput { rows, peak, candidates: Vec::new() }
+    RefreshOutput { rows, peak, candidates: Vec::new(), last_changes: HashMap::new() }
 }
 
 /// Folds the nudges that piled up while a cycle ran: any `All` covers everything, otherwise
@@ -220,7 +224,7 @@ pub fn refresh_some(ids: &[String], prev: &[DisplayRow], now_unix_s: f64) -> Ref
             backfill_errored_rows(prev, &mut rows);
             let merged = rows.into_iter().fold(prev.to_vec(), |acc, row| merge_one(&acc, row, now_unix_s));
             let peak = peak_utilization(&merged);
-            RefreshOutput { rows: merged, peak, candidates }
+            RefreshOutput { rows: merged, peak, candidates, last_changes: HashMap::new() }
         }
         Err(e) => merge_errors(prev, Err(e), now_unix_s),
     }
@@ -238,7 +242,7 @@ pub fn merge_errors(prev: &[DisplayRow], fresh: Result<RefreshOutput, String>, n
         }
         Err(e) => {
             eprintln!("refresh failed, keeping previous rows: {e}");
-            RefreshOutput { rows: prev.to_vec(), peak: peak_utilization(prev), candidates: Vec::new() }
+            RefreshOutput { rows: prev.to_vec(), peak: peak_utilization(prev), candidates: Vec::new(), last_changes: HashMap::new() }
         }
     }
 }
@@ -448,7 +452,7 @@ pub fn refresh_once(now_unix_s: f64) -> Result<RefreshOutput, String> {
     };
     let (rows, candidates) = fetch_and_build(&accounts, now_unix_s);
     let peak = peak_utilization(&rows);
-    Ok(RefreshOutput { rows, peak, candidates })
+    Ok(RefreshOutput { rows, peak, candidates, last_changes: HashMap::new() })
 }
 
 /// The `rat` a reading is logged under: its reset time, or now + the window length when
@@ -664,7 +668,7 @@ mod tests {
 
     fn out(rows: Vec<DisplayRow>) -> RefreshOutput {
         let peak = peak_utilization(&rows);
-        RefreshOutput { rows, peak, candidates: Vec::new() }
+        RefreshOutput { rows, peak, candidates: Vec::new(), last_changes: HashMap::new() }
     }
 
     #[test]
@@ -945,5 +949,31 @@ mod tests {
         assert_eq!(a.error.as_deref(), Some("HTTP 500"));
         assert_eq!(a.five_hour.as_ref().map(|w| w.utilization), Some(40.0));
         assert_eq!(merged.rows.iter().filter(|r| r.error.is_none()).count(), 2);
+    }
+
+    #[test]
+    fn backfilled_errored_rows_never_extend_animal_activity() {
+        use claude_dashboard_core::animal_display::AnimalActivityTracker;
+        let mut t = AnimalActivityTracker::new();
+        let prev = rows(&[]); // b at 70%
+        // Baseline: b was last measured at 60%, so the 70% restored below would count as a
+        // change if an errored row were recorded.
+        let mut baseline = prev.clone();
+        baseline.iter_mut().find(|r| r.account_id == "b").unwrap().five_hour.as_mut().unwrap().utilization = 60.0;
+        crate::animal_assets::record_activity(&mut t, &baseline, 0.0);
+        // b errors with no windows of its own, then takes its last-good 70% back from `prev`.
+        let mut fresh = rows(&[("b", "HTTP 500")]);
+        let b = fresh.iter_mut().find(|r| r.account_id == "b").unwrap();
+        (b.five_hour, b.seven_day, b.fable) = (None, None, None);
+        let merged = merge_errors(&prev, Ok(out(fresh)), NOW);
+        let b = merged.rows.iter().find(|r| r.account_id == "b").unwrap();
+        assert_eq!(b.five_hour.as_ref().map(|w| w.utilization), Some(70.0), "backfilled");
+        crate::animal_assets::record_activity(&mut t, &merged.rows, 100.0);
+        assert_eq!(t.last_change_at("b"), None, "backfilled error row records nothing");
+        // A genuinely changed success on a does record.
+        let mut next = merged.rows.clone();
+        next.iter_mut().find(|r| r.account_id == "a").unwrap().five_hour.as_mut().unwrap().utilization = 41.0;
+        crate::animal_assets::record_activity(&mut t, &next, 200.0);
+        assert_eq!(t.last_change_at("a"), Some(200.0));
     }
 }

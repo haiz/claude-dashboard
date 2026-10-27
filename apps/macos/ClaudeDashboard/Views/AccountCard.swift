@@ -18,6 +18,9 @@ struct AccountCard: View {
     var onTogglePriority: (() -> Void)? = nil
     /// Non-nil shows the flame: orange for critical, red for high critical.
     var critical: CriticalBadge? = nil
+    /// The 5h ring's animal (`DashboardViewModel.burnAnimalSource(for:)`); no default, so a
+    /// caller cannot show animals by accident.
+    let burnAnimal: BurnAnimalSource?
     var isCompact: Bool = true
 
     /// The header's icon buttons (priority tick, Switch): hover background, tight padding.
@@ -148,7 +151,7 @@ struct AccountCard: View {
     }
 
     private func usageContent(_ usage: UsageData) -> some View {
-        UsageGaugeRow(usage: usage, burnRates: state.burnRates, isCompact: isCompact, onOpenChart: onOpenChart)
+        UsageGaugeRow(usage: usage, burnAnimal: burnAnimal, isCompact: isCompact, onOpenChart: onOpenChart)
     }
 
     private var expiredContent: some View {

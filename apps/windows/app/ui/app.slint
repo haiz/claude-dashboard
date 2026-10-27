@@ -1,6 +1,6 @@
 import { AboutSlint, Spinner, ComboBox, CheckBox } from "std-widgets.slint";
 import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "components.slint";
-import { Theme, UiRow, UiWindow } from "theme.slint";
+import { Theme, UiRow, UiWindow, BurnAnimalClock } from "theme.slint";
 import { SetupWizardWindow, ScanItem, ExtProfile } from "wizard.slint";
 import { OverviewPane, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData } from "chart.slint";
 import { HelpPane, HelpTopic } from "help.slint";
@@ -8,7 +8,7 @@ import { InfoTip, TipStore, TipData } from "info_tip.slint";
 import { UiPingRow, PingLogPane, UiSwitchRow, SwitchLogPane } from "ping_log.slint";
 import { TickLabel, RatioPopover } from "ratio.slint";
 
-export { UiPingRow, UiSwitchRow, TickLabel, TipStore, TipData, HelpTopic, Theme, UiRow, UiWindow, SetupWizardWindow, ScanItem, ExtProfile, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData }
+export { UiPingRow, UiSwitchRow, TickLabel, TipStore, TipData, HelpTopic, Theme, BurnAnimalClock, UiRow, UiWindow, SetupWizardWindow, ScanItem, ExtProfile, ChartState, ChartTick, ChartLine, ChartLegendItem, ChartTipRow, ChartPoint, ChartCycle, ChartActions, HistoryData }
 
 // Pane selection. `account` is the per-account page (see selected-account-id).
 export enum Pane { dashboard, overview, account, ping-log, switch-log, help, settings-accounts, general }
@@ -360,6 +360,8 @@ component GeneralSettingsPane inherits Flickable {
     in property <bool> update-busy;
     in property <bool> auto-update;
     callback check-updates();
+    in property <bool> show-burn-animals;
+    callback set-show-burn-animals(bool);
     in property <bool> auto-ping;
     callback set-auto-ping(bool);
     in property <bool> switch-desktop;
@@ -439,6 +441,21 @@ component GeneralSettingsPane inherits Flickable {
                         }
                     }
                 }
+            }
+        }
+
+        // macOS Settings > General > Display.
+        GroupHeader { text: "Display"; }
+        SettingsCard {
+            height: 52px;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 4px;
+                Text { text: "Show burn-rate animals"; color: Theme.text-primary; vertical-alignment: center; }
+                InfoTip { tip-id: "show-burn-animals"; y: (parent.height - self.height) / 2; }
+                Rectangle { horizontal-stretch: 1; }
+                SwitchKnob { on: root.show-burn-animals; y: (parent.height - self.height) / 2; toggled(v) => { root.set-show-burn-animals(v); } }
             }
         }
 
@@ -911,6 +928,9 @@ export component AppWindow inherits Window {
     in property <bool> update-busy;
     in-out property <bool> auto-update: true;
     callback check-updates();
+    // Settings > General > Show burn-rate animals (settings.json `showBurnAnimals`, default off).
+    in-out property <bool> show-burn-animals: false;
+    callback set-show-burn-animals(bool);
     in-out property <bool> auto-ping: false;
     callback set-auto-ping(bool);
     in-out property <bool> desktop-switch-on: false;
@@ -1214,6 +1234,8 @@ export component AppWindow inherits Window {
                 auto-update: root.auto-update;
                 check-updates => { root.check-updates(); }
                 set-auto-update(on) => { root.set-auto-update(on); }
+                show-burn-animals: root.show-burn-animals;
+                set-show-burn-animals(on) => { root.set-show-burn-animals(on); }
                 auto-ping: root.auto-ping;
                 set-auto-ping(on) => { root.set-auto-ping(on); }
                 switch-desktop: root.desktop-switch-on;

@@ -1,0 +1,32 @@
+{
+  "phase_cases": [
+    { "name": "cycle starts with the percentage visible", "phase": 0.0, "expect_content": "percentage", "expect_transition_progress": null, "expect_percentage_opacity": 1.0, "expect_animal_opacity": 0.0, "expect_frame_index": null },
+    { "name": "percentage to animal fade starts at 5.5 seconds", "phase": 5.5, "expect_content": "percentageToAnimal", "expect_transition_progress": 0.0, "expect_percentage_opacity": 1.0, "expect_animal_opacity": 0.0, "expect_frame_index": 0 },
+    { "name": "animal is fully visible at 6 seconds", "phase": 6.0, "expect_content": "animal", "expect_transition_progress": null, "expect_percentage_opacity": 0.0, "expect_animal_opacity": 1.0, "expect_frame_index": 0 },
+    { "name": "animal to percentage fade starts at 9.5 seconds", "phase": 9.5, "expect_content": "animalToPercentage", "expect_transition_progress": 0.0, "expect_percentage_opacity": 0.0, "expect_animal_opacity": 1.0, "expect_frame_index": 18 },
+    { "name": "cycle ends with the last animal frame almost fully faded", "phase": 9.999, "expect_content": "animalToPercentage", "expect_transition_progress": 0.998, "expect_percentage_opacity": 0.998, "expect_animal_opacity": 0.002, "expect_frame_index": 23 }
+  ],
+  "asset_cases": [
+    { "name": "snail has a stable asset id", "emoji": "🐌", "expect_asset_id": "snail" },
+    { "name": "turtle has a stable asset id", "emoji": "🐢", "expect_asset_id": "turtle" },
+    { "name": "rabbit has a stable asset id", "emoji": "🐇", "expect_asset_id": "rabbit" },
+    { "name": "horse has a stable asset id", "emoji": "🐎", "expect_asset_id": "horse" },
+    { "name": "cheetah has a stable asset id", "emoji": "🐆", "expect_asset_id": "cheetah" }
+  ],
+  "activity_cases": [
+    { "name": "first successful sample establishes a baseline only", "operations": [{ "kind": "success", "account_id": "a", "utilization": 10.0, "resets_at": 1000.0, "at": 0.0 }], "checks": [{ "account_id": "a", "at": 0.0, "expect_active": false }] },
+    { "name": "utilization change makes one account active", "operations": [{ "kind": "success", "account_id": "a", "utilization": 10.0, "resets_at": 1000.0, "at": 0.0 }, { "kind": "success", "account_id": "a", "utilization": 11.0, "resets_at": 1000.0, "at": 10.0 }], "checks": [{ "account_id": "a", "at": 10.0, "expect_active": true }] },
+    { "name": "reset jitter within sixty seconds is the same cycle", "operations": [{ "kind": "success", "account_id": "a", "utilization": 10.0, "resets_at": 1000.0, "at": 0.0 }, { "kind": "success", "account_id": "a", "utilization": 10.0, "resets_at": 1060.0, "at": 10.0 }], "checks": [{ "account_id": "a", "at": 10.0, "expect_active": false }] },
+    { "name": "reset movement beyond sixty seconds makes the account active", "operations": [{ "kind": "success", "account_id": "a", "utilization": 10.0, "resets_at": 1000.0, "at": 0.0 }, { "kind": "success", "account_id": "a", "utilization": 10.0, "resets_at": 1061.0, "at": 10.0 }], "checks": [{ "account_id": "a", "at": 10.0, "expect_active": true }] },
+    { "name": "activity expires only after six hundred seconds", "operations": [{ "kind": "success", "account_id": "a", "utilization": 10.0, "resets_at": 1000.0, "at": 0.0 }, { "kind": "success", "account_id": "a", "utilization": 11.0, "resets_at": 1000.0, "at": 100.0 }], "checks": [{ "account_id": "a", "at": 699.999, "expect_active": true }, { "account_id": "a", "at": 700.0, "expect_active": true }, { "account_id": "a", "at": 700.001, "expect_active": false }] },
+    { "name": "failed refresh does not extend activity", "operations": [{ "kind": "success", "account_id": "a", "utilization": 10.0, "resets_at": 1000.0, "at": 0.0 }, { "kind": "success", "account_id": "a", "utilization": 11.0, "resets_at": 1000.0, "at": 1.0 }, { "kind": "failed", "account_id": "a", "at": 400.0 }], "checks": [{ "account_id": "a", "at": 601.001, "expect_active": false }] },
+    { "name": "accounts have independent activity state", "operations": [{ "kind": "success", "account_id": "a", "utilization": 10.0, "resets_at": 1000.0, "at": 0.0 }, { "kind": "success", "account_id": "b", "utilization": 10.0, "resets_at": 1000.0, "at": 0.0 }, { "kind": "success", "account_id": "a", "utilization": 11.0, "resets_at": 1000.0, "at": 10.0 }], "checks": [{ "account_id": "a", "at": 10.0, "expect_active": true }, { "account_id": "b", "at": 10.0, "expect_active": false }] }
+  ],
+  "eligibility_cases": [
+    { "name": "eligible five hour animal resolves to a stable asset", "show_burn_animals": true, "is_five_hour": true, "animal": "🐇", "is_active": true, "expect_asset_id": "rabbit" },
+    { "name": "setting off suppresses the animal", "show_burn_animals": false, "is_five_hour": true, "animal": "🐇", "is_active": true, "expect_asset_id": null },
+    { "name": "seven day never receives an animated animal", "show_burn_animals": true, "is_five_hour": false, "animal": "🐇", "is_active": true, "expect_asset_id": null },
+    { "name": "missing burn result suppresses the animal", "show_burn_animals": true, "is_five_hour": true, "animal": null, "is_active": true, "expect_asset_id": null },
+    { "name": "inactive account suppresses the animal", "show_burn_animals": true, "is_five_hour": true, "animal": "🐇", "is_active": false, "expect_asset_id": null }
+  ]
+}

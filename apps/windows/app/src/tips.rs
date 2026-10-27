@@ -40,6 +40,13 @@ pub const TIPS: &[Tip] = &[
         help_topic: "auto-switch",
     },
     Tip {
+        id: "show-burn-animals",
+        summary: "Show an animated animal in the 5h percentage ring for how fast that window is being used.",
+        detail: "The animal is the time until the window reaches 100% at the current pace: snail over 5h, turtle 3-5h, rabbit 1.5-3h, horse 30m-1.5h, cheetah under 30m. It appears in the 5h percentage ring only, taking turns with the percentage, once two refreshes in a row show usage rising, and only while that 5h usage changed in the last 10 minutes. Off by default; sorting by burn rate works either way.",
+        example: "5h goes from 20% to 40% in 10 minutes: at that pace 100% is 30 minutes away, so the gauge shows a horse.",
+        help_topic: "reading-a-card",
+    },
+    Tip {
         id: "auto-ping",
         summary: "Start idle usage windows automatically.",
         detail: "A window only starts counting at the first message. After each refresh, Auto Ping sends one short message from every active account whose 5h or 7d window is not running, so it resets sooner.",
@@ -140,6 +147,17 @@ mod tests {
     }
 
     #[test]
+    fn show_burn_animals_tip_matches_macos() {
+        let t = TIPS.iter().find(|t| t.id == "show-burn-animals").expect("show-burn-animals tip");
+        assert_eq!(t.summary, "Show an animated animal in the 5h percentage ring for how fast that window is being used.");
+        assert!(t.detail.contains("cheetah under 30m"));
+        assert!(t.detail.contains("in the 5h percentage ring only"));
+        assert!(t.detail.contains("changed in the last 10 minutes"));
+        assert!(t.detail.contains("Off by default"));
+        assert_eq!(t.help_topic, "reading-a-card");
+    }
+
+    #[test]
     fn every_tip_links_an_existing_help_topic() {
         assert!(!TIPS.is_empty());
         for t in TIPS {
@@ -189,9 +207,9 @@ mod tests {
 
     #[test]
     fn tip_ids_are_unique_and_cover_the_settings() {
-        assert_eq!(TIPS.len(), 14, "the 14 macOS SettingsTips");
+        assert_eq!(TIPS.len(), 15, "the 15 macOS SettingsTips");
         for id in [
-            "auto-refresh", "refresh-interval", "switch-desktop", "auto-switch-desktop", "auto-ping", "auto-switch", "five-hour-threshold", "seven-day-threshold",
+            "auto-refresh", "refresh-interval", "switch-desktop", "auto-switch-desktop", "show-burn-animals", "auto-ping", "auto-switch", "five-hour-threshold", "seven-day-threshold",
             "menu-bar-toggle", "critical-pace", "high-critical-pace", "quiet-hours", "time-zone", "auto-update",
         ] {
             assert_eq!(TIPS.iter().filter(|t| t.id == id).count(), 1, "{id}");

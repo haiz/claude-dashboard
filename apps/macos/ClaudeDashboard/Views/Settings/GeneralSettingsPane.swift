@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// Settings > General: app identity (icon, name, version), auto refresh
-/// (on/off plus a 1-60 minute interval), Auto Ping (on/off), Claude Desktop switch (two toggles), auto switch (on/off, 5h and 7d thresholds, menu bar toggle),
+/// (on/off plus a 1-60 minute interval), Display (burn-rate animals), Auto Ping (on/off), Claude Desktop switch (two toggles), auto switch (on/off, 5h and 7d thresholds, menu bar toggle),
 /// Critical Accounts (paces, quiet hours, time zone), updates (daily toggle plus the manual check)
 /// and Reset All Settings (asks first, then `resetSettingsToDefaults`).
 /// Every setting carries an `InfoTip` (hover summary, click for detail and example, link to Help).
@@ -24,6 +24,11 @@ struct GeneralSettingsPane: View {
                         LabeledContent {
                             Stepper("\(viewModel.autoRefreshMinutes) min", value: $viewModel.autoRefreshMinutes, in: 1...60)
                         } label: { tipLabel("Interval", SettingsTips.refreshInterval) }
+                    }
+                }
+                Section("Display") {
+                    Toggle(isOn: $viewModel.showBurnAnimals) {
+                        tipLabel("Show burn-rate animals", SettingsTips.showBurnAnimals)
                     }
                 }
                 Section {

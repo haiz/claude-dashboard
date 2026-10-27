@@ -28,6 +28,7 @@ pub mod critical;
 pub mod auto_switch;
 pub mod auto_switch_log;
 pub mod usage_ratio;
+pub mod animal_display;
 
 #[cfg(windows)]
 pub mod userprotect;

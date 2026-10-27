@@ -52,6 +52,7 @@ struct DashboardPane: View {
                                     onTogglePriority: viewModel.showsPriorityControl(state)
                                         ? { viewModel.togglePriority(for: state.id) } : nil,
                                     critical: viewModel.criticalBadge(for: state),
+                                    burnAnimal: viewModel.burnAnimalSource(for: state),
                                     isCompact: false
                                 )
                             }

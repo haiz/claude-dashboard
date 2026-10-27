@@ -30,6 +30,9 @@ enum AppDefaults {
     static let switchDesktopEnabledKey = "switchDesktopEnabled"
     static let autoSwitchDesktopEnabledKey = "autoSwitchDesktopEnabled"
 
+    /// Settings > General > Display (default off): show the burn-rate animal on each gauge.
+    static let showBurnAnimalsKey = "showBurnAnimals"
+
     /// The suite to open, or nil to stay on the standard domain.
     ///
     /// Pure so the decision is testable; `shared` supplies the real inputs.

@@ -218,6 +218,7 @@ final class DashboardViewModelTests: XCTestCase {
         vm.setAutoPingEnabled(true)
         vm.autoSwitchSettings.fiveHourThreshold = 60
         vm.criticalSettings.pace = 90
+        vm.showBurnAnimals = true
 
         vm.resetSettingsToDefaults()
 
@@ -226,6 +227,155 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertFalse(vm.pingController.isAutoPingEnabled)
         XCTAssertEqual(vm.autoSwitchSettings.fiveHourThreshold, 95)
         XCTAssertEqual(vm.criticalSettings.pace, 50)
+        XCTAssertFalse(vm.showBurnAnimals)
+    }
+
+    func testShowBurnAnimals_defaultsOffAndPersists() throws {
+        AppDefaults.shared.removeObject(forKey: AppDefaults.showBurnAnimalsKey)
+        defer { AppDefaults.shared.removeObject(forKey: AppDefaults.showBurnAnimalsKey) }
+        let (vm, _) = try makeViewModelWithStore()
+        XCTAssertFalse(vm.showBurnAnimals)
+
+        vm.showBurnAnimals = true
+        XCTAssertTrue(AppDefaults.shared.bool(forKey: AppDefaults.showBurnAnimalsKey))
+        let (reloaded, _) = try makeViewModelWithStore()
+        XCTAssertTrue(reloaded.showBurnAnimals)
+    }
+
+    // MARK: - Burn animal activity
+
+    private func respondFiveHour(_ body: @escaping () -> (Int, Double)) {
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            let (status, five) = body()
+            let json = path.hasSuffix("/usage")
+                ? "{\"five_hour\":{\"utilization\":\(five),\"resets_at\":\"2030-01-01T00:00:00.000Z\"},\"seven_day\":{\"utilization\":1,\"resets_at\":null}}"
+                : "[]"
+            let response = HTTPURLResponse(url: request.url!, statusCode: path.hasSuffix("/usage") ? status : 200,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, Data(json.utf8))
+        }
+    }
+
+    /// A view model on a controllable monotonic clock; `time` is the injected "now".
+    private func makeAnimalFixture(time: Box<TimeInterval>) async throws
+        -> (DashboardViewModel, Account) {
+        // `showBurnAnimals` lives in the shared test defaults; start every test from off.
+        AppDefaults.shared.removeObject(forKey: AppDefaults.showBurnAnimalsKey)
+        addTeardownBlock { AppDefaults.shared.removeObject(forKey: AppDefaults.showBurnAnimalsKey) }
+        let clock = AnimalDisplayClock(now: { time.value }, scheduler: { _, _ in {} })
+        let (vm, store) = try makeViewModelWithStore(animalClock: clock)
+        let account = makeAccount(orgId: "org-1", email: "a@x.com", accountUuid: "u1")
+        store.addAccount(account)
+        store.saveSessionKey("sk-test", for: account.id)
+        await Task.yield()
+        XCTAssertEqual(vm.accountStates.count, 1)
+        clock.gaugeAppeared()                       // a 5h gauge center on screen
+        return (vm, account)
+    }
+
+    final class Box<T> { var value: T; init(_ v: T) { value = v } }
+
+    func testAnimalActivity_utilizationChangeMakesActive_unchangedDoesNotMove() async throws {
+        let time = Box<TimeInterval>(1000)
+        var five = 10.0
+        respondFiveHour { (200, five) }
+        let (vm, account) = try await makeAnimalFixture(time: time)
+        vm.showBurnAnimals = true
+
+        await vm.refreshAll()                       // baseline
+        XCTAssertFalse(vm.isAnimalActive(accountID: account.id))
+
+        XCTAssertFalse(vm.animalClock.isRunning, "nothing eligible yet")
+
+        time.value = 1100; five = 20
+        await vm.refreshAll()                       // change at 1100
+        XCTAssertTrue(vm.isAnimalActive(accountID: account.id))
+        XCTAssertTrue(vm.animalClock.isRunning, "the changing refresh starts the clock")
+
+        time.value = 1500                           // unchanged: must not extend
+        await vm.refreshAll()
+        time.value = 1701                           // 601 s after the change
+        XCTAssertFalse(vm.isAnimalActive(accountID: account.id))
+    }
+
+    func testAnimalActivity_failedRefreshDoesNotMoveTimestamp() async throws {
+        let time = Box<TimeInterval>(1000)
+        var five = 10.0
+        var status = 200
+        respondFiveHour { (status, five) }
+        let (vm, account) = try await makeAnimalFixture(time: time)
+        vm.showBurnAnimals = true
+        await vm.refreshAll()
+
+        time.value = 1100; five = 20
+        await vm.refreshAll()                       // change at 1100
+
+        time.value = 1500; five = 30; status = 500  // would be a change, but it fails
+        await vm.refreshAll()
+        time.value = 1701
+        XCTAssertFalse(vm.isAnimalActive(accountID: account.id),
+                       "a failed refresh must not extend the window")
+    }
+
+    func testAnimalActivity_settingOffIsNeverActive() async throws {
+        let time = Box<TimeInterval>(1000)
+        var five = 10.0
+        respondFiveHour { (200, five) }
+        let (vm, account) = try await makeAnimalFixture(time: time)
+        await vm.refreshAll()
+        five = 20
+        await vm.refreshAll()
+        XCTAssertFalse(vm.isAnimalActive(accountID: account.id))
+        vm.showBurnAnimals = true
+        XCTAssertTrue(vm.isAnimalActive(accountID: account.id), "re-enable uses the retained activity")
+    }
+
+    /// The views' payload: nil while the setting is off (the layer goes away at once, not
+    /// frozen), and its asset closure lapses after 600 s with no refresh.
+    func testBurnAnimalSource_followsSettingAndExpiry() async throws {
+        let time = Box<TimeInterval>(1000)
+        var five = 10.0
+        respondFiveHour { (200, five) }
+        let (vm, _) = try await makeAnimalFixture(time: time)
+        await vm.refreshAll()
+        time.value = 1100; five = 20
+        await vm.refreshAll()                       // rising: burn animal + activity at 1100
+        let state = try XCTUnwrap(vm.accountStates.first)
+        XCTAssertNotNil(state.burnRates?.fiveHour?.animal)
+        XCTAssertNil(vm.burnAnimalSource(for: state), "setting off: no payload")
+
+        vm.showBurnAnimals = true
+        let source = try XCTUnwrap(vm.burnAnimalSource(for: state))
+        XCTAssertTrue(source.clock === vm.animalClock, "the one shared clock")
+        XCTAssertEqual(source.assetID(), vm.animalAsset(for: state))
+        XCTAssertNotNil(source.assetID())
+
+        time.value = 1701                           // 601 s after the change, no refresh
+        XCTAssertNil(source.assetID())
+
+        time.value = 1200
+        XCTAssertTrue(vm.animalClock.isRunning)
+        vm.showBurnAnimals = false
+        XCTAssertFalse(vm.animalClock.isRunning, "setting off stops the clock")
+        XCTAssertNil(vm.burnAnimalSource(for: state))
+        XCTAssertNil(source.assetID(), "an old payload also stops at once")
+    }
+
+    func testShowBurnAnimalsDoesNotAffectSorting() throws {
+        let vm = try makeViewModel()
+        let a = makeAccount(name: "A", email: "a@x.com")
+        let b = makeAccount(name: "B", email: "b@x.com")
+        vm.accountStates = [makeState(account: a, utilization: 10, resetsIn: 3600),
+                            makeState(account: b, utilization: 90, resetsIn: 3600)]
+        vm.showBurnAnimals = false
+        vm.sortStates()
+        let off = vm.accountStates.map(\.account.name)
+        vm.showBurnAnimals = true
+        vm.sortStates()
+        XCTAssertEqual(vm.accountStates.map(\.account.name), off)
+        XCTAssertEqual(off, ["B", "A"])
+        AppDefaults.shared.removeObject(forKey: AppDefaults.showBurnAnimalsKey)
     }
 
     // MARK: - Identity backfill
@@ -237,7 +387,8 @@ final class DashboardViewModelTests: XCTestCase {
     private func makeViewModelWithStore(
         cookies: ChromeCookieResult = ChromeCookieResult(sessionKey: nil, orgId: nil),
         cookieProvider: ((String, Browser) -> ChromeCookieResult)? = nil,
-        pinger: Pinging = FakePinger()
+        pinger: Pinging = FakePinger(),
+        animalClock: AnimalDisplayClock? = nil
     ) throws -> (DashboardViewModel, AccountStore) {
         let detectorFile = tempDir.appendingPathComponent(".claude.json-\(UUID().uuidString)")
         let detector = ClaudeCodeAccountDetector(fileURL: detectorFile)
@@ -259,7 +410,8 @@ final class DashboardViewModelTests: XCTestCase {
             cookieProvider: cookieProvider ?? { _, _ in cookies },
             autoSwitchLogStore: AutoSwitchLogStore(
                 dbPath: tempDir.appendingPathComponent("auto_switch.sqlite").path),
-            pingController: pingController)
+            pingController: pingController,
+            animalClock: animalClock)
         return (vm, store)
     }
 

@@ -1,0 +1,279 @@
+//! Burn-animal assets and activity for the Windows app. Pure (no Slint, no Windows API), so
+//! the logic is unit-testable on any host.
+//!
+//! * Manifest: `ui/assets/burn-animals/manifest.json` is embedded at compile time and
+//!   validated once ([`catalog`]). An invalid manifest, or an animal missing from it, makes
+//!   [`asset_for_emoji`] return `None`: the percentage-only fallback, never a crash. The
+//!   sheets themselves are referenced by compile-time `@image-url` literals in
+//!   `ui/theme.slint` (`BurnAnimalSheets`), so a missing PNG fails the build.
+//! * Time: activity expires 600 s after the last change even with no refresh, so it is stored
+//!   as a timestamp on a monotonic clock ([`monotonic_now`], seconds since the first call)
+//!   and re-checked by whoever draws (core's `AnimalActivityTracker::is_active`). Callers pass the time in; tests never sleep.
+//!   The tracker is owned by the refresh loop (`main::spawn_refresh_loop`), which hands
+//!   [`last_changes`] to the UI on `RefreshOutput`; this module holds no tracker state.
+//!
+//! Example:
+//!
+//! ```ignore
+//! let t = monotonic_now();
+//! record_activity(&mut tracker, &rows, t);          // after a successful fetch
+//! tracker.is_active("id", t + 599.0)               // true; false at +601 (core's rule)
+//! ```
+
+use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
+use std::time::Instant;
+
+use claude_dashboard_core::animal_display::{
+    asset_id, AnimalActivityTracker, FRAME_COUNT, FRAME_RATE,
+};
+use claude_dashboard_core::model::AccountStatus;
+use claude_dashboard_core::rows::DisplayRow;
+
+const MANIFEST_JSON: &str = include_str!("../ui/assets/burn-animals/manifest.json");
+
+/// Sheet grid columns and square cell side, in sheet pixels. `ui/components.slint` clips
+/// 128 px cells, so the validator requires exactly these.
+pub const SHEET_COLUMNS: u32 = 6;
+pub const CELL_PX: u32 = 128;
+
+/// The ids of the validated manifest's animals.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Catalog {
+    ids: HashSet<String>,
+}
+
+impl Catalog {
+    pub fn has(&self, id: &str) -> bool {
+        self.ids.contains(id)
+    }
+}
+
+/// Checks `json` against the packaged contract: schema 1, 24 frames at 12 fps, a 6 x 4 grid of
+/// 128 px cells (sheet 768 x 512), and every animal entry shaped `{id, sheet: "<id>.png"}`.
+/// Frames are row-major by the numeric `columns`/`rows`; the free-text `frameOrder` is ignored.
+pub fn validate_manifest(json: &str) -> Result<Catalog, String> {
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("malformed json: {e}"))?;
+    let num = |k: &str| v.get(k).and_then(|x| x.as_f64()).ok_or_else(|| format!("missing number {k}"));
+    let expect = |k: &str, want: f64| {
+        let got = num(k)?;
+        if got == want { Ok(()) } else { Err(format!("{k} is {got}, expected {want}")) }
+    };
+    expect("schemaVersion", 1.0)?;
+    expect("frameCount", FRAME_COUNT as f64)?;
+    expect("framesPerSecond", FRAME_RATE)?;
+    let (cols, rows, cw, ch) = (num("columns")?, num("rows")?, num("cellWidth")?, num("cellHeight")?);
+    if cols * rows != FRAME_COUNT as f64 {
+        return Err(format!("grid {cols}x{rows} does not hold {FRAME_COUNT} frames"));
+    }
+    expect("columns", SHEET_COLUMNS as f64)?;
+    expect("cellWidth", CELL_PX as f64)?;
+    expect("cellHeight", CELL_PX as f64)?;
+    expect("sheetWidth", cols * cw)?;
+    expect("sheetHeight", rows * ch)?;
+    let animals = v.get("animals").and_then(|a| a.as_array()).ok_or("missing animals")?;
+    let mut ids = HashSet::new();
+    for a in animals {
+        let id = a.get("id").and_then(|x| x.as_str()).ok_or("animal without id")?;
+        let sheet = a.get("sheet").and_then(|x| x.as_str()).ok_or("animal without sheet")?;
+        if !["snail", "turtle", "rabbit", "horse", "cheetah"].contains(&id) {
+            return Err(format!("unknown animal id {id}"));
+        }
+        if sheet != format!("{id}.png") {
+            return Err(format!("{id} sheet is {sheet}"));
+        }
+        ids.insert(id.to_owned());
+    }
+    Ok(Catalog { ids })
+}
+
+/// The packaged manifest, validated once; `None` disables every animal (percentage only).
+pub fn catalog() -> Option<&'static Catalog> {
+    static CATALOG: OnceLock<Option<Catalog>> = OnceLock::new();
+    CATALOG
+        .get_or_init(|| match validate_manifest(MANIFEST_JSON) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                eprintln!("burn animals disabled: {e}");
+                None
+            }
+        })
+        .as_ref()
+}
+
+/// Stable asset id for a burn-rate emoji, only when the manifest lists it.
+pub fn asset_for_emoji(emoji: &str) -> Option<&'static str> {
+    asset_id(emoji).filter(|id| catalog().is_some_and(|c| c.has(id)))
+}
+
+/// Top-left sheet pixel of frame `index`'s cell: row-major, [`SHEET_COLUMNS`] cells of
+/// [`CELL_PX`] per row. The Slint ring clips this cell (`source-clip-x` / `-y`).
+///
+///     assert_eq!(cell_origin(7), (128, 128)); // second row, second column
+pub fn cell_origin(index: u32) -> (i32, i32) {
+    let i = index % FRAME_COUNT;
+    ((i % SHEET_COLUMNS * CELL_PX) as i32, (i / SHEET_COLUMNS * CELL_PX) as i32)
+}
+
+/// Seconds on a monotonic clock, zero at the first call (the app origin). Immune to wall-clock
+/// jumps; the one clock activity timestamps and Task 6's phase tick share.
+pub fn monotonic_now() -> f64 {
+    static ORIGIN: OnceLock<Instant> = OnceLock::new();
+    ORIGIN.get_or_init(Instant::now).elapsed().as_secs_f64()
+}
+
+/// Feeds the 5h window of every row this fetch measured successfully to `tracker`. Errored or
+/// non-active rows (including ones backfilled with their last-good windows) are skipped, so a
+/// failed refresh never extends activity. Same row filter as `refresh::apply_projections`.
+pub fn record_activity(tracker: &mut AnimalActivityTracker, rows: &[DisplayRow], at: f64) {
+    for row in rows {
+        if row.error.is_some() || row.status != AccountStatus::Active {
+            continue;
+        }
+        if let Some(w) = &row.five_hour {
+            tracker.record_success(&row.account_id, w.utilization, w.resets_at_unix, at);
+        }
+    }
+}
+
+/// Each row's last 5h change in `tracker` (monotonic seconds), for `RefreshOutput::last_changes`.
+/// Rows with no change since launch are absent. The refresh loop owns the tracker; the UI only
+/// reads this map.
+///
+///     out.last_changes = last_changes(&tracker, &out.rows);
+pub fn last_changes(tracker: &AnimalActivityTracker, rows: &[DisplayRow]) -> HashMap<String, f64> {
+    rows.iter()
+        .filter_map(|r| tracker.last_change_at(&r.account_id).map(|t| (r.account_id.clone(), t)))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use claude_dashboard_core::model::AccountPlan;
+    use claude_dashboard_core::rows::WindowView;
+
+    fn valid() -> String {
+        MANIFEST_JSON.to_owned()
+    }
+
+    #[test]
+    fn packaged_manifest_is_valid_and_lists_five_animals() {
+        let c = validate_manifest(&valid()).expect("valid");
+        for id in ["snail", "turtle", "rabbit", "horse", "cheetah"] {
+            assert!(c.has(id));
+        }
+        assert_eq!(asset_for_emoji("🐇"), Some("rabbit"));
+        assert_eq!(asset_for_emoji("🐈"), None);
+    }
+
+    #[test]
+    fn malformed_json_is_rejected() {
+        assert!(validate_manifest("{not json").is_err());
+    }
+
+    #[test]
+    fn wrong_dimensions_are_rejected() {
+        let bad = valid().replace("\"sheetWidth\": 768", "\"sheetWidth\": 700");
+        assert!(validate_manifest(&bad).unwrap_err().contains("sheetWidth"));
+        let bad = valid().replace("\"frameCount\": 24", "\"frameCount\": 12");
+        assert!(validate_manifest(&bad).is_err());
+        // A 4 x 6 grid of 192 x 128 cells is self-consistent but not what the ring clips.
+        let mut v: serde_json::Value = serde_json::from_str(MANIFEST_JSON).unwrap();
+        v["columns"] = 4.into();
+        v["rows"] = 6.into();
+        v["cellWidth"] = 192.into();
+        v["sheetHeight"] = 768.into();
+        assert!(validate_manifest(&v.to_string()).unwrap_err().contains("columns"));
+    }
+
+    #[test]
+    fn cell_origin_is_row_major_six_columns() {
+        assert_eq!(cell_origin(0), (0, 0));
+        assert_eq!(cell_origin(5), (640, 0));
+        assert_eq!(cell_origin(6), (0, 128));
+        assert_eq!(cell_origin(7), (128, 128));
+        assert_eq!(cell_origin(23), (640, 384));
+    }
+
+    #[test]
+    fn unknown_id_and_wrong_sheet_are_rejected() {
+        let bad = valid().replace("\"id\": \"snail\"", "\"id\": \"sloth\"");
+        assert!(validate_manifest(&bad).unwrap_err().contains("unknown animal id"));
+        let bad = valid().replace("\"sheet\": \"snail.png\"", "\"sheet\": \"x.png\"");
+        assert!(validate_manifest(&bad).is_err());
+    }
+
+    #[test]
+    fn missing_entry_disables_only_that_animal() {
+        // Edited as JSON, not text, so line endings (CRLF checkouts) cannot matter.
+        let mut v: serde_json::Value = serde_json::from_str(MANIFEST_JSON).unwrap();
+        v["animals"].as_array_mut().unwrap().retain(|a| a["id"] != "snail");
+        let c = validate_manifest(&v.to_string()).expect("four animals still valid");
+        assert!(!c.has("snail") && c.has("turtle"));
+    }
+
+    #[test]
+    fn activity_expires_at_600_seconds_without_refresh() {
+        let mut t = AnimalActivityTracker::new();
+        assert!(!t.is_active("a", 5.0));
+        record_activity(&mut t, &[row("a", 10.0, AccountStatus::Active, None)], 0.0);
+        record_activity(&mut t, &[row("a", 20.0, AccountStatus::Active, None)], 100.0);
+        assert!(t.is_active("a", 700.0));
+        assert!(!t.is_active("a", 700.001));
+    }
+
+    fn row(id: &str, util: f64, status: AccountStatus, error: Option<&str>) -> DisplayRow {
+        DisplayRow {
+            account_id: id.into(),
+            name: id.into(),
+            email: None,
+            plan: AccountPlan::Pro,
+            status,
+            five_hour: Some(WindowView { utilization: util, resets_at_unix: Some(50_000.0), is_limited: false }),
+            seven_day: None,
+            fable: None,
+            peak_utilization: util,
+            burn_projected_seconds: None,
+            burn_projected_seconds_7d: None,
+            burn_projected_seconds_fable: None,
+            is_extension_sourced: false,
+            error: error.map(str::to_owned),
+            last_synced_unix: None,
+            is_active_claude_code: false,
+            is_pinned: false,
+            kind_label: String::new(),
+            expired_hint: String::new(),
+        }
+    }
+
+    #[test]
+    fn last_changes_lists_only_rows_with_a_change() {
+        let mut t = AnimalActivityTracker::new();
+        let base = [row("a", 10.0, AccountStatus::Active, None), row("b", 10.0, AccountStatus::Active, None)];
+        record_activity(&mut t, &base, 0.0);
+        assert!(last_changes(&t, &base).is_empty(), "baselines only");
+        let next = [row("a", 11.0, AccountStatus::Active, None), row("b", 10.0, AccountStatus::Active, None)];
+        record_activity(&mut t, &next, 50.0);
+        assert_eq!(last_changes(&t, &next), HashMap::from([("a".to_owned(), 50.0)]));
+        // A row no longer listed (deleted account) is dropped from the map.
+        assert!(last_changes(&t, &next[1..]).is_empty());
+    }
+
+    #[test]
+    fn only_successful_active_rows_record_and_failures_never_extend() {
+        let mut t = AnimalActivityTracker::new();
+        record_activity(&mut t, &[row("a", 10.0, AccountStatus::Active, None)], 0.0);
+        assert_eq!(t.last_change_at("a"), None, "first sample is a baseline");
+        record_activity(&mut t, &[row("a", 20.0, AccountStatus::Active, None)], 100.0);
+        assert_eq!(t.last_change_at("a"), Some(100.0));
+        // Errored (backfilled, different utilization) and expired rows are ignored.
+        record_activity(&mut t, &[row("a", 90.0, AccountStatus::Active, Some("boom"))], 200.0);
+        record_activity(&mut t, &[row("a", 95.0, AccountStatus::Expired, None)], 300.0);
+        assert_eq!(t.last_change_at("a"), Some(100.0));
+        // Unchanged success does not extend.
+        record_activity(&mut t, &[row("a", 20.0, AccountStatus::Active, None)], 400.0);
+        assert_eq!(t.last_change_at("a"), Some(100.0));
+        assert!(!t.is_active("a", 701.0));
+    }
+}
