@@ -27,7 +27,8 @@ const FIELDS: [(&str, &str); 5] = [
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfigError {
-    /// `config.json` exists but is not a JSON object; nothing was written.
+    /// `config.json` exists but is not a JSON object (nothing was written), or it holds a
+    /// grant that will not decrypt or parse.
     Unreadable,
     /// The grant could not be encrypted with the safe-storage key.
     EncryptionFailed,
@@ -36,7 +37,9 @@ pub enum ConfigError {
 
 pub trait DesktopConfig {
     /// The account Desktop is signed in as and its grant; `None` when the file, the cache
-    /// or the uuid is absent or cannot be decrypted. Never errors for absence.
+    /// or the uuid is absent. Never errors for absence, but `Unreadable` when a present cache
+    /// will not decrypt (v20, wrong key, ...) or parse: that may be a live login, so callers
+    /// must not overwrite it as if there were none.
     fn read_active_grant(&self) -> Result<Option<(String, OAuthCredential)>, ConfigError>;
     /// Replaces the grant and `lastKnownAccountUuid`, drops the legacy `oauth:tokenCache`,
     /// and keeps every other top-level key. `Unreadable` when an existing file is not a
@@ -51,8 +54,12 @@ pub struct FileDesktopConfig {
 
 impl DesktopConfig for FileDesktopConfig {
     fn read_active_grant(&self) -> Result<Option<(String, OAuthCredential)>, ConfigError> {
-        let Ok(text) = std::fs::read_to_string(&self.path) else { return Ok(None) };
-        Ok(self.parse_grant(&text))
+        let text = match std::fs::read_to_string(&self.path) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err(ConfigError::Unreadable),
+        };
+        self.parse_grant(&text)
     }
 
     fn write_grant(&self, oauth: &OAuthCredential, account_uuid: &str, org_uuid: &str) -> Result<(), ConfigError> {
@@ -84,21 +91,34 @@ impl DesktopConfig for FileDesktopConfig {
 }
 
 impl FileDesktopConfig {
-    fn parse_grant(&self, text: &str) -> Option<(String, OAuthCredential)> {
-        let Value::Object(root) = serde_json::from_str(text).ok()? else { return None };
-        let uuid = root.get(UUID_KEY)?.as_str()?.to_string();
-        let plain = decrypt(root.get(CACHE_KEY)?.as_str()?, &self.key)?;
-        let Value::Object(map) = serde_json::from_slice(&plain).ok()? else { return None };
+    fn parse_grant(&self, text: &str) -> Result<Option<(String, OAuthCredential)>, ConfigError> {
+        // A config.json that is not an object holds no grant to lose; writing refuses it anyway.
+        let Ok(Value::Object(root)) = serde_json::from_str(text) else { return Ok(None) };
+        let Some(uuid) = root.get(UUID_KEY).and_then(Value::as_str) else { return Ok(None) };
+        let blob = match root.get(CACHE_KEY) {
+            None | Some(Value::Null) => return Ok(None),
+            Some(Value::String(b)) if b.trim().is_empty() => return Ok(None),
+            Some(Value::String(b)) => b,
+            Some(_) => return Err(ConfigError::Unreadable),
+        };
+        let plain = decrypt(blob, &self.key).ok_or(ConfigError::Unreadable)?;
+        let Ok(Value::Object(map)) = serde_json::from_slice::<Value>(&plain) else {
+            return Err(ConfigError::Unreadable);
+        };
         let mut keys: Vec<&String> = map.keys().collect();
         keys.sort();
-        let entry = keys.into_iter().find_map(|k| map[k].as_object())?;
+        let Some(entry) = keys.into_iter().find_map(|k| map[k].as_object()) else {
+            // An empty cache: signed out.
+            return if map.is_empty() { Ok(None) } else { Err(ConfigError::Unreadable) };
+        };
         let mut object = Map::new();
         for (from, to) in FIELDS {
             if let Some(v) = entry.get(from) {
                 object.insert(to.to_string(), v.clone());
             }
         }
-        Some((uuid, OAuthCredential::from_value(&Value::Object(object))?))
+        let oauth = OAuthCredential::from_value(&Value::Object(object)).ok_or(ConfigError::Unreadable)?;
+        Ok(Some((uuid.to_string(), oauth)))
     }
 }
 
@@ -190,12 +210,46 @@ mod tests {
     }
 
     #[test]
-    fn read_with_wrong_key_is_none() {
+    fn read_with_wrong_key_is_unreadable() {
         let d = tempfile::tempdir().unwrap();
         let c = cfg(&d);
         c.write_grant(&sample(), "AAA", "ORG").unwrap();
         let other = FileDesktopConfig { path: c.path.clone(), key: [9u8; 32] };
-        assert_eq!(other.read_active_grant(), Ok(None));
+        assert_eq!(other.read_active_grant(), Err(ConfigError::Unreadable));
+    }
+
+    #[test]
+    fn read_v20_blob_is_unreadable() {
+        use base64::Engine;
+        let d = tempfile::tempdir().unwrap();
+        let c = cfg(&d);
+        let mut raw = b"v20".to_vec();
+        raw.extend_from_slice(&[0u8; 40]);
+        let blob = base64::engine::general_purpose::STANDARD.encode(raw);
+        std::fs::write(&c.path, json!({CACHE_KEY: blob, UUID_KEY: "U"}).to_string()).unwrap();
+        assert_eq!(c.read_active_grant(), Err(ConfigError::Unreadable));
+    }
+
+    #[test]
+    fn read_non_json_plaintext_is_unreadable() {
+        let d = tempfile::tempdir().unwrap();
+        let c = cfg(&d);
+        let blob = encrypt(b"not json", &KEY);
+        std::fs::write(&c.path, json!({CACHE_KEY: blob, UUID_KEY: "U"}).to_string()).unwrap();
+        assert_eq!(c.read_active_grant(), Err(ConfigError::Unreadable));
+    }
+
+    #[test]
+    fn read_absent_cache_or_uuid_is_none() {
+        let d = tempfile::tempdir().unwrap();
+        let c = cfg(&d);
+        std::fs::write(&c.path, json!({UUID_KEY: "U", "theme": "dark"}).to_string()).unwrap();
+        assert_eq!(c.read_active_grant(), Ok(None));
+        std::fs::write(&c.path, json!({CACHE_KEY: "", UUID_KEY: "U"}).to_string()).unwrap();
+        assert_eq!(c.read_active_grant(), Ok(None));
+        let blob = encrypt(br#"{"k":{"token":"T","refreshToken":"R"}}"#, &KEY);
+        std::fs::write(&c.path, json!({CACHE_KEY: blob}).to_string()).unwrap();
+        assert_eq!(c.read_active_grant(), Ok(None));
     }
 
     #[test]

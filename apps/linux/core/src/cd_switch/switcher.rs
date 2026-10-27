@@ -372,6 +372,8 @@ mod tests {
     #[derive(Default)]
     struct State {
         grant: Option<(String, OAuthCredential)>,
+        /// Simulates a present grant that will not decrypt.
+        config_unreadable: bool,
         config_writes: Vec<(OAuthCredential, String, String)>,
         config_fail_write: bool,
         session_key: Option<String>,
@@ -396,7 +398,11 @@ mod tests {
 
     impl DesktopConfig for Fake {
         fn read_active_grant(&self) -> Result<Option<(String, OAuthCredential)>, ConfigError> {
-            Ok(self.s().grant.clone())
+            let s = self.s();
+            if s.config_unreadable {
+                return Err(ConfigError::Unreadable);
+            }
+            Ok(s.grant.clone())
         }
         fn write_grant(&self, oauth: &OAuthCredential, account_uuid: &str, org_uuid: &str) -> Result<(), ConfigError> {
             let mut s = self.s();
@@ -584,6 +590,32 @@ mod tests {
         assert!(s.config_writes.is_empty());
         assert_eq!(s.grant.as_ref().unwrap().0, "uuid-stranger");
         assert_eq!(s.grant.as_ref().unwrap().1.refresh_token, "rs");
+    }
+
+    #[test]
+    fn switch_refuses_undecryptable_outgoing_grant() {
+        let f = Fake::default();
+        put(&f, "id-a", entry("ra", "a@x.co"));
+        f.s().config_unreadable = true;
+        assert_eq!(
+            switcher(&f).switch_to(&a(), &accounts(), None),
+            Err(DesktopSwitchError::UnknownOutgoingAccount { email: None })
+        );
+        let s = f.s();
+        assert!(s.config_writes.is_empty());
+        assert!(s.session_writes.is_empty());
+    }
+
+    #[test]
+    fn unreadable_grant_reads_as_unknown() {
+        let f = Fake::default();
+        put(&f, "id-a", entry("ra", "a@x.co"));
+        f.s().config_unreadable = true;
+        let sw = switcher(&f);
+        assert_eq!(sw.active_account_uuid(), None);
+        assert_eq!(sw.availability(&accounts())["id-a"], DesktopAvailability::Ready);
+        assert!(sw.capture_active(&accounts()).is_err());
+        assert!(f.s().vault.get("id-b").is_none());
     }
 
     #[test]
