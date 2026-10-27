@@ -1,4 +1,4 @@
-import { AboutSlint, Spinner, ComboBox } from "std-widgets.slint";
+import { AboutSlint, Spinner, ComboBox, CheckBox } from "std-widgets.slint";
 import { SidebarRow, AccountCard, AccountPane, UsageGauge, Avatar } from "components.slint";
 import { Theme, UiRow, UiWindow } from "theme.slint";
 import { SetupWizardWindow, ScanItem, ExtProfile } from "wizard.slint";
@@ -668,14 +668,20 @@ component GeneralSettingsPane inherits Flickable {
 }
 
 // The Claude Code Switch prompts (macOS `claudeCodeSwitchAlert` / `claudeCodeSwitchOverlay`):
-// kind 1 asks to confirm a switch, 2 shows its outcome, 3 waits for the browser sign-in.
+// kind 1 asks to confirm a switch, 2 shows its outcome, 3 waits for the browser sign-in,
+// 4 asks before closing Claude Desktop ("Close Claude Desktop?", button `ok-label`).
 // Esc cancels (OK on a message), Enter confirms.
 component CcPrompt inherits Rectangle {
     in property <int> kind;
     in property <string> title;
     in property <string> text;
+    // Kind 1 only: the "Switch Claude Desktop too" box, shown while Desktop runs.
+    in property <bool> show-checkbox;
+    in-out property <bool> checked;
+    in property <string> ok-label;
     callback ok();
     callback cancel();
+    callback toggled(bool);
     background: #00000059;
     TouchArea { }
     keys := FocusScope {
@@ -706,6 +712,11 @@ component CcPrompt inherits Rectangle {
             spacing: 10px;
             Text { text: root.title; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
             Text { text: root.text; color: Theme.text-primary; font-size: 13px; wrap: word-wrap; }
+            if root.kind == 1 && root.show-checkbox: CheckBox {
+                text: "Switch Claude Desktop too";
+                checked <=> root.checked;
+                toggled => { root.toggled(self.checked); }
+            }
             HorizontalLayout {
                 spacing: 8px;
                 padding-top: 4px;
@@ -714,6 +725,8 @@ component CcPrompt inherits Rectangle {
                 if root.kind == 1: PaneButton { label: "Switch"; prominent: true; tip: "Switch Claude Code to this account"; clicked => { root.ok(); } }
                 if root.kind == 2: PaneButton { label: "OK"; prominent: true; tip: "Dismiss this message"; clicked => { root.ok(); } }
                 if root.kind == 3: PaneButton { label: "Cancel"; tint: Theme.text-primary; tip: "Stop waiting for the browser sign-in"; clicked => { root.cancel(); } }
+                if root.kind == 4: PaneButton { label: "Cancel"; tint: Theme.text-primary; tip: "Leave Claude Desktop as it is"; clicked => { root.cancel(); } }
+                if root.kind == 4: PaneButton { label: root.ok-label; prominent: true; tip: "Quit Claude Desktop and switch it"; clicked => { root.ok(); } }
             }
         }
     }
@@ -765,6 +778,16 @@ export component AppWindow inherits Window {
     in property <int> cc-prompt-kind;
     in property <string> cc-prompt-title;
     in property <string> cc-prompt-text;
+    // Claude Desktop: the confirmation's "Switch Claude Desktop too" box (shown while Desktop
+    // runs) and its state, the close prompt's button, whether Desktop's account differs from
+    // Claude Code's, and a Desktop switch running.
+    in property <bool> cc-prompt-checkbox;
+    in-out property <bool> cc-prompt-checked;
+    in property <string> cc-prompt-ok-label;
+    in property <bool> desktop-differs;
+    in property <bool> desktop-switching;
+    callback switch-desktop(string);
+    callback cc-prompt-toggled(bool);
     callback switch-claude-code(string);
     // The bolt on a card or the account page toggle: tick or untick the home account.
     callback toggle-home(string);
@@ -1055,6 +1078,9 @@ export component AppWindow inherits Window {
                     ping => { root.ping-account(acct.id); }
                     cc-switching: root.cc-switching;
                     switch-cc => { root.switch-claude-code(acct.id); } toggle-home => { root.toggle-home(acct.id); }
+                    desktop-differs: root.desktop-differs;
+                    desktop-switching: root.desktop-switching;
+                    switch-desktop => { root.switch-desktop(acct.id); }
                     toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
                     remove => {
                         root.remove-account(acct.id);
@@ -1214,6 +1240,10 @@ export component AppWindow inherits Window {
         kind: root.cc-prompt-kind;
         title: root.cc-prompt-title;
         text: root.cc-prompt-text;
+        show-checkbox: root.cc-prompt-checkbox;
+        checked <=> root.cc-prompt-checked;
+        ok-label: root.cc-prompt-ok-label;
+        toggled(on) => { root.cc-prompt-toggled(on); }
         ok => { root.cc-prompt-ok(); }
         cancel => { root.cc-prompt-cancel(); }
     }
@@ -1291,6 +1321,16 @@ export component PopoverWindow inherits Window {
     in property <int> cc-prompt-kind;
     in property <string> cc-prompt-title;
     in property <string> cc-prompt-text;
+    // Claude Desktop: the confirmation's "Switch Claude Desktop too" box (shown while Desktop
+    // runs) and its state, the close prompt's button, whether Desktop's account differs from
+    // Claude Code's, and a Desktop switch running.
+    in property <bool> cc-prompt-checkbox;
+    in-out property <bool> cc-prompt-checked;
+    in property <string> cc-prompt-ok-label;
+    in property <bool> desktop-differs;
+    in property <bool> desktop-switching;
+    callback switch-desktop(string);
+    callback cc-prompt-toggled(bool);
     callback switch-claude-code(string);
     // The bolt on a card or the account page toggle: tick or untick the home account.
     callback toggle-home(string);
@@ -1531,6 +1571,10 @@ export component PopoverWindow inherits Window {
         kind: root.cc-prompt-kind;
         title: root.cc-prompt-title;
         text: root.cc-prompt-text;
+        show-checkbox: root.cc-prompt-checkbox;
+        checked <=> root.cc-prompt-checked;
+        ok-label: root.cc-prompt-ok-label;
+        toggled(on) => { root.cc-prompt-toggled(on); }
         ok => { root.cc-prompt-ok(); }
         cancel => { root.cc-prompt-cancel(); }
     }

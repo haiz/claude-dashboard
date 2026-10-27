@@ -8,6 +8,8 @@ mod ratio;
 mod cc_login;
 mod cc_flow;
 mod cc_state;
+mod cd_flow;
+mod cd_run;
 mod cd_state;
 mod chart;
 mod chart_model;
@@ -114,6 +116,7 @@ fn apply_output(
     if let Some(pop) = pop_weak.upgrade() {
         publish_rows(pop.get_account_rows(), rows.clone(), |m| pop.set_account_rows(m));
         pop.set_refreshing(false);
+        pop.set_desktop_differs(cd_state::differs());
     }
     if let Some(app) = weak.upgrade() {
         use slint::Model;
@@ -122,6 +125,8 @@ fn apply_output(
         publish_rows(app.get_pane_rows(), pane_rows, |m| app.set_pane_rows(m));
         publish_rows(app.get_account_rows(), rows, |m| app.set_account_rows(m));
         app.set_refreshing(false);
+        // The refresh thread recomputed it with this refresh's Claude Code account.
+        app.set_desktop_differs(cd_state::differs());
         // The selected account is gone (removed here, in Settings, or by the store): fall back to Dashboard.
         if app.get_selection() == Pane::Account
             && !out.rows.iter().any(|r| r.account_id.as_str() == app.get_selected_account_id().as_str())
@@ -628,13 +633,18 @@ fn load_switch_log(weak: &slint::Weak<AppWindow>) {
 // ---- Claude Code Switch flow (macOS `requestSwitchClaudeCode` / `switchClaudeCode`) ----
 
 /// UI thread only: the confirmation waiting for the user, the running switch, the browser
-/// wait it can cancel, and which prompt is up (`CcPrompt` kind).
+/// wait it can cancel, and which prompt is up (`CcPrompt` kind). Claude Desktop (macOS
+/// `switchClaudeCodeThenDesktop`): the account awaiting "Close Claude Desktop?", and, read
+/// once per Switch press, whether Desktop was running and the "Switch Claude Desktop too" box.
 #[derive(Default)]
 struct CcFlow {
     pending: Option<String>,
     switching: bool,
     cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     kind: i32,
+    desktop_pending: Option<String>,
+    ticked: bool,
+    was_running: bool,
 }
 
 thread_local! {
@@ -667,18 +677,38 @@ fn cc_prompt(kind: i32, title: &str, text: &str) {
         }
     }
     let (t, x) = (slint::SharedString::from(title), slint::SharedString::from(text));
+    let ok = slint::SharedString::from(if kind == 4 { cd_flow::CLOSE_BUTTON } else { "" });
     cc_ui(
         |a| {
             a.set_cc_prompt_title(t.clone());
             a.set_cc_prompt_text(x.clone());
+            a.set_cc_prompt_ok_label(ok.clone());
             a.set_cc_prompt_kind(kind);
         },
         |p| {
             p.set_cc_prompt_title(t.clone());
             p.set_cc_prompt_text(x.clone());
+            p.set_cc_prompt_ok_label(ok.clone());
             p.set_cc_prompt_kind(kind);
         },
     );
+}
+
+/// The prompt's browser wait cancels this flag (a Claude Code or a Desktop switch).
+fn cc_set_cancel(cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>) {
+    CC_FLOW.with(|f| f.borrow_mut().cancel = cancel);
+}
+
+/// "Close Claude Desktop?" for `id`: the only way to a Desktop quit.
+fn cd_ask_close(id: String) {
+    CC_FLOW.with(|f| f.borrow_mut().desktop_pending = Some(id));
+    cc_prompt(4, cd_flow::CLOSE_TITLE, cd_flow::CLOSE_MESSAGE);
+}
+
+/// The confirmation's "Switch Claude Desktop too" box, kept the same in both windows.
+fn cc_toggled(on: bool) {
+    CC_FLOW.with(|f| f.borrow_mut().ticked = on);
+    cc_ui(|a| a.set_cc_prompt_checked(on), |p| p.set_cc_prompt_checked(on));
 }
 
 fn cc_set_switching(on: bool) {
@@ -693,6 +723,24 @@ fn row_name(r: &claude_dashboard_core::rows::DisplayRow) -> String {
 /// Every Switch button: while the account Claude Code uses now still has quota left, ask
 /// first; otherwise switch straight away.
 fn cc_request(id: String) {
+    // Desktop's state as of this press; the box shows only while it runs.
+    let running = cd_run::desktop_running();
+    let ticked = cd_flow::initial_tick(cd_run::enabled(), running);
+    CC_FLOW.with(|f| {
+        let mut f = f.borrow_mut();
+        f.ticked = ticked;
+        f.was_running = running;
+    });
+    cc_ui(
+        |a| {
+            a.set_cc_prompt_checkbox(running);
+            a.set_cc_prompt_checked(ticked);
+        },
+        |p| {
+            p.set_cc_prompt_checkbox(running);
+            p.set_cc_prompt_checked(ticked);
+        },
+    );
     let rows = LAST_OUTPUT.with(|l| l.borrow().as_ref().map(|(o, _)| o.rows.clone())).unwrap_or_default();
     let active = rows.iter().find(|r| r.is_active_claude_code);
     if let (Some(active), Some(target)) = (active, rows.iter().find(|r| r.account_id == id)) {
@@ -728,10 +776,29 @@ fn cc_start(id: String) {
     cc_set_switching(true);
     let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     CC_FLOW.with(|f| f.borrow_mut().cancel = Some(cancel.clone()));
+    let (ticked, was_running) = CC_FLOW.with(|f| (f.borrow().ticked, f.borrow().was_running));
     std::thread::spawn(move || {
-        let message = cc_run(&id, &cancel, usage, |error| log_manual_switch(&rows, &id, error));
+        // `log` gets `None` exactly when Claude Code now uses the target.
+        let switched = std::cell::Cell::new(false);
+        let message = cc_run(&id, &cancel, usage, |error| {
+            switched.set(error.is_none());
+            log_manual_switch(&rows, &id, error)
+        });
         drop(guard);
-        let _ = slint::invoke_from_event_loop(move || cc_finish(message));
+        // Claude Desktop, only after a Claude Code switch (macOS `switchClaudeCodeThenDesktop`).
+        let mut desktop_pending = None;
+        let message = match cd_flow::after_cc_switch(switched.get(), ticked, cd_run::enabled(), was_running) {
+            cd_flow::DesktopStep::RunNow => match cd_run::run_now(&id, &cancel) {
+                Some(d) => Some(cd_flow::join(message.as_deref(), &d)),
+                None => message,
+            },
+            cd_flow::DesktopStep::AskClose => {
+                desktop_pending = Some(id.clone());
+                message
+            }
+            cd_flow::DesktopStep::None => message,
+        };
+        let _ = slint::invoke_from_event_loop(move || cc_finish(message, desktop_pending));
     });
 }
 
@@ -809,16 +876,23 @@ fn cc_run(
     Some(message)
 }
 
-fn cc_finish(message: Option<String>) {
+/// Shows the outcome. With `desktop_pending` (Desktop runs and the box was ticked), its OK
+/// opens "Close Claude Desktop?": Windows has one prompt slot, so the two never stack.
+fn cc_finish(message: Option<String>, desktop_pending: Option<String>) {
     cc_set_switching(false);
-    CC_FLOW.with(|f| f.borrow_mut().cancel = None);
+    CC_FLOW.with(|f| {
+        let mut f = f.borrow_mut();
+        f.cancel = None;
+        f.desktop_pending = desktop_pending;
+    });
     match message {
         Some(m) => cc_prompt(2, cc_flow::MESSAGE_TITLE, &m),
         None => cc_prompt(0, "", ""),
     }
 }
 
-/// The prompt's main button: Switch on the confirmation, OK on a message.
+/// The prompt's main button: Switch on the confirmation, OK on a message (then the Desktop
+/// close prompt, if one waits), Close and Switch on that prompt.
 fn cc_ok() {
     match CC_FLOW.with(|f| f.borrow().kind) {
         1 => {
@@ -828,12 +902,22 @@ fn cc_ok() {
                 cc_start(id);
             }
         }
-        2 => cc_prompt(0, "", ""),
+        2 => match CC_FLOW.with(|f| f.borrow_mut().desktop_pending.take()) {
+            Some(id) => cd_ask_close(id),
+            None => cc_prompt(0, "", ""),
+        },
+        4 => {
+            let pending = CC_FLOW.with(|f| f.borrow_mut().desktop_pending.take());
+            cc_prompt(0, "", "");
+            if let Some(id) = pending {
+                cd_run::start(id, true);
+            }
+        }
         _ => {}
     }
 }
 
-/// Cancel: drops a pending confirmation, or stops waiting for the browser.
+/// Cancel: drops a pending confirmation or Desktop close, or stops waiting for the browser.
 fn cc_cancel() {
     match CC_FLOW.with(|f| f.borrow().kind) {
         1 => {
@@ -844,6 +928,10 @@ fn cc_cancel() {
             if let Some(c) = CC_FLOW.with(|f| f.borrow().cancel.clone()) {
                 c.store(true, std::sync::atomic::Ordering::SeqCst);
             }
+            cc_prompt(0, "", "");
+        }
+        4 => {
+            CC_FLOW.with(|f| f.borrow_mut().desktop_pending = None);
             cc_prompt(0, "", "");
         }
         _ => {}
@@ -1803,6 +1891,8 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     app.on_cc_prompt_ok(cc_ok);
     app.on_cc_prompt_cancel(cc_cancel);
+    app.on_cc_prompt_toggled(cc_toggled);
+    app.on_switch_desktop(|id| cd_run::request(id.to_string()));
     // macOS opens the window by itself only on the very first launch (`hasLaunchedBefore`);
     // later launches, launch at startup included, start in the tray. Dev runs always show it.
     let first_launch = !dev_run() && !claude_dashboard_core::settings::load().has_launched_before;
@@ -1823,6 +1913,8 @@ fn main() -> Result<(), slint::PlatformError> {
     popover.on_set_auto_switch(set_auto_switch_enabled);
     popover.on_cc_prompt_ok(cc_ok);
     popover.on_cc_prompt_cancel(cc_cancel);
+    popover.on_cc_prompt_toggled(cc_toggled);
+    popover.on_switch_desktop(|id| cd_run::request(id.to_string()));
     popover.on_refresh(move || {
         let _ = pop_nudge.send(refresh::Nudge::All);
     });

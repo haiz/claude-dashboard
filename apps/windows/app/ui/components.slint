@@ -676,6 +676,11 @@ export component AccountPane inherits VerticalLayout {
     callback ping();
     in property <bool> cc-switching;
     callback switch-cc();
+    // Claude Desktop (macOS "Switch Desktop to this account"): shown on the account Claude
+    // Code uses while Desktop is signed in as another; disabled while a Desktop switch runs.
+    in property <bool> desktop-differs;
+    in property <bool> desktop-switching;
+    callback switch-desktop();
     callback toggle-home();
     callback toggle-pin(bool /* new pinned state */);
     callback remove();
@@ -736,6 +741,14 @@ export component AccountPane inherits VerticalLayout {
             tip: root.data.switch-help;
             y: (parent.height - self.height) / 2;
             clicked => { root.switch-cc(); }
+        }
+        if root.data.switch-state == "active" && root.desktop-differs: ActionButton {
+            label: "Switch Desktop to this account";
+            glyph: "\u{E7F4}";
+            enabled: !root.desktop-switching;
+            tip: "Claude Desktop uses another account than Claude Code. Asks before closing Desktop.";
+            y: (parent.height - self.height) / 2;
+            clicked => { root.switch-desktop(); }
         }
         ActionButton {
             label: "Refresh";
