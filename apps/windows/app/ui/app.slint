@@ -362,6 +362,10 @@ component GeneralSettingsPane inherits Flickable {
     callback check-updates();
     in property <bool> auto-ping;
     callback set-auto-ping(bool);
+    in property <bool> switch-desktop;
+    callback set-switch-desktop(bool);
+    in property <bool> auto-switch-desktop;
+    callback set-auto-switch-desktop(bool);
     // Auto Switch and Critical Accounts: one callback per number ("on", "five", "seven",
     // "widget", "pace", "high-pace", "quiet-start", "quiet-end"), and the time zone.
     in property <SwitchSettings> sw;
@@ -453,6 +457,33 @@ component GeneralSettingsPane inherits Flickable {
         }
         Text {
             text: "Starts a new window for every active account whose 5h or 7d window is not running. Each ping sends one short message from that account.";
+            color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
+        }
+
+        GroupHeader { text: "Claude Desktop"; }
+        SettingsCard {
+            height: dsk.preferred-height;
+            dsk := VerticalLayout {
+                padding: 12px;
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 4px;
+                    Text { text: "Switch Claude Desktop with Switch"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "switch-desktop"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    SwitchKnob { on: root.switch-desktop; toggled(v) => { root.set-switch-desktop(v); } }
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    Text { text: "Let auto switch move Desktop when it is closed"; color: Theme.text-primary; vertical-alignment: center; }
+                    InfoTip { tip-id: "auto-switch-desktop"; y: (parent.height - self.height) / 2; }
+                    Rectangle { horizontal-stretch: 1; }
+                    SwitchKnob { on: root.auto-switch-desktop; toggled(v) => { root.set-auto-switch-desktop(v); } }
+                }
+            }
+        }
+        Text {
+            text: "Both are off by default. Auto switch never quits a running Claude Desktop.";
             color: Theme.text-secondary; font-size: 11px; wrap: word-wrap;
         }
 
@@ -652,7 +683,7 @@ component GeneralSettingsPane inherits Flickable {
                     color: Theme.text-primary; font-weight: 600; wrap: word-wrap;
                 }
                 if root.confirming-reset: Text {
-                    text: "Auto refresh, Auto Ping, Auto Switch, Critical Accounts and Updates go back to their defaults.";
+                    text: "Auto refresh, Auto Ping, Claude Desktop, Auto Switch, Critical Accounts and Updates go back to their defaults.";
                     color: Theme.text-secondary; font-size: 12px; wrap: word-wrap;
                 }
                 if root.confirming-reset: HorizontalLayout {
@@ -881,6 +912,10 @@ export component AppWindow inherits Window {
     callback check-updates();
     in-out property <bool> auto-ping: false;
     callback set-auto-ping(bool);
+    in-out property <bool> desktop-switch-on: false;
+    callback set-desktop-switch-on(bool);
+    in-out property <bool> desktop-auto-on: false;
+    callback set-desktop-auto-on(bool);
     // Settings > General > Auto Switch and Critical Accounts.
     in property <SwitchSettings> switch-settings;
     in property <[string]> quiet-hour-names;
@@ -1179,6 +1214,10 @@ export component AppWindow inherits Window {
                 set-auto-update(on) => { root.set-auto-update(on); }
                 auto-ping: root.auto-ping;
                 set-auto-ping(on) => { root.set-auto-ping(on); }
+                switch-desktop: root.desktop-switch-on;
+                set-switch-desktop(on) => { root.set-desktop-switch-on(on); }
+                auto-switch-desktop: root.desktop-auto-on;
+                set-auto-switch-desktop(on) => { root.set-desktop-auto-on(on); }
                 sw: root.switch-settings;
                 hours: root.quiet-hour-names;
                 zones: root.time-zone-names;

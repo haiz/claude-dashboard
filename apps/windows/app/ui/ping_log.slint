@@ -21,6 +21,8 @@ export struct UiSwitchRow {
     detail: string,
     outcome: string,
     kind: int,
+    // A Claude Desktop row: shows the teal Desktop badge.
+    desktop: bool,
 }
 
 component ConfirmButton inherits Rectangle {
@@ -231,6 +233,14 @@ export component SwitchLogPane inherits VerticalLayout {
                                 border-radius: 8px;
                                 background: self.tint.with-alpha(0.18);
                                 switch-badge := Text { text: r.trigger; color: parent.tint; font-size: 10px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                            }
+                            if r.desktop: Rectangle {
+                                width: desktop-badge.preferred-width + 12px;
+                                height: 16px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 8px;
+                                background: #30b0c7.with-alpha(0.18);
+                                desktop-badge := Text { text: "Desktop"; color: #30b0c7; font-size: 10px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                             }
                             Text { text: r.accounts; color: Theme.text-primary; font-size: 11px; font-weight: 500; vertical-alignment: center; }
                         }

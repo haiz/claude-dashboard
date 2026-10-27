@@ -64,6 +64,8 @@ pub struct GeneralState {
     pub auto_refresh_minutes: u64,
     pub auto_update: bool,
     pub auto_ping: bool,
+    pub switch_desktop: bool,
+    pub auto_switch_desktop: bool,
 }
 
 /// Build date of the running release (`yyyy-MM-dd`), "" for local builds. See `build.rs`.
@@ -79,6 +81,8 @@ pub fn reset_all() -> Result<GeneralState, String> {
         auto_refresh_minutes: s.effective_refresh_minutes(),
         auto_update: s.auto_update,
         auto_ping: s.auto_ping_enabled,
+        switch_desktop: s.switch_desktop_enabled,
+        auto_switch_desktop: s.auto_switch_desktop_enabled,
     })
 }
 
@@ -184,6 +188,24 @@ pub fn set_auto_ping(on: bool) -> Result<(), String> {
     settings::update(|s| s.auto_ping_enabled = on)
 }
 
+/// Settings > General > Claude Desktop: Switch also moves Claude Desktop. Read at use time.
+pub fn switch_desktop_enabled() -> bool {
+    settings::load().switch_desktop_enabled
+}
+
+pub fn set_switch_desktop(on: bool) -> Result<(), String> {
+    settings::update(|s| s.switch_desktop_enabled = on)
+}
+
+/// Settings > General > Claude Desktop: auto switch also moves a closed Claude Desktop.
+pub fn auto_switch_desktop_enabled() -> bool {
+    settings::load().auto_switch_desktop_enabled
+}
+
+pub fn set_auto_switch_desktop(on: bool) -> Result<(), String> {
+    settings::update(|s| s.auto_switch_desktop_enabled = on)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,6 +255,8 @@ mod tests {
                 auto_refresh_minutes: 5,
                 auto_update: true,
                 auto_ping: false,
+                switch_desktop: false,
+                auto_switch_desktop: false,
             }
         );
         assert!(!auto_ping_enabled());
@@ -242,6 +266,21 @@ mod tests {
             settings::load().launch_at_startup,
             "launch at startup is kept"
         );
+    }
+
+    #[test]
+    fn reset_all_turns_desktop_off() {
+        let _env = crate::testenv::lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("APPDATA", dir.path());
+        std::env::set_var("LOCALAPPDATA", dir.path());
+        assert!(!switch_desktop_enabled() && !auto_switch_desktop_enabled(), "off by default");
+        set_switch_desktop(true).unwrap();
+        set_auto_switch_desktop(true).unwrap();
+        assert!(switch_desktop_enabled() && auto_switch_desktop_enabled());
+        let after = reset_all().unwrap();
+        assert!(!after.switch_desktop && !after.auto_switch_desktop);
+        assert!(!switch_desktop_enabled() && !auto_switch_desktop_enabled());
     }
 
     #[test]

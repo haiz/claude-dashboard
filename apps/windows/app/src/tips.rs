@@ -26,6 +26,20 @@ pub const TIPS: &[Tip] = &[
         help_topic: "refresh-updates",
     },
     Tip {
+        id: "switch-desktop",
+        summary: "Also move Claude Desktop when you press Switch.",
+        detail: "When on, Switch also signs Claude Desktop in to the same account as Claude Code. A running Desktop is closed only after you agree; a closed one is switched straight away. The first switch to an account opens its browser profile so you can authorize Desktop.",
+        example: "Switching to B moves Claude Code and Claude Desktop to B; with this off only Claude Code moves.",
+        help_topic: "switch-claude-desktop",
+    },
+    Tip {
+        id: "auto-switch-desktop",
+        summary: "Let auto switch move Claude Desktop when it is not running.",
+        detail: "When on, an auto switch also moves Claude Desktop, but only while Desktop is closed and only to an account Desktop has signed in to before. A running Desktop is never quit automatically and stays on its account.",
+        example: "Desktop is closed when auto switch moves Claude Code to B, so Desktop moves to B too. If Desktop is open, it stays on A.",
+        help_topic: "auto-switch",
+    },
+    Tip {
         id: "auto-ping",
         summary: "Start idle usage windows automatically.",
         detail: "A window only starts counting at the first message. After each refresh, Auto Ping sends one short message from every active account whose 5h or 7d window is not running, so it resets sooner.",
@@ -158,10 +172,26 @@ mod tests {
     }
 
     #[test]
+    fn desktop_tips_match_macos() {
+        let tip = |id: &str| TIPS.iter().find(|t| t.id == id).unwrap_or_else(|| panic!("{id}"));
+        let a = tip("switch-desktop");
+        assert_eq!(a.summary, "Also move Claude Desktop when you press Switch.");
+        assert!(a.detail.starts_with("When on, Switch also signs Claude Desktop in to the same account as Claude Code."));
+        assert!(a.detail.ends_with("opens its browser profile so you can authorize Desktop."));
+        assert_eq!(a.example, "Switching to B moves Claude Code and Claude Desktop to B; with this off only Claude Code moves.");
+        assert_eq!(a.help_topic, "switch-claude-desktop");
+        let b = tip("auto-switch-desktop");
+        assert_eq!(b.summary, "Let auto switch move Claude Desktop when it is not running.");
+        assert!(b.detail.ends_with("A running Desktop is never quit automatically and stays on its account."));
+        assert!(b.example.ends_with("If Desktop is open, it stays on A."));
+        assert_eq!(b.help_topic, "auto-switch");
+    }
+
+    #[test]
     fn tip_ids_are_unique_and_cover_the_settings() {
-        assert_eq!(TIPS.len(), 12, "the 12 macOS SettingsTips");
+        assert_eq!(TIPS.len(), 14, "the 14 macOS SettingsTips");
         for id in [
-            "auto-refresh", "refresh-interval", "auto-ping", "auto-switch", "five-hour-threshold", "seven-day-threshold",
+            "auto-refresh", "refresh-interval", "switch-desktop", "auto-switch-desktop", "auto-ping", "auto-switch", "five-hour-threshold", "seven-day-threshold",
             "menu-bar-toggle", "critical-pace", "high-critical-pace", "quiet-hours", "time-zone", "auto-update",
         ] {
             assert_eq!(TIPS.iter().filter(|t| t.id == id).count(), 1, "{id}");

@@ -2,7 +2,7 @@
 //! switch, failed attempt and no-candidate stretch, and every Switch button press, newest
 //! first, each tagged Auto or Manual.
 
-use claude_dashboard_core::auto_switch_log::{Entry, Outcome};
+use claude_dashboard_core::auto_switch_log::{Entry, Outcome, SwitchTarget};
 
 use crate::UiSwitchRow;
 
@@ -13,7 +13,8 @@ pub fn rows(entries: &[Entry], local_offset_s: f64) -> Vec<UiSwitchRow> {
         .map(|e| UiSwitchRow {
             time: crate::ping_log_view::medium_date_time(e.date_unix + local_offset_s).into(),
             trigger: e.trigger.label().into(),
-            accounts: accounts(e.from_name.as_deref(), e.to_name.as_deref()).into(),
+            accounts: accounts(e.from_name.as_deref(), e.to_name.as_deref(), e.target == SwitchTarget::ClaudeDesktop).into(),
+            desktop: e.target == SwitchTarget::ClaudeDesktop,
             reason: e.reason.as_str().into(),
             detail: e.detail.clone().unwrap_or_default().into(),
             outcome: e.outcome.label().into(),
@@ -26,8 +27,14 @@ pub fn rows(entries: &[Entry], local_offset_s: f64) -> Vec<UiSwitchRow> {
         .collect()
 }
 
-/// "from → to", or just "from" when nothing was switched to (macOS `accounts(_:)`).
-pub fn accounts(from: Option<&str>, to: Option<&str>) -> String {
+/// "from → to", or just "from" when nothing was switched to (macOS `accounts(_:)`). A Claude
+/// Desktop row does not record the account Desktop was on, so it reads "→ to".
+pub fn accounts(from: Option<&str>, to: Option<&str>, desktop: bool) -> String {
+    if desktop && from.is_none() {
+        if let Some(to) = to {
+            return format!("\u{2192} {to}");
+        }
+    }
     let from = from.unwrap_or("Unknown account");
     match to {
         Some(to) => format!("{from} \u{2192} {to}"),
@@ -73,8 +80,26 @@ mod tests {
     }
 
     #[test]
+    fn desktop_row_has_badge_and_arrow() {
+        let code = &rows(&[e(Outcome::Switched, Some("a"), Some("b"), None)], 0.0)[0];
+        assert!(!code.desktop, "Claude Code rows carry no badge");
+        let desktop = Entry { target: SwitchTarget::ClaudeDesktop, ..e(Outcome::Switched, None, Some("b@x.com"), None) };
+        let r = &rows(&[desktop], 0.0)[0];
+        assert!(r.desktop);
+        assert_eq!(r.accounts.as_str(), "\u{2192} b@x.com");
+        assert_eq!(accounts(Some("a"), Some("b"), true), "a \u{2192} b");
+        assert_eq!(accounts(None, None, true), "Unknown account");
+    }
+
+    #[test]
+    fn skipped_outcome_label() {
+        let r = &rows(&[e(Outcome::Skipped, None, Some("b"), Some("no captured login"))], 0.0)[0];
+        assert_eq!((r.outcome.as_str(), r.kind), ("Skipped", 2));
+    }
+
+    #[test]
     fn accounts_text() {
-        assert_eq!(accounts(None, Some("b")), "Unknown account \u{2192} b");
-        assert_eq!(accounts(None, None), "Unknown account");
+        assert_eq!(accounts(None, Some("b"), false), "Unknown account \u{2192} b");
+        assert_eq!(accounts(None, None, false), "Unknown account");
     }
 }

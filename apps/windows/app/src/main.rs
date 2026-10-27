@@ -1665,8 +1665,12 @@ fn main() -> Result<(), slint::PlatformError> {
             let (enabled, minutes) = settings_general::current_auto_refresh();
             let launch = settings_general::launch_is_enabled();
             let auto_ping = settings_general::auto_ping_enabled();
+            let switch_desktop = settings_general::switch_desktop_enabled();
+            let auto_switch_desktop = settings_general::auto_switch_desktop_enabled();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(a) = w.upgrade() {
+                    a.set_desktop_switch_on(switch_desktop);
+                    a.set_desktop_auto_on(auto_switch_desktop);
                     a.set_auto_refresh_enabled(enabled);
                     a.set_auto_refresh_minutes(minutes as i32);
                     a.set_launch_at_startup(launch);
@@ -1689,6 +1693,29 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
                 Ok(()) => {}
                 Err(e) => eprintln!("save auto ping failed: {e}"),
+            });
+        });
+        // Claude Desktop toggles: persisted only; the switch paths read them when they run.
+        let w = app.as_weak();
+        app.on_set_desktop_switch_on(move |on| {
+            if let Some(a) = w.upgrade() {
+                a.set_desktop_switch_on(on);
+            }
+            settings_general::writer().submit(move || {
+                if let Err(e) = settings_general::set_switch_desktop(on) {
+                    eprintln!("save Switch Claude Desktop failed: {e}");
+                }
+            });
+        });
+        let w = app.as_weak();
+        app.on_set_desktop_auto_on(move |on| {
+            if let Some(a) = w.upgrade() {
+                a.set_desktop_auto_on(on);
+            }
+            settings_general::writer().submit(move || {
+                if let Err(e) = settings_general::set_auto_switch_desktop(on) {
+                    eprintln!("save auto switch Desktop failed: {e}");
+                }
             });
         });
         let tx = nudge_tx.clone();
@@ -1733,6 +1760,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             a.set_auto_refresh_minutes(state.auto_refresh_minutes as i32);
                             a.set_auto_update(state.auto_update);
                             a.set_auto_ping(state.auto_ping);
+                            a.set_desktop_switch_on(state.switch_desktop);
+                            a.set_desktop_auto_on(state.auto_switch_desktop);
                         }
                         refresh_auto_switch_ui();
                     });

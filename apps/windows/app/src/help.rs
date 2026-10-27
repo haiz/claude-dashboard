@@ -9,6 +9,7 @@ pub const TOPICS: &[(&str, &str)] = &[
     ("finding-your-way", "Finding Your Way"),
     ("charts", "Charts"),
     ("switch-claude-code", "Switch Claude Code"),
+    ("switch-claude-desktop", "Switch Claude Desktop"),
     ("auto-switch", "Auto Switch"),
     ("critical-accounts", "Critical Accounts"),
     ("ping", "Ping"),
@@ -43,6 +44,7 @@ mod tests {
                 ("finding-your-way", "Finding Your Way"),
                 ("charts", "Charts"),
                 ("switch-claude-code", "Switch Claude Code"),
+                ("switch-claude-desktop", "Switch Claude Desktop"),
                 ("auto-switch", "Auto Switch"),
                 ("critical-accounts", "Critical Accounts"),
                 ("ping", "Ping"),
@@ -57,8 +59,31 @@ mod tests {
     fn finding_your_way_names_ping_log_and_auto_ping() {
         let ui = include_str!("../ui/help.slint");
         assert!(ui.contains("**Tools**: Ping Log, Switch Log and Help."));
-        assert!(ui.contains("**Settings**: accounts, refresh, Auto Ping, Auto Switch, updates."));
+        assert!(ui.contains("**Settings**: accounts, refresh, Auto Ping, Claude Desktop, Auto Switch, updates."));
         assert!(ui.contains("The **Auto switch** toggle sits bottom right with its latest event."));
+    }
+
+    #[test]
+    fn has_switch_claude_desktop_topic() {
+        let ui = include_str!("../ui/help.slint");
+        assert!(TOPICS.contains(&("switch-claude-desktop", "Switch Claude Desktop")));
+        for text in [
+            "subtitle: \"Move Claude Desktop along with Claude Code.\"",
+            "Turn on **Switch Claude Desktop with Switch** in **Settings › General › Claude Desktop** (off by default).",
+            "**Close and Switch** quits it (unsaved work in Desktop may be lost)",
+            "**Desktop closed**: it is switched straight away, with no question.",
+            "Claude Desktop gets **its own login**",
+            "**Switch Desktop to this account**: on the page of the account Claude Code uses",
+            "Recommended: Claude Code and Claude Desktop",
+            "Recommended: Claude Desktop only",
+            "the tray icon then shows its 5h usage",
+            "**Claude Desktop**: moved only with **Let auto switch move Desktop when it is closed** on",
+            "**Only use Claude Desktop?** Turn Auto Switch off.",
+            "Claude Desktop rows carry a **Desktop** tag.",
+            "Claude Desktop was not switched",
+        ] {
+            assert!(ui.contains(text), "{text}");
+        }
     }
 
     #[test]
