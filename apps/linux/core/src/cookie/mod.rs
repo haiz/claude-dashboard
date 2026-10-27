@@ -160,18 +160,45 @@ pub(crate) fn gcm_open(
     host_key: &str,
     db_schema_version: i64,
 ) -> Result<String, CookieError> {
+    let mut pt = gcm_open_raw(key, body).ok_or(CookieError::DecryptFailed)?;
+    strip_domain_hash(&mut pt, host_key, db_schema_version);
+    String::from_utf8(pt).map_err(|_| CookieError::BadUtf8)
+}
+
+/// The GCM step of [`gcm_open`] alone: `nonce(12) || ciphertext || tag` to raw plaintext.
+pub(crate) fn gcm_open_raw(key: &[u8; 32], body: &[u8]) -> Option<Vec<u8>> {
     use aes_gcm::aead::Aead;
     use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 
     // Minimum: 12-byte nonce + 16-byte GCM tag (empty plaintext).
     if body.len() < 12 + 16 {
-        return Err(CookieError::DecryptFailed);
+        return None;
     }
-    let mut pt = Aes256Gcm::new(key.into())
+    Aes256Gcm::new(key.into())
         .decrypt(Nonce::from_slice(&body[..12]), &body[12..])
-        .map_err(|_| CookieError::DecryptFailed)?;
-    strip_domain_hash(&mut pt, host_key, db_schema_version);
-    String::from_utf8(pt).map_err(|_| CookieError::BadUtf8)
+        .ok()
+}
+
+/// Inverse of [`gcm_open`]: AES-256-GCM, returns `nonce(12) || ciphertext || tag` with a
+/// random nonce. With `Some(host)` the plaintext is prefixed by `SHA256(host)` (the schema
+/// >= 24 cookie layout).
+pub(crate) fn gcm_seal(key: &[u8; 32], plain: &[u8], host_prefix: Option<&str>) -> Vec<u8> {
+    use aes_gcm::aead::Aead;
+    use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+
+    let mut nonce = [0u8; 12];
+    getrandom::getrandom(&mut nonce).expect("OS random source");
+    let mut pt = Vec::with_capacity(plain.len() + 32);
+    if let Some(host) = host_prefix {
+        pt.extend_from_slice(&Sha256::digest(host.as_bytes()));
+    }
+    pt.extend_from_slice(plain);
+    let ct = Aes256Gcm::new(key.into())
+        .encrypt(Nonce::from_slice(&nonce), pt.as_slice())
+        .expect("AES-GCM encryption cannot fail for in-memory input");
+    let mut out = nonce.to_vec();
+    out.extend_from_slice(&ct);
+    out
 }
 
 /// Strips the schema->=24 `SHA256(host_key)` plaintext prefix in place; on a
@@ -255,6 +282,17 @@ mod tests {
     use aes::Aes128;
     use cbc::cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyIvInit};
     use sha2::{Digest, Sha256};
+
+    #[test]
+    fn gcm_seal_round_trips_through_gcm_open() {
+        let key = [7u8; 32];
+        let blob = gcm_seal(&key, b"sk-ant-x", Some(".claude.ai"));
+        assert_eq!(gcm_open(&key, &blob, ".claude.ai", 24).unwrap(), "sk-ant-x");
+        let plain = gcm_seal(&key, b"sk-ant-x", None);
+        assert_eq!(gcm_open(&key, &plain, ".claude.ai", 0).unwrap(), "sk-ant-x");
+        assert_ne!(gcm_seal(&key, b"sk-ant-x", None), gcm_seal(&key, b"sk-ant-x", None));
+    }
+
 
     // Known-answer test: pins derive_key's PBKDF2 parameters (SHA1, salt
     // "saltysalt", 1 iteration) to Chromium's published constants, verified

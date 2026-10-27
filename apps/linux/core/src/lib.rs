@@ -23,6 +23,7 @@ pub mod startup;
 pub mod claude_code;
 pub mod cc_switch;
 pub mod cc_oauth;
+pub mod cd_switch;
 pub mod critical;
 pub mod auto_switch;
 pub mod auto_switch_log;
