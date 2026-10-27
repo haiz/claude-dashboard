@@ -3,6 +3,7 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::ComponentHandle;
 
+mod animal_assets;
 mod auto_switch;
 mod ratio;
 mod cc_login;
@@ -99,6 +100,10 @@ fn apply_output(
     // Settings > General > Show burn-rate animals; the app property is set at launch and on toggle.
     let show_animals = weak.upgrade().is_some_and(|a| a.get_show_burn_animals());
     let mut rows: Vec<UiRow> = out.rows.iter().map(|r| model::to_ui_row(r, now, show_animals)).collect();
+    // Last 5h change per account (monotonic seconds): Slint re-checks the 600 s expiry on its tick.
+    for r in rows.iter_mut() {
+        model::set_animal_activity(r, animal_assets::last_change(r.id.as_str()));
+    }
     set_ping_fields(&mut rows);
     set_switch_fields(&mut rows);
     set_auto_switch_fields(&mut rows, &out.rows, now, &claude_dashboard_core::settings::load());
@@ -430,6 +435,7 @@ fn spawn_refresh_loop(
                         // Only a real fetch is a new measurement; a failed refresh keeps the previous projections.
                         if fetched {
                             refresh::apply_projections(&mut tracker, &mut out.rows, now);
+                            record_animal_activity(&out.rows);
                         }
                         out
                     }
@@ -444,6 +450,7 @@ fn spawn_refresh_loop(
                             for i in 0..out.rows.len() {
                                 if ids.contains(&out.rows[i].account_id) {
                                     refresh::apply_projections(&mut tracker, &mut out.rows[i..=i], now);
+                                    record_animal_activity(&out.rows[i..=i]);
                                 }
                             }
                         }
@@ -512,6 +519,13 @@ fn spawn_refresh_loop(
             jobs = refresh::coalesce(batch);
         }
     });
+}
+
+/// Feeds the rows a real fetch just measured to the shared animal-activity tracker, stamped on
+/// the monotonic clock (a wall-clock jump can neither extend nor cut activity).
+fn record_animal_activity(rows: &[claude_dashboard_core::rows::DisplayRow]) {
+    let mut t = animal_assets::shared_tracker().lock().unwrap_or_else(|e| e.into_inner());
+    animal_assets::record_activity(&mut t, rows, animal_assets::monotonic_now());
 }
 
 pub(crate) fn unix_now() -> f64 {

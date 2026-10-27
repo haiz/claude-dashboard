@@ -946,4 +946,24 @@ mod tests {
         assert_eq!(a.five_hour.as_ref().map(|w| w.utilization), Some(40.0));
         assert_eq!(merged.rows.iter().filter(|r| r.error.is_none()).count(), 2);
     }
+
+    #[test]
+    fn backfilled_errored_rows_never_extend_animal_activity() {
+        use claude_dashboard_core::animal_display::AnimalActivityTracker;
+        let mut t = AnimalActivityTracker::new();
+        let prev = rows(&[]);
+        crate::animal_assets::record_activity(&mut t, &prev, 0.0);
+        // b errors with no windows of its own, then takes its last-good 70% back from `prev`.
+        let mut fresh = rows(&[("b", "HTTP 500")]);
+        let b = fresh.iter_mut().find(|r| r.account_id == "b").unwrap();
+        (b.five_hour, b.seven_day, b.fable) = (None, None, None);
+        let merged = merge_errors(&prev, Ok(out(fresh)), NOW);
+        crate::animal_assets::record_activity(&mut t, &merged.rows, 100.0);
+        assert_eq!(t.last_change_at("b"), None, "backfilled error row records nothing");
+        // A genuinely changed success on a does record.
+        let mut next = merged.rows.clone();
+        next.iter_mut().find(|r| r.account_id == "a").unwrap().five_hour.as_mut().unwrap().utilization = 41.0;
+        crate::animal_assets::record_activity(&mut t, &next, 200.0);
+        assert_eq!(t.last_change_at("a"), Some(200.0));
+    }
 }

@@ -45,6 +45,27 @@ export struct UiWindow {
     track-compact: [string],
     // Burn-rate animal placed on the ring ("" when unknown).
     animal: string,
+    // 5h window only. Stable asset id ("snail" .. "cheetah") of the animal to animate, "" when
+    // the setting is off, no burn-rate animal is known or the packaged manifest is invalid.
+    animal-asset: string,
+    // 5h window only. Monotonic app-clock seconds (animal_assets::monotonic_now) at which the
+    // 5h value's last change stops counting (+600 s); -1 = no change seen since launch.
+    // Eligible while `animal-asset != "" && clock < animal-expires-at`. The phase is NOT here:
+    // it is one app-wide property so row refreshes never restart the animation.
+    animal-expires-at: float,
+}
+
+// Compile-time references so every burn-animal sprite sheet (768x512, 6x4 cells of 128 px,
+// row-major, 24 frames) is packaged in the Windows build.
+export global BurnAnimalSheets {
+    pure function sheet(id: string) -> image {
+        if id == "snail" { return @image-url("assets/burn-animals/snail.png"); }
+        if id == "turtle" { return @image-url("assets/burn-animals/turtle.png"); }
+        if id == "rabbit" { return @image-url("assets/burn-animals/rabbit.png"); }
+        if id == "horse" { return @image-url("assets/burn-animals/horse.png"); }
+        if id == "cheetah" { return @image-url("assets/burn-animals/cheetah.png"); }
+        return @image-url("assets/burn-animals/snail.png");
+    }
 }
 
 export struct UiRow {
