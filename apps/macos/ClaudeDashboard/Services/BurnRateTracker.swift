@@ -2,6 +2,9 @@
 import Foundation
 
 actor BurnRateTracker {
+    /// Two `resetsAt` this close are the same window (as `AutoSwitchPlanner.resetTolerance`).
+    static let resetTolerance: TimeInterval = 60
+
     let logStore: UsageLogStore
 
     private struct Measurement {
@@ -48,8 +51,9 @@ actor BurnRateTracker {
             return nil
         }
 
-        // Different reset cycle → reset
-        guard resetsAt == current.resetsAt else {
+        // Different reset cycle → reset. The API reports a boundary with jitter
+        // (sub-second, sometimes whole seconds), so allow `resetTolerance`.
+        guard abs(resetsAt.timeIntervalSince(current.resetsAt)) <= Self.resetTolerance else {
             history[key] = HistoryEntry(prev: nil, current: newMeasurement, lastRate: nil)
             return nil
         }

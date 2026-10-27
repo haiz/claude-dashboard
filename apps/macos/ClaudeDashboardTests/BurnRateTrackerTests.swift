@@ -67,6 +67,44 @@ final class BurnRateTrackerTests: XCTestCase {
         XCTAssertNil(result, "New cycle → reset history → nil")
     }
 
+    /// The API reports a window boundary with jitter (`16:59:59.661633` on one call,
+    /// `16:59:59.661657` on the next, sometimes whole seconds apart): still one cycle.
+    func testJitteredResetsAt_withinTolerance_keepsCycle() async {
+        for jitter in [0.000_024, 30.0, -60.0] {
+            let accountId = UUID()
+            let resetsAt = Date().addingTimeInterval(3600)
+            let now = Date()
+
+            let _ = await tracker.record(
+                accountId: accountId, window: .fiveHour,
+                utilization: 20.0, resetsAt: resetsAt, recordedAt: now
+            )
+            let result = await tracker.record(
+                accountId: accountId, window: .fiveHour,
+                utilization: 40.0, resetsAt: resetsAt.addingTimeInterval(jitter),
+                recordedAt: now.addingTimeInterval(600)
+            )
+            XCTAssertEqual(result?.level, 5, "jitter \(jitter)s is the same cycle")
+        }
+    }
+
+    func testResetsAtBeyondTolerance_resetsHistory() async {
+        let accountId = UUID()
+        let resetsAt = Date().addingTimeInterval(3600)
+        let now = Date()
+
+        let _ = await tracker.record(
+            accountId: accountId, window: .fiveHour,
+            utilization: 20.0, resetsAt: resetsAt, recordedAt: now
+        )
+        let result = await tracker.record(
+            accountId: accountId, window: .fiveHour,
+            utilization: 40.0, resetsAt: resetsAt.addingTimeInterval(61),
+            recordedAt: now.addingTimeInterval(600)
+        )
+        XCTAssertNil(result, "More than 60s apart is a new cycle")
+    }
+
     func testUnchangedUtilization_gapOver5min_returnsNil() async {
         let accountId = UUID()
         let resetsAt = Date().addingTimeInterval(3600)

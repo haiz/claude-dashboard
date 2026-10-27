@@ -294,55 +294,61 @@ level 5).
 `fromProjectedTime` above is only the *last* step. The number handed to it —
 projected seconds to 100% — is produced by a stateful, in-memory tracker
 whose rules a port cannot guess from the thresholds alone. Source:
-`apps/macos/ClaudeDashboard/Services/BurnRateTracker.swift` (107 lines;
-`record(...)` spans lines 25-106).
+`apps/macos/ClaudeDashboard/Services/BurnRateTracker.swift` (111 lines;
+`record(...)` spans lines 28-110).
 
 ### The call
 
 `record(accountId:window:utilization:resetsAt:recordedAt:)` is called once
 per window per refresh and returns `BurnRateResult?`. A `nil` return means
 "no animal to display yet" — it is not an error. `recordedAt` defaults to
-`Date()` (line 30) but is injectable, which is how the Swift tests drive it.
+`Date()` (line 33) but is injectable, which is how the Swift tests drive it.
 
 ### History key and lifetime
 
 - History is a dictionary keyed by
-  `"\(accountId.uuidString)_\(window.rawValue)"` (line 32) — one independent
+  `"\(accountId.uuidString)_\(window.rawValue)"` (line 35) — one independent
   history per *(account, window)* pair. `uuidString` is the uppercase
   hyphenated form; `window.rawValue` is the `UsageWindow` **integer**:
   `fiveHour = 0`, `sevenDay = 1`, `fable = 3` (`UsageLogModels.swift:4-9` —
   `2` is deliberately skipped, it belonged to the retired Sonnet window).
-- The history lives only in memory, inside an `actor` (lines 4, 19). It is
+- The history lives only in memory, inside an `actor` (lines 4, 22). It is
   never persisted. A process restart wipes it, so the first poll after every
   launch takes rule 1 below.
-- Each entry holds three things (lines 13-17): `prev` and `current`, each a
-  `Measurement` of utilization + `recordedAt` + `resetsAt` (lines 7-11), and
+- Each entry holds three things (lines 16-20): `prev` and `current`, each a
+  `Measurement` of utilization + `recordedAt` + `resetsAt` (lines 10-14), and
   `lastRate`, a rate in **percent per second**.
 
 ### Unconditional side effect
 
 Before any history logic runs, every call writes one row to the usage log
-store (lines 36-39) with `isLimited = utilization >= 100.0` (line 33). This
+store (lines 39-42) with `isLimited = utilization >= 100.0` (line 36). This
 happens on the `nil`-returning paths too. `isLimited` is a log field only;
 it plays no part in the projection.
 
 ### The rules, in the order the code evaluates them
 
-1. **First measurement** (lines 45-49). No entry for the key, or the entry's
+1. **First measurement** (lines 48-52). No entry for the key, or the entry's
    `current` is `nil`: store
    `HistoryEntry(prev: nil, current: <new>, lastRate: nil)`, return `nil`.
-2. **Different reset cycle** (lines 52-55). `resetsAt != current.resetsAt` —
-   **exact** instant equality, sub-second precision included — discards the
+2. **Different reset cycle** (lines 54-59). `resetsAt` more than
+   `resetTolerance` (**60 s**) away from `current.resetsAt`, in either
+   direction — exactly 60 s apart is still the same cycle — discards the
    history: store a fresh `HistoryEntry(prev: nil, current: <new>,
-   lastRate: nil)`, return `nil`.
-3. **Utilization decreased** (lines 58-61). `utilization < current.utilization`:
+   lastRate: nil)`, return `nil`. The tolerance exists because the API
+   reports one window boundary with jitter (`16:59:59.661633` on one call,
+   `16:59:59.661657` on the next, sometimes whole seconds apart); an exact
+   comparison saw nearly every poll as a new cycle and never showed an
+   animal. A port whose reset time is optional treats "one side unknown" as
+   a different cycle and "both unknown" as the same one.
+3. **Utilization decreased** (lines 62-65). `utilization < current.utilization`:
    the same full reset as rule 2, return `nil`. (Read as an anomaly or an
    unnoticed post-reset.)
-4. **Utilization increased** (lines 64-79). `utilization > current.utilization`:
+4. **Utilization increased** (lines 68-83). `utilization > current.utilization`:
    - `deltaPercent = utilization - current.utilization`
    - `deltaTime = recordedAt - current.recordedAt`, in seconds
    - If `deltaTime <= 0`: return `nil` **without touching the history**
-     (line 67). The new measurement is discarded and `current` stays the
+     (line 71). The new measurement is discarded and `current` stays the
      older one — it was still logged, per "Unconditional side effect".
    - `rate = deltaPercent / deltaTime`, percent per second (necessarily
      `> 0` on this path)
@@ -354,25 +360,25 @@ it plays no part in the projection.
      projection is `0` → level 5; above `100` it is negative, every `>`
      comparison inside `fromProjectedTime` fails, and it is level 5 again.
 5. **Utilization unchanged** — exact `Double` equality, i.e. neither rule 3
-   nor rule 4 fired (lines 82-105). Let `gap = recordedAt - current.recordedAt`,
+   nor rule 4 fired (lines 86-109). Let `gap = recordedAt - current.recordedAt`,
    in seconds:
    - **Stale, `gap >= 300`** (lines 84-89; 300 s = 5 minutes, and *exactly*
      300 counts as stale): set `current = <new>` and **drop the carried
      rate** (`lastRate = nil`), leaving `prev` as it was; return `nil`.
      After five flat minutes the last observed rate is no longer trusted.
-   - **Fresh, `gap < 300`, no carried rate** (lines 92-96): if `lastRate` is
+   - **Fresh, `gap < 300`, no carried rate** (lines 96-100): if `lastRate` is
      `nil` or `prev` is `nil`, set `current = <new>`, leave `lastRate`
      untouched, return `nil`. Two notes for a reimplementation: `lastRate`
      non-`nil` already implies `prev` non-`nil` (both are only ever set
-     together at lines 73-75, and only `lastRate` is cleared, at line 86), so
+     together at lines 77-79, and only `lastRate` is cleared, at line 90), so
      the `prev` half of that guard is redundant — a port that models the two
      fields independently must not let them diverge. And a **negative** gap,
      from an out-of-order or clock-skewed poll, falls into this `< 300`
      branch, not the stale one.
-   - **Fresh, `gap < 300`, carried rate available** (lines 98-105):
+   - **Fresh, `gap < 300`, carried rate available** (lines 102-109):
      - `remaining = 100.0 - utilization`
      - If `remaining <= 0`: return `fromProjectedTime(0)` — level 5 —
-       **without updating the history** (lines 99-101); `current` stays the
+       **without updating the history** (lines 103-105); `current` stays the
        older measurement.
      - Otherwise `projectedTime = remaining / lastRate`; set
        `current = <new>` (carrying `lastRate` and `prev` forward unchanged)
@@ -386,10 +392,12 @@ a user actually sees, so a port copying the caller must copy it knowingly.
 `Date().addingTimeInterval(...)` whenever a window's `resets_at` is `nil` —
 `18000` for the 5-hour window (line 325), `604800` for 7-day (line 330) and
 for Fable (line 336). That substitute is a *new instant on every refresh*,
-so rule 2's exact-equality check fails on every poll: **a window whose
-`resets_at` is `null` resets its history every poll and therefore never
-produces a burn rate.** Only windows with a real `resets_at` ever show an
-animal. The Fable window is polled at all only when `fable != nil`
+moving by the time between polls, so polls a minute or more apart fall
+outside rule 2's 60 s tolerance and reset the history. Closer polls (a manual
+refresh) may stay inside it, but a window with `resets_at: null` has not
+started and its utilization stays flat, so rule 5 returns `nil` anyway:
+**a window whose `resets_at` is `null` never produces a burn rate.** Only
+windows with a real `resets_at` ever show an animal. The Fable window is polled at all only when `fable != nil`
 (line 332).
 
 ## Sort order
