@@ -177,9 +177,9 @@ mod tests {
 
     #[test]
     fn tip_ids_are_unique_and_cover_the_settings() {
-        assert_eq!(TIPS.len(), 12, "the 12 macOS SettingsTips");
+        assert_eq!(TIPS.len(), 13, "the 13 SettingsTips shared with macOS");
         for id in [
-            "auto-refresh", "refresh-interval", "auto-ping", "auto-switch", "five-hour-threshold", "seven-day-threshold",
+            "auto-refresh", "refresh-interval", "show-burn-animals", "auto-ping", "auto-switch", "five-hour-threshold", "seven-day-threshold",
             "menu-bar-toggle", "critical-pace", "high-critical-pace", "quiet-hours", "time-zone", "auto-update",
         ] {
             assert_eq!(TIPS.iter().filter(|t| t.id == id).count(), 1, "{id}");
