@@ -115,7 +115,7 @@ struct HelpView: View {
                 HelpBadge("Pro", color: AccountPlan.pro.badgeColor)
             }
             HelpRow(symbol: "pin.fill", "**Pinned**: always at the top of the list, and the account shown in the menu bar.")
-            HelpRow(symbol: "bolt.fill", color: .orange, "**Home after reset**: Claude Code comes back here each time this account's 5h limit resets.")
+            HelpRow(symbol: "bolt.fill", color: .orange, "**Home after reset**: Claude Code comes back here each time this account's 5h limit resets. Shown only while Auto Switch is on; turning it off keeps your choice.")
             HelpRow("**Flame**: orange when the account is critical, red when high critical: its weekly quota will go unused. Hover for the numbers.") {
                 HelpSymbol(name: "flame.fill", color: .red)
             }

@@ -334,6 +334,9 @@ pub struct CardFields {
     /// A tick needs the active account or one auto switch could move to, with usage loaded
     /// (macOS `canTickPriority`).
     pub can_tick: bool,
+    /// The bolt shows only while auto switch is on, the only thing that reads the tick; off
+    /// hides it but keeps the tick (macOS `showsPriorityControl`).
+    pub shows_home: bool,
     /// 0 none, 1 critical, 2 high critical.
     pub critical_level: i32,
     pub critical_help: String,
@@ -343,6 +346,7 @@ pub fn card_fields(
     row: &DisplayRow,
     home_id: Option<&str>,
     availability: Option<Availability>,
+    auto_switch_on: bool,
     params: &CriticalParameters,
     now: f64,
 ) -> CardFields {
@@ -351,9 +355,12 @@ pub fn card_fields(
     } else {
         CriticalAssessment::NONE
     };
+    let is_home = home_id == Some(row.account_id.as_str());
+    let can_tick = (availability == Some(Availability::Ready) || row.is_active_claude_code) && usage_of(row).is_some();
     CardFields {
-        is_home: home_id == Some(row.account_id.as_str()),
-        can_tick: (availability == Some(Availability::Ready) || row.is_active_claude_code) && usage_of(row).is_some(),
+        is_home,
+        can_tick,
+        shows_home: auto_switch_on && (can_tick || is_home),
         critical_level: match assessment.level {
             CriticalLevel::None => 0,
             CriticalLevel::Critical => 1,
@@ -853,23 +860,37 @@ mod tests {
     fn card_fields_for_bolt_and_flame() {
         let params = CriticalParameters { x: 16.0, pace: 50.0, high_pace: 80.0, quiet: None };
         let critical = row("a", None, Some(10.0), Some((55.0, T0 + 25.0 * H)));
-        let f = card_fields(&critical, Some("a"), Some(Availability::Ready), &params, T0);
+        let f = card_fields(&critical, Some("a"), Some(Availability::Ready), true, &params, T0);
         assert!(f.is_home && f.can_tick);
         assert_eq!(f.critical_level, 1);
         assert_eq!(f.critical_help, "Critical: at 50% of 5h per window around the clock, 7d reaches 95% by its reset (5% unused)");
         let high = row("b", None, Some(10.0), Some((60.0, T0 + 10.0 * H)));
-        assert_eq!(card_fields(&high, None, Some(Availability::Ready), &params, T0).critical_level, 2);
+        assert_eq!(card_fields(&high, None, Some(Availability::Ready), true, &params, T0).critical_level, 2);
         let calm = row("c", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
-        let f = card_fields(&calm, Some("a"), Some(Availability::NotCaptured), &params, T0);
+        let f = card_fields(&calm, Some("a"), Some(Availability::NotCaptured), true, &params, T0);
         assert_eq!((f.is_home, f.can_tick, f.critical_level, f.critical_help.as_str()), (false, false, 0, ""));
         let mut active = calm.clone();
         active.is_active_claude_code = true;
-        assert!(card_fields(&active, None, Some(Availability::Active), &params, T0).can_tick, "the active account can be ticked");
+        assert!(card_fields(&active, None, Some(Availability::Active), true, &params, T0).can_tick, "the active account can be ticked");
         let no_usage = row("d", None, None, None);
-        assert!(!card_fields(&no_usage, None, Some(Availability::Ready), &params, T0).can_tick, "needs usage for the baseline");
+        assert!(!card_fields(&no_usage, None, Some(Availability::Ready), true, &params, T0).can_tick, "needs usage for the baseline");
         let mut stale = critical.clone();
         stale.error = Some("x".into());
-        assert_eq!(card_fields(&stale, None, None, &params, T0).critical_level, 0, "stale: no flame");
+        assert_eq!(card_fields(&stale, None, None, true, &params, T0).critical_level, 0, "stale: no flame");
+    }
+
+    #[test]
+    fn the_bolt_shows_only_while_auto_switch_is_on() {
+        let params = CriticalParameters { x: 16.0, pace: 50.0, high_pace: 80.0, quiet: None };
+        let home = row("a", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
+        let other = row("b", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
+        let on = |r: &DisplayRow| card_fields(r, Some("a"), Some(Availability::Ready), true, &params, T0);
+        let off = |r: &DisplayRow| card_fields(r, Some("a"), Some(Availability::Ready), false, &params, T0);
+        assert!(on(&home).shows_home && on(&other).shows_home);
+        assert!(!off(&home).shows_home && !off(&other).shows_home, "off: no bolt");
+        assert!(off(&home).is_home, "off keeps the tick");
+        let calm = row("c", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
+        assert!(!card_fields(&calm, None, Some(Availability::NotCaptured), true, &params, T0).shows_home, "on, not tickable");
     }
 
     #[test]

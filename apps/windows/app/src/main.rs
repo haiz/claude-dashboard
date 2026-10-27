@@ -159,7 +159,7 @@ fn set_switch_fields(rows: &mut [UiRow]) {
     }
 }
 
-/// Copies each row's bolt and flame (macOS `isPriorityTarget`, `canTickPriority`,
+/// Copies each row's bolt and flame (macOS `isPriorityTarget`, `showsPriorityControl`,
 /// `criticalBadge`) from the settings, the Switch states and the current X.
 fn set_auto_switch_fields(
     rows: &mut [UiRow],
@@ -170,9 +170,16 @@ fn set_auto_switch_fields(
     let params = claude_dashboard_core::critical::parameters_from(settings, ratio::current().x);
     for r in rows.iter_mut() {
         let Some(d) = display.iter().find(|d| d.account_id == r.id.as_str()) else { continue };
-        let f = auto_switch::card_fields(d, settings.auto_switch_priority_id.as_deref(), cc_state::availability(&d.account_id), &params, now);
+        let f = auto_switch::card_fields(
+            d,
+            settings.auto_switch_priority_id.as_deref(),
+            cc_state::availability(&d.account_id),
+            settings.auto_switch_enabled,
+            &params,
+            now,
+        );
         r.is_home = f.is_home;
-        r.can_tick_home = f.can_tick;
+        r.shows_home = f.shows_home;
         r.critical_level = f.critical_level;
         r.critical_help = f.critical_help.into();
     }
@@ -262,9 +269,9 @@ fn refresh_auto_switch_ui() {
     let patch = |rows: slint::ModelRc<UiRow>| {
         for i in 0..rows.row_count() {
             let Some(mut r) = rows.row_data(i) else { continue };
-            let before = (r.is_home, r.can_tick_home, r.critical_level, r.critical_help.clone());
+            let before = (r.is_home, r.shows_home, r.critical_level, r.critical_help.clone());
             set_auto_switch_fields(std::slice::from_mut(&mut r), &out.rows, now, &settings);
-            if (r.is_home, r.can_tick_home, r.critical_level, r.critical_help.clone()) != before {
+            if (r.is_home, r.shows_home, r.critical_level, r.critical_help.clone()) != before {
                 rows.set_row_data(i, r);
             }
         }
@@ -1990,7 +1997,7 @@ mod tests {
         assert_eq!(out.rows.len(), 5);
         assert_eq!(out.rows.iter().filter(|r| r.status == claude_dashboard_core::model::AccountStatus::Expired).count(), 2);
         let params = claude_dashboard_core::critical::parameters_from(&claude_dashboard_core::settings::Settings::default(), 16.0);
-        let level = |i: usize| crate::auto_switch::card_fields(&out.rows[i], None, None, &params, 1_000_000.0).critical_level;
+        let level = |i: usize| crate::auto_switch::card_fields(&out.rows[i], None, None, true, &params, 1_000_000.0).critical_level;
         assert_eq!((level(0), level(1)), (2, 1), "alice high critical, bob critical");
     }
 }

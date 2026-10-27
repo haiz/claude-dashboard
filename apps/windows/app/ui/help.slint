@@ -435,7 +435,7 @@ export component HelpPane inherits Flickable {
             HelpRow { dot: true; tint: Theme.ok; body: @markdown("**Active in Claude Code**: the account Claude Code is using right now."); }
             HelpRow { badge: "Pro"; tint: #0a84ff; body: @markdown("**Plan**: Pro, Max 5x, Max 20x, or Max when the tier is unknown."); }
             HelpRow { glyph: "\u{E718}"; body: @markdown("**Pinned**: always at the top of the list, and the account shown on the tray icon."); }
-            HelpRow { icon: "bolt-fill"; tint: #ff9f0a; body: @markdown("**Home after reset**: Claude Code comes back here each time this account's 5h limit resets."); }
+            HelpRow { icon: "bolt-fill"; tint: #ff9f0a; body: @markdown("**Home after reset**: Claude Code comes back here each time this account's 5h limit resets. Shown only while Auto Switch is on; turning it off keeps your choice."); }
             HelpRow { icon: "flame-fill"; tint: #ff453a; body: @markdown("**Flame**: orange when the account is critical, red when high critical: its weekly quota will go unused. Hover for the numbers."); }
             HelpRow { glyph: "\u{E9D2}"; tint: #ff9f0a; body: @markdown("**X** (Dashboard header): what a full 5h window costs of the 7d quota. Click for its history."); }
             HelpRow { glyph: "\u{E7BA}"; tint: #ff9f0a; body: @markdown("**Session expired**: sign in again in the browser, then **Re-sync**."); }

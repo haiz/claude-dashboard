@@ -266,6 +266,29 @@ final class DashboardViewModelAutoSwitchTests: XCTestCase {
         XCTAssertNil(h.settings.priority)
     }
 
+    func testTurningAutoSwitchOffHidesTheTickButKeepsIt() async throws {
+        let h = try await makeHarness(captureBackend: true)
+        try setUsage(h.vm, h.backend.id, five: 50, seven: 20)
+        try setUsage(h.vm, h.frontend.id, five: 30, seven: 20)
+        let home = try XCTUnwrap(h.vm.accountStates.first { $0.id == h.backend.id })
+        let other = try XCTUnwrap(h.vm.accountStates.first { $0.id == h.frontend.id })
+        h.settings.isEnabled = true
+        h.vm.togglePriority(for: h.backend.id)
+        XCTAssertTrue(h.vm.showsPriorityControl(home))
+        XCTAssertTrue(h.vm.showsPriorityControl(other))
+
+        h.settings.isEnabled = false
+
+        XCTAssertFalse(h.vm.showsPriorityControl(home))
+        XCTAssertFalse(h.vm.showsPriorityControl(other))
+        XCTAssertEqual(h.settings.priority?.accountId, h.backend.id, "the tick survives turning auto switch off")
+
+        h.settings.isEnabled = true
+
+        XCTAssertTrue(h.vm.showsPriorityControl(home))
+        XCTAssertTrue(h.vm.isPriorityTarget(h.backend.id))
+    }
+
     func testTickingTheActiveAccountKeepsTheTick() async throws {
         let h = try await makeHarness(captureBackend: true)
         try setUsage(h.vm, h.frontend.id, five: 50, seven: 20)

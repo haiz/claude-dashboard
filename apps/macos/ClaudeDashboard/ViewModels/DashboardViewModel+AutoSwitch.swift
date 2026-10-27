@@ -45,6 +45,12 @@ extension DashboardViewModel {
         (switchAvailability[state.id] == .ready || isActiveClaudeCodeAccount(state)) && state.usage != nil
     }
 
+    /// The home (bolt) control shows only while auto switch is on, the only thing that reads the
+    /// tick. Turning auto switch off hides it but keeps the tick for when it comes back on.
+    func showsPriorityControl(_ state: AccountUsageState) -> Bool {
+        autoSwitchSettings.isEnabled && (canTickPriority(state) || isPriorityTarget(state.id))
+    }
+
     /// Ticks `id` (moving the tick off any other account) or unticks it.
     func togglePriority(for id: UUID) {
         if isPriorityTarget(id) {

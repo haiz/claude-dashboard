@@ -176,7 +176,7 @@ struct AccountPane: View {
                 .labelsHidden()
                 .controlSize(.small)
             }
-            if dashboardViewModel.canTickPriority(state) || dashboardViewModel.isPriorityTarget(state.id) {
+            if dashboardViewModel.showsPriorityControl(state) {
                 Divider()
                 actionRow("Switch here after 5h reset") {
                     Toggle("", isOn: Binding(
