@@ -26,7 +26,8 @@ pub fn enabled() -> bool {
 /// a running Desktop asks first, a closed one is switched straight away.
 pub fn request(id: String) {
     let Some(s) = cd_state::switcher() else { return };
-    if cd_state::is_busy() {
+    // One flow at a time: the prompt slot and its cancel flag belong to a running switch.
+    if cd_state::is_busy() || crate::cc_is_switching() {
         return;
     }
     if s.is_running() {
@@ -85,7 +86,7 @@ fn run(id: &str, quit_first: bool, cancel: &AtomicBool) -> Option<String> {
 
 fn attempt(account: &Account, accounts: &[Account], quit_first: bool, cancel: &AtomicBool) -> Option<String> {
     let switcher = cd_state::switcher()?;
-    let name = account.email.clone().unwrap_or_else(|| account.name.clone());
+    let name = account.email.clone().filter(|e| !e.is_empty()).unwrap_or_else(|| account.name.clone());
     // Blocks up to ~6 s: always on a worker.
     if quit_first && switcher.is_running() && !switcher.quit() {
         return Some(cd_flow::did_not_close_message(&name));

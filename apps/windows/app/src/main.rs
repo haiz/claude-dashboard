@@ -711,6 +711,11 @@ fn cc_toggled(on: bool) {
     cc_ui(|a| a.set_cc_prompt_checked(on), |p| p.set_cc_prompt_checked(on));
 }
 
+/// A Claude Code switch runs (its worker owns the prompt slot and the cancel flag).
+fn cc_is_switching() -> bool {
+    CC_FLOW.with(|f| f.borrow().switching)
+}
+
 fn cc_set_switching(on: bool) {
     CC_FLOW.with(|f| f.borrow_mut().switching = on);
     cc_ui(|a| a.set_cc_switching(on), |p| p.set_cc_switching(on));
@@ -723,6 +728,10 @@ fn row_name(r: &claude_dashboard_core::rows::DisplayRow) -> String {
 /// Every Switch button: while the account Claude Code uses now still has quota left, ask
 /// first; otherwise switch straight away.
 fn cc_request(id: String) {
+    // A Desktop switch owns the prompt slot and the cancel flag until it finishes.
+    if cd_state::is_busy() {
+        return;
+    }
     // Desktop's state as of this press; the box shows only while it runs.
     let running = cd_run::desktop_running();
     let ticked = cd_flow::initial_tick(cd_run::enabled(), running);
@@ -758,7 +767,7 @@ fn cc_request(id: String) {
 
 fn cc_start(id: String) {
     use claude_dashboard_core::cc_switch::switcher::Availability;
-    if cc_state::switcher().is_none() || CC_FLOW.with(|f| f.borrow().switching) {
+    if cc_state::switcher().is_none() || cc_is_switching() || cd_state::is_busy() {
         return;
     }
     // The Switch Log row: names and usage as they were before the switch.

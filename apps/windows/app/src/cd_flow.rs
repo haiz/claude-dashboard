@@ -105,23 +105,33 @@ mod tests {
 
     #[test]
     fn after_cc_switch_table() {
-        for bits in 0..16u8 {
-            let (switched, ticked, enabled, running) = (bits & 1 != 0, bits & 2 != 0, bits & 4 != 0, bits & 8 != 0);
-            let expected = if !switched {
-                DesktopStep::None
-            } else if ticked {
-                DesktopStep::AskClose
-            } else if enabled && !running {
-                DesktopStep::RunNow
-            } else {
-                DesktopStep::None
-            };
-            assert_eq!(after_cc_switch(switched, ticked, enabled, running), expected, "{bits:04b}");
+        use DesktopStep::*;
+        // (cc_switched, ticked, enabled, was_running) -> step
+        let table = [
+            ((false, false, false, false), None),
+            ((false, false, false, true), None),
+            ((false, false, true, false), None),
+            ((false, false, true, true), None),
+            ((false, true, false, false), None),
+            ((false, true, false, true), None),
+            ((false, true, true, false), None),
+            ((false, true, true, true), None),
+            ((true, false, false, false), None),
+            ((true, false, false, true), None),
+            ((true, false, true, false), RunNow),
+            ((true, false, true, true), None),
+            ((true, true, false, false), AskClose),
+            ((true, true, false, true), AskClose),
+            ((true, true, true, false), AskClose),
+            ((true, true, true, true), AskClose),
+        ];
+        for ((switched, ticked, enabled, running), expected) in table {
+            assert_eq!(
+                after_cc_switch(switched, ticked, enabled, running),
+                expected,
+                "{switched} {ticked} {enabled} {running}"
+            );
         }
-        assert_eq!(after_cc_switch(true, true, true, true), DesktopStep::AskClose);
-        assert_eq!(after_cc_switch(true, false, true, false), DesktopStep::RunNow);
-        assert_eq!(after_cc_switch(true, false, true, true), DesktopStep::None);
-        assert_eq!(after_cc_switch(true, false, false, false), DesktopStep::None);
     }
 
     #[test]

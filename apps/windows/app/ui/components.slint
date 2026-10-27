@@ -737,7 +737,7 @@ export component AccountPane inherits VerticalLayout {
         if root.data.switch-state != "" && root.data.switch-state != "active": ActionButton {
             label: "Switch";
             glyph: "\u{E8AB}";
-            enabled: !root.cc-switching;
+            enabled: !root.cc-switching && !root.desktop-switching;
             tip: root.data.switch-help;
             y: (parent.height - self.height) / 2;
             clicked => { root.switch-cc(); }
@@ -745,7 +745,7 @@ export component AccountPane inherits VerticalLayout {
         if root.data.switch-state == "active" && root.desktop-differs: ActionButton {
             label: "Switch Desktop to this account";
             glyph: "\u{E7F4}";
-            enabled: !root.desktop-switching;
+            enabled: !root.desktop-switching && !root.cc-switching;
             tip: "Claude Desktop uses another account than Claude Code. Asks before closing Desktop.";
             y: (parent.height - self.height) / 2;
             clicked => { root.switch-desktop(); }
