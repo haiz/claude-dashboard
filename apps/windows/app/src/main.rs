@@ -1323,6 +1323,8 @@ fn toggle_flyout(pop: &PopoverWindow, tray_rect: popover::Rect) {
     if recently_hidden {
         return;
     }
+    let app = MAIN_APP.with(|m| m.borrow().as_ref().and_then(|w| w.upgrade()));
+    animal_clock::before_show(app.as_ref(), Some(pop));
     if pop.show().is_err() {
         return;
     }
@@ -1356,6 +1358,8 @@ thread_local! {
 /// Shows the main window. Like macOS `MainWindow.onAppear`, a store with no accounts
 /// opens the Add Account wizard over it.
 fn show_main(app: &AppWindow) {
+    let pop = POPOVER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade()));
+    animal_clock::before_show(Some(app), pop.as_ref());
     let _ = app.show();
     app.window().set_minimized(false);
     // The animal clock stops while both windows are hidden; showing one resumes it.

@@ -58,6 +58,28 @@ final class AnimalDisplayClockTests: XCTestCase {
         XCTAssertTrue(clock.isRunning)
     }
 
+    func testCycleRestartsWhenAGaugeMountsWithNoneOnScreen() {
+        eligible = true
+        time = 100
+        let clock = makeClock()         // popover opened at t=100
+        time = 107
+        tick?()
+        XCTAssertEqual(clock.phase.content, .animal)
+        clock.gaugeDisappeared()        // popover closed
+        time = 237                      // reopened where the old origin shows the animal
+        clock.gaugeAppeared()
+        XCTAssertEqual(clock.phase.phase, 0, accuracy: 1e-9, "a fresh open starts on the percentage")
+        XCTAssertEqual(clock.phase.content, .percentage)
+        time = 243
+        tick?()
+        XCTAssertEqual(clock.phase.phase, 6, accuracy: 1e-9)
+        XCTAssertEqual(clock.phase.content, .animal, "animal 6 s after opening")
+        time = 244
+        clock.gaugeAppeared()           // a second surface opens while one is shown: same cycle
+        tick?()
+        XCTAssertEqual(clock.phase.phase, 7, accuracy: 1e-9)
+    }
+
     func testRunsOnlyWhileAGaugeIsMounted() {
         let clock = makeClock()
         clock.gaugeDisappeared()        // nothing on screen

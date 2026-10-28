@@ -2,7 +2,9 @@ import Foundation
 
 /// The one process-wide clock behind the burn-animal display (never one per card).
 ///
-/// It publishes the shared `AnimalDisplayModels.Phase`, sampled at 12 fps while running, and
+/// It publishes the shared `AnimalDisplayModels.Phase`, counted from when the first gauge
+/// center mounted (so opening the popover or a window starts on the percentage), sampled at
+/// 12 fps while running, and
 /// runs only while some gauge center is mounted (`gaugeAppeared` / `gaugeDisappeared`, so a
 /// closed window and popover cost nothing) and `shouldRun()` is true (setting on and some
 /// account eligible). Every tick re-asks `shouldRun`, so an account whose 600 s activity
@@ -40,7 +42,9 @@ final class AnimalDisplayClock: ObservableObject {
     var shouldRun: () -> Bool = { false }
 
     let now: () -> TimeInterval
-    private let origin: TimeInterval
+    /// Start of the 10 s cycle: reset when the first gauge mounts (a window or the popover
+    /// opens with none on screen), so every open starts on the percentage.
+    private var origin: TimeInterval
     private let scheduler: Scheduler
     private var cancel: (() -> Void)?
 
@@ -53,7 +57,12 @@ final class AnimalDisplayClock: ObservableObject {
     }
 
     /// A gauge center that observes the clock appeared; starts it when something is eligible.
+    /// The first one on screen restarts the cycle; later ones join it.
     func gaugeAppeared() {
+        if mountedGauges == 0 {
+            origin = now()
+            phase = .at(elapsedSeconds: 0)
+        }
         mountedGauges += 1
         reevaluate()
     }

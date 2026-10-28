@@ -74,7 +74,11 @@ itself, matching the existing tracker behaviour.
 ### Shared phase
 
 One process-wide display clock is exposed to all gauge views. Its phase is the
-monotonic elapsed time since the clock was created, modulo 10 seconds:
+monotonic elapsed time since the cycle origin, modulo 10 seconds. The origin resets
+when a window or the popover/flyout opens while none is shown (macOS: the first 5h
+gauge center mounts; Windows: `animal_clock::before_show`), so every open starts on
+the percentage and the animal first appears 6 s later. A second window opened while
+one is shown joins the running cycle:
 
 | Phase | Content |
 | --- | --- |

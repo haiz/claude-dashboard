@@ -53,9 +53,10 @@ impl ClockFrame {
         if self.sampled { self } else { ClockFrame::IDLE }
     }
 
-    /// The frame at `clock` monotonic seconds; the phase is `clock` modulo 10 s (core).
-    pub fn at(clock: f64) -> Self {
-        let p = AnimalDisplayPhase::at(clock);
+    /// The frame at `clock` monotonic seconds for a cycle that started at `origin`; the phase
+    /// is `clock - origin` modulo 10 s (core). `clock` itself is kept for the expiry compare.
+    pub fn at(clock: f64, origin: f64) -> Self {
+        let p = AnimalDisplayPhase::at(clock - origin);
         let (sampled, (clip_x, clip_y)) = match p.frame_index {
             Some(i) => (true, animal_assets::cell_origin(i)),
             None => (false, (0, 0)),
@@ -78,6 +79,12 @@ pub fn needs_tick(show: bool, visible: bool, windows: impl IntoIterator<Item = (
     show && visible && windows.into_iter().any(|(has_asset, expires)| has_asset && clock <= f64::from(expires))
 }
 
+/// The cycle origin after a window is about to show at `now`: a fresh open (nothing shown
+/// before) restarts the cycle so it starts on the percentage; a second window joins it. Pure.
+pub fn origin_on_show(shown_before: bool, origin: f64, now: f64) -> f64 {
+    if shown_before { origin } else { now }
+}
+
 /// The frame to write after `last` was written, or `None` when the rings would draw the same.
 /// Pure.
 pub fn to_publish(last: Option<ClockFrame>, next: ClockFrame) -> Option<ClockFrame> {
@@ -89,6 +96,8 @@ thread_local! {
     static TIMER: slint::Timer = slint::Timer::default();
     /// The frame last written to the globals; `None` forces the next write.
     static LAST: std::cell::Cell<Option<ClockFrame>> = const { std::cell::Cell::new(None) };
+    /// `monotonic_now()` when the 10 s cycle started (see [`before_show`]).
+    static ORIGIN: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
 }
 
 /// The main window counts as shown only while visible and not minimized; the flyout while visible.
@@ -128,7 +137,7 @@ fn tick(app: &AppWindow, pop: Option<&PopoverWindow>) -> bool {
     let now = animal_assets::monotonic_now();
     if needed(app, pop, now) {
         if shown(app, pop) {
-            publish(app, pop, ClockFrame::at(now));
+            publish(app, pop, ClockFrame::at(now, ORIGIN.with(|o| o.get())));
         }
         true
     } else {
@@ -136,6 +145,17 @@ fn tick(app: &AppWindow, pop: Option<&PopoverWindow>) -> bool {
         publish(app, pop, ClockFrame::IDLE);
         false
     }
+}
+
+/// Call just before showing the main window or the flyout: when neither is shown yet, the
+/// 10 s cycle restarts, so opening one starts on the percentage (6 s) before the animal.
+/// UI thread only.
+pub fn before_show(app: Option<&AppWindow>, pop: Option<&PopoverWindow>) {
+    let shown_before = match app {
+        Some(a) => shown(a, pop),
+        None => pop.is_some_and(|p| p.window().is_visible()),
+    };
+    ORIGIN.with(|o| o.set(origin_on_show(shown_before, o.get(), animal_assets::monotonic_now())));
 }
 
 /// Re-evaluates the clock after the rows, Show burn-rate animals or a window's visibility
@@ -167,23 +187,37 @@ mod tests {
 
     #[test]
     fn frames_follow_core_phase() {
-        let pct = ClockFrame::at(3.0);
+        let pct = ClockFrame::at(3.0, 0.0);
         assert_eq!(pct, ClockFrame { clock: 3.0, ..ClockFrame::IDLE });
         // 5.75 s: half-way cross-fade, entering animal holds frame 0.
-        let fade_in = ClockFrame::at(5.75);
+        let fade_in = ClockFrame::at(5.75, 0.0);
         assert!(fade_in.sampled && (fade_in.clip_x, fade_in.clip_y) == (0, 0));
         assert!((fade_in.percent_opacity - 0.5).abs() < 1e-6 && (fade_in.animal_opacity - 0.5).abs() < 1e-6);
         // 7.0 s: animal only, frame 12 = third row, first column.
-        let animal = ClockFrame::at(7.0);
+        let animal = ClockFrame::at(7.0, 0.0);
         assert_eq!((animal.percent_opacity, animal.animal_opacity), (0.0, 1.0));
         assert_eq!((animal.clip_x, animal.clip_y), (0, 256));
         // 9.75 s: fading out on frame 21 = fourth row, fourth column.
-        let fade_out = ClockFrame::at(9.75);
+        let fade_out = ClockFrame::at(9.75, 0.0);
         assert_eq!((fade_out.clip_x, fade_out.clip_y), (384, 384));
         assert!((fade_out.animal_opacity - 0.5).abs() < 1e-6);
         // The modulo boundary shows the percentage, no flash; later cycles repeat exactly.
-        assert!(!ClockFrame::at(10.0).sampled);
-        assert_eq!(ClockFrame::at(127.0).clip_y, animal.clip_y);
+        assert!(!ClockFrame::at(10.0, 0.0).sampled);
+        assert_eq!(ClockFrame::at(127.0, 0.0).clip_y, animal.clip_y);
+    }
+
+    #[test]
+    fn a_fresh_open_restarts_the_cycle_and_a_second_window_joins_it() {
+        // Old origin 0: at 127 s the shared cycle is in the animal part.
+        assert!(ClockFrame::at(127.0, 0.0).sampled);
+        let origin = origin_on_show(false, 0.0, 127.0);
+        assert_eq!(origin, 127.0, "nothing shown before: the cycle restarts");
+        let opened = ClockFrame::at(127.0, origin);
+        assert!(!opened.sampled, "a fresh open starts on the percentage");
+        assert_eq!(opened.clock, 127.0, "the expiry compare keeps the monotonic clock");
+        assert!(!ClockFrame::at(132.4, origin).sampled, "percentage until 5.5 s");
+        assert_eq!(ClockFrame::at(134.0, origin).animal_opacity, 1.0, "animal from 6 s");
+        assert_eq!(origin_on_show(true, origin, 140.0), origin, "a second window joins the cycle");
     }
 
     #[test]
@@ -202,21 +236,21 @@ mod tests {
     #[test]
     fn percent_only_ticks_write_nothing_and_sampled_ticks_write_each_change() {
         // First write after a sync always happens.
-        let first = to_publish(None, ClockFrame::at(1.0)).expect("forced write");
+        let first = to_publish(None, ClockFrame::at(1.0, 0.0)).expect("forced write");
         assert_eq!(first, ClockFrame::IDLE, "percent-only drops the clock");
         // The rest of the 5.5 s percent-only part writes nothing at 12 fps.
         let mut t = 1.0 + 1.0 / 12.0;
         while t < 5.5 {
-            assert_eq!(to_publish(Some(first), ClockFrame::at(t)), None, "t={t}");
+            assert_eq!(to_publish(Some(first), ClockFrame::at(t, 0.0)), None, "t={t}");
             t += 1.0 / 12.0;
         }
         // Sampled ticks change opacity or frame (and the clock the expiry compares) each time.
-        let fade = to_publish(Some(first), ClockFrame::at(5.6)).expect("fade starts");
+        let fade = to_publish(Some(first), ClockFrame::at(5.6, 0.0)).expect("fade starts");
         assert!(fade.sampled && fade.clock > 5.5);
-        let next = to_publish(Some(fade), ClockFrame::at(5.6 + 1.0 / 12.0)).expect("next fade step");
+        let next = to_publish(Some(fade), ClockFrame::at(5.6 + 1.0 / 12.0, 0.0)).expect("next fade step");
         assert!(next.animal_opacity > fade.animal_opacity);
         // Back to the percent at the cycle end: one write of IDLE, then quiet again.
-        assert_eq!(to_publish(Some(next), ClockFrame::at(10.0)), Some(ClockFrame::IDLE));
-        assert_eq!(to_publish(Some(ClockFrame::IDLE), ClockFrame::at(10.1)), None);
+        assert_eq!(to_publish(Some(next), ClockFrame::at(10.0, 0.0)), Some(ClockFrame::IDLE));
+        assert_eq!(to_publish(Some(ClockFrame::IDLE), ClockFrame::at(10.1, 0.0)), None);
     }
 }
