@@ -1,0 +1,9 @@
+[
+  {"name": "level 5 refreshes fast", "five_hour_level": 5, "is_active": true, "has_error": false, "auto_refresh_enabled": true, "expect": true},
+  {"name": "level 6 refreshes fast", "five_hour_level": 6, "is_active": true, "has_error": false, "auto_refresh_enabled": true, "expect": true},
+  {"name": "level 4 does not", "five_hour_level": 4, "is_active": true, "has_error": false, "auto_refresh_enabled": true, "expect": false},
+  {"name": "no level does not", "five_hour_level": null, "is_active": true, "has_error": false, "auto_refresh_enabled": true, "expect": false},
+  {"name": "inactive account does not", "five_hour_level": 5, "is_active": false, "has_error": false, "auto_refresh_enabled": true, "expect": false},
+  {"name": "fetch error does not", "five_hour_level": 5, "is_active": true, "has_error": true, "auto_refresh_enabled": true, "expect": false},
+  {"name": "auto refresh off does not", "five_hour_level": 5, "is_active": true, "has_error": false, "auto_refresh_enabled": false, "expect": false}
+]

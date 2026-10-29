@@ -11,7 +11,8 @@
     { "name": "turtle has a stable asset id", "emoji": "🐢", "expect_asset_id": "turtle" },
     { "name": "rabbit has a stable asset id", "emoji": "🐇", "expect_asset_id": "rabbit" },
     { "name": "horse has a stable asset id", "emoji": "🐎", "expect_asset_id": "horse" },
-    { "name": "cheetah has a stable asset id", "emoji": "🐆", "expect_asset_id": "cheetah" }
+    { "name": "cheetah has a stable asset id", "emoji": "🐆", "expect_asset_id": "cheetah" },
+    { "name": "rocket has a stable asset id", "emoji": "🚀", "expect_asset_id": "rocket" }
   ],
   "activity_cases": [
     { "name": "first successful sample establishes a baseline only", "operations": [{ "kind": "success", "account_id": "a", "utilization": 10.0, "resets_at": 1000.0, "at": 0.0 }], "checks": [{ "account_id": "a", "at": 0.0, "expect_active": false }] },

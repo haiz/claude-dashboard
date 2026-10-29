@@ -86,8 +86,9 @@ result), it leaves the fast set and only follows Auto Refresh again.
    auto switch poll does). A full Auto Refresh that fetched the account reschedules its next
    fast poll 60 s from then, so it is never fetched twice in a row.
 8. **Coexistence with the auto switch poll** (macOS `updateAutoSwitchPoll`, Windows
-   `FastPoll`): both stay. When both want the same account in the same minute it is fetched
-   once (macOS: one `refreshAll(only:)` with the union; Windows: one `Nudge::Some`).
+   `FastPoll`): both stay. On macOS the burn poll and the auto switch poll are independent;
+   the 50 s minimum gap in the tracker makes a near-double fetch of one account harmless.
+   Windows fires both from one wait and sends one `Nudge::Some` with the union.
 9. **Linux** (`apps/linux/lib/burnRate.js`, `colors.js`, `core::burn_rate`) gets the same
    rate rule and level 6 with emoji 🚀 so the shared contract tests stay green, since
    Windows runs on `apps/linux/core`. The GNOME extension gets no fast refresh and no

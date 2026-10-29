@@ -58,8 +58,9 @@ of it.
   account-scoped ten-minute activity window described in
   `cases/animal-display.json`. The visual assets and rendering remain platform
   detail. The `showBurnAnimals` setting defaults to off; when enabled, only
-  active 5-hour rows with a recognized burn-rate animal may animate (10 s shared
-  phase, 600 s activity window). Seven-day and Fable rows show their percentage
+  active 5-hour rows with a recognized burn-rate animal (the cheetah's faster
+  neighbour, the rocket, included) may animate (10 s shared phase, 600 s
+  activity window). Seven-day and Fable rows show their percentage
   only, and a missing or unreadable asset falls back to the percentage.
 
 **Platform detail (deliberately free to differ):**
@@ -290,6 +291,14 @@ Given a projected time-to-100%, in hours:
 | `> 0.5`   | 4 | 🐎 |
 | otherwise | 5 | 🐆 |
 
+Above the ladder sits level 6, the rocket 🚀 (asset id `rocket`). It is
+decided from the **rate**, not from the projection, and is checked **first**:
+rate `>= 10` %/min, or rate `>= 5` %/min that has been held for at least 180 s
+(the streak, see "Burn-rate projection"). When neither holds, the ladder above
+applies unchanged. The rocket cases, with the rate and sustained seconds as
+inputs, are in `cases/burn-rate-rocket.json` (compare projected seconds with a
+1e-9 tolerance); `cases/burn-rate-levels.json` is unchanged.
+
 Every comparison is **strictly greater-than** (`if hours > 5 { level = 1 }
 else if hours > 3 { level = 2 } ...`). A projection of *exactly* 5.0 hours
 fails `> 5` and falls through to `> 3` (true), so it is **level 2, not
@@ -329,9 +338,9 @@ turning the switch on shows the current animals straight away.
 - The history lives only in memory, inside an `actor` (lines 4, 22). It is
   never persisted. A process restart wipes it, so the first poll after every
   launch takes rule 1 below.
-- Each entry holds three things (lines 16-20): `prev` and `current`, each a
-  `Measurement` of utilization + `recordedAt` + `resetsAt` (lines 10-14), and
-  `lastRate`, a rate in **percent per second**.
+- Each entry holds up to three measurements, oldest to newest `A`, `B`, `C`
+  (`C` is the current one), each a utilization + `recordedAt` + `resetsAt`,
+  plus the streak start (below). Rates are in **percent per minute**.
 
 ### Unconditional side effect
 
@@ -342,61 +351,44 @@ it plays no part in the projection.
 
 ### The rules, in the order the code evaluates them
 
-1. **First measurement** (lines 48-52). No entry for the key, or the entry's
-   `current` is `nil`: store
-   `HistoryEntry(prev: nil, current: <new>, lastRate: nil)`, return `nil`.
-2. **Different reset cycle** (lines 54-59). `resetsAt` more than
-   `resetTolerance` (**60 s**) away from `current.resetsAt`, in either
-   direction — exactly 60 s apart is still the same cycle — discards the
-   history: store a fresh `HistoryEntry(prev: nil, current: <new>,
-   lastRate: nil)`, return `nil`. The tolerance exists because the API
+1. **First measurement.** No entry for the key: store it as `C`, return `nil`.
+2. **Different reset cycle.** `resetsAt` more than `resetTolerance` (**60 s**)
+   away from `C.resetsAt`, in either direction (exactly 60 s apart is still the
+   same cycle), discards the whole history and the streak: store the new
+   measurement alone, return `nil`. The tolerance exists because the API
    reports one window boundary with jitter (`16:59:59.661633` on one call,
-   `16:59:59.661657` on the next, sometimes whole seconds apart); an exact
-   comparison saw nearly every poll as a new cycle and never showed an
-   animal. A port whose reset time is optional treats "one side unknown" as
-   a different cycle and "both unknown" as the same one.
-3. **Utilization decreased** (lines 62-65). `utilization < current.utilization`:
-   the same full reset as rule 2, return `nil`. (Read as an anomaly or an
-   unnoticed post-reset.)
-4. **Utilization increased** (lines 68-83). `utilization > current.utilization`:
-   - `deltaPercent = utilization - current.utilization`
-   - `deltaTime = recordedAt - current.recordedAt`, in seconds
-   - If `deltaTime <= 0`: return `nil` **without touching the history**
-     (line 71). The new measurement is discarded and `current` stays the
-     older one — it was still logged, per "Unconditional side effect".
-   - `rate = deltaPercent / deltaTime`, percent per second (necessarily
-     `> 0` on this path)
-   - `remaining = 100.0 - utilization`
-   - `projectedTime = remaining / rate`, in seconds
-   - Store `prev = <old current>`, `current = <new>`, `lastRate = rate`;
-     return `fromProjectedTime(projectedTime)`.
-   - There is **no** `remaining > 0` guard here. At `utilization == 100` the
-     projection is `0` → level 5; above `100` it is negative, every `>`
-     comparison inside `fromProjectedTime` fails, and it is level 5 again.
-5. **Utilization unchanged** — exact `Double` equality, i.e. neither rule 3
-   nor rule 4 fired (lines 86-109). Let `gap = recordedAt - current.recordedAt`,
-   in seconds:
-   - **Stale, `gap >= 300`** (lines 84-89; 300 s = 5 minutes, and *exactly*
-     300 counts as stale): set `current = <new>` and **drop the carried
-     rate** (`lastRate = nil`), leaving `prev` as it was; return `nil`.
-     After five flat minutes the last observed rate is no longer trusted.
-   - **Fresh, `gap < 300`, no carried rate** (lines 96-100): if `lastRate` is
-     `nil` or `prev` is `nil`, set `current = <new>`, leave `lastRate`
-     untouched, return `nil`. Two notes for a reimplementation: `lastRate`
-     non-`nil` already implies `prev` non-`nil` (both are only ever set
-     together at lines 77-79, and only `lastRate` is cleared, at line 90), so
-     the `prev` half of that guard is redundant — a port that models the two
-     fields independently must not let them diverge. And a **negative** gap,
-     from an out-of-order or clock-skewed poll, falls into this `< 300`
-     branch, not the stale one.
-   - **Fresh, `gap < 300`, carried rate available** (lines 102-109):
-     - `remaining = 100.0 - utilization`
-     - If `remaining <= 0`: return `fromProjectedTime(0)` — level 5 —
-       **without updating the history** (lines 103-105); `current` stays the
-       older measurement.
-     - Otherwise `projectedTime = remaining / lastRate`; set
-       `current = <new>` (carrying `lastRate` and `prev` forward unchanged)
-       and return `fromProjectedTime(projectedTime)`.
+   `16:59:59.661657` on the next, sometimes whole seconds apart). A port whose
+   reset time is optional treats "one side unknown" as a different cycle and
+   "both unknown" as the same one.
+3. **Utilization decreased.** `utilization < C.utilization`: the same full
+   reset as rule 2, return `nil`.
+4. **Minimum gap, 50 s.** `recordedAt - C.recordedAt < 50` (this includes zero
+   and negative gaps): the measurement is **not stored** and the key's **last
+   result** is returned unchanged. Rules 2 and 3 run first and still reset.
+5. **Otherwise store and rate.** Append the measurement as the new `C` (`B`
+   and `A` shift down; at most three are kept), then:
+   - `ratePerMin(X -> C) = (C.utilization - X.utilization) * 60 /
+     (C.recordedAt - X.recordedAt)`, multiplying before dividing so 10 points
+     in 60 s is exactly `10.0`.
+   - The rate is `B -> C`, or, when `A` exists and `C.recordedAt -
+     A.recordedAt <= 300`, the **larger** of `A -> C` and `B -> C`. With only
+     two measurements it is `B -> C`.
+   - A rate of `0` (flat, no rise) returns `nil` and clears the streak.
+   - **Streak.** The first measurement whose rate is `>= 5` starts the streak
+     at `B.recordedAt`; a rate `< 5`, a rate of 0, or any history reset clears
+     it. `sustainedSeconds = C.recordedAt - streakStart` (0 without a streak).
+   - `projectedSeconds = (100 - C.utilization) * 60 / ratePerMin`, then the
+     level is `rocket` (level 6) when the rocket rule in "Burn-rate levels"
+     holds for `(rate, sustainedSeconds)`, else `fromProjectedTime`.
+   - There is **no** `remaining > 0` guard. At `utilization == 100` the
+     projection is `0`, and above `100` it is negative; both are level 5
+     unless the rocket rule holds.
+   - The result is remembered as the key's last result for rule 4.
+
+The stateful cases, as sequences of `(utilization, resets_at, at)` steps with
+the expected level and projected seconds (`null` for `nil`), are in
+`cases/burn-rate-tracker.json`. The account (`"a"`) and the window (5h) are
+fixed by the test; `resets_at` is `100000` unless a step says otherwise.
 
 ### Consequence of the macOS caller's `resetsAt` substitution
 
@@ -409,10 +401,28 @@ for Fable (line 336). That substitute is a *new instant on every refresh*,
 moving by the time between polls, so polls a minute or more apart fall
 outside rule 2's 60 s tolerance and reset the history. Closer polls (a manual
 refresh) may stay inside it, but a window with `resets_at: null` has not
-started and its utilization stays flat, so rule 5 returns `nil` anyway:
+started and its utilization stays flat, so its rate is 0 and rule 5 returns `nil` anyway:
 **a window whose `resets_at` is `null` never produces a burn rate.** Only
 windows with a real `resets_at` ever show an animal. The Fable window is polled at all only when `fable != nil`
 (line 332).
+
+## Fast refresh
+
+A fast-refresh account is fetched on its own, faster than Auto Refresh, while
+it burns at the top levels. The predicate, true only when **all** hold:
+
+- the account's **5-hour** window level is `>= 5` (cheetah or rocket; a 7d or
+  Fable result never counts),
+- the account is `.active`,
+- the account has no fetch error, and
+- Auto Refresh is on (off means "no background fetches").
+
+While true, the account is fetched every **60 s**. The first poll comes 60 s
+after the account enters the fast set, and any full Auto Refresh that fetched
+it re-arms the timer (60 s from then), so it is never fetched twice in a row.
+It is independent of `showBurnAnimals`. The Linux GNOME extension has no fast
+refresh. Truth table: `cases/fast-refresh.json` (`five_hour_level`,
+`is_active`, `has_error`, `auto_refresh_enabled` -> `expect`).
 
 ## Sort order
 

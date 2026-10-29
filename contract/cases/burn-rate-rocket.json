@@ -1,0 +1,10 @@
+[
+  {"name": "rate 10 with no streak is a rocket", "rate_pct_per_min": 10, "sustained_seconds": 0, "utilization": 50, "expect_level": 6, "expect_animal": "🚀", "expect_projected_seconds": 300.0},
+  {"name": "rate just under 10 with no streak is a cheetah", "rate_pct_per_min": 9.99, "sustained_seconds": 0, "utilization": 50, "expect_level": 5, "expect_animal": "🐆", "expect_projected_seconds": 300.3003003003003},
+  {"name": "rate 5 held for 180 s is a rocket", "rate_pct_per_min": 5, "sustained_seconds": 180, "utilization": 10, "expect_level": 6, "expect_animal": "🚀", "expect_projected_seconds": 1080.0},
+  {"name": "rate 5 held for 179 s is a cheetah", "rate_pct_per_min": 5, "sustained_seconds": 179, "utilization": 10, "expect_level": 5, "expect_animal": "🐆", "expect_projected_seconds": 1080.0},
+  {"name": "rate just under 5 never counts as sustained", "rate_pct_per_min": 4.99, "sustained_seconds": 600, "utilization": 10, "expect_level": 5, "expect_animal": "🐆", "expect_projected_seconds": 1082.1643286573146},
+  {"name": "rocket needs no projection, even near the start of the window", "rate_pct_per_min": 10, "sustained_seconds": 0, "utilization": 1, "expect_level": 6, "expect_animal": "🚀", "expect_projected_seconds": 594.0},
+  {"name": "exactly 0.5 h stays cheetah on the ladder", "rate_pct_per_min": 2, "sustained_seconds": 0, "utilization": 40, "expect_level": 5, "expect_animal": "🐆", "expect_projected_seconds": 1800.0},
+  {"name": "rate 1 with a fresh window falls through to the ladder", "rate_pct_per_min": 1, "sustained_seconds": 0, "utilization": 0, "expect_level": 3, "expect_animal": "🐇", "expect_projected_seconds": 6000.0}
+]
