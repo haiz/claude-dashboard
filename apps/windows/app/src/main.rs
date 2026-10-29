@@ -426,6 +426,9 @@ fn spawn_refresh_loop(
         let mut timer = refresh::AutoTimer::default();
         let mut poll = refresh::FastPoll::default();
         let mut poll_target: Option<String> = None;
+        // Fast refresh (contract "Fast refresh"): accounts burning at cheetah or rocket, every 60 s.
+        let mut burn_poll = refresh::FastPoll::default();
+        let mut burn_targets: Vec<String> = Vec::new();
         let mut jobs = vec![Nudge::All];
         loop {
             // `coalesce` drops `Reschedule`: an empty batch just waits again below,
@@ -499,8 +502,11 @@ fn spawn_refresh_loop(
                 // 60 s poll of the active account while it is near a limit.
                 poll_target = run_auto_switch(&mut out, now);
                 poll.update(poll_target.is_some(), std::time::Instant::now());
+                burn_targets = refresh::burn_fast_ids(&out.rows, claude_dashboard_core::settings::load().auto_refresh_enabled);
+                burn_poll.update(!burn_targets.is_empty(), std::time::Instant::now());
                 if job == Nudge::All {
                     poll.rearm(std::time::Instant::now());
+                    burn_poll.rearm(std::time::Instant::now());
                 }
                 // Auto Ping on this refresh's own fetches (macOS `refreshAll`); never in dev runs.
                 let enabled = !dev_run() && claude_dashboard_core::settings::load().auto_ping_enabled;
@@ -516,11 +522,8 @@ fn spawn_refresh_loop(
             // back; a `Reschedule` (settings change) or the tick itself restarts it.
             let interval = refresh::loop_timeout(&claude_dashboard_core::settings::load());
             let tick = timer.wait(interval, std::time::Instant::now());
-            let poll_wait = poll.wait(std::time::Instant::now());
-            let wait = match (tick, poll_wait) {
-                (Some(a), Some(b)) => Some(a.min(b)),
-                (a, b) => a.or(b),
-            };
+            let now = std::time::Instant::now();
+            let wait = [tick, poll.wait(now), burn_poll.wait(now)].into_iter().flatten().min();
             let batch = match wait {
                 Some(t) => match rx.recv_timeout(t) {
                     Ok(n) => pending(n, &rx),
@@ -529,11 +532,13 @@ fn spawn_refresh_loop(
                         if timer.wait(interval, now).is_some_and(|left| left.is_zero()) {
                             timer.restart(interval, now);
                             vec![Nudge::All]
-                        } else if poll.fire(now) {
-                            // The poll fetches only Claude Code's account (macOS `refreshAll(only:)`).
-                            poll_target.clone().map(Nudge::One).into_iter().collect()
                         } else {
-                            Vec::new()
+                            // Each poll fetches only its own accounts (macOS `refreshAll(only:)`):
+                            // Claude Code's near a limit, and the fast-burning ones. Both are
+                            // fired so each keeps its schedule; one fetch covers both.
+                            let cc = if poll.fire(now) { poll_target.clone() } else { None };
+                            let burn: &[String] = if burn_poll.fire(now) { &burn_targets } else { &[] };
+                            refresh::poll_nudge(cc, burn).into_iter().collect()
                         }
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
@@ -1231,10 +1236,11 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
 /// account, a Fable account, an extension account, and an expired one of each kind.
 fn fake_rows(now: f64) -> refresh::RefreshOutput {
     use claude_dashboard_core::account_kind::AccountKind;
+    use claude_dashboard_core::burn_rate::BurnRateResult;
     use claude_dashboard_core::model::{AccountPlan, AccountStatus, Browser};
     use claude_dashboard_core::rows::{DisplayRow, WindowView};
     let win = |u: f64, resets_in: f64| WindowView { utilization: u, resets_at_unix: Some(now + resets_in), is_limited: false };
-    let mk = |id: &str, name: &str, plan, u5: f64, u7: f64, burn: Option<f64>| DisplayRow {
+    let mk = |id: &str, name: &str, plan, u5: f64, u7: f64, burn: Option<BurnRateResult>| DisplayRow {
         is_active_claude_code: name == "bob",
         account_id: id.into(),
         name: name.into(),
@@ -1245,9 +1251,9 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         seven_day: Some(win(u7, 259200.0)),
         fable: None,
         peak_utilization: u5.max(u7),
-        burn_projected_seconds: burn,
-        burn_projected_seconds_7d: None,
-        burn_projected_seconds_fable: None,
+        burn,
+        burn_7d: None,
+        burn_fable: None,
         is_extension_sourced: false,
         error: None,
         last_synced_unix: Some(now),
@@ -1265,12 +1271,13 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         expired_hint: kind.expired_hint(),
         ..mk(id, name, AccountPlan::Pro, 0.0, 0.0, None)
     };
-    let mut bob = mk("f2", "bob", AccountPlan::Max5x, 64.0, 48.0, Some(3600.0));
+    let mut bob = mk("f2", "bob", AccountPlan::Max5x, 64.0, 48.0, Some(BurnRateResult::from_projected_time(3600.0)));
     bob.fable = Some(win(40.0, 259200.0));
-    bob.burn_projected_seconds_fable = Some(5400.0);
+    bob.burn_fable = Some(BurnRateResult::from_projected_time(5400.0));
     bob.is_extension_sourced = true;
     bob.kind_label = AccountKind::Extension { browser: Browser::Edge }.settings_label();
-    let mut carol = mk("f3", "carol", AccountPlan::Max20x, 100.0, 91.0, Some(600.0));
+    // carol burns at 10 %/min: the rocket.
+    let mut carol = mk("f3", "carol", AccountPlan::Max20x, 100.0, 91.0, Some(BurnRateResult::from_rate(10.0, 0.0, 100.0)));
     if let Some(w) = carol.five_hour.as_mut() {
         w.is_limited = true;
     }

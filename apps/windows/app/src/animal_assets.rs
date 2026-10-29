@@ -37,6 +37,9 @@ const MANIFEST_JSON: &str = include_str!("../ui/assets/burn-animals/manifest.jso
 pub const SHEET_COLUMNS: u32 = 6;
 pub const CELL_PX: u32 = 128;
 
+/// Every asset id the app knows, ladder order then the rocket (`core::animal_display::asset_id`).
+pub const ANIMAL_IDS: [&str; 6] = ["snail", "turtle", "rabbit", "horse", "cheetah", "rocket"];
+
 /// The ids of the validated manifest's animals.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Catalog {
@@ -76,7 +79,7 @@ pub fn validate_manifest(json: &str) -> Result<Catalog, String> {
     for a in animals {
         let id = a.get("id").and_then(|x| x.as_str()).ok_or("animal without id")?;
         let sheet = a.get("sheet").and_then(|x| x.as_str()).ok_or("animal without sheet")?;
-        if !["snail", "turtle", "rabbit", "horse", "cheetah"].contains(&id) {
+        if !ANIMAL_IDS.contains(&id) {
             return Err(format!("unknown animal id {id}"));
         }
         if sheet != format!("{id}.png") {
@@ -158,13 +161,33 @@ mod tests {
     }
 
     #[test]
-    fn packaged_manifest_is_valid_and_lists_five_animals() {
+    fn packaged_manifest_is_valid_and_lists_six_animals() {
         let c = validate_manifest(&valid()).expect("valid");
-        for id in ["snail", "turtle", "rabbit", "horse", "cheetah"] {
+        for id in ANIMAL_IDS {
             assert!(c.has(id));
         }
+        assert_eq!(ANIMAL_IDS.len(), 6);
         assert_eq!(asset_for_emoji("🐇"), Some("rabbit"));
+        assert_eq!(asset_for_emoji("\u{1F680}"), Some("rocket"));
         assert_eq!(asset_for_emoji("🐈"), None);
+    }
+
+    /// Every packaged sheet is a PNG of the 768 x 512 grid the ring clips (IHDR width/height).
+    #[test]
+    fn every_sheet_is_a_768_by_512_png() {
+        let sheets: [(&str, &[u8]); 6] = [
+            ("snail", include_bytes!("../ui/assets/burn-animals/snail.png")),
+            ("turtle", include_bytes!("../ui/assets/burn-animals/turtle.png")),
+            ("rabbit", include_bytes!("../ui/assets/burn-animals/rabbit.png")),
+            ("horse", include_bytes!("../ui/assets/burn-animals/horse.png")),
+            ("cheetah", include_bytes!("../ui/assets/burn-animals/cheetah.png")),
+            ("rocket", include_bytes!("../ui/assets/burn-animals/rocket.png")),
+        ];
+        for (id, png) in sheets {
+            assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n", "{id} is a PNG");
+            let dim = |at: usize| u32::from_be_bytes(png[at..at + 4].try_into().unwrap());
+            assert_eq!((dim(16), dim(20)), (6 * CELL_PX, 4 * CELL_PX), "{id} sheet size");
+        }
     }
 
     #[test]
@@ -209,7 +232,7 @@ mod tests {
         // Edited as JSON, not text, so line endings (CRLF checkouts) cannot matter.
         let mut v: serde_json::Value = serde_json::from_str(MANIFEST_JSON).unwrap();
         v["animals"].as_array_mut().unwrap().retain(|a| a["id"] != "snail");
-        let c = validate_manifest(&v.to_string()).expect("four animals still valid");
+        let c = validate_manifest(&v.to_string()).expect("five animals still valid");
         assert!(!c.has("snail") && c.has("turtle"));
     }
 
@@ -234,9 +257,9 @@ mod tests {
             seven_day: None,
             fable: None,
             peak_utilization: util,
-            burn_projected_seconds: None,
-            burn_projected_seconds_7d: None,
-            burn_projected_seconds_fable: None,
+            burn: None,
+            burn_7d: None,
+            burn_fable: None,
             is_extension_sourced: false,
             error: error.map(str::to_owned),
             last_synced_unix: None,

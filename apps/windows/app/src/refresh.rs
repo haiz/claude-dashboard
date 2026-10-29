@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use claude_dashboard_core::api;
-use claude_dashboard_core::burn_rate::BurnRateTracker;
+use claude_dashboard_core::burn_rate::{needs_fast_refresh, BurnRateTracker};
 use claude_dashboard_core::model::{Account, AccountPlan, AccountStatus};
 use claude_dashboard_core::plan::{parse_orgs, refreshed_plan_for};
 use claude_dashboard_core::extension_sources;
@@ -142,6 +142,35 @@ impl FastPoll {
     }
 }
 
+/// Accounts the burn poll refreshes every 60 s (contract/README.md, "Fast refresh"): 5h level
+/// cheetah or rocket, active, no fetch error, Auto Refresh on. Independent of the animals
+/// setting. macOS `burnFastIDs`.
+pub fn burn_fast_ids(rows: &[DisplayRow], auto_refresh_enabled: bool) -> Vec<String> {
+    rows.iter()
+        .filter(|r| {
+            needs_fast_refresh(
+                r.burn.as_ref().map(|b| b.level),
+                r.status == AccountStatus::Active,
+                r.error.is_some(),
+                auto_refresh_enabled,
+            )
+        })
+        .map(|r| r.account_id.clone())
+        .collect()
+}
+
+/// The one fetch a poll timeout sends: the Claude Code poll's account (`cc`, when that poll
+/// fired) and the burn poll's accounts (`burn`, when it fired), each once; `None` when empty.
+pub fn poll_nudge(cc: Option<String>, burn: &[String]) -> Option<Nudge> {
+    let mut ids: Vec<String> = cc.into_iter().collect();
+    for id in burn {
+        if !ids.contains(id) {
+            ids.push(id.clone());
+        }
+    }
+    (!ids.is_empty()).then_some(Nudge::Some(ids))
+}
+
 /// Windows whose reset time passed more than 10 s ago on an active row, as
 /// `(account, window, resets_at)`; macOS `checkResetTriggers` refreshes for these so the
 /// gauges move on as soon as a window resets. The caller fires once per triple.
@@ -247,29 +276,27 @@ pub fn merge_errors(prev: &[DisplayRow], fresh: Result<RefreshOutput, String>, n
     }
 }
 
-/// Feeds each healthy row's windows to the tracker and stores the projected
-/// seconds-to-limit on the row, as macOS does after each fetch
+/// Feeds each healthy row's windows to the tracker and stores the burn-rate result
+/// (level, animal, projected seconds-to-limit) on the row, as macOS does after each fetch
 /// (`DashboardViewModel.refresh`: 5h and 7d always, Fable when present; a
 /// missing reset time falls back to now + the window length). Expired or
 /// errored rows get no projection.
 pub fn apply_projections(tracker: &mut BurnRateTracker, rows: &mut [DisplayRow], now_unix_s: f64) {
     for row in rows.iter_mut() {
-        row.burn_projected_seconds = None;
-        row.burn_projected_seconds_7d = None;
-        row.burn_projected_seconds_fable = None;
+        row.burn = None;
+        row.burn_7d = None;
+        row.burn_fable = None;
         if row.error.is_some() || row.status != AccountStatus::Active {
             continue;
         }
         let mut project = |w: &Option<WindowView>, window: i64, total_s: f64| {
             let w = w.as_ref()?;
             let resets = w.resets_at_unix.unwrap_or(now_unix_s + total_s);
-            tracker
-                .record(&row.account_id, window, w.utilization, Some(resets), now_unix_s)
-                .map(|r| r.projected_time)
+            tracker.record(&row.account_id, window, w.utilization, Some(resets), now_unix_s)
         };
-        row.burn_projected_seconds = project(&row.five_hour, WINDOW_FIVE_HOUR, 18000.0);
-        row.burn_projected_seconds_7d = project(&row.seven_day, WINDOW_SEVEN_DAY, 604800.0);
-        row.burn_projected_seconds_fable = project(&row.fable, WINDOW_FABLE, 604800.0);
+        row.burn = project(&row.five_hour, WINDOW_FIVE_HOUR, 18000.0);
+        row.burn_7d = project(&row.seven_day, WINDOW_SEVEN_DAY, 604800.0);
+        row.burn_fable = project(&row.fable, WINDOW_FABLE, 604800.0);
     }
 }
 
@@ -548,6 +575,7 @@ pub fn loop_timeout(s: &claude_dashboard_core::settings::Settings) -> Option<std
 #[cfg(test)]
 mod tests {
     use super::*;
+    use claude_dashboard_core::burn_rate::{BurnRateResult, ROCKET_LEVEL};
 
     fn timeout_for(enabled: bool, minutes: u64) -> Option<std::time::Duration> {
         let s = claude_dashboard_core::settings::Settings {
@@ -618,17 +646,60 @@ mod tests {
         };
         let mut first = mk(10.0, 5.0);
         apply_projections(&mut t, &mut first, NOW);
-        assert!(first.iter().all(|r| r.burn_projected_seconds.is_none()), "first record has no rate");
+        assert!(first.iter().all(|r| r.burn.is_none()), "first record has no rate");
 
-        // 5h rises 10 -> 20 in 600 s (rate 1/60 %/s -> 4800 s left); 7d unchanged.
+        // 5h rises 10 -> 20 in 600 s (rate 1 %/min -> 4800 s left); 7d unchanged.
         let mut second = mk(20.0, 5.0);
         apply_projections(&mut t, &mut second, NOW + 600.0);
         let a = second.iter().find(|r| r.account_id == "a").unwrap();
-        assert!((a.burn_projected_seconds.unwrap() - 4800.0).abs() < 1e-6);
-        assert!(a.burn_projected_seconds_7d.is_none(), "unchanged usage projects nothing");
-        assert!(a.burn_projected_seconds_fable.is_none());
+        let burn = a.burn.as_ref().unwrap();
+        assert!((burn.projected_time - 4800.0).abs() < 1e-6);
+        assert_eq!(burn.level, 4, "80 minutes left is a horse");
+        assert!(a.burn_7d.is_none(), "unchanged usage projects nothing");
+        assert!(a.burn_fable.is_none());
         let c = second.iter().find(|r| r.account_id == "c").unwrap();
-        assert!(c.error.is_some() && c.burn_projected_seconds.is_none(), "errored row gets none");
+        assert!(c.error.is_some() && c.burn.is_none(), "errored row gets none");
+
+        // 5h rises 20 -> 30 in 60 s: 10 %/min is a rocket on its own.
+        let mut third = mk(30.0, 5.0);
+        apply_projections(&mut t, &mut third, NOW + 660.0);
+        let a = third.iter().find(|r| r.account_id == "a").unwrap();
+        assert_eq!(a.burn.as_ref().map(|b| (b.level, b.animal)), Some((ROCKET_LEVEL, "\u{1F680}")));
+    }
+
+    #[test]
+    fn burn_fast_ids_picks_cheetah_and_rocket_only() {
+        let base = rows(&[]).into_iter().find(|r| r.account_id == "a").unwrap();
+        let mk = |id: &str, level: Option<u8>| {
+            let mut r = base.clone();
+            r.account_id = id.into();
+            r.burn = level.map(|l| match l {
+                ROCKET_LEVEL => BurnRateResult::from_rate(10.0, 0.0, 50.0),
+                4 => BurnRateResult::from_projected_time(3600.0),
+                _ => BurnRateResult::from_projected_time(600.0),
+            });
+            r
+        };
+        let mut errored = mk("err", Some(5));
+        errored.error = Some("boom".into());
+        let mut expired = mk("exp", Some(ROCKET_LEVEL));
+        expired.status = AccountStatus::Expired;
+        // A cheetah or rocket on 7d / Fable never counts.
+        let mut long = mk("long", None);
+        long.burn_7d = Some(BurnRateResult::from_rate(10.0, 0.0, 50.0));
+        long.burn_fable = Some(BurnRateResult::from_projected_time(600.0));
+        let rs = vec![mk("h", Some(4)), mk("c", Some(5)), mk("r", Some(ROCKET_LEVEL)), mk("n", None), errored, expired, long];
+        assert_eq!(burn_fast_ids(&rs, true), ["c", "r"]);
+        assert!(burn_fast_ids(&rs, false).is_empty(), "Auto Refresh off: no fast refresh");
+    }
+
+    #[test]
+    fn poll_nudge_unions_fired_targets_once() {
+        let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(poll_nudge(None, &[]), None);
+        assert_eq!(poll_nudge(Some("a".into()), &[]), Some(Nudge::Some(ids(&["a"]))));
+        assert_eq!(poll_nudge(None, &ids(&["b", "c"])), Some(Nudge::Some(ids(&["b", "c"]))));
+        assert_eq!(poll_nudge(Some("b".into()), &ids(&["a", "b"])), Some(Nudge::Some(ids(&["b", "a"]))));
     }
 
     const NOW: f64 = 1_000_000.0;
@@ -676,12 +747,12 @@ mod tests {
         let mut prev = rows(&[]);
         assert_eq!(prev.iter().map(|r| r.account_id.as_str()).collect::<Vec<_>>(), ["b", "a", "c"]);
         for r in prev.iter_mut() {
-            r.burn_projected_seconds = Some(1234.0);
+            r.burn = Some(BurnRateResult::from_projected_time(1234.0));
         }
         // b was 70% and led; it drops to 5%, so the order becomes a, c, b.
         let mut fresh = prev.iter().find(|r| r.account_id == "b").unwrap().clone();
         fresh.five_hour = Some(WindowView { utilization: 5.0, resets_at_unix: None, is_limited: false });
-        fresh.burn_projected_seconds = Some(99.0);
+        fresh.burn = Some(BurnRateResult::from_projected_time(99.0));
         let merged = merge_one(&prev, fresh.clone(), NOW);
         assert_eq!(merged.iter().map(|r| r.account_id.as_str()).collect::<Vec<_>>(), ["a", "c", "b"]);
         for id in ["a", "c"] {

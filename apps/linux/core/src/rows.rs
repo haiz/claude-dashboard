@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use crate::account_kind::kind_of;
+use crate::burn_rate::BurnRateResult;
 use crate::extension_sources::ExtensionSources;
 use crate::model::{Account, AccountPlan, AccountStatus};
 use crate::usage::{UsageData, UsageLimit};
@@ -33,12 +34,13 @@ pub struct DisplayRow {
     pub fable: Option<WindowView>,
     /// Highest utilization across this row's windows (0 with no usage).
     pub peak_utilization: f64,
-    /// The projection needs poll history (`BurnRateTracker`), which a pure
-    /// row builder does not have; the caller fills this in.
-    pub burn_projected_seconds: Option<f64>,
-    /// Same projection for the 7-day and Fable windows (macOS shows an animal on each gauge).
-    pub burn_projected_seconds_7d: Option<f64>,
-    pub burn_projected_seconds_fable: Option<f64>,
+    /// The 5h burn-rate result (level, animal, projected seconds). It needs poll
+    /// history (`BurnRateTracker`), which a pure row builder does not have; the
+    /// caller fills this in.
+    pub burn: Option<BurnRateResult>,
+    /// Same result for the 7-day and Fable windows (macOS shows an animal on each gauge).
+    pub burn_7d: Option<BurnRateResult>,
+    pub burn_fable: Option<BurnRateResult>,
     pub is_extension_sourced: bool,
     pub error: Option<String>,
     pub last_synced_unix: Option<f64>,
@@ -127,9 +129,9 @@ pub fn build_rows(input: BuildInput<'_>) -> Vec<DisplayRow> {
                 seven_day,
                 fable,
                 peak_utilization: peak,
-                burn_projected_seconds: None,
-                burn_projected_seconds_7d: None,
-                burn_projected_seconds_fable: None,
+                burn: None,
+                burn_7d: None,
+                burn_fable: None,
                 is_extension_sourced: input.sources.bindings.values().any(|b| b.account_id == a.id),
                 error: input.errors.get(&a.id).cloned(),
                 last_synced_unix: a.last_synced_unix(),

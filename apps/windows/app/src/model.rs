@@ -147,20 +147,20 @@ fn countdown_models(
     (slint::ModelRc::new(slint::VecModel::from(fill)), slint::ModelRc::new(slint::VecModel::from(track)))
 }
 
-fn animal_for(projected: Option<f64>) -> &'static str {
-    projected.map(|s| BurnRateResult::from_projected_time(s).animal).unwrap_or("")
+fn animal_for(r: &Option<BurnRateResult>) -> &'static str {
+    r.as_ref().map(|r| r.animal).unwrap_or("")
 }
 
 /// The 5h, 7d and Fable animals of `row`: "" each when Settings > General > Show burn-rate
-/// animals is off (`show_animals`), else the animal of that window's projection ("" = unknown).
+/// animals is off (`show_animals`), else the animal of that window's burn result ("" = unknown).
 fn animals(row: &DisplayRow, show_animals: bool) -> [&'static str; 3] {
     if !show_animals {
         return ["", "", ""];
     }
     [
-        animal_for(row.burn_projected_seconds),
-        animal_for(row.burn_projected_seconds_7d),
-        animal_for(row.burn_projected_seconds_fable),
+        animal_for(&row.burn),
+        animal_for(&row.burn_7d),
+        animal_for(&row.burn_fable),
     ]
 }
 
@@ -425,9 +425,9 @@ mod tests {
             seven_day: None,
             fable: None,
             peak_utilization: 0.0,
-            burn_projected_seconds: None,
-            burn_projected_seconds_7d: None,
-            burn_projected_seconds_fable: None,
+            burn: None,
+            burn_7d: None,
+            burn_fable: None,
             is_extension_sourced: false,
             error: None,
             last_synced_unix: None,
@@ -510,9 +510,9 @@ mod tests {
         r.five_hour = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
         r.seven_day = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
         r.fable = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
-        r.burn_projected_seconds = Some(600.0);
-        r.burn_projected_seconds_7d = Some(1.0e6);
-        r.burn_projected_seconds_fable = Some(600.0);
+        r.burn = Some(BurnRateResult::from_projected_time(600.0));
+        r.burn_7d = Some(BurnRateResult::from_projected_time(1.0e6));
+        r.burn_fable = Some(BurnRateResult::from_projected_time(600.0));
         let ui = to_ui_row(&r, 1e9, true);
         assert!(!ui.five_hour.animal.is_empty());
         assert!(!ui.seven_day.animal.is_empty());
@@ -529,10 +529,23 @@ mod tests {
         r.five_hour = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
         r.seven_day = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
         r.fable = Some(WindowView { utilization: 10.0, resets_at_unix: reset, is_limited: false });
-        r.burn_projected_seconds = Some(600.0);
-        r.burn_projected_seconds_7d = Some(1.0e6);
-        r.burn_projected_seconds_fable = Some(600.0);
+        r.burn = Some(BurnRateResult::from_projected_time(600.0));
+        r.burn_7d = Some(BurnRateResult::from_projected_time(1.0e6));
+        r.burn_fable = Some(BurnRateResult::from_projected_time(600.0));
         r
+    }
+
+    #[test]
+    fn rocket_burn_shows_the_rocket_and_hidden_animals_show_nothing() {
+        let mut r = burning_row();
+        r.burn = Some(BurnRateResult::from_rate(10.0, 0.0, 50.0));
+        let on = to_ui_row(&r, 1e9, true);
+        assert_eq!(on.five_hour.animal.as_str(), "\u{1F680}");
+        assert_eq!(on.five_hour.animal_asset.as_str(), "rocket");
+        let off = to_ui_row(&r, 1e9, false);
+        assert!(off.five_hour.animal.is_empty() && off.five_hour.animal_asset.is_empty());
+        // Fast refresh does not depend on the animals setting.
+        assert_eq!(crate::refresh::burn_fast_ids(&[r], true), ["a"]);
     }
 
     #[test]
@@ -543,9 +556,9 @@ mod tests {
             assert!(a.is_empty(), "off: no animal, got {a}");
         }
         let on = to_ui_row(&r, 1e9, true);
-        assert_eq!(on.five_hour.animal.as_str(), animal_for(Some(600.0)));
-        assert_eq!(on.seven_day.animal.as_str(), animal_for(Some(1.0e6)));
-        assert_eq!(on.fable.animal.as_str(), animal_for(Some(600.0)));
+        assert_eq!(on.five_hour.animal.as_str(), "\u{1F406}");
+        assert_eq!(on.seven_day.animal.as_str(), "\u{1F40C}");
+        assert_eq!(on.fable.animal.as_str(), "\u{1F406}");
         assert_eq!(on.animal, on.five_hour.animal);
         // Display only: the gauges themselves are the same either way.
         assert_eq!(on.five_hour.percent, off.five_hour.percent);
@@ -610,13 +623,13 @@ mod tests {
     fn only_the_five_hour_window_carries_an_animal_asset() {
         let r = burning_row();
         let on = to_ui_row(&r, 1e9, true);
-        let expected = animal_assets::asset_for_emoji(animal_for(Some(600.0))).unwrap_or("");
+        let expected = animal_assets::asset_for_emoji("\u{1F406}").unwrap_or("");
         assert_eq!(on.five_hour.animal_asset.as_str(), expected);
         assert!(!expected.is_empty(), "600 s projection maps to a packaged animal");
         assert!(on.seven_day.animal_asset.is_empty() && on.fable.animal_asset.is_empty());
         // 7d / Fable animals are unchanged.
-        assert_eq!(on.seven_day.animal.as_str(), animal_for(Some(1.0e6)));
-        assert_eq!(on.fable.animal.as_str(), animal_for(Some(600.0)));
+        assert_eq!(on.seven_day.animal.as_str(), "\u{1F40C}");
+        assert_eq!(on.fable.animal.as_str(), "\u{1F406}");
     }
 
     #[test]

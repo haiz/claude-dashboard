@@ -46,7 +46,7 @@ export struct UiWindow {
     // Burn-rate animal emoji of this window ("" when unknown or the setting is off). Data only:
     // no gauge draws it; the 5h ring animates `animal-asset` instead.
     animal: string,
-    // 5h window only. Stable asset id ("snail" .. "cheetah") of the animal to animate, "" when
+    // 5h window only. Stable asset id ("snail" .. "cheetah", "rocket") of the animal to animate, "" when
     // the setting is off, no burn-rate animal is known or the packaged manifest is invalid.
     animal-asset: string,
     // 5h window only. Monotonic app-clock seconds (animal_assets::monotonic_now) at which the
@@ -65,6 +65,7 @@ export global BurnAnimalSheets {
         if id == "rabbit" { return @image-url("assets/burn-animals/rabbit.png"); }
         if id == "horse" { return @image-url("assets/burn-animals/horse.png"); }
         if id == "cheetah" { return @image-url("assets/burn-animals/cheetah.png"); }
+        if id == "rocket" { return @image-url("assets/burn-animals/rocket.png"); }
         return @image-url("assets/burn-animals/snail.png");
     }
 }
