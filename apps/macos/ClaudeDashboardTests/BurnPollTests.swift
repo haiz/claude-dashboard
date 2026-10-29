@@ -126,6 +126,33 @@ final class BurnPollTests: XCTestCase {
         XCTAssertNil(vm.burnPollTask, "no fast account left, the poll stops")
     }
 
+    /// `burnPollFetching` stands in for the loop being inside its `refreshAll(only:)`.
+    func testFullRefreshDuringPollFetch_keepsTheTaskUncancelled() {
+        let vm = makeViewModel()
+        vm.accountStates = [makeState(level: 5)]
+        vm.updateBurnPoll(afterFullRefresh: true)
+        let task = vm.burnPollTask
+        let token = vm.burnPollToken
+        vm.burnPollFetching = true
+        vm.updateBurnPoll(afterFullRefresh: true)
+        XCTAssertTrue(vm.burnPollTask == task, "no re-arm mid-fetch")
+        XCTAssertFalse(task?.isCancelled ?? true, "the in-flight fetch is not cancelled")
+        XCTAssertEqual(vm.burnPollToken, token, "the loop keeps running after its fetch")
+    }
+
+    func testAutoRefreshOffDuringPollFetch_doesNotCancelButEndsTheLoop() {
+        let vm = makeViewModel()
+        vm.accountStates = [makeState(level: 5)]
+        vm.updateBurnPoll(afterFullRefresh: true)
+        let task = vm.burnPollTask
+        addTeardownBlock { task?.cancel() }
+        vm.burnPollFetching = true
+        vm.autoRefreshEnabled = false
+        XCTAssertFalse(task?.isCancelled ?? true, "the in-flight fetch is not cancelled")
+        XCTAssertNil(vm.burnPollTask)
+        XCTAssertNil(vm.burnPollToken, "the loop's token no longer matches, so it exits after the fetch")
+    }
+
     func testTurningAutoRefreshOffStopsThePoll() {
         let vm = makeViewModel()
         vm.accountStates = [makeState(level: BurnRateResult.rocketLevel)]

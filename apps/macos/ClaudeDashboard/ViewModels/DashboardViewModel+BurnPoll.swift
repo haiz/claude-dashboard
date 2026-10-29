@@ -18,31 +18,44 @@ extension DashboardViewModel {
     /// Stops the poll when no account needs it, starts it when one does, and re-arms a running
     /// poll after a full refresh so its first fetch is 60 s after that refresh.
     /// Each poll runs `refreshAll(only:)`, which calls back here.
+    ///
+    /// A poll fetch in flight is never cancelled: cancelling it would write "cancelled" into the
+    /// cards it is fetching. A re-arm during the fetch is a no-op, since the loop sleeps 60 s
+    /// once the fetch returns.
     func updateBurnPoll(afterFullRefresh: Bool) {
         guard !burnFastIDs().isEmpty else {
             stopBurnPoll()
             return
         }
         if burnPollTask != nil {
-            guard afterFullRefresh else { return }
+            guard afterFullRefresh, !burnPollFetching else { return }
             burnPollTask?.cancel()
         }
+        let token = UUID()
+        burnPollToken = token
         burnPollTask = Task { [weak self] in
-            while !Task.isCancelled {
+            while true {
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
-                guard !Task.isCancelled, let self else { return }
+                guard !Task.isCancelled, let self, self.burnPollToken == token else { return }
                 let ids = self.burnFastIDs()
                 guard !ids.isEmpty else {
-                    self.burnPollTask = nil
+                    self.stopBurnPoll()
                     return
                 }
+                self.burnPollFetching = true
                 await self.refreshAll(only: ids)
+                self.burnPollFetching = false
+                // Stopped or replaced while fetching.
+                guard self.burnPollToken == token else { return }
             }
         }
     }
 
+    /// Ends the poll. A sleeping poll is cancelled; one mid-fetch finishes that fetch and then
+    /// exits, because its token no longer matches.
     func stopBurnPoll() {
-        burnPollTask?.cancel()
+        if !burnPollFetching { burnPollTask?.cancel() }
         burnPollTask = nil
+        burnPollToken = nil
     }
 }

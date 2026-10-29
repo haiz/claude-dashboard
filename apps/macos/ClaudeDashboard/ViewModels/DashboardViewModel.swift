@@ -123,6 +123,10 @@ final class DashboardViewModel: ObservableObject {
     var autoSwitchPollTask: Task<Void, Never>?
     /// Fetches cheetah and rocket accounts every 60 s (`updateBurnPoll`).
     var burnPollTask: Task<Void, Never>?
+    /// Identifies the running poll loop; a loop whose token no longer matches exits.
+    var burnPollToken: UUID?
+    /// The poll loop is inside its `refreshAll(only:)`; it must not be cancelled then.
+    var burnPollFetching = false
 
     @Published var autoRefreshEnabled: Bool {
         didSet { AppDefaults.shared.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
