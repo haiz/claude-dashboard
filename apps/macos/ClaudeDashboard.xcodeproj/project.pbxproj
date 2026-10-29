@@ -18,6 +18,7 @@
 		1213175776995521648C0196 /* ManualKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF55256F6D81B14585D71C9 /* ManualKey.swift */; };
 		128088AF39F18164CCF8402B /* AccountsSettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95142383ED7E34A025B5F55A /* AccountsSettingsPane.swift */; };
 		1373305DBB8E1C9805CFC8C8 /* AccountIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4178DC5D69C19ECD002EF8A9 /* AccountIdentity.swift */; };
+		145E49E2F8475F1D392671CD /* BurnPollTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16146A6A5F077ED8FDA9C332 /* BurnPollTests.swift */; };
 		14E1A2437A2103B2A0DE0F20 /* DesktopSwitchSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79F99E6791ECFF919869DD5 /* DesktopSwitchSettingsTests.swift */; };
 		1546E64E1503CDC34E845091 /* ClaudeCodeCredentialTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B9035A662D17D7670BAB113 /* ClaudeCodeCredentialTests.swift */; };
 		161E465F18BB4113A5A25042 /* CriticalSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C9D2CB13A6304EAA8197BCF /* CriticalSettingsSection.swift */; };
@@ -88,6 +89,7 @@
 		667F013D8C979684131DD6D2 /* ManualKeyOutcomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C8D27DC73CD1321619DF47A /* ManualKeyOutcomeTests.swift */; };
 		697FD5163EBEAA9871C91C38 /* SessionCandidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53FC5C2A26C631D62371B57C /* SessionCandidate.swift */; };
 		6994523150E34EE73FF95993 /* PingMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC57209CDF950797EE227167 /* PingMigrationTests.swift */; };
+		69ABC780DB34CC0E7498F13B /* DashboardViewModel+BurnPoll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D52D07901490DE7F10417DD /* DashboardViewModel+BurnPoll.swift */; };
 		69E5C98294531C72DBF1D4CC /* OrgSelectionContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65B6FF0D0BD63D5125DBE9E9 /* OrgSelectionContractTests.swift */; };
 		6A3B29454AC4491BC3AB2C7B /* AccountCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786E54BCD656D51F01E86B77 /* AccountCard.swift */; };
 		6B5178E7AE39D91E564BD7AD /* HelpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC394CD29F6E869A54D1CE5A /* HelpView.swift */; };
@@ -278,6 +280,7 @@
 		1004DB8DCC865D26DD88BA33 /* UsageRatioChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageRatioChart.swift; sourceTree = "<group>"; };
 		101FB3B509DBD5E1813FDABE /* UpdateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateViewModel.swift; sourceTree = "<group>"; };
 		1289C89308B21AC4804E0037 /* AccountStoreCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreCodecTests.swift; sourceTree = "<group>"; };
+		16146A6A5F077ED8FDA9C332 /* BurnPollTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnPollTests.swift; sourceTree = "<group>"; };
 		185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogStoreTests.swift; sourceTree = "<group>"; };
 		18EFF689916F3050F6F7354D /* StoreFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreFixture.swift; sourceTree = "<group>"; };
 		192B6A7B21DD123434442F5B /* AddKeyCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddKeyCommandTests.swift; sourceTree = "<group>"; };
@@ -325,6 +328,7 @@
 		4AD2748EF06750A5A71EB158 /* UsageRatioController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageRatioController.swift; sourceTree = "<group>"; };
 		4AF7DEAC28930337FB1D5772 /* DecryptCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecryptCommand.swift; sourceTree = "<group>"; };
 		4CB083F464444A9AAEFA0DDE /* ScanOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanOutcomeTests.swift; sourceTree = "<group>"; };
+		4D52D07901490DE7F10417DD /* DashboardViewModel+BurnPoll.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DashboardViewModel+BurnPoll.swift"; sourceTree = "<group>"; };
 		4E71CE0E11670D789A465FF7 /* AccountStoreCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStoreCodec.swift; sourceTree = "<group>"; };
 		4EB2623CB6EC20CACFF82236 /* HelperAccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperAccountStore.swift; sourceTree = "<group>"; };
 		50394951A2973974631180D4 /* PingServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingServiceTests.swift; sourceTree = "<group>"; };
@@ -503,6 +507,7 @@
 				0DF94AC1CCBEAEFA5EABDE34 /* AutoSwitchLogViewModel.swift */,
 				044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */,
 				1AA1E9D0BCC00C9ABCD8F6BF /* DashboardViewModel+AutoSwitch.swift */,
+				4D52D07901490DE7F10417DD /* DashboardViewModel+BurnPoll.swift */,
 				3A6C3D557EACAE9350D87814 /* DashboardViewModel+Critical.swift */,
 				2CE2258780F95A45D7C88D04 /* DashboardViewModel+Ping.swift */,
 				548E03A3BBC878076239E70D /* PingLogViewModel.swift */,
@@ -551,6 +556,7 @@
 				E78303A2B3B9A1F15A814671 /* BrowserTests.swift */,
 				3C7A9F1474267CFDFAE6048F /* BurnAnimalAssetCatalogTests.swift */,
 				A53A8E90D5A5556AAC38ED9D /* BurnAnimalGaugeTests.swift */,
+				16146A6A5F077ED8FDA9C332 /* BurnPollTests.swift */,
 				9AEE29987B849E18AFE5E428 /* BurnRateContractTests.swift */,
 				95A99A9BA83C1C687A1C2E17 /* BurnRateTrackerTests.swift */,
 				75A3660023E6BA291B7932FE /* ClaudeCodeAccountDetectorTests.swift */,
@@ -887,7 +893,7 @@
 			path = Ping;
 			sourceTree = "<group>";
 		};
-		"TEMP_64006F66-12DF-4BD5-B0AD-70C7BF0F7B3A" /* Resources */ = {
+		"TEMP_D1472C8F-4694-4340-8EBC-80C9D4E6662F" /* Resources */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -1052,6 +1058,7 @@
 				7CF21E5F1DE379253A2A1CE7 /* BrowserTests.swift in Sources */,
 				3183CE9E8B0D424B4CBE307C /* BurnAnimalAssetCatalogTests.swift in Sources */,
 				2477DA602953963A3FF8C82F /* BurnAnimalGaugeTests.swift in Sources */,
+				145E49E2F8475F1D392671CD /* BurnPollTests.swift in Sources */,
 				C76FCE10EDB30B02770BB9D0 /* BurnRateContractTests.swift in Sources */,
 				FE8FF5E441863A71BB60B928 /* BurnRateTrackerTests.swift in Sources */,
 				F6F423B9B14E2440A491018C /* ClaudeCodeAccountDetectorTests.swift in Sources */,
@@ -1238,6 +1245,7 @@
 				0924D8F9139A4EE436ABEA8C /* CryptoService.swift in Sources */,
 				4E7EC528E2BFD1DD68C711E6 /* DashboardPane.swift in Sources */,
 				452031F4CA41F34A18331D2D /* DashboardViewModel+AutoSwitch.swift in Sources */,
+				69ABC780DB34CC0E7498F13B /* DashboardViewModel+BurnPoll.swift in Sources */,
 				E497B0E528DF69D36BD96883 /* DashboardViewModel+Critical.swift in Sources */,
 				D8B9A70A970E00377F9C00AD /* DashboardViewModel+Ping.swift in Sources */,
 				C12D5970F4C7C807CCBE917B /* DashboardViewModel.swift in Sources */,

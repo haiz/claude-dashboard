@@ -121,6 +121,8 @@ final class DashboardViewModel: ObservableObject {
     let criticalSettings: CriticalSettings
     /// Fetches the active account every 60 s while it is near a limit (`updateAutoSwitchPoll`).
     var autoSwitchPollTask: Task<Void, Never>?
+    /// Fetches cheetah and rocket accounts every 60 s (`updateBurnPoll`).
+    var burnPollTask: Task<Void, Never>?
 
     @Published var autoRefreshEnabled: Bool {
         didSet { AppDefaults.shared.set(autoRefreshEnabled, forKey: "autoRefreshEnabled"); scheduleAutoRefresh() }
@@ -320,7 +322,10 @@ final class DashboardViewModel: ObservableObject {
     private func scheduleAutoRefresh() {
         autoRefreshTask?.cancel()
         autoRefreshTask = nil
-        guard autoRefreshEnabled else { return }
+        guard autoRefreshEnabled else {
+            stopBurnPoll()
+            return
+        }
         let interval = UInt64(autoRefreshMinutes) * 60 * 1_000_000_000
         autoRefreshTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -513,6 +518,7 @@ final class DashboardViewModel: ObservableObject {
         sortStates()
         lastLogsUpdatedAt = Date()
         await runAutoSwitch()
+        updateBurnPoll(afterFullRefresh: ids == nil)
     }
 
     /// Re-reads one account's browser cookies and writes the new session key, the

@@ -327,7 +327,7 @@ struct HelpView: View {
             .frame(width: 40, height: 8)
     }
 
-    /// Mirrors `BurnRateResult.fromProjectedTime`.
+    /// Mirrors `BurnRateResult.from(ratePerMinute:sustainedSeconds:utilization:)`.
     private var burnRateScale: some View {
         HStack(spacing: 6) {
             ForEach(Self.burnRateLevels, id: \.level) { item in
@@ -347,6 +347,7 @@ struct HelpView: View {
 
     private static let burnRateLevels: [(level: Int, range: String)] = [
         (1, "over 5h"), (2, "3-5h"), (3, "1.5-3h"), (4, "30m-1.5h"), (5, "under 30m"),
+        (6, "5%/min for 3 min, or 10%/min"),
     ]
 }
 
