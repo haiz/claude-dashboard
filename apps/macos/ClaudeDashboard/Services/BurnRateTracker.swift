@@ -7,6 +7,11 @@ actor BurnRateTracker {
 
     let logStore: UsageLogStore
 
+    /// Minimum seconds between two stored measurements of one key.
+    static let minGap: TimeInterval = 50
+    /// `A -> C` joins the rate only when it spans at most this many seconds.
+    static let aWindow: TimeInterval = 300
+
     private struct Measurement {
         let utilization: Double
         let recordedAt: Date
@@ -14,9 +19,12 @@ actor BurnRateTracker {
     }
 
     private struct HistoryEntry {
-        var prev: Measurement?
-        var current: Measurement?
-        var lastRate: Double?  // %/second
+        /// At most three, oldest first: A, B, C.
+        var samples: [Measurement]
+        var streakStart: Date?
+        var last: BurnRateResult?
+
+        init(_ m: Measurement) { samples = [m] }
     }
 
     private var history: [String: HistoryEntry] = [:]
@@ -41,71 +49,48 @@ actor BurnRateTracker {
             utilization: utilization, isLimited: isLimited
         )
 
-        let newMeasurement = Measurement(
-            utilization: utilization, recordedAt: recordedAt, resetsAt: resetsAt
-        )
+        let m = Measurement(utilization: utilization, recordedAt: recordedAt, resetsAt: resetsAt)
 
-        guard var entry = history[key], let current = entry.current else {
-            // First measurement
-            history[key] = HistoryEntry(prev: nil, current: newMeasurement, lastRate: nil)
+        // First measurement
+        guard var entry = history[key], let c = entry.samples.last else {
+            history[key] = HistoryEntry(m)
             return nil
         }
 
-        // Different reset cycle → reset. The API reports a boundary with jitter
-        // (sub-second, sometimes whole seconds), so allow `resetTolerance`.
-        guard abs(resetsAt.timeIntervalSince(current.resetsAt)) <= Self.resetTolerance else {
-            history[key] = HistoryEntry(prev: nil, current: newMeasurement, lastRate: nil)
+        // Different reset cycle or utilization decreased: discard history and streak.
+        // The API reports a boundary with jitter (sub-second, sometimes whole seconds),
+        // so allow `resetTolerance`.
+        guard abs(resetsAt.timeIntervalSince(c.resetsAt)) <= Self.resetTolerance,
+              utilization >= c.utilization else {
+            history[key] = HistoryEntry(m)
             return nil
         }
 
-        // Utilization decreased → reset (anomaly or post-reset)
-        guard utilization >= current.utilization else {
-            history[key] = HistoryEntry(prev: nil, current: newMeasurement, lastRate: nil)
-            return nil
+        // Minimum gap: skipped, not stored (also covers non-positive gaps).
+        guard recordedAt.timeIntervalSince(c.recordedAt) >= Self.minGap else { return entry.last }
+
+        entry.samples.append(m)
+        if entry.samples.count > 3 { entry.samples.removeFirst() }
+        let n = entry.samples.count
+        let b = entry.samples[n - 2]
+        var rate = (m.utilization - b.utilization) * 60 / m.recordedAt.timeIntervalSince(b.recordedAt)
+        if n == 3 {
+            let a = entry.samples[0]
+            let span = m.recordedAt.timeIntervalSince(a.recordedAt)
+            if span <= Self.aWindow {
+                rate = max(rate, (m.utilization - a.utilization) * 60 / span)
+            }
         }
-
-        // Utilization changed
-        if utilization > current.utilization {
-            let deltaPercent = utilization - current.utilization
-            let deltaTime = recordedAt.timeIntervalSince(current.recordedAt)
-            guard deltaTime > 0 else { return nil }
-
-            let rate = deltaPercent / deltaTime  // %/second
-            let remaining = 100.0 - utilization
-            let projectedTime = remaining / rate  // seconds
-
-            entry.prev = current
-            entry.current = newMeasurement
-            entry.lastRate = rate
-            history[key] = entry
-
-            return BurnRateResult.fromProjectedTime(projectedTime)
+        if rate >= BurnRateResult.sustainedRate {
+            entry.streakStart = entry.streakStart ?? b.recordedAt
+        } else {
+            entry.streakStart = nil
         }
-
-        // Utilization unchanged
-        let gap = recordedAt.timeIntervalSince(current.recordedAt)
-
-        if gap >= 300 { // >= 5 minutes
-            entry.current = newMeasurement
-            entry.lastRate = nil
-            history[key] = entry
-            return nil
-        }
-
-        // Gap < 5 minutes — keep previous rate if available
-        guard let lastRate = entry.lastRate, entry.prev != nil else {
-            entry.current = newMeasurement
-            history[key] = entry
-            return nil
-        }
-
-        let remaining = 100.0 - utilization
-        guard remaining > 0 else {
-            return BurnRateResult.fromProjectedTime(0)
-        }
-        let projectedTime = remaining / lastRate
-        entry.current = newMeasurement
+        let sustained = m.recordedAt.timeIntervalSince(entry.streakStart ?? m.recordedAt)
+        entry.last = rate > 0
+            ? BurnRateResult.from(ratePerMinute: rate, sustainedSeconds: sustained, utilization: m.utilization)
+            : nil
         history[key] = entry
-        return BurnRateResult.fromProjectedTime(projectedTime)
+        return entry.last
     }
 }

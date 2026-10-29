@@ -278,7 +278,7 @@ about a line number in a file it does not own.)
 
 ## Burn-rate levels
 
-Source: `apps/macos/ClaudeDashboard/Models/UsageLogModels.swift:44-61`
+Source: `apps/macos/ClaudeDashboard/Models/UsageLogModels.swift:53-88`
 (`BurnRateResult.animals` and `BurnRateResult.fromProjectedTime`).
 
 Given a projected time-to-100%, in hours:
@@ -311,15 +311,15 @@ level 5).
 `fromProjectedTime` above is only the *last* step. The number handed to it —
 projected seconds to 100% — is produced by a stateful, in-memory tracker
 whose rules a port cannot guess from the thresholds alone. Source:
-`apps/macos/ClaudeDashboard/Services/BurnRateTracker.swift` (111 lines;
-`record(...)` spans lines 28-110).
+`apps/macos/ClaudeDashboard/Services/BurnRateTracker.swift` (96 lines;
+`record(...)` spans lines 36-95).
 
 ### The call
 
 `record(accountId:window:utilization:resetsAt:recordedAt:)` is called once
 per window per refresh and returns `BurnRateResult?`. A `nil` return means
 "no animal to display yet" — it is not an error. `recordedAt` defaults to
-`Date()` (line 33) but is injectable, which is how the Swift tests drive it.
+`Date()` (line 41) but is injectable, which is how the Swift tests drive it.
 
 Whether an animal is *shown* is a separate, display-only switch: the setting
 `showBurnAnimals` (Settings > General, **default off**, Reset All Settings
@@ -330,12 +330,12 @@ turning the switch on shows the current animals straight away.
 ### History key and lifetime
 
 - History is a dictionary keyed by
-  `"\(accountId.uuidString)_\(window.rawValue)"` (line 35) — one independent
+  `"\(accountId.uuidString)_\(window.rawValue)"` (line 43) — one independent
   history per *(account, window)* pair. `uuidString` is the uppercase
   hyphenated form; `window.rawValue` is the `UsageWindow` **integer**:
   `fiveHour = 0`, `sevenDay = 1`, `fable = 3` (`UsageLogModels.swift:4-9` —
   `2` is deliberately skipped, it belonged to the retired Sonnet window).
-- The history lives only in memory, inside an `actor` (lines 4, 22). It is
+- The history lives only in memory, inside an `actor` (lines 4, 30). It is
   never persisted. A process restart wipes it, so the first poll after every
   launch takes rule 1 below.
 - Each entry holds up to three measurements, oldest to newest `A`, `B`, `C`
@@ -345,7 +345,7 @@ turning the switch on shows the current animals straight away.
 ### Unconditional side effect
 
 Before any history logic runs, every call writes one row to the usage log
-store (lines 39-42) with `isLimited = utilization >= 100.0` (line 36). This
+store (lines 47-50) with `isLimited = utilization >= 100.0` (line 44). This
 happens on the `nil`-returning paths too. `isLimited` is a log field only;
 it plays no part in the projection.
 

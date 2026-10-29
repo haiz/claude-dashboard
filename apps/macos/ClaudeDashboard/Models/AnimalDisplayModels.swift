@@ -58,7 +58,7 @@ enum AnimalDisplayModels {
     }
 
     /// Every stable asset id `assetID(for:)` can return, in burn-rate order.
-    static let assetIDs = ["snail", "turtle", "rabbit", "horse", "cheetah"]
+    static let assetIDs = ["snail", "turtle", "rabbit", "horse", "cheetah", "rocket"]
 
     /// Asset directory names are stable contract identifiers, independent of localized emoji.
     static func assetID(for emoji: String) -> String? {
@@ -68,6 +68,7 @@ enum AnimalDisplayModels {
         case "🐇": return "rabbit"
         case "🐎": return "horse"
         case "🐆": return "cheetah"
+        case "🚀": return "rocket"
         default: return nil
         }
     }

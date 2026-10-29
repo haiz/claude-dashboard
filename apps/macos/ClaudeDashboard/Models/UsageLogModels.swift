@@ -37,9 +37,18 @@ struct ResetCycle: Identifiable, Equatable {
 }
 
 struct BurnRateResult: Equatable {
-    let level: Int              // 1-5
+    let level: Int              // 1-6
     let animal: String          // emoji
     let projectedTime: TimeInterval  // seconds until 100%
+
+    /// Level of the rocket, above the ladder's 1-5.
+    static let rocketLevel = 6
+    /// Rate (%/min) that is a rocket on its own.
+    static let rocketRate = 10.0
+    /// Rate (%/min) that starts, and must hold for, a sustained streak.
+    static let sustainedRate = 5.0
+    /// Seconds a streak must last for `sustainedRate` to be a rocket.
+    static let sustainedSeconds: TimeInterval = 180
 
     static let animals: [Int: String] = [
         1: "🐌",  // > 5h
@@ -47,7 +56,25 @@ struct BurnRateResult: Equatable {
         3: "🐇",  // 1.5-3h
         4: "🐎",  // 0.5-1.5h
         5: "🐆",  // < 30m
+        6: "🚀",  // >= 10 %/min, or >= 5 %/min held for 180 s
     ]
+
+    /// Rocket when the rate is at least 10 %/min, or at least 5 %/min held for 180 s;
+    /// otherwise the ladder on the projected seconds to 100%. `ratePerMinute` must be > 0.
+    static func from(ratePerMinute: Double, sustainedSeconds sustained: TimeInterval,
+                     utilization: Double) -> BurnRateResult {
+        let projected = (100.0 - utilization) * 60.0 / ratePerMinute
+        if ratePerMinute >= rocketRate || (ratePerMinute >= sustainedRate && sustained >= sustainedSeconds) {
+            return BurnRateResult(level: rocketLevel, animal: animals[rocketLevel]!, projectedTime: projected)
+        }
+        return fromProjectedTime(projected)
+    }
+
+    /// Whether an account's 5h burn level warrants the 60 s fast refresh.
+    static func needsFastRefresh(fiveHourLevel: Int?, isActive: Bool, hasError: Bool,
+                                 autoRefreshEnabled: Bool) -> Bool {
+        (fiveHourLevel ?? 0) >= 5 && isActive && !hasError && autoRefreshEnabled
+    }
 
     static func fromProjectedTime(_ seconds: TimeInterval) -> BurnRateResult {
         let hours = seconds / 3600

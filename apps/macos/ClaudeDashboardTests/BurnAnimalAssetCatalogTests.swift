@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class BurnAnimalAssetCatalogTests: XCTestCase {
-    private static let ids = ["snail", "turtle", "rabbit", "horse", "cheetah"]
+    private static let ids = ["snail", "turtle", "rabbit", "horse", "cheetah", "rocket"]
     private var dir: URL!
 
     private var bundleDir: URL {
@@ -147,7 +147,7 @@ final class BurnAnimalAssetCatalogTests: XCTestCase {
     }
 
     func testAssetIDsMatchTheEmojiMapping() {
-        let mapped = ["🐌", "🐢", "🐇", "🐎", "🐆"].compactMap(AnimalDisplayModels.assetID(for:))
+        let mapped = ["🐌", "🐢", "🐇", "🐎", "🐆", "🚀"].compactMap(AnimalDisplayModels.assetID(for:))
         XCTAssertEqual(mapped, AnimalDisplayModels.assetIDs)
     }
 

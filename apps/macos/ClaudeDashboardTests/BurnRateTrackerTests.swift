@@ -105,61 +105,6 @@ final class BurnRateTrackerTests: XCTestCase {
         XCTAssertNil(result, "More than 60s apart is a new cycle")
     }
 
-    func testUnchangedUtilization_gapOver5min_returnsNil() async {
-        let accountId = UUID()
-        let resetsAt = Date().addingTimeInterval(3600)
-        let now = Date()
-
-        let _ = await tracker.record(
-            accountId: accountId, window: .fiveHour,
-            utilization: 50.0, resetsAt: resetsAt, recordedAt: now
-        )
-        let result = await tracker.record(
-            accountId: accountId, window: .fiveHour,
-            utilization: 50.0, resetsAt: resetsAt, recordedAt: now.addingTimeInterval(600)
-        )
-        XCTAssertNil(result, "Unchanged + gap >= 5min → nil")
-    }
-
-    func testUnchangedUtilization_gapUnder5min_withPrev_keepsPrevRate() async {
-        let accountId = UUID()
-        let resetsAt = Date().addingTimeInterval(18000)
-        let now = Date()
-
-        let _ = await tracker.record(
-            accountId: accountId, window: .fiveHour,
-            utilization: 20.0, resetsAt: resetsAt, recordedAt: now
-        )
-        let result2 = await tracker.record(
-            accountId: accountId, window: .fiveHour,
-            utilization: 40.0, resetsAt: resetsAt, recordedAt: now.addingTimeInterval(600)
-        )
-        XCTAssertNotNil(result2)
-
-        let result3 = await tracker.record(
-            accountId: accountId, window: .fiveHour,
-            utilization: 40.0, resetsAt: resetsAt, recordedAt: now.addingTimeInterval(720)
-        )
-        XCTAssertNotNil(result3, "Gap < 5min + has prev → keep rate")
-        XCTAssertEqual(result3!.level, result2!.level)
-    }
-
-    func testUnchangedUtilization_gapUnder5min_noPrev_returnsNil() async {
-        let accountId = UUID()
-        let resetsAt = Date().addingTimeInterval(3600)
-        let now = Date()
-
-        let _ = await tracker.record(
-            accountId: accountId, window: .fiveHour,
-            utilization: 50.0, resetsAt: resetsAt, recordedAt: now
-        )
-        let result = await tracker.record(
-            accountId: accountId, window: .fiveHour,
-            utilization: 50.0, resetsAt: resetsAt, recordedAt: now.addingTimeInterval(120)
-        )
-        XCTAssertNil(result, "Gap < 5min but no prev → nil")
-    }
-
     func testUtilizationDecreases_resetsHistory() async {
         let accountId = UUID()
         let resetsAt = Date().addingTimeInterval(3600)
@@ -213,5 +158,62 @@ final class BurnRateTrackerTests: XCTestCase {
         XCTAssertNotNil(result)
         XCTAssertEqual(result!.level, 1)
         XCTAssertEqual(result!.animal, "🐌")
+    }
+
+    private struct Step: Decodable {
+        let utilization: Double
+        let resetsAt: Double
+        let at: Double
+        let expectLevel: Int?
+        let expectProjectedSeconds: Double?
+
+        enum CodingKeys: String, CodingKey {
+            case utilization, at
+            case resetsAt = "resets_at"
+            case expectLevel = "expect_level"
+            case expectProjectedSeconds = "expect_projected_seconds"
+        }
+    }
+
+    private struct TrackerCase: Decodable {
+        let name: String
+        let steps: [Step]
+    }
+
+    private struct TrackerFixture: Decodable {
+        let cases: [TrackerCase]
+    }
+
+    /// Replays `contract/cases/burn-rate-tracker.json`, one fresh account per case.
+    func testTrackerContractCases() async throws {
+        let fixture = try JSONDecoder().decode(
+            TrackerFixture.self, from: ContractFixtures.data("cases/burn-rate-tracker.json"))
+        XCTAssertFalse(fixture.cases.isEmpty)
+        for c in fixture.cases {
+            let accountId = UUID()
+            for (i, step) in c.steps.enumerated() {
+                let r = await tracker.record(
+                    accountId: accountId, window: .fiveHour, utilization: step.utilization,
+                    resetsAt: Date(timeIntervalSince1970: step.resetsAt),
+                    recordedAt: Date(timeIntervalSince1970: step.at))
+                XCTAssertEqual(r?.level, step.expectLevel, "level - case: \(c.name), step \(i)")
+                if let expected = step.expectProjectedSeconds {
+                    XCTAssertEqual(r?.projectedTime ?? .nan, expected, accuracy: 1e-6,
+                                   "projected - case: \(c.name), step \(i)")
+                }
+            }
+        }
+    }
+
+    /// A skipped (too close) measurement is still written to the usage log.
+    func testEveryCallIsLogged_evenWhenSkipped() async {
+        let accountId = UUID()
+        let resetsAt = Date(timeIntervalSince1970: 100_000)
+        for (util, at) in [(10.0, 0.0), (11.0, 10.0), (12.0, 20.0)] {
+            _ = await tracker.record(accountId: accountId, window: .fiveHour, utilization: util,
+                                     resetsAt: resetsAt, recordedAt: Date(timeIntervalSince1970: at))
+        }
+        let logs = await store.logs(accountId: accountId, window: .fiveHour, from: nil, to: nil)
+        XCTAssertEqual(logs.count, 3)
     }
 }
