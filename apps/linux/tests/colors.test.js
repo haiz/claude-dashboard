@@ -1,6 +1,6 @@
 import GLib from 'gi://GLib';
 import {test, assertEqual, assertClose} from './harness.js';
-import {usageColor, countdownColor, burnRateLevel, burnRateAnimal} from '../lib/colors.js';
+import {usageColor, countdownColor, burnRateLevel, burnRateAnimal, burnRateFromRate} from '../lib/colors.js';
 
 const REPO = GLib.getenv('CLAUDE_DASHBOARD_REPO') ?? '../..';
 
@@ -48,5 +48,14 @@ test('burn rate levels match the contract cases', () => {
     for (const c of loadCases('burn-rate-levels.json')) {
         assertEqual(burnRateLevel(c.projected_seconds), c.expect_level, c.name);
         assertEqual(burnRateAnimal(c.projected_seconds), c.expect_animal, c.name);
+    }
+});
+
+test('rocket burn levels match the contract cases', () => {
+    for (const c of loadCases('burn-rate-rocket.json')) {
+        const r = burnRateFromRate(c.rate_pct_per_min, c.sustained_seconds, c.utilization);
+        assertEqual(r.level, c.expect_level, c.name);
+        assertEqual(r.animal, c.expect_animal, c.name);
+        assertClose(r.projectedSeconds, c.expect_projected_seconds, 1e-6, c.name);
     }
 });

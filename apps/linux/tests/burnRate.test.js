@@ -1,5 +1,15 @@
+import GLib from 'gi://GLib';
 import {test, assertEqual, assertClose} from './harness.js';
 import {BurnRateTracker, sortKey} from '../lib/burnRate.js';
+
+const REPO = GLib.getenv('CLAUDE_DASHBOARD_REPO') ?? '../..';
+
+function loadCases(name) {
+    const [ok, bytes] = GLib.file_get_contents(`${REPO}/contract/cases/${name}`);
+    if (!ok)
+        throw new Error(`cannot read contract case ${name}`);
+    return JSON.parse(new TextDecoder().decode(bytes));
+}
 
 const RESET = Date.parse('2026-09-11T18:00:00Z');
 const T0 = Date.parse('2026-09-11T12:00:00Z');
@@ -8,54 +18,31 @@ function sample(t, utilization, resetsAtMs = RESET) {
     return {accountId: 'a', window: 'five_hour', utilization, resetsAtMs, recordedAtMs: t};
 }
 
-test('the first sample yields no projection', () => {
-    const tracker = new BurnRateTracker();
-    assertEqual(tracker.record(sample(T0, 10)), null);
+test('tracker cases from the contract', () => {
+    for (const c of loadCases('burn-rate-tracker.json').cases) {
+        const tracker = new BurnRateTracker();
+        c.steps.forEach((s, i) => {
+            const r = tracker.record({
+                accountId: 'a',
+                window: 'five_hour',
+                utilization: s.utilization,
+                resetsAtMs: s.resets_at === null ? null : s.resets_at * 1000,
+                recordedAtMs: s.at * 1000,
+            });
+            const label = `${c.name} step ${i}`;
+            assertEqual(r?.level ?? null, s.expect_level, label);
+            if (s.expect_level !== null && s.expect_projected_seconds !== undefined)
+                assertClose(r.projectedSeconds, s.expect_projected_seconds, 1e-6, label);
+        });
+    }
 });
 
-test('a rising utilisation projects to one hundred percent', () => {
+test('a rising utilisation keeps the animal field', () => {
     const tracker = new BurnRateTracker();
     tracker.record(sample(T0, 10));
-    // +10 points over 600 s is 1 point per 60 seconds, so 80 points remain: 4800 s.
     const r = tracker.record(sample(T0 + 600000, 20));
     assertClose(r.projectedSeconds, 4800, 1e-6);
     assertEqual(r.animal, '🐎');
-});
-
-test('a new reset cycle discards the history', () => {
-    const tracker = new BurnRateTracker();
-    tracker.record(sample(T0, 10));
-    assertEqual(tracker.record(sample(T0 + 600000, 20, RESET + 18000000)), null);
-});
-
-test('a utilisation that went down discards the history', () => {
-    const tracker = new BurnRateTracker();
-    tracker.record(sample(T0, 40));
-    assertEqual(tracker.record(sample(T0 + 600000, 30)), null);
-});
-
-test('an unchanged utilisation reuses the last rate within five minutes', () => {
-    const tracker = new BurnRateTracker();
-    tracker.record(sample(T0, 10));
-    tracker.record(sample(T0 + 600000, 20));
-    const r = tracker.record(sample(T0 + 600000 + 60000, 20));
-    assertClose(r.projectedSeconds, 4800, 1e-6);
-});
-
-test('an unchanged utilisation drops the rate after five minutes', () => {
-    const tracker = new BurnRateTracker();
-    tracker.record(sample(T0, 10));
-    tracker.record(sample(T0 + 600000, 20));
-    assertEqual(tracker.record(sample(T0 + 600000 + 300000, 20)), null);
-});
-
-test('an exhausted window projects to zero', () => {
-    const tracker = new BurnRateTracker();
-    tracker.record(sample(T0, 90));
-    tracker.record(sample(T0 + 600000, 100));
-    const r = tracker.record(sample(T0 + 600000 + 60000, 100));
-    assertEqual(r.projectedSeconds, 0);
-    assertEqual(r.animal, '🐆');
 });
 
 test('windows are tracked independently', () => {
@@ -81,22 +68,4 @@ test('a missing reset time assumes a whole five-hour window', () => {
 test('inactive accounts sort last', () => {
     assertEqual(sortKey(90, T0 + 3600000, T0, 'expired'), -1);
     assertEqual(sortKey(90, T0 + 3600000, T0, 'error'), -1);
-});
-
-test('an exhausted window stops projecting once the frozen sample ages past the rate-hold cutoff', () => {
-    const tracker = new BurnRateTracker();
-    tracker.record(sample(T0, 90));
-    // Rise to 100, rate = 10/600, projected = 0. current.recordedAt = T0+600.
-    const r2 = tracker.record(sample(T0 + 600000, 100));
-    assertEqual(r2.projectedSeconds, 0);
-    assertEqual(r2.animal, '🐆');
-    // Unchanged at 100, gap 200s < 300s, remaining 0 → returns 0 without writing.
-    // With the fix, current.recordedAt stays T0+600.
-    const r3 = tracker.record(sample(T0 + 800000, 100));
-    assertEqual(r3.projectedSeconds, 0);
-    // Unchanged at 100, gap now 350s >= 300s (from frozen T0+600).
-    // Rate is cleared, returns null. Without the fix, gap would be 150s and
-    // would return {projectedSeconds: 0}.
-    const r4 = tracker.record(sample(T0 + 950000, 100));
-    assertEqual(r4, null);
 });

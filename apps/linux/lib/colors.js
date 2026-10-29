@@ -38,7 +38,7 @@ export function countdownColor(remainingSeconds, totalSeconds) {
     return hsvToRgb(120 / 360, 0.6 * greenIntensity + 0.1, 0.5 + 0.35 * greenIntensity);
 }
 
-export const BURN_ANIMALS = {1: '🐌', 2: '🐢', 3: '🐇', 4: '🐎', 5: '🐆'};
+export const BURN_ANIMALS = {1: '🐌', 2: '🐢', 3: '🐇', 4: '🐎', 5: '🐆', 6: '🚀'};
 
 // Every comparison is strictly greater-than; contract/cases/burn-rate-levels.json
 // pins the boundaries (exactly 5h is level 2, exactly 3h is level 3, and so on).
@@ -49,6 +49,19 @@ export function burnRateLevel(projectedSeconds) {
     if (hours > 1.5) return 3;
     if (hours > 0.5) return 4;
     return 5;
+}
+
+export const ROCKET_LEVEL = 6;
+
+// Rocket at 10 %/min on its own, or at 5 %/min held for 180 s; otherwise the
+// ladder on the projected seconds to 100%. contract/cases/burn-rate-rocket.json
+// pins the boundaries.
+export function burnRateFromRate(ratePctPerMin, sustainedSeconds, utilization) {
+    const projectedSeconds = (100 - utilization) * 60 / ratePctPerMin;
+    const level = ratePctPerMin >= 10 || (ratePctPerMin >= 5 && sustainedSeconds >= 180)
+        ? ROCKET_LEVEL
+        : burnRateLevel(projectedSeconds);
+    return {level, animal: BURN_ANIMALS[level], projectedSeconds};
 }
 
 export function burnRateAnimal(projectedSeconds) {

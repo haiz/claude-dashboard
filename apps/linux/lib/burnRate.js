@@ -4,17 +4,28 @@
 // over time remaining, needing only the current sample.
 //
 // BurnRateTracker ports BurnRateTracker.record
-// (apps/macos/ClaudeDashboard/Services/BurnRateTracker.swift:25): a rate
-// measured between two samples, projected forward to 100%. It needs history,
-// so it keeps prev/current/lastRate per account and window in memory. Only
-// the charts need the SQLite usage log, and charts are out of scope, so
-// nothing here is persisted — a cold popup shows no animal until the second
-// refresh tick, exactly as macOS does on launch.
+// (apps/macos/ClaudeDashboard/Services/BurnRateTracker.swift): a rate measured
+// from the newest three samples (A, B, C), projected forward to 100%. The rules
+// are in contract/README.md, "Burn-rate projection". It keeps the samples, the
+// streak start and the last result per account and window in memory. Only the
+// charts need the SQLite usage log, and charts are out of scope, so nothing
+// here is persisted: a cold popup shows no animal until the second refresh
+// tick, exactly as macOS does on launch.
 
-import {burnRateAnimal} from './colors.js';
+import {burnRateFromRate} from './colors.js';
 
-const RATE_HOLD_SECONDS = 300;
+// Two resets_at this close (ms) are the same window.
+const RESET_TOLERANCE_MS = 60000;
+const MIN_GAP_S = 50;
+const A_WINDOW_S = 300;
+const SUSTAINED_RATE = 5;
 const FIVE_HOUR_SECONDS = 18000;
+
+function sameCycle(a, b) {
+    if (a === null || a === undefined || b === null || b === undefined)
+        return (a ?? null) === (b ?? null);
+    return Math.abs(a - b) <= RESET_TOLERANCE_MS;
+}
 
 export class BurnRateTracker {
     constructor() {
@@ -25,59 +36,43 @@ export class BurnRateTracker {
         this._history.clear();
     }
 
+    // Returns {level, animal, projectedSeconds}, or null when there is no rate.
     record({accountId, window, utilization, resetsAtMs, recordedAtMs}) {
         const key = `${accountId}_${window}`;
-        const entry = this._history.get(key);
         const fresh = {utilization, recordedAtMs, resetsAtMs};
+        const entry = this._history.get(key);
+        const c = entry?.samples[entry.samples.length - 1];
 
-        if (!entry || !entry.current) {
-            this._history.set(key, {prev: null, current: fresh, lastRate: null});
+        // First measurement, a different reset cycle, or utilisation went down:
+        // discard the samples and the streak.
+        if (!c || !sameCycle(resetsAtMs, c.resetsAtMs) || utilization < c.utilization) {
+            this._history.set(key, {samples: [fresh], streakStart: null, last: null});
             return null;
         }
 
-        const current = entry.current;
+        // Too close to the newest sample: skipped, not stored.
+        if ((recordedAtMs - c.recordedAtMs) / 1000 < MIN_GAP_S)
+            return entry.last;
 
-        if (resetsAtMs !== current.resetsAtMs || utilization < current.utilization) {
-            this._history.set(key, {prev: null, current: fresh, lastRate: null});
-            return null;
+        entry.samples.push(fresh);
+        if (entry.samples.length > 3)
+            entry.samples.shift();
+        const n = entry.samples.length;
+        const b = entry.samples[n - 2];
+        const newest = entry.samples[n - 1];
+        const ratePerMin = (from) =>
+            (newest.utilization - from.utilization) * 60 / ((newest.recordedAtMs - from.recordedAtMs) / 1000);
+        let rate = ratePerMin(b);
+        if (n === 3) {
+            const a = entry.samples[0];
+            if ((newest.recordedAtMs - a.recordedAtMs) / 1000 <= A_WINDOW_S)
+                rate = Math.max(rate, ratePerMin(a));
         }
 
-        if (utilization > current.utilization) {
-            const deltaSeconds = (recordedAtMs - current.recordedAtMs) / 1000;
-            if (!(deltaSeconds > 0))
-                return null;
-            const rate = (utilization - current.utilization) / deltaSeconds;
-            const projectedSeconds = (100 - utilization) / rate;
-            this._history.set(key, {prev: current, current: fresh, lastRate: rate});
-            return this._result(projectedSeconds);
-        }
-
-        // Utilisation unchanged.
-        const gapSeconds = (recordedAtMs - current.recordedAtMs) / 1000;
-        if (gapSeconds >= RATE_HOLD_SECONDS) {
-            this._history.set(key, {prev: entry.prev, current: fresh, lastRate: null});
-            return null;
-        }
-
-        if (entry.lastRate === null || !entry.prev) {
-            this._history.set(key, {prev: entry.prev, current: fresh, lastRate: entry.lastRate});
-            return null;
-        }
-
-        const remaining = 100 - utilization;
-        if (!(remaining > 0)) {
-            // Swift returns here without writing history, freezing
-            // current.recordedAt at the last non-exhausted sample. That freeze
-            // is what lets the >= 300 s branch eventually fire and retire the
-            // animal on a window that is pinned at 100%.
-            return this._result(0);
-        }
-        this._history.set(key, {prev: entry.prev, current: fresh, lastRate: entry.lastRate});
-        return this._result(remaining / entry.lastRate);
-    }
-
-    _result(projectedSeconds) {
-        return {projectedSeconds, animal: burnRateAnimal(projectedSeconds)};
+        entry.streakStart = rate >= SUSTAINED_RATE ? (entry.streakStart ?? b.recordedAtMs) : null;
+        const sustainedSeconds = (newest.recordedAtMs - (entry.streakStart ?? newest.recordedAtMs)) / 1000;
+        entry.last = rate > 0 ? burnRateFromRate(rate, sustainedSeconds, newest.utilization) : null;
+        return entry.last;
     }
 }
 

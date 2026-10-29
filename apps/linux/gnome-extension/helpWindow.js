@@ -37,7 +37,7 @@ const SECTIONS = [
             {kind: 'bullet', text: '7d — tokens used in the rolling 7-day window.'},
             {kind: 'bullet', text: 'F — 7-day usage for the Fable model (shown only when your plan scopes it).'},
             {kind: 'body', text: 'Ring colour signals how much is left: green (plenty), yellow (halfway), red (nearly out). The countdown next to each ring shows when that window resets.'},
-            {kind: 'body', text: 'The animal emoji reflects your burn rate — a sloth means you’re using tokens slowly; a cheetah means you’re burning through them fast.'},
+            {kind: 'body', text: 'The animal emoji reflects your burn rate — a sloth means you’re using tokens slowly; a cheetah means you’re burning through them fast; a rocket means 5 %/min held for 3 minutes, or 10 %/min.'},
             {kind: 'body', text: 'A green dot on an account name means that account is currently active in Claude Code.'},
         ],
     },
