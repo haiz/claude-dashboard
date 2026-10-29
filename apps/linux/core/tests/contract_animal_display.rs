@@ -71,6 +71,12 @@ fn asset_cases() {
 }
 
 #[test]
+fn rocket_has_an_asset_id() {
+    assert_eq!(asset_id("\u{1F680}"), Some("rocket"));
+    assert_eq!(claude_dashboard_core::burn_rate::ROCKET_LEVEL, 6);
+}
+
+#[test]
 fn activity_cases() {
     let f = fixture();
     for c in cases(&f, "activity_cases") {

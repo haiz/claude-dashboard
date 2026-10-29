@@ -383,7 +383,9 @@ it plays no part in the projection.
    - There is **no** `remaining > 0` guard. At `utilization == 100` the
      projection is `0`, and above `100` it is negative; both are level 5
      unless the rocket rule holds.
-   - The result is remembered as the key's last result for rule 4.
+   - The result is remembered as the key's last result for rule 4. Every
+     `nil` return (first measurement, a history reset, a rate of 0) is
+     remembered too, so a later measurement under 50 s after `C` returns `nil`.
 
 The stateful cases, as sequences of `(utilization, resets_at, at)` steps with
 the expected level and projected seconds (`null` for `nil`), are in

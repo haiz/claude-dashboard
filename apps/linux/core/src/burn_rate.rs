@@ -3,6 +3,20 @@ use std::collections::HashMap;
 /// Two `resets_at` this close (seconds) are the same window, as in `usage_ratio`.
 pub const RESET_TOLERANCE_S: f64 = 60.0;
 
+/// Minimum seconds between two stored measurements of one key.
+const MIN_GAP_S: f64 = 50.0;
+/// `A -> C` joins the rate only when it spans at most this many seconds.
+const A_WINDOW_S: f64 = 300.0;
+/// Rate (%/min) that is a rocket on its own.
+const ROCKET_RATE: f64 = 10.0;
+/// Rate (%/min) that starts, and must hold for, a sustained streak.
+const SUSTAINED_RATE: f64 = 5.0;
+/// Seconds a streak must last for `SUSTAINED_RATE` to be a rocket.
+const SUSTAINED_S: f64 = 180.0;
+
+/// Level of the rocket, above the ladder's 1-5.
+pub const ROCKET_LEVEL: u8 = 6;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BurnRateResult {
     pub level: u8,
@@ -11,6 +25,18 @@ pub struct BurnRateResult {
 }
 
 impl BurnRateResult {
+    /// Rocket when the rate is at least 10 %/min, or at least 5 %/min held for
+    /// 180 s; otherwise the ladder on the projected seconds to 100%.
+    pub fn from_rate(rate_pct_per_min: f64, sustained_s: f64, utilization: f64) -> BurnRateResult {
+        let projected = (100.0 - utilization) * 60.0 / rate_pct_per_min;
+        if rate_pct_per_min >= ROCKET_RATE
+            || (rate_pct_per_min >= SUSTAINED_RATE && sustained_s >= SUSTAINED_S)
+        {
+            return BurnRateResult { level: ROCKET_LEVEL, animal: "🚀", projected_time: projected };
+        }
+        Self::from_projected_time(projected)
+    }
+
     pub fn from_projected_time(seconds: f64) -> BurnRateResult {
         let hours = seconds / 3600.0;
         let (level, animal) = if hours > 5.0 {
@@ -28,16 +54,26 @@ impl BurnRateResult {
     }
 }
 
+/// Whether an account's 5h burn level warrants the 60 s fast refresh.
+pub fn needs_fast_refresh(
+    five_hour_level: Option<u8>,
+    is_active: bool,
+    has_error: bool,
+    auto_refresh_enabled: bool,
+) -> bool {
+    five_hour_level.is_some_and(|l| l >= 5) && is_active && !has_error && auto_refresh_enabled
+}
+
 /// Stateful, in-memory burn-rate tracker. One independent history per
 /// (account_id, window) pair, keyed by `"{account_id}_{window}"`.
 ///
-/// `record` implements the five rules from `contract/README.md`'s
-/// "Burn-rate projection" section, in the exact order the reference
-/// implementation evaluates them. It deliberately does NOT reproduce the
-/// Swift tracker's unconditional usage-log write on every call — that is
-/// caller behaviour (the helper/GUI will call `store::record_usage`
-/// separately in a later plan), kept out of this crate to leave `core`'s
-/// projection logic pure and independently testable.
+/// `record` implements the rules from `contract/README.md`'s "Burn-rate
+/// projection" section, in the exact order the reference implementation
+/// evaluates them. It deliberately does NOT reproduce the Swift tracker's
+/// unconditional usage-log write on every call - that is caller behaviour
+/// (the helper/GUI will call `store::record_usage` separately), kept out of
+/// this crate to leave `core`'s projection logic pure and independently
+/// testable.
 #[derive(Default)]
 pub struct BurnRateTracker {
     history: HashMap<String, HistoryEntry>,
@@ -52,9 +88,16 @@ struct Measurement {
 
 #[derive(Default)]
 struct HistoryEntry {
-    prev: Option<Measurement>,
-    current: Option<Measurement>,
-    last_rate: Option<f64>,
+    /// At most three, oldest first: A, B, C.
+    samples: Vec<Measurement>,
+    streak_start: Option<f64>,
+    last: Option<BurnRateResult>,
+}
+
+impl HistoryEntry {
+    fn reset_to(m: Measurement) -> Self {
+        Self { samples: vec![m], streak_start: None, last: None }
+    }
 }
 
 impl BurnRateTracker {
@@ -70,68 +113,42 @@ impl BurnRateTracker {
         let m = Measurement { utilization, recorded_at, resets_at };
         let e = self.history.entry(key).or_default();
 
-        // Rule 1: first measurement — no entry, or entry's `current` is None.
-        let Some(current) = e.current.clone() else {
-            *e = HistoryEntry { prev: None, current: Some(m), last_rate: None };
+        // First measurement.
+        let Some(c) = e.samples.last().cloned() else {
+            *e = HistoryEntry::reset_to(m);
             return None;
         };
-        // Rule 2: different reset cycle — more than RESET_TOLERANCE_S apart, or
-        // only one side known. The API reports a boundary with jitter.
-        let same_cycle = match (resets_at, current.resets_at) {
+        // Different reset cycle (more than RESET_TOLERANCE_S apart, or only one
+        // side known) or utilization decreased: discard history and streak.
+        let same_cycle = match (resets_at, c.resets_at) {
             (Some(a), Some(b)) => (a - b).abs() <= RESET_TOLERANCE_S,
             (a, b) => a == b,
         };
-        if !same_cycle {
-            *e = HistoryEntry { prev: None, current: Some(m), last_rate: None };
+        if !same_cycle || utilization < c.utilization {
+            *e = HistoryEntry::reset_to(m);
             return None;
         }
-        // Rule 3: utilization decreased — full reset, same as rule 2.
-        if utilization < current.utilization {
-            *e = HistoryEntry { prev: None, current: Some(m), last_rate: None };
-            return None;
+        // Minimum gap: skipped, not stored (also covers non-positive gaps).
+        if recorded_at - c.recorded_at < MIN_GAP_S {
+            return e.last.clone();
         }
-        // Rule 4: utilization increased.
-        if utilization > current.utilization {
-            let dt = recorded_at - current.recorded_at;
-            if dt <= 0.0 {
-                // Discard the new measurement without touching history.
-                return None;
-            }
-            let rate = (utilization - current.utilization) / dt; // %/s, > 0
-            let projected = (100.0 - utilization) / rate;
-            e.prev = Some(current);
-            e.current = Some(m);
-            e.last_rate = Some(rate);
-            return Some(BurnRateResult::from_projected_time(projected));
+        e.samples.push(m);
+        if e.samples.len() > 3 {
+            e.samples.remove(0);
         }
-        // Rule 5: utilization unchanged — exact f64 equality (neither rule 3
-        // nor rule 4 fired).
-        let gap = recorded_at - current.recorded_at;
-        if gap >= 300.0 {
-            // Stale: advance current, drop the carried rate, keep prev.
-            e.current = Some(m);
-            e.last_rate = None;
-            return None;
-        }
-        // Fresh (gap < 300, including negative gaps from out-of-order polls).
-        match e.last_rate {
-            None => {
-                e.current = Some(m);
-                None
-            }
-            Some(rate) => {
-                let remaining = 100.0 - utilization;
-                if remaining <= 0.0 {
-                    // Level 5, without updating history — current stays the
-                    // older measurement.
-                    Some(BurnRateResult::from_projected_time(0.0))
-                } else {
-                    let projected = remaining / rate;
-                    e.current = Some(m); // prev + last_rate carried unchanged
-                    Some(BurnRateResult::from_projected_time(projected))
-                }
+        let n = e.samples.len();
+        let (b, c) = (&e.samples[n - 2], &e.samples[n - 1]);
+        let mut rate = (c.utilization - b.utilization) * 60.0 / (c.recorded_at - b.recorded_at);
+        if n == 3 {
+            let a = &e.samples[0];
+            if c.recorded_at - a.recorded_at <= A_WINDOW_S {
+                rate = rate.max((c.utilization - a.utilization) * 60.0 / (c.recorded_at - a.recorded_at));
             }
         }
+        e.streak_start = if rate >= SUSTAINED_RATE { e.streak_start.or(Some(b.recorded_at)) } else { None };
+        let sustained = c.recorded_at - e.streak_start.unwrap_or(c.recorded_at);
+        e.last = (rate > 0.0).then(|| BurnRateResult::from_rate(rate, sustained, c.utilization));
+        e.last.clone()
     }
 }
 
@@ -204,11 +221,53 @@ mod tracker_tests {
     }
 
     #[test]
-    fn unchanged_stale_gap_ge_300_drops_rate() {
+    fn skipped_measurement_keeps_history() {
         let mut t = BurnRateTracker::default();
         t.record(K, W, 10.0, Some(1000.0), 0.0);
-        t.record(K, W, 20.0, Some(1000.0), 100.0); // establishes lastRate
-        // unchanged, gap 300 exactly => stale => None, rate dropped
+        let first = t.record(K, W, 11.0, Some(1000.0), 60.0).unwrap();
+        // 49 s after C: not stored, last result returned.
+        assert_eq!(t.record(K, W, 30.0, Some(1000.0), 109.0), Some(first));
+        // The next step computes from the old C (11 at 60), not from the skipped one.
+        let r = t.record(K, W, 12.0, Some(1000.0), 120.0).unwrap();
+        assert_eq!(r.projected_time, 5280.0);
+    }
+
+    #[test]
+    fn nil_return_records_nil_as_last_result() {
+        let mut t = BurnRateTracker::default();
+        assert!(t.record(K, W, 10.0, Some(1000.0), 0.0).is_none());
+        // Within 50 s of the first measurement: returns the remembered nil.
+        assert!(t.record(K, W, 20.0, Some(1000.0), 30.0).is_none());
+        // A rate-0 result also becomes the remembered nil.
+        t.record(K, W, 20.0, Some(1000.0), 60.0).unwrap();
+        // Flat, and A is beyond 300 s: rate 0.
         assert!(t.record(K, W, 20.0, Some(1000.0), 400.0).is_none());
+        assert!(t.record(K, W, 25.0, Some(1000.0), 410.0).is_none());
+    }
+
+    #[test]
+    fn streak_resets_with_history() {
+        let mut t = BurnRateTracker::default();
+        t.record(K, W, 0.0, Some(1000.0), 0.0);
+        t.record(K, W, 5.0, Some(1000.0), 60.0);
+        t.record(K, W, 10.0, Some(1000.0), 120.0);
+        // Rate 5 held since t=0: rocket at 180 s.
+        assert_eq!(t.record(K, W, 15.0, Some(1000.0), 180.0).unwrap().level, 6);
+        // Cycle change clears samples and streak.
+        assert!(t.record(K, W, 20.0, Some(2000.0), 240.0).is_none());
+        t.record(K, W, 25.0, Some(2000.0), 300.0);
+        // Streak restarts at 240, so only 120 s sustained at 360.
+        assert_eq!(t.record(K, W, 30.0, Some(2000.0), 360.0).unwrap().level, 5);
+    }
+
+    #[test]
+    fn needs_fast_refresh_requires_every_condition() {
+        assert!(needs_fast_refresh(Some(5), true, false, true));
+        assert!(needs_fast_refresh(Some(ROCKET_LEVEL), true, false, true));
+        assert!(!needs_fast_refresh(Some(4), true, false, true));
+        assert!(!needs_fast_refresh(None, true, false, true));
+        assert!(!needs_fast_refresh(Some(5), false, false, true));
+        assert!(!needs_fast_refresh(Some(5), true, true, true));
+        assert!(!needs_fast_refresh(Some(5), true, false, false));
     }
 }

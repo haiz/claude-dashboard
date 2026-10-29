@@ -57,6 +57,7 @@ pub fn asset_id(emoji: &str) -> Option<&'static str> {
         "🐇" => Some("rabbit"),
         "🐎" => Some("horse"),
         "🐆" => Some("cheetah"),
+        "🚀" => Some("rocket"),
         _ => None,
     }
 }
