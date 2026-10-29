@@ -257,14 +257,16 @@ final class DashboardViewModelTests: XCTestCase {
         }
     }
 
-    /// A view model on a controllable monotonic clock; `time` is the injected "now".
+    /// A view model on a controllable monotonic clock; `time` is the injected "now". The burn-rate
+    /// wall clock advances with it, so refreshes 100 s apart on `time` are 100 s apart to the tracker.
     private func makeAnimalFixture(time: Box<TimeInterval>) async throws
         -> (DashboardViewModel, Account) {
         // `showBurnAnimals` lives in the shared test defaults; start every test from off.
         AppDefaults.shared.removeObject(forKey: AppDefaults.showBurnAnimalsKey)
         addTeardownBlock { AppDefaults.shared.removeObject(forKey: AppDefaults.showBurnAnimalsKey) }
         let clock = AnimalDisplayClock(now: { time.value }, scheduler: { _, _ in {} })
-        let (vm, store) = try makeViewModelWithStore(animalClock: clock)
+        let (vm, store) = try makeViewModelWithStore(
+            animalClock: clock, now: { Date(timeIntervalSince1970: 1_000_000 + time.value) })
         let account = makeAccount(orgId: "org-1", email: "a@x.com", accountUuid: "u1")
         store.addAccount(account)
         store.saveSessionKey("sk-test", for: account.id)
@@ -388,7 +390,8 @@ final class DashboardViewModelTests: XCTestCase {
         cookies: ChromeCookieResult = ChromeCookieResult(sessionKey: nil, orgId: nil),
         cookieProvider: ((String, Browser) -> ChromeCookieResult)? = nil,
         pinger: Pinging = FakePinger(),
-        animalClock: AnimalDisplayClock? = nil
+        animalClock: AnimalDisplayClock? = nil,
+        now: @escaping () -> Date = Date.init
     ) throws -> (DashboardViewModel, AccountStore) {
         let detectorFile = tempDir.appendingPathComponent(".claude.json-\(UUID().uuidString)")
         let detector = ClaudeCodeAccountDetector(fileURL: detectorFile)
@@ -411,7 +414,8 @@ final class DashboardViewModelTests: XCTestCase {
             autoSwitchLogStore: AutoSwitchLogStore(
                 dbPath: tempDir.appendingPathComponent("auto_switch.sqlite").path),
             pingController: pingController,
-            animalClock: animalClock)
+            animalClock: animalClock,
+            now: now)
         return (vm, store)
     }
 

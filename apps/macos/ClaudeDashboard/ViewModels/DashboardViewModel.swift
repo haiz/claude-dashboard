@@ -185,6 +185,8 @@ final class DashboardViewModel: ObservableObject {
     /// The latest batch of auto pings and the refresh after it. Tests await it.
     var autoPingTask: Task<Void, Never>?
     private let burnRateTracker: BurnRateTracker
+    /// Wall clock stamped on burn-rate measurements; injected so tests can space refreshes.
+    private let now: () -> Date
     let logStore: UsageLogStore
     /// X, the 7d cost of a full 5h window; recomputed hourly (`UsageRatioController`).
     let ratioController: UsageRatioController
@@ -204,8 +206,10 @@ final class DashboardViewModel: ObservableObject {
         autoSwitchLogStore: AutoSwitchLogStore? = nil,
         pingController: PingController? = nil,
         criticalSettings: CriticalSettings? = nil,
-        animalClock: AnimalDisplayClock? = nil
+        animalClock: AnimalDisplayClock? = nil,
+        now: @escaping () -> Date = Date.init
     ) {
+        self.now = now
         self.animalClock = animalClock ?? AnimalDisplayClock()
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.switchDesktopEnabled = AppDefaults.shared.bool(forKey: AppDefaults.switchDesktopEnabledKey)
@@ -478,18 +482,21 @@ final class DashboardViewModel: ObservableObject {
                         rates.fiveHour = await burnRateTracker.record(
                             accountId: accountId, window: .fiveHour,
                             utilization: currentUsage.fiveHour.utilization,
-                            resetsAt: currentUsage.fiveHour.resetsAt ?? Date().addingTimeInterval(18000)
+                            resetsAt: currentUsage.fiveHour.resetsAt ?? Date().addingTimeInterval(18000),
+                            recordedAt: now()
                         )
                         rates.sevenDay = await burnRateTracker.record(
                             accountId: accountId, window: .sevenDay,
                             utilization: currentUsage.sevenDay.utilization,
-                            resetsAt: currentUsage.sevenDay.resetsAt ?? Date().addingTimeInterval(604800)
+                            resetsAt: currentUsage.sevenDay.resetsAt ?? Date().addingTimeInterval(604800),
+                            recordedAt: now()
                         )
                         if let fable = currentUsage.fable {
                             rates.fable = await burnRateTracker.record(
                                 accountId: accountId, window: .fable,
                                 utilization: fable.utilization,
-                                resetsAt: fable.resetsAt ?? Date().addingTimeInterval(604800)
+                                resetsAt: fable.resetsAt ?? Date().addingTimeInterval(604800),
+                                recordedAt: now()
                             )
                         }
                         accountStates[index].burnRates = rates
