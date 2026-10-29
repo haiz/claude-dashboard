@@ -149,6 +149,7 @@ class Joint:
         self.rig, self.name, self.parent = rig, name, parent
         self.offset, self.y, self.rest = offset, y, rest
         self.d, self.a = (0.0, 0.0), rest
+        self.s = None  # (width, length) scale; keyed only when a builder sets it
         ob = bpy.data.objects.new(f"{rig.aid}_{name}", None)
         ob.empty_display_size = 0.05
         ob.rotation_mode = "XYZ"
@@ -177,6 +178,9 @@ class Joint:
         ob.rotation_euler = (0.0, -self.a, 0.0)
         ob.keyframe_insert("location", frame=frame)
         ob.keyframe_insert("rotation_euler", index=1, frame=frame)
+        if self.s is not None:  # local Z is the length axis of a limb() hung from the joint
+            ob.scale = (self.s[0], self.s[0], self.s[1])
+            ob.keyframe_insert("scale", frame=frame)
 
 
 class Leg:
@@ -319,6 +323,27 @@ class Rig:
             sp.points[i].co = (center[0] + r * math.cos(ang), y, center[1] + r * math.sin(ang), 1.0)
         cu.materials.append(mat)
         ob = bpy.data.objects.new(f"{self.aid}_{name}", cu)
+        self.link(ob)
+        ob.parent = joint.obj
+        return ob
+
+    def plate(self, mat, joint, points, thickness, y=0.0, name="plate"):
+        """A flat prism: polygon `points` (local XZ, convex, any winding) of depth `thickness`."""
+        bm = bmesh.new()
+        front = [bm.verts.new((x, y - thickness / 2, z)) for x, z in points]
+        back = [bm.verts.new((x, y + thickness / 2, z)) for x, z in points]
+        bm.faces.new(front)
+        bm.faces.new(list(reversed(back)))
+        n = len(points)
+        for i in range(n):
+            j = (i + 1) % n
+            bm.faces.new((front[i], front[j], back[j], back[i]))
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        me = bpy.data.meshes.new(f"{self.aid}_{name}")
+        bm.to_mesh(me)
+        bm.free()
+        me.materials.append(mat)
+        ob = bpy.data.objects.new(f"{self.aid}_{name}", me)
         self.link(ob)
         ob.parent = joint.obj
         return ob
@@ -685,6 +710,63 @@ def build_cheetah(rig):
     return pose
 
 
+def build_rocket(rig):
+    hull = rig.mat("hull", "#e9e9ef", 0.35)
+    red = rig.mat("red", "#d9473a", 0.4)
+    metal = rig.mat("metal", "#5b606b", 0.4)
+    glass = rig.mat("glass", "#62b6e8", 0.2)
+    fire = rig.mat("fire", "#ff7a1a")
+    core = rig.mat("core", "#ffe45c")
+    streak = rig.mat("streak", "#c9ced8")
+    EXHAUST = 1.5 * math.pi  # joint angle that hangs a limb toward -X (exhaust side)
+
+    CLIMB = 0.26  # the whole rocket climbs at a slight angle, still facing right
+    root = Joint(rig, "root", None, (0.0, 0.0), rest=CLIMB)  # still: speed lines hang here
+    body = Joint(rig, "body", root, (0.0, 0.0))     # vibrates
+    rig.segment(hull, body, (-0.42, 0.0), (0.28, 0.0), 0.21, 0.22, name="hull")
+    rig.segment(red, body, (0.27, 0.0), (0.72, 0.0), 0.218, 0.035, name="nose")
+    rig.segment(metal, body, (-0.44, 0.0), (-0.58, 0.0), 0.13, 0.16, name="nozzle")
+    for k, sign in enumerate((1.0, -1.0)):
+        pts = [(-0.06, 0.1), (-0.44, 0.1), (-0.62, 0.46), (-0.4, 0.46)]
+        rig.plate(red, body, [(x, sign * z) for x, z in pts], 0.06, name=f"fin{k}")
+    rig.segment(red, body, (-0.08, 0.0), (-0.4, 0.0), 0.05, 0.05, y=-0.2, name="fin_near")
+    rig.sphere(metal, body, (0.1, 0.02), 0.135, y=-0.19, name="window_rim", scale=(1.0, 0.4, 1.0))
+    rig.sphere(glass, body, (0.1, 0.02), 0.095, y=-0.235, name="window", scale=(1.0, 0.4, 1.0))
+
+    flame = Joint(rig, "flame", body, (-0.58, 0.0), rest=EXHAUST)
+    rig.limb(fire, flame, 0.5, 0.17, 0.035, name="flame")
+    inner = Joint(rig, "flame_core", body, (-0.58, 0.0), y=-0.1, rest=EXHAUST)
+    rig.limb(core, inner, 0.3, 0.1, 0.025, name="flame_core")
+
+    # Speed lines: (height, start x, length, phase offset); each streams back
+    # once per cycle, growing in and shrinking out so the wrap never pops.
+    lines = []
+    for k, (z, x0, length, off) in enumerate(((0.32, -0.66, 0.3, 0.0), (-0.32, -0.66, 0.3, 0.5),
+                                               (0.0, -1.06, 0.18, 0.25))):
+        j = Joint(rig, f"line{k}", root, (x0, z), rest=EXHAUST)
+        rig.limb(streak, j, length, 0.024, 0.018, name=f"line{k}")
+        lines.append((j, off))
+
+    def pose(p):
+        n = p * rig.cycles
+        # Engine buzz (about 1-1.5 cell px): x/z jitter on 4- and 3-frame
+        # periods and a hair of tilt, offset so frame 0 is untilted.
+        body.d = (0.02 * math.cos(TAU * 1.5 * n), 0.032 * math.sin(TAU * 2 * n))
+        body.a = 0.02 * (math.sin(TAU * 2 * n + 1.0) - math.sin(1.0))
+        # Flame: shortest at frame 0 (calm), stretches once per cycle and
+        # flickers on a 3-frame period; the core flickers out of step.
+        stretch = 0.5 - 0.5 * math.cos(TAU * n)          # 0 at frame 0
+        flick = math.sin(TAU * 2 * n)
+        flame.s = (1.0 + 0.08 * flick, (0.36 + 0.3 * stretch + 0.05 * flick) / 0.5)
+        inner.s = (1.0 - 0.1 * flick, (0.2 + 0.18 * stretch - 0.04 * flick) / 0.3)
+        for j, off in lines:
+            t = wrap(n + off)
+            j.d = (-0.34 * t, 0.0)
+            j.s = (1.0, max(1e-3, math.sin(math.pi * t)))
+
+    return pose
+
+
 BUILDERS = {
     # id: (builder, gait cycles per 24-frame loop)
     "snail": (build_snail, 1),
@@ -692,6 +774,7 @@ BUILDERS = {
     "rabbit": (build_rabbit, 2),
     "horse": (build_horse, 3),
     "cheetah": (build_cheetah, 4),
+    "rocket": (build_rocket, 4),
 }
 
 

@@ -4,7 +4,7 @@ validate_assets.py deliberately does not import this module: it re-states the
 numbers it checks so a wrong constant here cannot also pass its own check.
 """
 
-ANIMALS = ("snail", "turtle", "rabbit", "horse", "cheetah")  # stable asset ids, ladder order
+ANIMALS = ("snail", "turtle", "rabbit", "horse", "cheetah", "rocket")  # stable asset ids, ladder order
 
 FRAME_COUNT = 24        # frames 0..23; the pose at frame 24 equals frame 0
 FPS = 12

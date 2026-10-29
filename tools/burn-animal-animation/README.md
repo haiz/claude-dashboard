@@ -17,8 +17,8 @@ never Blender or anything from this directory.
 
 ## Contract
 
-- Ids and files: `snail`, `turtle`, `rabbit`, `horse`, `cheetah` (ladder order),
-  each `<id>.png`. File names never use emoji.
+- Ids and files: `snail`, `turtle`, `rabbit`, `horse`, `cheetah`, `rocket` (ladder
+  order), each `<id>.png`. File names never use emoji.
 - Sheet: 768 x 512 px RGBA PNG, a 6 x 4 grid of 128 x 128 px cells, frames
   0..23 row-major from the top-left cell. At most 2 MiB.
 - Timing: a 2-second loop, 24 frames at 12 fps. Frame 24 would equal frame 0, so
@@ -41,6 +41,8 @@ Poses are closed-form periodic functions of the loop phase, keyed on every
 frame. Legs use two-bone IK against a fixed ground line, so a planted foot
 stays on the ground and slides back at the same treadmill speed as every other
 planted foot.
+The rocket has no legs: it keys joint scale too, so the flame and the speed
+lines can stretch and shrink.
 
 | Animal | Cycles per loop | Motion |
 |---|---|---|
@@ -49,6 +51,7 @@ planted foot.
 | rabbit | 2 | crouch, push-off with the heel peeling up, stretched flight, forepaws land, hind feet land ahead of them; spine flexes; ears trail and flop |
 | horse | 3 | four-beat transverse gallop with one gathered suspension; body pitches, neck counter-rotates; tail follows with lag |
 | cheetah | 4 | rotary gallop with extended and gathered suspensions; spine flexes, head stays level, tail counterbalances the hips |
+| rocket | 4 | flame flickers and stretches, body vibrates, speed lines stream back |
 
 ## Build, render, validate
 
@@ -70,7 +73,7 @@ python3 -I preview.py . /tmp/burn-animal-preview
 # 4. Copy the exact files into both apps.
 for d in ../../apps/macos/ClaudeDashboard/Resources/BurnAnimals \
          ../../apps/windows/app/ui/assets/burn-animals; do
-  mkdir -p "$d" && cp manifest.json snail.png turtle.png rabbit.png horse.png cheetah.png "$d"/
+  mkdir -p "$d" && cp manifest.json snail.png turtle.png rabbit.png horse.png cheetah.png rocket.png "$d"/
 done
 
 # 5. Validate the originals and require byte-identical app copies.

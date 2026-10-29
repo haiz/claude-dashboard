@@ -16,7 +16,7 @@ import sys
 
 from PIL import Image
 
-IDS = ("snail", "turtle", "rabbit", "horse", "cheetah")
+IDS = ("snail", "turtle", "rabbit", "horse", "cheetah", "rocket")
 FRAMES, FPS = 24, 12
 COLUMNS, ROWS, CELL = 6, 4, 128
 SHEET_W, SHEET_H = COLUMNS * CELL, ROWS * CELL

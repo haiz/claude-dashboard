@@ -10,7 +10,7 @@
   "sheetHeight": 512,
   "frameOrder": "row-major from the top-left cell",
   "blenderVersion": "Blender 5.2.3 LTS",
-  "sourceRevision": "sha256:c2e10177643833e8748e68a039572c3a400d3eea7a16d11253ffe24f4c58024e",
+  "sourceRevision": "sha256:5c818530319f6003aa2d7e95d3daeb7f938f125d28a404856166d507f2ae8caf",
   "animals": [
     {
       "id": "snail",
@@ -31,6 +31,10 @@
     {
       "id": "cheetah",
       "sheet": "cheetah.png"
+    },
+    {
+      "id": "rocket",
+      "sheet": "rocket.png"
     }
   ]
 }
