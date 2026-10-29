@@ -364,6 +364,53 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertNil(source.assetID(), "an old payload also stops at once")
     }
 
+    // MARK: - Burn rate recording
+
+    /// A failed fetch keeps the stored usage, but stamping that stale value with the failed
+    /// refresh's time would halve the next rise's interval: 50@0, stale 50@60, 60@120 reads as
+    /// 10 %/min (rocket). Only successful fetches count, so it is the clean 5 %/min (cheetah).
+    func testFailedRefreshRecordsNoBurnSample() async throws {
+        let time = Box<TimeInterval>(1000)
+        var five = 50.0
+        var status = 200
+        respondFiveHour { (status, five) }
+        let (vm, _) = try await makeAnimalFixture(time: time)
+        await vm.refreshAll()                       // 50 at 1000
+
+        time.value = 1060; status = 500
+        await vm.refreshAll()                       // fails; stored usage stays 50
+
+        time.value = 1120; status = 200; five = 60
+        await vm.refreshAll()                       // 60 at 1120
+        let fiveHour = try XCTUnwrap(vm.accountStates.first?.burnRates?.fiveHour)
+        XCTAssertEqual(fiveHour.level, 5, "a cheetah, as without the failed refresh")
+        XCTAssertEqual(fiveHour.projectedTime, 480, accuracy: 0.001)
+    }
+
+    /// The full refresh's own `updateBurnPoll(afterFullRefresh:)` call starts the poll for a
+    /// cheetah and stops it once no account is fast.
+    func testFullRefreshStartsAndStopsTheBurnPoll() async throws {
+        AppDefaults.shared.removeObject(forKey: "autoRefreshEnabled")
+        let time = Box<TimeInterval>(1000)
+        var five = 50.0
+        respondFiveHour { (200, five) }
+        let (vm, _) = try await makeAnimalFixture(time: time)
+        addTeardownBlock { vm.burnPollTask?.cancel() }
+        XCTAssertTrue(vm.autoRefreshEnabled)
+        await vm.refreshAll()                       // 50 at 1000: no rate yet
+        XCTAssertNil(vm.burnPollTask)
+
+        time.value = 1120; five = 60
+        await vm.refreshAll()                       // 5 %/min: cheetah
+        XCTAssertEqual(vm.accountStates.first?.burnRates?.fiveHour?.level, 5)
+        XCTAssertNotNil(vm.burnPollTask, "a full refresh with a cheetah starts the poll")
+
+        time.value = 1440
+        await vm.refreshAll()                       // unchanged, 440 s after A: rate 0, nothing fast
+        XCTAssertNil(vm.accountStates.first?.burnRates?.fiveHour)
+        XCTAssertNil(vm.burnPollTask, "a full refresh with no fast account stops the poll")
+    }
+
     func testShowBurnAnimalsDoesNotAffectSorting() throws {
         let vm = try makeViewModel()
         let a = makeAccount(name: "A", email: "a@x.com")

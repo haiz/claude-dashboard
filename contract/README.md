@@ -396,17 +396,20 @@ fixed by the test; `resets_at` is `100000` unless a step says otherwise.
 
 This is caller behaviour rather than tracker behaviour, but it decides what
 a user actually sees, so a port copying the caller must copy it knowingly.
-`DashboardViewModel` (lines 320-340) substitutes a freshly computed
+`DashboardViewModel.refreshAll` (its "Record burn rates" block) substitutes a freshly computed
 `Date().addingTimeInterval(...)` whenever a window's `resets_at` is `nil` —
-`18000` for the 5-hour window (line 325), `604800` for 7-day (line 330) and
-for Fable (line 336). That substitute is a *new instant on every refresh*,
+`18000` for the 5-hour window, `604800` for 7-day and
+for Fable. That substitute is a *new instant on every refresh*,
 moving by the time between polls, so polls a minute or more apart fall
 outside rule 2's 60 s tolerance and reset the history. Closer polls (a manual
 refresh) may stay inside it, but a window with `resets_at: null` has not
 started and its utilization stays flat, so its rate is 0 and rule 5 returns `nil` anyway:
 **a window whose `resets_at` is `null` never produces a burn rate.** Only
-windows with a real `resets_at` ever show an animal. The Fable window is polled at all only when `fable != nil`
-(line 332).
+windows with a real `resets_at` ever show an animal. The Fable window is polled at all only when `fable != nil`.
+The caller records only a successful fetch (fresh usage, no error): a failed fetch keeps the
+old usage on the card, and stamping it with the failed refresh's time would shorten the next
+rise's interval and inflate the rate. Windows skips errored rows the same way
+(`refresh::apply_projections`).
 
 ## Fast refresh
 
@@ -435,23 +438,22 @@ and `DashboardViewModel.burnRate(for:)`.
 This is a **three-tier** ordering, not a flat sort by burn rate:
 
 1. **Pinned first.** Any account with `isPinned == true` sorts above any
-   account with `isPinned == false`, unconditionally (line 430-432).
+   account with `isPinned == false`, unconditionally.
 2. **Active Claude Code account next, but only if no account anywhere is
-   pinned.** `anyPinned` is computed once per sort (line 427) from the
+   pinned.** `anyPinned` is computed once per sort from the
    *entire* list, not the pair being compared. If it's `false`, the account
-   matching `activeClaudeCodeEmail` (`isActiveClaudeCodeAccount`, lines
-   309-312, matched by `account.email`) sorts above accounts that don't
-   match (lines 434-438). If any account anywhere is pinned, this tier is
+   matching `activeClaudeCodeEmail` (`isActiveClaudeCodeAccount`,
+   matched by `account.email`) sorts above accounts that don't
+   match. If any account anywhere is pinned, this tier is
    skipped entirely — an unpinned "active Claude Code" account does **not**
    outrank other unpinned accounts once something is pinned.
-3. **Burn rate, descending**, as the final tiebreaker (line 440):
+3. **Burn rate, descending**, as the final tiebreaker:
    `burnRate(for:) = utilization / timeRemaining`, using the **5-hour**
-   window's `utilization` (line 373) — not 7-day, not Fable. `timeRemaining`
+   window's `utilization` — not 7-day, not Fable. `timeRemaining`
    is `max(resetsAt.timeIntervalSinceNow, 60)` when `resetsAt` is present
    (a 60-second floor prevents division blow-up near a reset), or a
-   hardcoded `18000` seconds (5 hours) when `resetsAt` is `nil` (lines
-   374-379). An account that is not `.active`, or has no usage data yet,
-   gets a sentinel burn rate of `-1` (lines 368-371) — guaranteed to sort
+   hardcoded `18000` seconds (5 hours) when `resetsAt` is `nil`. An account that is not `.active`, or has no usage data yet,
+   gets a sentinel burn rate of `-1` — guaranteed to sort
    below every account with a real rate (since a real rate is always
    `>= 0`), i.e. expired/error/no-data accounts sink to the bottom within
    whatever tier they're in.
@@ -500,7 +502,7 @@ The user-visible consequences, which are the reason this is contract:
   `expired` account is skipped by subsequent refreshes
   (`DashboardViewModel.refreshAll`, the `.expired` skip). Every other error leaves `status`
   untouched and surfaces only as a transient per-card message
-  (lines 265-268). A Linux implementation that also mapped, say, `429` or a
+  (`DashboardViewModel.refreshAll`, the `DecodingError` and generic `catch` results). A Linux implementation that also mapped, say, `429` or a
   network failure onto `expired` would silently retire accounts that the
   macOS app keeps refreshing.
 
@@ -616,7 +618,7 @@ tell the user to sign in to a profile that never existed, about the one account
 type a cookie re-read cannot fix.
 
 The refresh that follows a re-sync is scoped to the accounts that re-synced
-successfully (`refreshAll(only:)`, lines 448 and 549). An unscoped pass would
+successfully (`refreshAll(only:)`, called by `resyncAccount` and `resyncAll`). An unscoped pass would
 overwrite the message left on a card whose re-sync failed, and re-syncing N
 accounts would cost N whole-fleet refresh passes instead of one.
 
@@ -625,14 +627,14 @@ differ from the add-an-account path:
 
 - `/api/account` unreachable. The new session key is saved and the account is
   marked `active`, while `orgId`, `accountUuid` and `email` keep their stored
-  values (lines 411-412, 421). `refreshAll` skips `expired` accounts, so marking it
+  values (`resyncCore`, the `try? await apiService.fetchAccount` read). `refreshAll` skips `expired` accounts, so marking it
   active is what makes any later retry possible; leaving `orgId` alone is what
   keeps an unreadable session from erasing a correct one.
 - No chat org among the memberships. The stored `orgId` is kept and the card
-  reports it (lines 427-439). Rule 3's "never persisted" governs adding an
+  reports it (`resyncCore`, after `resolveOrgId`). Rule 3's "never persisted" governs adding an
   account; an existing one is reported rather than repointed or blanked.
 - The session identifies a different account than the stored `accountUuid`.
-  Nothing is written and the card reports it (lines 400-408) — a profile signed
+  Nothing is written and the card reports it (`resyncCore`, the `accountUuid` comparison) — a profile signed
   in to another Claude login must not have its session key copied onto this
   record, which is the same collision `isDuplicate` exists to prevent. A legacy
   record without `accountUuid` has nothing to compare and is backfilled instead.

@@ -485,8 +485,9 @@ final class DashboardViewModel: ObservableObject {
                         accountStore.updateAccount(account)
                     }
 
-                    // Record burn rates
-                    if let currentUsage = accountStates[index].usage {
+                    // Record burn rates from this fetch only: a failed fetch keeps the old
+                    // usage, and stamping it now would shorten the next rise's interval.
+                    if let currentUsage = usage, error == nil {
                         var rates = BurnRates()
                         rates.fiveHour = await burnRateTracker.record(
                             accountId: accountId, window: .fiveHour,

@@ -159,6 +159,21 @@ pub fn burn_fast_ids(rows: &[DisplayRow], auto_refresh_enabled: bool) -> Vec<Str
         .collect()
 }
 
+/// A `Reschedule` that turned Auto Refresh off stops the burn poll at once, as macOS
+/// `stopBurnPoll` does: no refresh runs to recompute the targets, so a still-armed poll
+/// would fetch them once more. Any other interval leaves both alone.
+pub fn stop_burn_poll_if_off(
+    interval: Option<std::time::Duration>,
+    burn_poll: &mut FastPoll,
+    burn_targets: &mut Vec<String>,
+    now: std::time::Instant,
+) {
+    if interval.is_none() {
+        burn_poll.update(false, now);
+        burn_targets.clear();
+    }
+}
+
 /// The one fetch a poll timeout sends: the Claude Code poll's account (`cc`, when that poll
 /// fired) and the burn poll's accounts (`burn`, when it fired), each once; `None` when empty.
 pub fn poll_nudge(cc: Option<String>, burn: &[String]) -> Option<Nudge> {
@@ -691,6 +706,22 @@ mod tests {
         let rs = vec![mk("h", Some(4)), mk("c", Some(5)), mk("r", Some(ROCKET_LEVEL)), mk("n", None), errored, expired, long];
         assert_eq!(burn_fast_ids(&rs, true), ["c", "r"]);
         assert!(burn_fast_ids(&rs, false).is_empty(), "Auto Refresh off: no fast refresh");
+    }
+
+    #[test]
+    fn auto_refresh_off_stops_the_burn_poll() {
+        use std::time::{Duration, Instant};
+        let t = Instant::now();
+        let mut p = FastPoll::default();
+        p.update(true, t);
+        let mut targets = vec!["c".to_string()];
+        stop_burn_poll_if_off(Some(Duration::from_secs(300)), &mut p, &mut targets, t);
+        assert_eq!(p.wait(t), Some(Duration::from_secs(60)), "Auto Refresh on: the poll keeps running");
+        assert_eq!(targets, ["c"]);
+        stop_burn_poll_if_off(None, &mut p, &mut targets, t);
+        assert_eq!(p.wait(t), None, "Auto Refresh off: stopped");
+        assert!(!p.fire(t + Duration::from_secs(60)), "no last fetch");
+        assert!(targets.is_empty());
     }
 
     #[test]

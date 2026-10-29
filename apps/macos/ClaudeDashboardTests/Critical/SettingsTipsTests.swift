@@ -25,6 +25,12 @@ final class SettingsTipsTests: XCTestCase {
         XCTAssertEqual(CriticalPlanner.projected(sevenDay: 55, activeHours: 25, pace: 50, x: 16), 95, accuracy: 1e-9)
     }
 
+    /// Same sentence as Windows `tips.rs`: the minute refresh needs Auto Refresh on.
+    func testBurnAnimalsTipNamesTheAutoRefreshCondition() {
+        XCTAssertTrue(SettingsTips.showBurnAnimals.detail.contains(
+            "With Auto Refresh on, an account at cheetah or rocket refreshes every minute."))
+    }
+
     func testHelpHasTheCriticalTopic() {
         XCTAssertTrue(HelpTopic.allCases.contains(.criticalAccounts))
         XCTAssertEqual(HelpTopic.criticalAccounts.title, "Critical Accounts")

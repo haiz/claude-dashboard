@@ -552,6 +552,7 @@ fn spawn_refresh_loop(
             if batch.contains(&Nudge::Reschedule) {
                 let interval = refresh::loop_timeout(&claude_dashboard_core::settings::load());
                 timer.restart(interval, std::time::Instant::now());
+                refresh::stop_burn_poll_if_off(interval, &mut burn_poll, &mut burn_targets, std::time::Instant::now());
             }
             jobs = refresh::coalesce(batch);
         }

@@ -313,6 +313,14 @@ recomputed at launch and hourly from `usage_logs.db` (default 16 until 100 point
 Dev runs (`CLAUDE_DASHBOARD_FAKE_ROWS=1`) have no switcher, so they never switch, and keep the
 default X. Settings texts say "tray flyout" where macOS says "menu bar".
 
+Fast-burning accounts (`contract/README.md`, "Fast refresh") have a second 60 s poll beside that
+one: a `FastPoll` for the burn targets, recomputed after every refresh by `burn_fast_ids`
+(`app/src/refresh.rs`). The refresh loop waits for the earliest of the Auto Refresh tick, the
+Claude Code poll and the burn poll; on a poll timeout only the polls that are due fetch, their
+accounts unioned into one `Nudge::Some` (`poll_nudge`), so an account in both is fetched once. A
+full `Nudge::All` refresh re-arms both polls 60 s on. Turning Auto Refresh off stops the burn poll
+at once (`stop_burn_poll_if_off`, on the `Reschedule` the settings change sends).
+
 ## App reload pipe
 
 The app serves a named pipe `\\.\pipe\claude-dashboard`; the bridge writes
