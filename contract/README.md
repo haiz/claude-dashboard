@@ -429,8 +429,8 @@ refresh. Truth table: `cases/fast-refresh.json` (`five_hour_level`,
 ## Sort order
 
 Source: `DashboardViewModel.sortStates()`
-(`apps/macos/ClaudeDashboard/ViewModels/DashboardViewModel.swift:698-714`)
-and `DashboardViewModel.burnRate(for:)` (lines 634-650).
+(`apps/macos/ClaudeDashboard/ViewModels/DashboardViewModel.swift`)
+and `DashboardViewModel.burnRate(for:)`.
 
 This is a **three-tier** ordering, not a flat sort by burn rate:
 
@@ -492,13 +492,13 @@ that case, since HTTP clients differ in how they surface repeated headers.
 The user-visible consequences, which are the reason this is contract:
 
 - A non-`nil` parse result is persisted as the account's new session key
-  (`DashboardViewModel.swift:247-249`), replacing the one just sent.
+  (`DashboardViewModel.refreshAll`, the `accountStore.saveSessionKey` call after `fetchFullUsage`), replacing the one just sent.
   Requests carry it as the raw header `Cookie: sessionKey=<value>`
   (`UsageAPIService.swift:131`).
 - `authExpired` becomes the account status `expired`, written back to the
-  store (`DashboardViewModel.swift:263-264` and `295-298`), and an
+  store (`DashboardViewModel.refreshAll`, the `catch UsageAPIError.authExpired` result and the `error == "expired"` branch), and an
   `expired` account is skipped by subsequent refreshes
-  (`DashboardViewModel.swift:233`). Every other error leaves `status`
+  (`DashboardViewModel.refreshAll`, the `.expired` skip). Every other error leaves `status`
   untouched and surfaces only as a transient per-card message
   (lines 265-268). A Linux implementation that also mapped, say, `429` or a
   network failure onto `expired` would silently retire accounts that the
@@ -600,7 +600,7 @@ Implemented at `apps/macos/Shared/AccountIdentity.swift:49-56` (`resolveOrgId`) 
 `resyncCore` obeys the same rule. It re-reads one stored account's browser
 cookies and resolves `orgId` through `resolveOrgId` against the memberships
 `/api/account` returns for that session, never from the cookie alone —
-`apps/macos/ClaudeDashboard/ViewModels/DashboardViewModel.swift:414-430`. It is
+`DashboardViewModel.resyncCore` in `apps/macos/ClaudeDashboard/ViewModels/DashboardViewModel.swift`. It is
 the single writer behind both re-sync entry points: `resyncAccount`, used by each
 account card's individual resync action
 (`apps/macos/ClaudeDashboard/Views/DashboardPane.swift:41`,
