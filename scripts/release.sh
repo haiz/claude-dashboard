@@ -91,18 +91,31 @@ echo ""
 echo "==> Step 3: Build app + helper"
 DERIVED_DATA="$REPO_ROOT/.build/DerivedData"
 RELEASE_DIR="$DERIVED_DATA/Build/Products/Release"
+# Universal: without ARCHS, xcodebuild builds only the runner's arch (arm64),
+# and the app then cannot launch on Intel Macs.
+UNIVERSAL_ARCHS="arm64 x86_64"
 
 xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj \
     -scheme ClaudeDashboard \
     -configuration Release \
     -derivedDataPath "$DERIVED_DATA" \
+    ARCHS="$UNIVERSAL_ARCHS" ONLY_ACTIVE_ARCH=NO \
     build 2>&1 | tail -3
 
 xcodebuild -project apps/macos/ClaudeDashboard.xcodeproj \
     -scheme ClaudeDashboardHelper \
     -configuration Release \
     -derivedDataPath "$DERIVED_DATA" \
+    ARCHS="$UNIVERSAL_ARCHS" ONLY_ACTIVE_ARCH=NO \
     build 2>&1 | tail -3
+
+for bin in "$RELEASE_DIR/ClaudeDashboard.app/Contents/MacOS/ClaudeDashboard" \
+           "$RELEASE_DIR/claude-dashboard-helper"; do
+    for arch in $UNIVERSAL_ARCHS; do
+        lipo "$bin" -verify_arch "$arch" \
+            || { echo "error: $bin has no $arch slice ($(lipo -archs "$bin"))" >&2; exit 1; }
+    done
+done
 
 # ── 4. Run tests ─────────────────────────────────────────────────────────────
 echo ""

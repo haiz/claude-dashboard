@@ -42,10 +42,12 @@ linux_asset_name() { echo "claude-dashboard-cli-linux-$1.tar.gz"; }
 
 # Resolve one exact asset name out of a releases API payload. Matching the full
 # filename matters: the macOS tarball is a .tar.gz too and is uploaded first, so
-# a "[^\"]*\.tar\.gz" pattern would return it instead. The trailing `|| true`
+# a "[^\"]*\.tar\.gz" pattern would return it instead; likewise the Windows
+# claude-dashboard-extension.zip sorts before ClaudeDashboard.app.zip, so a
+# "[^\"]*\.zip" pattern installs the browser extension. The trailing `|| true`
 # keeps a no-match from tripping `set -o pipefail`, so the caller can report a
 # missing asset rather than dying silently.
-linux_asset_url() {
+release_asset_url() {
     echo "$1" | grep -o "\"browser_download_url\": *\"[^\"]*/$2\"" | head -1 | cut -d'"' -f4 || true
 }
 
@@ -67,7 +69,7 @@ install_linux() {
     release_json=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest") \
         || error "Failed to fetch release info. Check your internet connection."
     version=$(echo "$release_json" | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
-    url=$(linux_asset_url "$release_json" "$asset")
+    url=$(release_asset_url "$release_json" "$asset")
 
     [[ -n "$url" ]] || error "Release ${version} has no ${asset} yet. The Linux build may still be running — try again in a few minutes, or check https://github.com/${REPO}/releases"
 
@@ -100,6 +102,20 @@ install_linux() {
     warn "There is no Linux GUI yet — the menu bar app is macOS only."
 }
 
+# The Mac's own CPU: arm64 or x86_64. Not `uname -m`, which says x86_64 in a
+# Rosetta shell on Apple Silicon.
+macos_machine_arch() {
+    if [[ "$(sysctl -in hw.optional.arm64)" == "1" ]]; then echo "arm64"; else echo "x86_64"; fi
+}
+
+# Whether the app bundle's executable carries a slice for $2 (arm64 / x86_64).
+# `file` rather than `lipo`: lipo needs the Command Line Tools.
+bundle_supports_arch() {
+    local exe
+    exe="$1/Contents/MacOS/$(defaults read "$1/Contents/Info" CFBundleExecutable 2>/dev/null)"
+    [[ -f "$exe" ]] && file "$exe" | grep -q "executable $2"
+}
+
 # When sourced by a test, stop here: definitions only, nothing installed.
 if [[ -n "${CLAUDE_DASHBOARD_INSTALL_TEST:-}" ]]; then
     return 0 2>/dev/null || exit 0
@@ -124,10 +140,10 @@ info "Fetching latest release..."
 RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest") \
   || error "Failed to fetch release info. Check your internet connection."
 
-DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep -o '"browser_download_url": *"[^"]*\.zip"' | head -1 | cut -d'"' -f4)
+DOWNLOAD_URL=$(release_asset_url "$RELEASE_JSON" "${APP_BUNDLE}.zip")
 VERSION=$(echo "$RELEASE_JSON" | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
 
-[[ -n "$DOWNLOAD_URL" ]] || error "No .zip asset found in the latest release."
+[[ -n "$DOWNLOAD_URL" ]] || error "No ${APP_BUNDLE}.zip asset found in the latest release."
 
 info "Found ${APP_NAME} ${VERSION}"
 
@@ -140,6 +156,18 @@ info "Downloading..."
 curl -fSL --progress-bar -o "$ZIP_PATH" "$DOWNLOAD_URL" \
   || error "Download failed."
 
+# Extract and check before touching INSTALL_DIR, so a wrong archive never
+# lands there and an unsupported build never replaces a working one.
+STAGE_DIR="${TMPDIR_PATH}/stage"
+ditto -xk "$ZIP_PATH" "$STAGE_DIR" \
+  || error "Failed to extract app."
+[[ -d "${STAGE_DIR}/${APP_BUNDLE}" ]] \
+  || error "The downloaded archive has no ${APP_BUNDLE}."
+
+MACHINE_ARCH="$(macos_machine_arch)"
+bundle_supports_arch "${STAGE_DIR}/${APP_BUNDLE}" "$MACHINE_ARCH" \
+  || error "${APP_NAME} ${VERSION} has no ${MACHINE_ARCH} build, so it cannot run on this Mac."
+
 # --- Install ---
 info "Installing to ${INSTALL_DIR}..."
 
@@ -149,9 +177,8 @@ if [[ -d "${INSTALL_DIR}/${APP_BUNDLE}" ]]; then
   rm -rf "${INSTALL_DIR}/${APP_BUNDLE}"
 fi
 
-# Unzip
-ditto -xk "$ZIP_PATH" "$INSTALL_DIR" \
-  || error "Failed to extract app."
+ditto "${STAGE_DIR}/${APP_BUNDLE}" "${INSTALL_DIR}/${APP_BUNDLE}" \
+  || error "Failed to copy app to ${INSTALL_DIR}."
 
 # Remove quarantine attribute (app is unsigned)
 xattr -cr "${INSTALL_DIR}/${APP_BUNDLE}" 2>/dev/null || true

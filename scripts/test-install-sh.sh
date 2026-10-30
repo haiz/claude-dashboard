@@ -34,19 +34,52 @@ JSON='{"tag_name":"v1.17.0","assets":[
  {"browser_download_url": "https://example.test/v1.17.0/claude-dashboard-cli-linux-x86_64.tar.gz"},
  {"browser_download_url": "https://example.test/v1.17.0/claude-dashboard-cli-linux-aarch64.tar.gz"}]}'
 
-got="$(linux_asset_url "$JSON" "$(linux_asset_name x86_64)")"
+got="$(release_asset_url "$JSON" "$(linux_asset_name x86_64)")"
 [[ "$got" == "https://example.test/v1.17.0/claude-dashboard-cli-linux-x86_64.tar.gz" ]] \
     || fail "x86_64 resolution picked '$got'"
 
-got="$(linux_asset_url "$JSON" "$(linux_asset_name aarch64)")"
+got="$(release_asset_url "$JSON" "$(linux_asset_name aarch64)")"
 [[ "$got" == "https://example.test/v1.17.0/claude-dashboard-cli-linux-aarch64.tar.gz" ]] \
     || fail "aarch64 resolution picked '$got'"
 
 # A release with no Linux asset yet must resolve to empty, never to the macOS
 # tarball — that is what makes the "CI may still be building" message reachable.
 MAC_ONLY='{"assets":[{"browser_download_url": "https://example.test/v1.16.0/claude-dashboard-cli.tar.gz"}]}'
-got="$(linux_asset_url "$MAC_ONLY" "$(linux_asset_name x86_64)")"
+got="$(release_asset_url "$MAC_ONLY" "$(linux_asset_name x86_64)")"
 [[ -z "$got" ]] || fail "empty-release case resolved to '$got'"
+
+# The macOS app zip. The Windows release attaches claude-dashboard-extension.zip,
+# which the API lists before ClaudeDashboard.app.zip (v1.35.0 did exactly this),
+# so "the first .zip" installs the browser extension into /Applications.
+WITH_EXT='{"tag_name":"v1.35.0","assets":[
+ {"browser_download_url": "https://example.test/v1.35.0/claude-dashboard-cli.tar.gz"},
+ {"browser_download_url": "https://example.test/v1.35.0/claude-dashboard-extension.zip"},
+ {"browser_download_url": "https://example.test/v1.35.0/ClaudeDashboard-x64.msi"},
+ {"browser_download_url": "https://example.test/v1.35.0/ClaudeDashboard.app.zip"}]}'
+got="$(release_asset_url "$WITH_EXT" "ClaudeDashboard.app.zip")"
+[[ "$got" == "https://example.test/v1.35.0/ClaudeDashboard.app.zip" ]] \
+    || fail "macOS app zip resolution picked '$got'"
+
+# bundle_supports_arch, on fake bundles built from thin slices of /bin/ls.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    ARCH_TMP="$(mktemp -d)"
+    make_bundle() { # <dir> <lipo args...>
+        local app="$1/Fake.app"; shift
+        mkdir -p "$app/Contents/MacOS"
+        defaults write "$app/Contents/Info" CFBundleExecutable Fake
+        lipo "$@" -output "$app/Contents/MacOS/Fake"
+        echo "$app"
+    }
+    X86="$(make_bundle "$ARCH_TMP/x86" /bin/ls -thin x86_64)"
+    UNI="$(make_bundle "$ARCH_TMP/uni" -create "$X86/Contents/MacOS/Fake" "$(lipo /bin/ls -thin arm64e -output "$ARCH_TMP/arm" && echo "$ARCH_TMP/arm")")"
+    bundle_supports_arch "$X86" x86_64 || fail "x86_64 bundle rejected for x86_64"
+    if bundle_supports_arch "$X86" arm64; then fail "x86_64-only bundle accepted for arm64"; fi
+    bundle_supports_arch "$UNI" x86_64 || fail "universal bundle rejected for x86_64"
+    bundle_supports_arch "$UNI" arm64  || fail "universal bundle rejected for arm64"
+    if bundle_supports_arch "$ARCH_TMP/missing.app" x86_64; then fail "missing bundle accepted"; fi
+    [[ "$(macos_machine_arch)" =~ ^(arm64|x86_64)$ ]] || fail "macos_machine_arch = '$(macos_machine_arch)'"
+    rm -rf "$ARCH_TMP"
+fi
 
 # --- End-to-end: install_linux() itself, fully offline ---
 # The assertions above only exercise the pure-function helpers; none of them
