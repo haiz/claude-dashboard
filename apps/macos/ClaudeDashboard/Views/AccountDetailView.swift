@@ -53,7 +53,7 @@ struct AccountDetailView: View {
                         let now = Date()
                         return ChartWindowSummary.make(logs: viewModel.logs, range: range, now: now,
                                                        window: viewModel.selectedWindow)
-                            .text(range: range, now: now)
+                            .label(range: range, now: now)
                     },
                     onRangeChanged: { range in
                         viewModel.updateRange(range)

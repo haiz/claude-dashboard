@@ -655,7 +655,8 @@ The Linux side has no resync. `sync` and `add-key` are its two writers, and
 ## Chart range label
 
 The account History chart's toolbar shows the visible range beside Avg, e.g.
-`14:02 2% → now 9%`. Cases: `cases/chart-window-summary.json` (`window` is
+`14:02 → now · 2% → 9%`: the time span, then the usage at its two ends, drawn in
+different styles (time secondary, usage primary semibold). Cases: `cases/chart-window-summary.json` (`window` is
 `5h`, `7d` or `F`; `from`, `to`, `now` and each `points` entry's time are Unix
 seconds; `points` are `[t, utilization]`, ascending, already through the reset
 transitions, including the context points outside `[from, to]` the chart

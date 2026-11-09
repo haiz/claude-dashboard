@@ -91,8 +91,10 @@ export struct ChartState {
     noon-path: string,
     avg-text: string,
     avg-hot: bool,
-    // History only: "14:02 2% → now 9%" beside Avg; empty on the Overview.
-    range-text: string,
+    // History only, beside Avg: time "14:02 → now" and usage "2% → 9%" (empty when
+    // hidden); both empty on the Overview.
+    range-time: string,
+    range-usage: string,
     measure-a-visible: bool,
     measure-a-x: float,
     measure-b-visible: bool,
@@ -283,19 +285,38 @@ component ChartToolbar inherits HorizontalLayout {
         vertical-alignment: center;
     }
     Rectangle { horizontal-stretch: 1; }
-    if root.state.range-text != "": VerticalLayout {
+    // Time in secondary, usage in primary semibold, so the two never read as one run of
+    // numbers: "07:24 → 11:10 · 4% → 57%".
+    if root.state.range-time != "": VerticalLayout {
         alignment: center;
         Rectangle {
-            width: range.preferred-width + 12px;
-            height: range.preferred-height + 8px;
             border-radius: 4px;
             background: Theme.text-primary.with-alpha(0.05);
-            range := Text {
-                text: root.state.range-text;
-                color: Theme.text-secondary;
-                font-size: 11px;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                padding-top: 4px;
+                padding-bottom: 4px;
+                spacing: 6px;
+                Text {
+                    text: root.state.range-time;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+                if root.state.range-usage != "": Text {
+                    text: "\u{B7}";
+                    color: ChartColors.tertiary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+                if root.state.range-usage != "": Text {
+                    text: root.state.range-usage;
+                    color: Theme.text-primary;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
             }
         }
     }

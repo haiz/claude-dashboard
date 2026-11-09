@@ -43,8 +43,9 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
     let toolbarExtra: () -> ToolbarExtra
     let dataPoints: [UsageLogEntry]
     let averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)?
-    /// Text of the range label beside Avg (e.g. "14:02 2% → now 9%"), or nil for none.
-    let rangeLabel: ((ClosedRange<Date>) -> String)?
+    /// The range label beside Avg: its time part ("14:02 → now") and usage part ("2% → 9%",
+    /// nil when hidden), or nil for no label.
+    let rangeLabel: ((ClosedRange<Date>) -> (time: String, usage: String?))?
     let onRangeChanged: (ClosedRange<Date>) -> Void
     let chartHeight: CGFloat
     let isInteractionDisabled: Bool
@@ -73,7 +74,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         liveTick: Date,
         autoFollowsLiveEdge: Bool,
         averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)? = nil,
-        rangeLabel: ((ClosedRange<Date>) -> String)? = nil,
+        rangeLabel: ((ClosedRange<Date>) -> (time: String, usage: String?))? = nil,
         onRangeChanged: @escaping (ClosedRange<Date>) -> Void,
         @ViewBuilder chartContent: @escaping (ClosedRange<Date>) -> ChartContent,
         @ViewBuilder toolbarExtra: @escaping () -> ToolbarExtra
@@ -161,7 +162,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
 
             HStack(spacing: 6) {
                 if let rangeLabel {
-                    toolbarPill(Text(rangeLabel(visibleRange)).foregroundStyle(.secondary))
+                    toolbarPill(rangeLabelText(rangeLabel(visibleRange)))
                 }
                 averageRateOverlay
             }
@@ -222,6 +223,16 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
                     .foregroundStyle(.secondary)
             }
         })
+    }
+
+    /// Time in secondary, usage in primary semibold, so the two never read as one run of
+    /// numbers: "07:24 → 11:10 · 4% → 57%".
+    private func rangeLabelText(_ label: (time: String, usage: String?)) -> Text {
+        let time = Text(label.time).foregroundColor(.secondary)
+        guard let usage = label.usage else { return time }
+        return time
+            + Text("  ·  ").foregroundColor(Color(nsColor: .tertiaryLabelColor))
+            + Text(usage).fontWeight(.semibold).foregroundColor(.primary)
     }
 
     private func toolbarPill(_ content: some View) -> some View {

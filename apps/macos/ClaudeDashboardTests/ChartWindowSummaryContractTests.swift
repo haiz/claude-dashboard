@@ -51,17 +51,21 @@ final class ChartWindowSummaryContractTests: XCTestCase {
         }
     }
 
-    func testTextNamesTheDayOnlyOffToday() {
+    func testLabelNamesTheDayOnlyOffToday() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         let now = Date(timeIntervalSince1970: 1_762_610_400)          // 8 Nov 2025 14:00 UTC
         let live = now.addingTimeInterval(-5 * 3600)...now
         let up = ChartWindowSummary(endIsNow: true, startPct: 2, endPct: 9)
-        XCTAssertEqual(up.text(range: live, now: now, calendar: cal), "09:00 2% → now 9%")
+        let upLabel = up.label(range: live, now: now, calendar: cal)
+        XCTAssertEqual(upLabel.time, "09:00 → now")
+        XCTAssertEqual(upLabel.usage, "2% → 9%")
         let flat = ChartWindowSummary(endIsNow: true, startPct: nil, endPct: nil)
-        XCTAssertEqual(flat.text(range: live, now: now, calendar: cal), "09:00 → now")
+        let flatLabel = flat.label(range: live, now: now, calendar: cal)
+        XCTAssertEqual(flatLabel.time, "09:00 → now")
+        XCTAssertNil(flatLabel.usage)
         let past = now.addingTimeInterval(-30 * 3600)...now.addingTimeInterval(-25 * 3600)
         let old = ChartWindowSummary(endIsNow: false, startPct: nil, endPct: nil)
-        XCTAssertEqual(old.text(range: past, now: now, calendar: cal), "7 Nov 08:00 → 7 Nov 13:00")
+        XCTAssertEqual(old.label(range: past, now: now, calendar: cal).time, "7 Nov 08:00 → 7 Nov 13:00")
     }
 }

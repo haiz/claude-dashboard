@@ -7,7 +7,7 @@ import Foundation
 ///
 ///     // 5h chart, last 5 h, 2% -> 9%, no reset:
 ///     ChartWindowSummary.make(logs: logs, range: range, now: now, window: .fiveHour)
-///     // endIsNow true, startPct 2, endPct 9 -> "14:02 2% → now 9%"
+///     // endIsNow true, startPct 2, endPct 9 -> time "14:02 → now", usage "2% → 9%"
 struct ChartWindowSummary: Equatable {
     let endIsNow: Bool
     /// Rounded utilization at the range edges; both set or both nil.
@@ -55,9 +55,10 @@ struct ChartWindowSummary: Equatable {
         return before.utilization + (after.utilization - before.utilization) * f
     }
 
-    /// "14:02 → now", "7 Nov 09:00 → 7 Nov 14:00", "14:02 2% → now 9%". A date the
-    /// calendar puts on another day than `now` gets its day and month.
-    func text(range: ClosedRange<Date>, now: Date, calendar: Calendar = .current) -> String {
+    /// The label's two parts, drawn in different styles: `time` ("14:02 → now",
+    /// "7 Nov 09:00 → 7 Nov 14:00") and `usage` ("2% → 9%", nil when the percentages are
+    /// hidden). A date the calendar puts on another day than `now` gets its day and month.
+    func label(range: ClosedRange<Date>, now: Date, calendar: Calendar = .current) -> (time: String, usage: String?) {
         func stamp(_ date: Date) -> String {
             let df = DateFormatter()
             df.locale = Locale(identifier: "en_US_POSIX")
@@ -66,12 +67,8 @@ struct ChartWindowSummary: Equatable {
             df.dateFormat = calendar.isDate(date, inSameDayAs: now) ? "HH:mm" : "d MMM HH:mm"
             return df.string(from: date)
         }
-        var start = stamp(range.lowerBound)
-        var end = endIsNow ? "now" : stamp(range.upperBound)
-        if let s = startPct, let e = endPct {
-            start += " \(s)%"
-            end += " \(e)%"
-        }
-        return "\(start) → \(end)"
+        let time = "\(stamp(range.lowerBound)) → \(endIsNow ? "now" : stamp(range.upperBound))"
+        guard let s = startPct, let e = endPct else { return (time, nil) }
+        return (time, "\(s)% → \(e)%")
     }
 }
