@@ -63,6 +63,8 @@ pub struct Config {
     pub enabled: bool,
     pub thresholds: Thresholds,
     pub priority: Option<Priority>,
+    /// Accounts auto switch never moves Claude Code to (`autoSwitchExcludedAccountIds`).
+    pub excluded: HashSet<String>,
 }
 
 impl Config {
@@ -71,6 +73,7 @@ impl Config {
             enabled: s.auto_switch_enabled,
             thresholds: thresholds_of(s),
             priority: s.auto_switch_priority_id.clone().map(|id| Priority { account_id: id, baseline: s.auto_switch_priority_baseline }),
+            excluded: s.auto_switch_excluded_ids.iter().cloned().collect(),
         }
     }
 }
@@ -141,7 +144,7 @@ impl Controller {
             lock: self.lock.clone(),
             hold: self.hold.clone(),
             priority: cfg.priority.clone(),
-            excluded: self.cooldown_until.keys().cloned().collect::<HashSet<String>>(),
+            excluded: self.cooldown_until.keys().cloned().chain(cfg.excluded.iter().cloned()).collect::<HashSet<String>>(),
             now,
         };
         let decision = planner::decide(&snapshot, pick_index);
@@ -333,8 +336,10 @@ pub fn log_points(series: &[SeriesPoint]) -> Vec<planner::LogPoint> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardFields {
     pub is_home: bool,
-    /// A tick needs the active account or one auto switch could move to, with usage loaded
-    /// (macOS `canTickPriority`).
+    /// The account page's "Exclude from Auto Switch" toggle.
+    pub is_excluded: bool,
+    /// A tick needs the active account or one auto switch could move to, with usage loaded,
+    /// and not excluded (macOS `canTickPriority`).
     pub can_tick: bool,
     /// The bolt shows only while auto switch is on, the only thing that reads the tick; off
     /// hides it but keeps the tick (macOS `showsPriorityControl`).
@@ -347,6 +352,7 @@ pub struct CardFields {
 pub fn card_fields(
     row: &DisplayRow,
     home_id: Option<&str>,
+    excluded: bool,
     availability: Option<Availability>,
     auto_switch_on: bool,
     params: &CriticalParameters,
@@ -358,9 +364,11 @@ pub fn card_fields(
         CriticalAssessment::NONE
     };
     let is_home = home_id == Some(row.account_id.as_str());
-    let can_tick = (availability == Some(Availability::Ready) || row.is_active_claude_code) && usage_of(row).is_some();
+    let can_tick =
+        (availability == Some(Availability::Ready) || row.is_active_claude_code) && usage_of(row).is_some() && !excluded;
     CardFields {
         is_home,
+        is_excluded: excluded,
         can_tick,
         shows_home: auto_switch_on && (can_tick || is_home),
         critical_level: match assessment.level {
@@ -529,7 +537,7 @@ mod tests {
     }
 
     fn cfg() -> Config {
-        Config { enabled: true, thresholds: Thresholds { five_hour: 95.0, seven_day: 99.0 }, priority: None }
+        Config { enabled: true, thresholds: Thresholds { five_hour: 95.0, seven_day: 99.0 }, priority: None, excluded: HashSet::new() }
     }
 
     struct Run {
@@ -865,23 +873,53 @@ mod tests {
     fn card_fields_for_bolt_and_flame() {
         let params = CriticalParameters { x: 16.0, pace: 50.0, high_pace: 80.0, quiet: None };
         let critical = row("a", None, Some(10.0), Some((55.0, T0 + 25.0 * H)));
-        let f = card_fields(&critical, Some("a"), Some(Availability::Ready), true, &params, T0);
+        let f = card_fields(&critical, Some("a"), false, Some(Availability::Ready), true, &params, T0);
         assert!(f.is_home && f.can_tick);
         assert_eq!(f.critical_level, 1);
         assert_eq!(f.critical_help, "Critical: at 50% of 5h per window around the clock, 7d reaches 95% by its reset (5% unused)");
         let high = row("b", None, Some(10.0), Some((60.0, T0 + 10.0 * H)));
-        assert_eq!(card_fields(&high, None, Some(Availability::Ready), true, &params, T0).critical_level, 2);
+        assert_eq!(card_fields(&high, None, false, Some(Availability::Ready), true, &params, T0).critical_level, 2);
         let calm = row("c", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
-        let f = card_fields(&calm, Some("a"), Some(Availability::NotCaptured), true, &params, T0);
+        let f = card_fields(&calm, Some("a"), false, Some(Availability::NotCaptured), true, &params, T0);
         assert_eq!((f.is_home, f.can_tick, f.critical_level, f.critical_help.as_str()), (false, false, 0, ""));
         let mut active = calm.clone();
         active.is_active_claude_code = true;
-        assert!(card_fields(&active, None, Some(Availability::Active), true, &params, T0).can_tick, "the active account can be ticked");
+        assert!(card_fields(&active, None, false, Some(Availability::Active), true, &params, T0).can_tick, "the active account can be ticked");
         let no_usage = row("d", None, None, None);
-        assert!(!card_fields(&no_usage, None, Some(Availability::Ready), true, &params, T0).can_tick, "needs usage for the baseline");
+        assert!(!card_fields(&no_usage, None, false, Some(Availability::Ready), true, &params, T0).can_tick, "needs usage for the baseline");
         let mut stale = critical.clone();
         stale.error = Some("x".into());
-        assert_eq!(card_fields(&stale, None, None, true, &params, T0).critical_level, 0, "stale: no flame");
+        assert_eq!(card_fields(&stale, None, false, None, true, &params, T0).critical_level, 0, "stale: no flame");
+    }
+
+    #[test]
+    fn an_excluded_account_cannot_be_ticked() {
+        let params = CriticalParameters { x: 16.0, pace: 50.0, high_pace: 80.0, quiet: None };
+        let r = row("a", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
+        let f = card_fields(&r, None, true, Some(Availability::Ready), true, &params, T0);
+        assert!(f.is_excluded && !f.can_tick && !f.shows_home);
+    }
+
+    #[test]
+    fn an_excluded_account_is_never_a_target() {
+        let mut c = Controller::default();
+        let mut config = Config { excluded: HashSet::from(["b".to_string()]), ..cfg() };
+        let active = account("a", 96.0, 10.0, None, true, T0);
+        let excluded = account("b", 0.0, 10.0, None, false, T0);
+        let other = account("c", 50.0, 60.0, None, false, T0);
+        let r = run(&mut c, &mut config, &[active.clone(), excluded.clone(), other], T0, Ok(()));
+        assert_eq!(r.result.as_deref(), Some("c"));
+        let mut c = Controller::default();
+        let r = run(&mut c, &mut config, &[active.clone(), excluded.clone()], T0, Ok(()));
+        assert_eq!(r.result, None);
+        assert_eq!(c.last_event.map(|e| e.kind), Some(EventKind::NoCandidate));
+        let high = crit(account("b", 0.0, 30.0, None, false, T0), CriticalLevel::High);
+        let calm = account("a", 10.0, 10.0, None, true, T0);
+        let r = run(&mut Controller::default(), &mut config, &[calm, high], T0, Ok(()));
+        assert_eq!(r.result, None, "not a critical target either");
+        let mut leaving = Config { excluded: HashSet::from(["a".to_string()]), ..cfg() };
+        let r = run(&mut Controller::default(), &mut leaving, &[active, account("d", 0.0, 10.0, None, false, T0)], T0, Ok(()));
+        assert_eq!(r.result.as_deref(), Some("d"), "an excluded active account is still left");
     }
 
     #[test]
@@ -889,13 +927,13 @@ mod tests {
         let params = CriticalParameters { x: 16.0, pace: 50.0, high_pace: 80.0, quiet: None };
         let home = row("a", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
         let other = row("b", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
-        let on = |r: &DisplayRow| card_fields(r, Some("a"), Some(Availability::Ready), true, &params, T0);
-        let off = |r: &DisplayRow| card_fields(r, Some("a"), Some(Availability::Ready), false, &params, T0);
+        let on = |r: &DisplayRow| card_fields(r, Some("a"), false, Some(Availability::Ready), true, &params, T0);
+        let off = |r: &DisplayRow| card_fields(r, Some("a"), false, Some(Availability::Ready), false, &params, T0);
         assert!(on(&home).shows_home && on(&other).shows_home);
         assert!(!off(&home).shows_home && !off(&other).shows_home, "off: no bolt");
         assert!(off(&home).is_home, "off keeps the tick");
         let calm = row("c", None, Some(10.0), Some((10.0, T0 + 6.0 * 86_400.0)));
-        assert!(!card_fields(&calm, None, Some(Availability::NotCaptured), true, &params, T0).shows_home, "on, not tickable");
+        assert!(!card_fields(&calm, None, false, Some(Availability::NotCaptured), true, &params, T0).shows_home, "on, not tickable");
     }
 
     #[test]

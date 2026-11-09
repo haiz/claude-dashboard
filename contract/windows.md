@@ -141,11 +141,13 @@ shown rows in place from the last refresh (no fetch). Reset All Settings turns i
 Auto Switch and Critical Accounts use the macOS keys and defaults: `autoSwitchEnabled`
 (true), `autoSwitchFiveHourThreshold` (95, 50...99), `autoSwitchSevenDayThreshold` (99,
 50...100), `autoSwitchShowWidgetToggle` (true), `autoSwitchPriorityAccountId` and
-`autoSwitchPriorityBaseline` (Unix seconds; the home account), `criticalPace` (50, 10...100),
+`autoSwitchPriorityBaseline` (Unix seconds; the home account), `autoSwitchExcludedAccountIds`
+(a sorted array of account ids auto switch never moves Claude Code to; absent when empty, a
+non-array value loads as empty), `criticalPace` (50, 10...100),
 `criticalHighPace` (80, never below `criticalPace`), `criticalQuietStart` / `criticalQuietEnd`
 (0 / 7, 0...23; equal means no quiet hours) and `criticalTimeZone` (`Asia/Ho_Chi_Minh`, an IANA
 name). A stored value out of range, or an unknown zone, loads as the default. Reset All
-Settings restores them all and keeps the home account.
+Settings restores them all and keeps the home account and the excluded accounts.
 
 ## Launch at startup
 
@@ -306,7 +308,10 @@ critical assessment, the X estimate and both logs are pure `core` modules (`auto
 `auto_switch_log`, `critical`, `usage_ratio`); the app's controller (`app/src/auto_switch.rs`)
 runs on the refresh thread after every refresh, then a switch re-captures Claude Code's login
 and moves the badge. Only `ready` accounts are used, through `Switcher::switch_to`: never a
-browser, never a prompt. A manual Switch and an auto switch never run together, and a manual
+browser, never a prompt. An account with **Exclude from Auto Switch** on (its page's Actions) is
+never a target, at any tier (high critical, home, critical, thresholds); it may still be the
+active account and be left. Excluding the home account unticks it, an excluded account cannot
+be ticked, and an excluded id whose account left the store is dropped on the next evaluation. A manual Switch and an auto switch never run together, and a manual
 Switch holds Claude Code on its target until its 5h reset. While auto switch is on and the
 active account is in the warning zone, the active account is fetched every 60 s. X is
 recomputed at launch and hourly from `usage_logs.db` (default 16 until 100 points of 5h use).

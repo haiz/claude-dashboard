@@ -98,6 +98,7 @@ final class AutoSwitchController: ObservableObject {
     func evaluate(_ accounts: [AutoSwitchAccount],
                   perform: (UUID) async throws -> Void) async -> UUID? {
         updatePriority(accounts)
+        settings.pruneExcluded(keeping: Set(accounts.map(\.id)))
         guard settings.isEnabled else { return nil }
 
         let t = now()
@@ -107,7 +108,8 @@ final class AutoSwitchController: ObservableObject {
         lock = AutoSwitchPlanner.updatedLock(lock, active: accounts.first(where: \.isActive))
         hold = Self.updatedHold(hold, active: accounts.first(where: \.isActive), now: t)
         let snapshot = AutoSwitchSnapshot(accounts: accounts, thresholds: settings.thresholds, lock: lock, hold: hold,
-                                          priority: settings.priority, excluded: Set(cooldownUntil.keys), now: t)
+                                          priority: settings.priority,
+                                          excluded: settings.excluded.union(cooldownUntil.keys), now: t)
 
         let decision = AutoSwitchPlanner.decide(snapshot, pickIndex: pickIndex)
         let active = accounts.first(where: \.isActive)

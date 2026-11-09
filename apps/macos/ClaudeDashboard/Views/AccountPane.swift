@@ -176,6 +176,17 @@ struct AccountPane: View {
                 .labelsHidden()
                 .controlSize(.small)
             }
+            Divider()
+            actionRow("Exclude from Auto Switch") {
+                Toggle("", isOn: Binding(
+                    get: { dashboardViewModel.isExcludedFromAutoSwitch(state.id) },
+                    set: { dashboardViewModel.setExcludedFromAutoSwitch(state.id, $0) }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .controlSize(.small)
+                .help("Auto Switch never moves Claude Code to this account; a manual Switch still can")
+            }
             if dashboardViewModel.showsPriorityControl(state) {
                 Divider()
                 actionRow("Switch here after 5h reset") {

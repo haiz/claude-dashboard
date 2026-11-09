@@ -192,6 +192,7 @@ fn set_auto_switch_fields(
         let f = auto_switch::card_fields(
             d,
             settings.auto_switch_priority_id.as_deref(),
+            settings.is_auto_switch_excluded(&d.account_id),
             cc_state::availability(&d.account_id),
             settings.auto_switch_enabled,
             &params,
@@ -199,6 +200,7 @@ fn set_auto_switch_fields(
         );
         r.is_home = f.is_home;
         r.shows_home = f.shows_home;
+        r.excluded = f.is_excluded;
         r.critical_level = f.critical_level;
         r.critical_help = f.critical_help.into();
     }
@@ -288,9 +290,9 @@ fn refresh_auto_switch_ui() {
     let patch = |rows: slint::ModelRc<UiRow>| {
         for i in 0..rows.row_count() {
             let Some(mut r) = rows.row_data(i) else { continue };
-            let before = (r.is_home, r.shows_home, r.critical_level, r.critical_help.clone());
+            let before = (r.is_home, r.shows_home, r.excluded, r.critical_level, r.critical_help.clone());
             set_auto_switch_fields(std::slice::from_mut(&mut r), &out.rows, now, &settings);
-            if (r.is_home, r.shows_home, r.critical_level, r.critical_help.clone()) != before {
+            if (r.is_home, r.shows_home, r.excluded, r.critical_level, r.critical_help.clone()) != before {
                 rows.set_row_data(i, r);
             }
         }
@@ -377,6 +379,19 @@ fn toggle_home(id: &str) {
         if let Some(tx) = CC_NUDGE.get() {
             let _ = tx.send(refresh::Nudge::Local);
         }
+    }
+}
+
+/// The account page's "Exclude from Auto Switch" toggle (macOS `setExcludedFromAutoSwitch`):
+/// excluding also unticks the home account; either way auto switch runs now on the current rows.
+fn toggle_excluded(id: &str) {
+    let _ = claude_dashboard_core::settings::update(|s| {
+        let on = !s.is_auto_switch_excluded(id);
+        s.set_auto_switch_excluded(id, on);
+    });
+    refresh_auto_switch_ui();
+    if let Some(tx) = CC_NUDGE.get() {
+        let _ = tx.send(refresh::Nudge::Local);
     }
 }
 
@@ -585,6 +600,11 @@ fn run_auto_switch(out: &mut refresh::RefreshOutput, now: f64) -> Option<String>
     if let (Some(stored), Some(guard)) = (stored, guard) {
         let ids: Vec<String> = stored.iter().map(|a| a.id.clone()).collect();
         auto_switch::drop_deleted_home(&mut cfg, &ids);
+        if settings.auto_switch_excluded_ids.iter().any(|e| !ids.contains(e)) {
+            let _ = claude_dashboard_core::settings::update(|s| {
+                s.retain_auto_switch_excluded(&ids);
+            });
+        }
         let log_store = claude_dashboard_core::auto_switch_log::AutoSwitchLogStore::open().ok();
         let before = auto_switch::Config::from_settings(&settings).priority;
         // Evaluate on a copy: a switch can block for seconds, and the UI reads the footer event.
@@ -1972,6 +1992,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let _ = CC_NUDGE.set(cc_nudge);
     app.on_switch_claude_code(|id| cc_request(id.to_string()));
     app.on_toggle_home(|id| toggle_home(id.as_str()));
+    app.on_toggle_excluded(|id| toggle_excluded(id.as_str()));
     // Settings > General > Auto Switch and Critical Accounts.
     {
         let hours: Vec<slint::SharedString> = (0..24).map(|h| format!("{h:02}:00").into()).collect();
@@ -2245,7 +2266,7 @@ mod tests {
         assert_eq!(out.rows.len(), 5);
         assert_eq!(out.rows.iter().filter(|r| r.status == claude_dashboard_core::model::AccountStatus::Expired).count(), 2);
         let params = claude_dashboard_core::critical::parameters_from(&claude_dashboard_core::settings::Settings::default(), 16.0);
-        let level = |i: usize| crate::auto_switch::card_fields(&out.rows[i], None, None, true, &params, 1_000_000.0).critical_level;
+        let level = |i: usize| crate::auto_switch::card_fields(&out.rows[i], None, false, None, true, &params, 1_000_000.0).critical_level;
         assert_eq!((level(0), level(1)), (2, 1), "alice high critical, bob critical");
     }
 }

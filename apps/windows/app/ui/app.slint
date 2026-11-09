@@ -840,6 +840,8 @@ export component AppWindow inherits Window {
     callback switch-claude-code(string);
     // The bolt on a card or the account page toggle: tick or untick the home account.
     callback toggle-home(string);
+    // The account page's "Exclude from Auto Switch" toggle.
+    callback toggle-excluded(string);
     callback cc-prompt-ok();
     callback cc-prompt-cancel();
     // Tools > Ping Log: rows (Rust loads them on `ping-log-reload`), Clear All's prompt.
@@ -1137,6 +1139,7 @@ export component AppWindow inherits Window {
                     desktop-differs: root.desktop-differs;
                     desktop-switching: root.desktop-switching;
                     switch-desktop => { root.switch-desktop(acct.id); }
+                    toggle-excluded => { root.toggle-excluded(acct.id); }
                     toggle-pin(pinned) => { root.toggle-pin(acct.id, pinned); }
                     remove => {
                         root.remove-account(acct.id);

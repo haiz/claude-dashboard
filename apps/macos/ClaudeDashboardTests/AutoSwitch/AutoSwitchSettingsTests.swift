@@ -90,4 +90,34 @@ final class AutoSwitchSettingsTests: XCTestCase {
             XCTAssertEqual(settings.priority, priority)
         }
     }
+
+    func testExcludedAccountsDefaultEmptyAndPersist() {
+        let s = AutoSwitchSettings(defaults: defaults)
+        XCTAssertEqual(s.excluded, [])
+        let a = UUID(), b = UUID()
+        s.setExcluded(a, true)
+        s.setExcluded(b, true)
+        s.setExcluded(b, false)
+        XCTAssertEqual(AutoSwitchSettings(defaults: defaults).excluded, [a])
+    }
+
+    /// An excluded account can't be the home target, so excluding the home account unticks it.
+    func testExcludingTheHomeAccountUnticksIt() {
+        let s = AutoSwitchSettings(defaults: defaults)
+        let home = UUID()
+        s.setPriority(AutoSwitchPriority(accountId: home, baseline: nil))
+        s.setExcluded(UUID(), true)
+        XCTAssertEqual(s.priority?.accountId, home, "another account leaves the tick alone")
+        s.setExcluded(home, true)
+        XCTAssertNil(s.priority)
+        XCTAssertNil(AutoSwitchSettings(defaults: defaults).priority)
+    }
+
+    func testResetToDefaultsKeepsExcluded() {
+        let s = AutoSwitchSettings(defaults: defaults)
+        let id = UUID()
+        s.setExcluded(id, true)
+        s.resetToDefaults()
+        XCTAssertEqual(s.excluded, [id])
+    }
 }

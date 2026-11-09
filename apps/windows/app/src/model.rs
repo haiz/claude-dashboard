@@ -308,6 +308,7 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64, show_animals: bool) -> UiRow
         switch_help: Default::default(),
         is_home: false,
         shows_home: false,
+        excluded: false,
         critical_level: 0,
         critical_help: Default::default(),
     }

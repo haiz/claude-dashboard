@@ -721,6 +721,7 @@ export component AccountPane inherits VerticalLayout {
     in property <bool> desktop-switching;
     callback switch-desktop();
     callback toggle-home();
+    callback toggle-excluded();
     callback toggle-pin(bool /* new pinned state */);
     callback remove();
     callback window-picked(string /* "5h" | "7d" | "fable" */);
@@ -918,6 +919,16 @@ export component AccountPane inherits VerticalLayout {
                         checked: root.data.pinned;
                         y: (parent.height - self.height) / 2;
                         toggled => { root.toggle-pin(!root.data.pinned); }
+                    }
+                }
+                Rectangle { height: 1px; background: Theme.card-border; }
+                ActionRow {
+                    title: "Exclude from Auto Switch";
+                    PaneSwitch {
+                        checked: root.data.excluded;
+                        y: (parent.height - self.height) / 2;
+                        toggled => { root.toggle-excluded(); }
+                        Tooltip { text: @markdown("Auto Switch never moves Claude Code to this account; a manual Switch still can"); }
                     }
                 }
                 if root.data.shows-home: Rectangle { height: 1px; background: Theme.card-border; }

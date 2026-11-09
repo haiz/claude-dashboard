@@ -125,6 +125,8 @@ export struct UiRow {
     // ticked, and the critical level (0 none, 1 critical, 2 high critical) with its tooltip.
     is-home: bool,
     shows-home: bool,
+    // The account page's "Exclude from Auto Switch" toggle (autoSwitchExcludedAccountIds).
+    excluded: bool,
     critical-level: int,
     critical-help: string,
 }

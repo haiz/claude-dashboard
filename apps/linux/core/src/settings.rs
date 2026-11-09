@@ -82,6 +82,9 @@ pub struct Settings {
     /// Its 5h `resetsAt` (Unix seconds) when ticked or last used; none before its window started.
     #[serde(rename = "autoSwitchPriorityBaseline", skip_serializing_if = "Option::is_none")]
     pub auto_switch_priority_baseline: Option<f64>,
+    /// Accounts auto switch never moves Claude Code to (a manual Switch still can), sorted.
+    #[serde(rename = "autoSwitchExcludedAccountIds", skip_serializing_if = "Vec::is_empty")]
+    pub auto_switch_excluded_ids: Vec<String>,
     #[serde(rename = "criticalPace")]
     pub critical_pace: i64,
     /// Never below `critical_pace`.
@@ -136,6 +139,8 @@ struct RawSettings {
     auto_switch_priority_id: Option<String>,
     #[serde(rename = "autoSwitchPriorityBaseline", default)]
     auto_switch_priority_baseline: Option<f64>,
+    #[serde(rename = "autoSwitchExcludedAccountIds", default, deserialize_with = "lenient_strings")]
+    auto_switch_excluded_ids: Vec<String>,
     #[serde(rename = "criticalPace", default, deserialize_with = "lenient_i64")]
     critical_pace: Option<i64>,
     #[serde(rename = "criticalHighPace", default, deserialize_with = "lenient_i64")]
@@ -152,6 +157,21 @@ struct RawSettings {
 /// (macOS `as? Int`): one bad value never resets the whole file.
 fn lenient_i64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<i64>, D::Error> {
     Ok(Option::<serde_json::Value>::deserialize(d)?.and_then(|v| v.as_i64()))
+}
+
+/// A value that is not an array reads as empty, and non-string items are skipped (macOS
+/// `stringArray(forKey:)`), so one bad value never resets the whole file.
+fn lenient_strings<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    let v = Option::<serde_json::Value>::deserialize(d)?;
+    let mut ids: Vec<String> = v
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|i| i.as_str().map(str::to_string))
+        .collect();
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
 }
 
 /// A stored value outside `range` (or missing) loads as `default` (macOS `stored(_:in:default:)`).
@@ -185,6 +205,7 @@ impl From<RawSettings> for Settings {
             auto_switch_show_widget_toggle: r.auto_switch_show_widget_toggle,
             auto_switch_priority_id: r.auto_switch_priority_id,
             auto_switch_priority_baseline: r.auto_switch_priority_baseline,
+            auto_switch_excluded_ids: r.auto_switch_excluded_ids,
             critical_pace: pace,
             critical_high_pace: in_range(r.critical_high_pace, CRITICAL_PACE_RANGE, DEFAULT_CRITICAL_HIGH_PACE).max(pace),
             critical_quiet_start: in_range(r.critical_quiet_start, CRITICAL_HOUR_RANGE, DEFAULT_CRITICAL_QUIET_START),
@@ -217,6 +238,7 @@ impl Default for Settings {
             auto_switch_show_widget_toggle: true,
             auto_switch_priority_id: None,
             auto_switch_priority_baseline: None,
+            auto_switch_excluded_ids: Vec::new(),
             critical_pace: DEFAULT_CRITICAL_PACE,
             critical_high_pace: DEFAULT_CRITICAL_HIGH_PACE,
             critical_quiet_start: DEFAULT_CRITICAL_QUIET_START,
@@ -242,11 +264,40 @@ impl Settings {
     pub fn set_critical_high_pace(&mut self, v: i64) {
         self.critical_high_pace = v.clamp(self.critical_pace, *CRITICAL_PACE_RANGE.end());
     }
+
+    pub fn is_auto_switch_excluded(&self, id: &str) -> bool {
+        self.auto_switch_excluded_ids.iter().any(|e| e == id)
+    }
+
+    /// Excluding the home account unticks it, since auto switch can't move there any more
+    /// (macOS `AutoSwitchSettings.setExcluded`).
+    ///
+    /// ```text
+    /// s.set_auto_switch_excluded("acc-1", true);   // auto switch never picks acc-1
+    /// ```
+    pub fn set_auto_switch_excluded(&mut self, id: &str, on: bool) {
+        self.auto_switch_excluded_ids.retain(|e| e != id);
+        if on {
+            self.auto_switch_excluded_ids.push(id.to_string());
+            self.auto_switch_excluded_ids.sort();
+            if self.auto_switch_priority_id.as_deref() == Some(id) {
+                self.auto_switch_priority_id = None;
+                self.auto_switch_priority_baseline = None;
+            }
+        }
+    }
+
+    /// Drops excluded ids the store no longer has; true when one was dropped.
+    pub fn retain_auto_switch_excluded(&mut self, stored_ids: &[String]) -> bool {
+        let before = self.auto_switch_excluded_ids.len();
+        self.auto_switch_excluded_ids.retain(|e| stored_ids.contains(e));
+        self.auto_switch_excluded_ids.len() != before
+    }
 }
 
 /// Settings > General "Reset": auto refresh back to on / 5 min, Auto Ping and burn-rate animals off, Auto Switch
 /// and Critical Accounts back to their defaults, auto update on. Launch at startup, the scan
-/// browser, the update-check stamp and the home account stay (macOS `resetSettingsToDefaults`).
+/// browser, the update-check stamp, the home account and the excluded accounts stay (macOS `resetSettingsToDefaults`).
 pub fn reset_general(s: &mut Settings) {
     let d = Settings::default();
     s.auto_refresh_enabled = true;
@@ -649,6 +700,57 @@ mod tests {
         assert_eq!((s.critical_pace, s.critical_quiet_end), (60, 7));
         assert_eq!(s.auto_switch_priority_id.as_deref(), Some("home"));
         assert_eq!(s.auto_refresh_minutes, 12);
+    }
+
+    #[test]
+    fn excluded_accounts_default_empty_round_trip_and_survive_reset() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        assert!(load_str("{}").auto_switch_excluded_ids.is_empty());
+        let mut s = Settings::default();
+        s.set_auto_switch_excluded("b", true);
+        s.set_auto_switch_excluded("a", true);
+        s.set_auto_switch_excluded("c", true);
+        s.set_auto_switch_excluded("c", false);
+        assert_eq!(s.auto_switch_excluded_ids, ["a", "b"]);
+        assert!(s.is_auto_switch_excluded("a") && !s.is_auto_switch_excluded("c"));
+        save_to(&p, &s).unwrap();
+        assert!(fs::read_to_string(&p).unwrap().contains("autoSwitchExcludedAccountIds"));
+        assert_eq!(load_from(&p), s);
+        reset_general(&mut s);
+        assert_eq!(s.auto_switch_excluded_ids, ["a", "b"]);
+        save_to(&p, &Settings::default()).unwrap();
+        assert!(!fs::read_to_string(&p).unwrap().contains("autoSwitchExcludedAccountIds"), "empty -> key absent");
+    }
+
+    #[test]
+    fn excluding_the_home_account_unticks_it() {
+        let mut s = Settings {
+            auto_switch_priority_id: Some("home".into()),
+            auto_switch_priority_baseline: Some(42.0),
+            ..Settings::default()
+        };
+        s.set_auto_switch_excluded("other", true);
+        assert_eq!(s.auto_switch_priority_id.as_deref(), Some("home"));
+        s.set_auto_switch_excluded("home", true);
+        assert_eq!((s.auto_switch_priority_id.clone(), s.auto_switch_priority_baseline), (None, None));
+    }
+
+    #[test]
+    fn retain_excluded_drops_deleted_accounts() {
+        let mut s = Settings { auto_switch_excluded_ids: vec!["a".into(), "b".into()], ..Settings::default() };
+        assert!(!s.retain_auto_switch_excluded(&["a".into(), "b".into(), "c".into()]));
+        assert!(s.retain_auto_switch_excluded(&["b".into()]));
+        assert_eq!(s.auto_switch_excluded_ids, ["b"]);
+    }
+
+    #[test]
+    fn a_bad_excluded_value_reads_as_empty_and_keeps_the_rest() {
+        let s = load_str(r#"{"autoSwitchExcludedAccountIds":"x","autoRefreshMinutes":12}"#);
+        assert!(s.auto_switch_excluded_ids.is_empty());
+        assert_eq!(s.auto_refresh_minutes, 12);
+        let s = load_str(r#"{"autoSwitchExcludedAccountIds":["b",1,"a","b"]}"#);
+        assert_eq!(s.auto_switch_excluded_ids, ["a", "b"]);
     }
 
     #[test]

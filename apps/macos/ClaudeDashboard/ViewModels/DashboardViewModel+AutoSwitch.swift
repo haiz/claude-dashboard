@@ -43,6 +43,17 @@ extension DashboardViewModel {
     /// for the baseline.
     func canTickPriority(_ state: AccountUsageState) -> Bool {
         (switchAvailability[state.id] == .ready || isActiveClaudeCodeAccount(state)) && state.usage != nil
+            && !isExcludedFromAutoSwitch(state.id)
+    }
+
+    func isExcludedFromAutoSwitch(_ id: UUID) -> Bool {
+        autoSwitchSettings.excluded.contains(id)
+    }
+
+    /// Excluding also unticks the home account; including may make `id` a target now.
+    func setExcludedFromAutoSwitch(_ id: UUID, _ on: Bool) {
+        autoSwitchSettings.setExcluded(id, on)
+        Task { await runAutoSwitch() }
     }
 
     /// The home (bolt) control shows only while auto switch is on, the only thing that reads the

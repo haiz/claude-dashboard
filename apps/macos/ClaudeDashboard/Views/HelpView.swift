@@ -155,6 +155,7 @@ struct HelpView: View {
             HelpRow(symbol: "arrow.up.and.down.and.arrow.left.and.right", "**Pan / zoom**: drag the chart to move through time; the mode button changes what a drag does.")
             HelpRow(symbol: "list.bullet", "**Reset cycles**: click one to show only that cycle; **Show All** brings back the rest.")
             HelpRow(symbol: "ruler", "**Measure**: click two points to see how much usage changed between them.")
+            HelpRow(symbol: "clock", "**Time span**: beside Avg, the start and end of the visible range (\"now\" at the live edge). On the 5h chart over 5h or less, or the 7d chart over 7d or less, with no reset in between, it also shows the usage at each end when they differ, e.g. 14:02 2% → now 9%.")
             HelpCallout(.tip, "**Overview** puts every account on one chart. Click an account in the legend to show or hide it.")
         }
     }
@@ -253,6 +254,9 @@ struct HelpView: View {
             }
             HelpRow("**Which accounts**: only ones already signed in to Claude Code (through Switch or `/login`), so the switch is instant. It never opens a browser.") {
                 HelpSymbol(name: "checkmark.seal", color: .green)
+            }
+            HelpRow("**Excluded accounts**: turn on **Exclude from Auto Switch** on an account's page and Auto Switch never moves Claude Code there (a manual **Switch** still can). It also stops being the home account.") {
+                HelpSymbol(name: "nosign", color: .secondary)
             }
             HelpRow("**On failure**: that account is skipped for 10 minutes.") {
                 HelpSymbol(name: "clock.arrow.circlepath", color: .secondary)

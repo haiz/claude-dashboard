@@ -7,6 +7,7 @@ import Foundation
 ///     settings.isEnabled = true
 ///     settings.thresholds   // AutoSwitchThresholds(fiveHour: 95, sevenDay: 99)
 ///     settings.setPriority(AutoSwitchPriority(accountId: id, baseline: resetsAt))
+///     settings.setExcluded(id, true)   // auto switch never moves Claude Code to `id`
 @MainActor
 final class AutoSwitchSettings: ObservableObject {
     static let enabledKey = "autoSwitchEnabled"
@@ -15,6 +16,7 @@ final class AutoSwitchSettings: ObservableObject {
     static let showWidgetToggleKey = "autoSwitchShowWidgetToggle"
     static let priorityIdKey = "autoSwitchPriorityAccountId"
     static let priorityBaselineKey = "autoSwitchPriorityBaseline"
+    static let excludedKey = "autoSwitchExcludedAccountIds"
     static let fiveHourRange = 50...99
     static let sevenDayRange = 50...100
     static let defaultFiveHour = 95
@@ -36,6 +38,8 @@ final class AutoSwitchSettings: ObservableObject {
         didSet { defaults.set(showWidgetToggle, forKey: Self.showWidgetToggleKey) }
     }
     @Published private(set) var priority: AutoSwitchPriority?
+    /// Accounts auto switch never moves Claude Code to (a manual Switch still can).
+    @Published private(set) var excluded: Set<UUID>
 
     var thresholds: AutoSwitchThresholds {
         AutoSwitchThresholds(fiveHour: Double(fiveHourThreshold), sevenDay: Double(sevenDayThreshold))
@@ -53,9 +57,11 @@ final class AutoSwitchSettings: ObservableObject {
                 baseline: (defaults.object(forKey: Self.priorityBaselineKey) as? Double)
                     .map(Date.init(timeIntervalSince1970:)))
         }
+        excluded = Set((defaults.stringArray(forKey: Self.excludedKey) ?? []).compactMap(UUID.init(uuidString:)))
     }
 
-    /// Restores every setting to its default; the home account (`priority`) is kept.
+    /// Restores every setting to its default; the home account (`priority`) and the
+    /// excluded accounts are per-account choices and are kept.
     func resetToDefaults() {
         isEnabled = true
         fiveHourThreshold = Self.defaultFiveHour
@@ -75,6 +81,29 @@ final class AutoSwitchSettings: ObservableObject {
             defaults.set(baseline.timeIntervalSince1970, forKey: Self.priorityBaselineKey)
         } else {
             defaults.removeObject(forKey: Self.priorityBaselineKey)
+        }
+    }
+
+    /// Excluding the home account unticks it: auto switch can't move there any more.
+    func setExcluded(_ id: UUID, _ on: Bool) {
+        var ids = excluded
+        if on { ids.insert(id) } else { ids.remove(id) }
+        store(excluded: ids)
+        if on, priority?.accountId == id { setPriority(nil) }
+    }
+
+    /// Drops the ids of accounts that no longer exist.
+    func pruneExcluded(keeping ids: Set<UUID>) {
+        let kept = excluded.intersection(ids)
+        if kept != excluded { store(excluded: kept) }
+    }
+
+    private func store(excluded ids: Set<UUID>) {
+        excluded = ids
+        if ids.isEmpty {
+            defaults.removeObject(forKey: Self.excludedKey)
+        } else {
+            defaults.set(ids.map(\.uuidString).sorted(), forKey: Self.excludedKey)
         }
     }
 

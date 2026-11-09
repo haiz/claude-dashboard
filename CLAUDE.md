@@ -100,7 +100,9 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   a 10-minute failure cooldown, the last event (`lastEvent`, no longer shown in the footer) and the Switch Log (`AutoSwitchLogStore`,
   `auto_switch_logs.db`: each switch and failed attempt, and one row per no-candidate stretch; manual Switch presses are logged
   there too, tagged Manual via the `trig` column, 0 auto / 1 manual). It only uses `.ready` accounts via
-  `ClaudeCodeSwitcher.switchTo`: never a browser, never `switchMessage`.
+  `ClaudeCodeSwitcher.switchTo`: never a browser, never `switchMessage`. An account with
+  **Exclude from Auto Switch** on (account page; `autoSwitchExcludedAccountIds`, joined to the
+  planner's `excluded` set) is never a target at any tier; excluding the home account unticks it.
   Spec: `docs/superpowers/specs/2026-10-13-auto-switch-design.md`.
 - **Critical** (`Services/Critical/`) — `UsageRatioController` recomputes X (7d % per full 5h window,
   all accounts pooled, last 3 days of `usage_logs`, `resetsAt` jitter tolerated) at launch and hourly
@@ -145,7 +147,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
 - **ClaudeDashboardApp** — Entry point. `MenuBarExtra` with `AppDelegate` managing window lifecycle.
 - **MenuBarPopover** — Compact menu bar dropdown. Expand button opens `MainWindow`.
 - **MainWindow** — System Settings-style `NavigationSplitView`. `SidebarView` lists Usage (Dashboard, Overview), Accounts (one row per account), Tools (Ping Log, Switch Log, Help) and Settings (Accounts, General); `DashboardViewModel.selection: SidebarItem` picks the pane. Each pane starts with a `PaneHeader` (title + its buttons; the AppKit window has no native toolbar).
-- **DashboardPane / AccountPane** — the `AccountCard` grid, and the per-account page (header, `UsageGaugeRow`, the `AccountDetailView` chart, actions).
+- **DashboardPane / AccountPane** — the `AccountCard` grid, and the per-account page (header, `UsageGaugeRow`, the `AccountDetailView` chart, actions). The History toolbar's range label ("14:02 2% → now 9%") comes from `ChartWindowSummary` (Rust `core::chart::window_summary`), rules in `contract/cases/chart-window-summary.json`.
 - **AccountCard / UsageBar** — Per-account display with color-interpolated progress bars (green→red).
 - **SetupView** — Wizard scanning browser profiles for active Claude sessions. Offers the installed browsers (Chrome, Chrome Dev, Arc, Brave, Edge) and scans the one the user picks, remembering the choice in `preferredScanBrowser`.
 - **Settings panes** (`Views/Settings/`) — `AccountsSettingsPane` (add via the `SetupView` sheet, delete, Re-sync All) and `GeneralSettingsPane` (About header, Auto Refresh, Updates). There is no rename UI; an account's name is derived at sync time (email when available, else the browser profile name).

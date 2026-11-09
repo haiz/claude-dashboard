@@ -175,6 +175,46 @@ final class AutoSwitchControllerTests: XCTestCase {
         XCTAssertNil(settings.priority)
     }
 
+    func testExcludedAccountIsNeverATarget() async {
+        let active = account("a", five: 96, seven: 10, active: true)
+        let excluded = account("b", five: 0, seven: 10)
+        let other = account("c", five: 50, seven: 60)
+        settings.setExcluded(excluded.id, true)
+        let result = await controller.evaluate([active, excluded, other]) { _ in }
+        XCTAssertEqual(result, other.id)
+
+        let alone = await controller.evaluate([active, excluded]) { _ in }
+        XCTAssertNil(alone)
+        XCTAssertEqual(controller.lastEvent?.kind, .noCandidate)
+    }
+
+    func testExcludedAccountIsNotACriticalTarget() async {
+        let active = account("a", five: 10, seven: 10, active: true)
+        var target = account("b", five: 0, seven: 30)
+        target.critical = CriticalAssessment(level: .high, waste: 12)
+        settings.setExcluded(target.id, true)
+        let result = await controller.evaluate([active, target]) { _ in }
+        XCTAssertNil(result)
+    }
+
+    /// The active account may be excluded: auto switch still moves Claude Code off it.
+    func testExcludedActiveAccountIsStillLeft() async {
+        let active = account("a", five: 96, seven: 10, active: true)
+        let target = account("b", five: 0, seven: 10)
+        settings.setExcluded(active.id, true)
+        let result = await controller.evaluate([active, target]) { _ in }
+        XCTAssertEqual(result, target.id)
+    }
+
+    func testExcludedIdDroppedWhenItsAccountIsGoneEvenWhileDisabled() async {
+        settings.isEnabled = false
+        let kept = account("a", five: 10, seven: 10, active: true)
+        settings.setExcluded(kept.id, true)
+        settings.setExcluded(UUID(), true)
+        _ = await controller.evaluate([kept]) { _ in }
+        XCTAssertEqual(settings.excluded, [kept.id])
+    }
+
     func testNoCandidateEvent() async {
         let active = account("a", five: 96, seven: 10, active: true)
         let notReady = account("b", five: 0, seven: 10, availability: .notCaptured)
