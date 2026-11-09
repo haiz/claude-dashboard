@@ -11,9 +11,9 @@
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.35.1</string>
+    <string>1.36.0</string>
     <key>CDReleaseDate</key>
-    <string>2026-10-30</string>
+    <string>2026-11-09</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
