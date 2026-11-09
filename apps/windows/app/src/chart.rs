@@ -5,13 +5,13 @@
 //! `chart_model`; the `.slint` only draws what this module computes.
 
 use claude_dashboard_core::chart::{
-    average_rate, make_scale, noon_markers, rate_at, Entry, Range, Scale, Y_MAX,
+    average_rate, make_scale, noon_markers, rate_at, window_summary, Entry, Range, Scale, Y_MAX,
 };
 use claude_dashboard_core::store::ResetCycle;
 
 use crate::chart_model::{
     axis_ticks, dashed_hlines, dashed_vlines, format_duration, format_stamp, interpolate,
-    preset_span_ms, series_path, tip_on_left, x_to_ms,
+    preset_span_ms, range_label, series_path, tip_on_left, window_span_ms, x_to_ms,
 };
 use crate::{ChartState, ChartTick, ChartTipRow};
 
@@ -79,6 +79,8 @@ pub struct View {
     /// "Avg: 1.2%/h" or "Avg: --" and whether it is shown hot (> 0.1).
     pub avg_text: String,
     pub avg_hot: bool,
+    /// "14:02 2% → now 9%" beside Avg (`core::chart::window_summary`); empty on Overview.
+    pub range_text: String,
     /// Ruler: x of point A / B (px) and the Δ% card lines.
     pub measure_a_x: Option<f64>,
     pub measure_b_x: Option<f64>,
@@ -401,6 +403,12 @@ impl Interaction {
             noon_path: dashed_vlines(&noon_x, top, sc.bottom, 3.0, 4.0),
             avg_text,
             avg_hot,
+            range_text: range_label(
+                self.range,
+                &window_summary(&self.entries, self.range, self.now_ms, window_span_ms(self.window)),
+                self.now_ms,
+                local_offset_ms,
+            ),
             ..View::default()
         };
         if let Some((a, b)) = self.measure {
@@ -537,6 +545,7 @@ pub(crate) fn to_state(v: &View) -> ChartState {
         noon_path: v.noon_path.as_str().into(),
         avg_text: v.avg_text.as_str().into(),
         avg_hot: v.avg_hot,
+        range_text: v.range_text.as_str().into(),
         measure_a_visible: v.measure_a_x.is_some(),
         measure_a_x: v.measure_a_x.unwrap_or(0.0) as f32,
         measure_b_visible: v.measure_b_x.is_some(),

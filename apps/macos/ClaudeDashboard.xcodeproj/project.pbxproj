@@ -14,6 +14,7 @@
 		0924D8F9139A4EE436ABEA8C /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7E115BD84248989BAA883F /* CryptoService.swift */; };
 		09CE6D71B0AEC1F0567D7743 /* AccountStoreQuarantine.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2A774B02398706067FC3A3 /* AccountStoreQuarantine.swift */; };
 		0D2BDE04D4B6D1D0C60DC187 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
+		0E2F307F40E44ACE95131FFA /* ChartWindowSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F3F9A558E37233133C847A5 /* ChartWindowSummary.swift */; };
 		0F3D68AF3F3645FE3E1BFD0C /* FakePinger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2350E45EA897A81903976D13 /* FakePinger.swift */; };
 		1213175776995521648C0196 /* ManualKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF55256F6D81B14585D71C9 /* ManualKey.swift */; };
 		128088AF39F18164CCF8402B /* AccountsSettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95142383ED7E34A025B5F55A /* AccountsSettingsPane.swift */; };
@@ -198,6 +199,7 @@
 		C7D3F994BAA968A2E2F93649 /* DashboardViewModelProvisionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7847039AA6686C575636ACDE /* DashboardViewModelProvisionTests.swift */; };
 		CA06A14E4AF6469C7EE91BBD /* BrowserCookieService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4ED0121EB136414664B103B /* BrowserCookieService.swift */; };
 		CBA5F28B81C6FA6C0E24C610 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2535C231EBCF76F786F7B7E /* Account.swift */; };
+		CDCC9922649F3AADEE10A792 /* ChartWindowSummaryContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53D0166D2B630F72DF4EC75 /* ChartWindowSummaryContractTests.swift */; };
 		CE25D0A650D6DAB575C31023 /* AccentSwitchToggleStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3D3C642BA08FCA6281C68F /* AccentSwitchToggleStyle.swift */; };
 		CE55D2C28FBD864C7E772496 /* DashboardViewModelAutoSwitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA55958AE5E1F672CCBE9FD9 /* DashboardViewModelAutoSwitchTests.swift */; };
 		CF7DB98CD235039D3FAEA9EA /* PingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F2F0B81819D6583AA3F02AE /* PingController.swift */; };
@@ -305,6 +307,7 @@
 		2CE2258780F95A45D7C88D04 /* DashboardViewModel+Ping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DashboardViewModel+Ping.swift"; sourceTree = "<group>"; };
 		2CECA8F5BDB86E3741F82280 /* ClaudeCodeAccountDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeAccountDetector.swift; sourceTree = "<group>"; };
 		2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
+		2F3F9A558E37233133C847A5 /* ChartWindowSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartWindowSummary.swift; sourceTree = "<group>"; };
 		307168BF6B40DB84E0E5A46F /* AutoSwitchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchController.swift; sourceTree = "<group>"; };
 		3146B8ECCCCE23C2B29BFCD8 /* BrowserProfileOpenerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserProfileOpenerTests.swift; sourceTree = "<group>"; };
 		348C8E47DD7A1A6C254070A5 /* SettingsIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsIcon.swift; sourceTree = "<group>"; };
@@ -448,6 +451,7 @@
 		E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDetectionContractTests.swift; sourceTree = "<group>"; };
 		E29F783F80FE0FD6AAA842D5 /* PingLogViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingLogViewModelTests.swift; sourceTree = "<group>"; };
 		E4BAD55D59287038F16012AE /* ClaudeDashboardTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeDashboardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E53D0166D2B630F72DF4EC75 /* ChartWindowSummaryContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartWindowSummaryContractTests.swift; sourceTree = "<group>"; };
 		E54CFBC6B0C4EF6B9A3099D2 /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
 		E78303A2B3B9A1F15A814671 /* BrowserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserTests.swift; sourceTree = "<group>"; };
 		E79F99E6791ECFF919869DD5 /* DesktopSwitchSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopSwitchSettingsTests.swift; sourceTree = "<group>"; };
@@ -559,6 +563,7 @@
 				16146A6A5F077ED8FDA9C332 /* BurnPollTests.swift */,
 				9AEE29987B849E18AFE5E428 /* BurnRateContractTests.swift */,
 				95A99A9BA83C1C687A1C2E17 /* BurnRateTrackerTests.swift */,
+				E53D0166D2B630F72DF4EC75 /* ChartWindowSummaryContractTests.swift */,
 				75A3660023E6BA291B7932FE /* ClaudeCodeAccountDetectorTests.swift */,
 				0CE5B6A7F181D233686CC4E2 /* ClaudeDesktopConfigFileTests.swift */,
 				8E4FC285138D87BDDD6DBADC /* ClaudeDesktopCookieFileTests.swift */,
@@ -721,6 +726,7 @@
 				9C8DC56CA1BF3E839D2876D5 /* AnimalDisplayModels.swift */,
 				F18125C2FC57514FC75F0308 /* AutoSwitchLogModels.swift */,
 				1FC225BDED78A49E00D41BB3 /* AutoSwitchSettings.swift */,
+				2F3F9A558E37233133C847A5 /* ChartWindowSummary.swift */,
 				ADDFE458A047B94A7BDECE60 /* ClaudeCodeCredential.swift */,
 				FCCFAC39E6AB87092AEC2D54 /* CriticalSettings.swift */,
 				88EBE6888FCD1A377372D9FB /* PingLogModels.swift */,
@@ -893,7 +899,7 @@
 			path = Ping;
 			sourceTree = "<group>";
 		};
-		"TEMP_D1472C8F-4694-4340-8EBC-80C9D4E6662F" /* Resources */ = {
+		"TEMP_078FD029-FEEE-471A-8AD2-0DE284346F7A" /* Resources */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -1061,6 +1067,7 @@
 				145E49E2F8475F1D392671CD /* BurnPollTests.swift in Sources */,
 				C76FCE10EDB30B02770BB9D0 /* BurnRateContractTests.swift in Sources */,
 				FE8FF5E441863A71BB60B928 /* BurnRateTrackerTests.swift in Sources */,
+				CDCC9922649F3AADEE10A792 /* ChartWindowSummaryContractTests.swift in Sources */,
 				F6F423B9B14E2440A491018C /* ClaudeCodeAccountDetectorTests.swift in Sources */,
 				1546E64E1503CDC34E845091 /* ClaudeCodeCredentialTests.swift in Sources */,
 				FF7FA6DED852CC49F02B924D /* ClaudeCodeLoginProvisionerTests.swift in Sources */,
@@ -1224,6 +1231,7 @@
 				BB0F46A73BAA2C671C8C0BEF /* BrowserProfileOpener.swift in Sources */,
 				C55139E8A06AEB594F5F36EA /* BurnAnimalAssetCatalog.swift in Sources */,
 				BAAE906146838597BF21E53E /* BurnRateTracker.swift in Sources */,
+				0E2F307F40E44ACE95131FFA /* ChartWindowSummary.swift in Sources */,
 				4BA658DB89EAC4997E431C13 /* ClaudeCodeAccountDetector.swift in Sources */,
 				49F45640C3EB1048441C4F49 /* ClaudeCodeCredential.swift in Sources */,
 				773DC5318E35F74CC255551A /* ClaudeCodeLoginProvisioner.swift in Sources */,

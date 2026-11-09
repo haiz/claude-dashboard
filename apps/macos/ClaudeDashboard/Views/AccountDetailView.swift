@@ -49,6 +49,12 @@ struct AccountDetailView: View {
                     isInteractionDisabled: measureToolActive,
                     liveTick: dashboardViewModel.lastLogsUpdatedAt,
                     autoFollowsLiveEdge: viewModel.selectedCycle == nil,
+                    rangeLabel: { range in
+                        let now = Date()
+                        return ChartWindowSummary.make(logs: viewModel.logs, range: range, now: now,
+                                                       window: viewModel.selectedWindow)
+                            .text(range: range, now: now)
+                    },
                     onRangeChanged: { range in
                         viewModel.updateRange(range)
                     },

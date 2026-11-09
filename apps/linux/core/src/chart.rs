@@ -362,6 +362,64 @@ pub fn rate_at(entries: &[Entry], ms: f64) -> Option<f64> {
     }
 }
 
+/// What the account chart's range label shows; see
+/// `contract/cases/chart-window-summary.json`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WindowSummary {
+    /// The range ends within 60 s of now, so the label reads "now".
+    pub end_is_now: bool,
+    /// Rounded utilization at `from` and `to`; both `Some` or both `None`.
+    pub start_pct: Option<i64>,
+    pub end_pct: Option<i64>,
+}
+
+/// How close to now (ms) the range end must be to read "now".
+const NOW_TOLERANCE_MS: f64 = 60_000.0;
+
+/// Utilization at `ms`: `None` with no point at or before `ms`, else linear
+/// between the points around it, or the last value past the final point.
+fn value_at(entries: &[Entry], ms: f64) -> Option<f64> {
+    let b = entries.iter().rposition(|e| e.ms <= ms)?;
+    match entries.get(b + 1) {
+        Some(a) if a.ms > entries[b].ms => {
+            let f = (ms - entries[b].ms) / (a.ms - entries[b].ms);
+            Some(entries[b].value + (a.value - entries[b].value) * f)
+        }
+        _ => Some(entries[b].value),
+    }
+}
+
+/// Range label facts for the account chart. `entries` ascending, through
+/// `with_reset_transitions`, with context points outside the range.
+/// `window_span_ms` is the usage window's length (5 h, 7 d), or `None` for a
+/// window that never shows percentages (Fable).
+///
+/// ```text
+/// 5h chart, last 5 h, 2% -> 9%, no reset: end_is_now, Some(2), Some(9)
+/// ```
+pub fn window_summary(entries: &[Entry], range: Range, now_ms: f64, window_span_ms: Option<f64>) -> WindowSummary {
+    let end_is_now = (now_ms - range.to_ms).abs() <= NOW_TOLERANCE_MS;
+    let hidden = WindowSummary { end_is_now, start_pct: None, end_pct: None };
+    let Some(limit) = window_span_ms else { return hidden };
+    if range.to_ms - range.from_ms > limit {
+        return hidden;
+    }
+    let has_reset = entries.windows(2).any(|w| {
+        w[1].ms > range.from_ms && w[1].ms <= range.to_ms && w[0].value > 0.0 && w[1].value == 0.0
+    });
+    if has_reset {
+        return hidden;
+    }
+    let (Some(start), Some(end)) = (value_at(entries, range.from_ms), value_at(entries, range.to_ms)) else {
+        return hidden;
+    };
+    let (start, end) = (start.round() as i64, end.round() as i64);
+    if start == end {
+        return hidden;
+    }
+    WindowSummary { end_is_now, start_pct: Some(start), end_pct: Some(end) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

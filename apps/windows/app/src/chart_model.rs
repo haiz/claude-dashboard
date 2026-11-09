@@ -2,7 +2,7 @@
 //! rules, day bands), axis ticks and hover hit-testing. All geometry comes
 //! from `claude_dashboard_core::chart`.
 
-use claude_dashboard_core::chart::{segments, Entry, Range, Scale, Y_TICKS};
+use claude_dashboard_core::chart::{segments, Entry, Range, Scale, WindowSummary, Y_TICKS};
 use claude_dashboard_core::store::SeriesPoint;
 
 /// (x ticks as (pixel, label), y gridlines as (value, pixel)).
@@ -73,6 +73,39 @@ fn civil(ms: f64) -> (i64, usize, i64, i64) {
 pub fn format_stamp(ms: f64) -> String {
     let (day, month, hour, minute) = civil(ms);
     format!("{day} {} {hour:02}:{minute:02}", MONTHS[month])
+}
+
+/// The History toolbar's range label (macOS `ChartWindowSummary.text`): "14:02 → now",
+/// "7 Nov 09:00 → 7 Nov 14:00", "14:02 2% → now 9%". A time on another local day than
+/// `now_ms` gets its day and month. `local_offset_ms` shifts UTC ms to the wall clock.
+pub fn range_label(range: Range, summary: &WindowSummary, now_ms: f64, local_offset_ms: f64) -> String {
+    let today = ((now_ms + local_offset_ms) / DAY_MS).floor();
+    let stamp = |ms: f64| {
+        let local = ms + local_offset_ms;
+        if (local / DAY_MS).floor() == today {
+            let (_, _, hour, minute) = civil(local);
+            format!("{hour:02}:{minute:02}")
+        } else {
+            format_stamp(local)
+        }
+    };
+    let mut start = stamp(range.from_ms);
+    let mut end = if summary.end_is_now { "now".to_string() } else { stamp(range.to_ms) };
+    if let (Some(s), Some(e)) = (summary.start_pct, summary.end_pct) {
+        start.push_str(&format!(" {s}%"));
+        end.push_str(&format!(" {e}%"));
+    }
+    format!("{start} \u{2192} {end}")
+}
+
+/// Length of a usage window (code 5h = 0, 7d = 1) for `window_summary`'s percentages; none
+/// for Fable (3), which never shows them.
+pub fn window_span_ms(window: i64) -> Option<f64> {
+    match window {
+        0 => Some(5.0 * HOUR_MS),
+        1 => Some(7.0 * DAY_MS),
+        _ => None,
+    }
 }
 
 /// macOS `axisLabel`: "3PM" for ranges up to 6 h, else "Oct 17" at midnight
@@ -346,6 +379,23 @@ pub fn points_to_entries(points: &[SeriesPoint]) -> Vec<Entry> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn range_label_names_the_day_only_off_today() {
+        use super::*;
+        // 8 Nov 2025 14:00 UTC, as macOS ChartWindowSummaryContractTests.
+        let now = 1_762_610_400_000.0;
+        let live = Range { from_ms: now - 5.0 * HOUR_MS, to_ms: now };
+        let up = WindowSummary { end_is_now: true, start_pct: Some(2), end_pct: Some(9) };
+        assert_eq!(range_label(live, &up, now, 0.0), "09:00 2% \u{2192} now 9%");
+        let flat = WindowSummary { end_is_now: true, start_pct: None, end_pct: None };
+        assert_eq!(range_label(live, &flat, now, 0.0), "09:00 \u{2192} now");
+        let past = Range { from_ms: now - 30.0 * HOUR_MS, to_ms: now - 25.0 * HOUR_MS };
+        let old = WindowSummary { end_is_now: false, start_pct: None, end_pct: None };
+        assert_eq!(range_label(past, &old, now, 0.0), "7 Nov 08:00 \u{2192} 7 Nov 13:00");
+        assert_eq!(range_label(past, &old, now, 7.0 * HOUR_MS), "7 Nov 15:00 \u{2192} 7 Nov 20:00", "UTC+7 wall clock");
+        assert_eq!((window_span_ms(0), window_span_ms(1), window_span_ms(3)), (Some(5.0 * HOUR_MS), Some(7.0 * DAY_MS), None));
+    }
+
     use super::*;
     use claude_dashboard_core::chart::make_scale;
 

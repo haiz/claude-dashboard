@@ -43,6 +43,8 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
     let toolbarExtra: () -> ToolbarExtra
     let dataPoints: [UsageLogEntry]
     let averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)?
+    /// Text of the range label beside Avg (e.g. "14:02 2% → now 9%"), or nil for none.
+    let rangeLabel: ((ClosedRange<Date>) -> String)?
     let onRangeChanged: (ClosedRange<Date>) -> Void
     let chartHeight: CGFloat
     let isInteractionDisabled: Bool
@@ -71,6 +73,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         liveTick: Date,
         autoFollowsLiveEdge: Bool,
         averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)? = nil,
+        rangeLabel: ((ClosedRange<Date>) -> String)? = nil,
         onRangeChanged: @escaping (ClosedRange<Date>) -> Void,
         @ViewBuilder chartContent: @escaping (ClosedRange<Date>) -> ChartContent,
         @ViewBuilder toolbarExtra: @escaping () -> ToolbarExtra
@@ -81,6 +84,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         self.liveTick = liveTick
         self.autoFollowsLiveEdge = autoFollowsLiveEdge
         self.averageRateProvider = averageRateProvider
+        self.rangeLabel = rangeLabel
         self.onRangeChanged = onRangeChanged
         self.chartContent = chartContent
         self.toolbarExtra = toolbarExtra
@@ -155,8 +159,13 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
 
             Spacer()
 
-            averageRateOverlay
-                .allowsHitTesting(false)
+            HStack(spacing: 6) {
+                if let rangeLabel {
+                    toolbarPill(Text(rangeLabel(visibleRange)).foregroundStyle(.secondary))
+                }
+                averageRateOverlay
+            }
+            .allowsHitTesting(false)
 
             Spacer()
 
@@ -204,21 +213,24 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
 
     private var averageRateOverlay: some View {
         let rate = computeAverageRate()
-        return VStack(alignment: .trailing, spacing: 0) {
-            Group {
-                if let rate = rate {
-                    Text(String(format: "Avg: %.1f%%/h", rate))
-                        .foregroundStyle(rate > 0.1 ? Color.orange : Color.green)
-                } else {
-                    Text("Avg: --")
-                        .foregroundStyle(.secondary)
-                }
+        return toolbarPill(Group {
+            if let rate = rate {
+                Text(String(format: "Avg: %.1f%%/h", rate))
+                    .foregroundStyle(rate > 0.1 ? Color.orange : Color.green)
+            } else {
+                Text("Avg: --")
+                    .foregroundStyle(.secondary)
             }
+        })
+    }
+
+    private func toolbarPill(_ content: some View) -> some View {
+        content
             .font(.caption2.monospacedDigit())
+            .lineLimit(1)
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
-        }
     }
 
     private func computeAverageRate() -> Double? {

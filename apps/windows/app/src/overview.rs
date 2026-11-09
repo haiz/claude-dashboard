@@ -166,6 +166,7 @@ impl Overview {
             }
         });
         v.line_path.clear();
+        v.range_text.clear();
         v.empty = self.series.values().all(|s| s.is_empty());
 
         // Plan-weighted Avg over the visible range (macOS `weightedAverageRate`).

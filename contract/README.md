@@ -652,6 +652,26 @@ driven by `cases/manual-key.json`.
 The Linux side has no resync. `sync` and `add-key` are its two writers, and
 `add-key` obeys the pasted-key rule above rather than the resync one.
 
+## Chart range label
+
+The account History chart's toolbar shows the visible range beside Avg, e.g.
+`14:02 2% → now 9%`. Cases: `cases/chart-window-summary.json` (`window` is
+`5h`, `7d` or `F`; `from`, `to`, `now` and each `points` entry's time are Unix
+seconds; `points` are `[t, utilization]`, ascending, already through the reset
+transitions, including the context points outside `[from, to]` the chart
+loads). Swift `ChartWindowSummary`, Rust `core::chart::window_summary`.
+
+- The end reads `now` when `to` is within 60 s of `now`.
+- `value_at(t)`: none when no point is at or before `t`; otherwise linear
+  between the points around `t`, or the last value when no point is after it.
+- The start and end percentages show only when all hold: the window is 5h and
+  the range spans at most 5 h, or 7d and at most 7 d (never F); no point `b`
+  with `from < b.t <= to` has value 0 right after a point above 0 (a reset);
+  both values exist; and their rounded values (half away from zero) differ.
+
+Formatting is platform detail, but both apps print `HH:mm`, or `d MMM HH:mm`
+for a time on another local day than now, and the Overview shows no label.
+
 ## Ping
 
 Starting an account's usage windows without Claude Code: one short claude.ai message sent
