@@ -9,6 +9,9 @@ struct AccountUsageState: Identifiable {
     var isLoading: Bool = false
     var error: String?
     var burnRates: BurnRates?
+    /// Usage refreshes in a row that ended in an error (each after `fetchWithRetry`'s own
+    /// attempts). A successful refresh sets it back to 0. In memory only.
+    var consecutiveFailures: Int = 0
 }
 
 extension AccountUsageState {
@@ -440,6 +443,8 @@ final class DashboardViewModel: ObservableObject {
                 if let index = accountStates.firstIndex(where: { $0.id == accountId }) {
                     accountStates[index].usage = usage ?? accountStates[index].usage
                     accountStates[index].error = error
+                    accountStates[index].consecutiveFailures =
+                        error == nil ? 0 : accountStates[index].consecutiveFailures + 1
                     // Only a successful fetch's 5h value counts as activity.
                     if let usage, error == nil {
                         animalActivity.recordSuccess(
@@ -1188,12 +1193,30 @@ final class DashboardViewModel: ObservableObject {
 
     // MARK: - Menubar Label
 
+    /// Refreshes in a row that must fail before the menu bar shows a sync error.
+    static let menuBarSyncFailureThreshold = 3
+
+    /// The account the menu bar stands for: the pinned one with usage, else the first with
+    /// usage; with no usage anywhere, the pinned one, else the first.
+    var menuBarState: AccountUsageState? {
+        let pinned = accountStates.first { $0.account.isPinned }
+        if let pinned, pinned.usage != nil { return pinned }
+        return accountStates.first { $0.usage != nil } ?? pinned ?? accountStates.first
+    }
+
+    /// True when the menu bar account's usage cannot be synced: its last
+    /// `menuBarSyncFailureThreshold` refreshes all failed, or its session expired.
+    /// The label then drops the stale percentage for a sync-error mark.
+    ///
+    ///     state.consecutiveFailures = 3   // -> menuBarSyncFailing == true
+    var menuBarSyncFailing: Bool {
+        guard let state = menuBarState else { return false }
+        return state.account.status == .expired
+            || state.consecutiveFailures >= Self.menuBarSyncFailureThreshold
+    }
+
     private var menuBarSource: UsageLimit? {
-        if let pinned = accountStates.first(where: { $0.account.isPinned }),
-           let usage = pinned.usage {
-            return usage.fiveHour
-        }
-        return accountStates.first { $0.usage != nil }?.usage?.fiveHour
+        menuBarState?.usage?.fiveHour
     }
 
     var menuBarPercentText: String {
@@ -1250,7 +1273,8 @@ final class DashboardViewModel: ObservableObject {
                     usage: existing.usage,
                     isLoading: existing.isLoading,
                     error: existing.error,
-                    burnRates: existing.burnRates
+                    burnRates: existing.burnRates,
+                    consecutiveFailures: existing.consecutiveFailures
                 )
             }
             return AccountUsageState(id: account.id, account: account)

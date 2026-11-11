@@ -191,6 +191,60 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertTrue(vm.menuBarPercentText.hasPrefix("10%"))
     }
 
+    // MARK: - menu bar sync error
+
+    func testMenuBarSyncFailing_needsThreeFailedRefreshesOfTheMenuBarAccount() throws {
+        let vm = try makeViewModel(detectorEmail: nil)
+        let a = makeAccount(pinned: true, name: "A")
+        var stateA = makeState(account: a, utilization: 30, resetsIn: 3600)
+        stateA.consecutiveFailures = 2
+        vm.accountStates = [stateA]
+        XCTAssertFalse(vm.menuBarSyncFailing, "two failures are not enough")
+        vm.accountStates[0].consecutiveFailures = 3
+        XCTAssertTrue(vm.menuBarSyncFailing)
+    }
+
+    func testMenuBarSyncFailing_ignoresAccountsNotOnTheMenuBar() throws {
+        let vm = try makeViewModel(detectorEmail: nil)
+        let a = makeAccount(pinned: true, name: "A")
+        let b = makeAccount(pinned: false, name: "B")
+        var stateB = makeState(account: b, utilization: 90, resetsIn: 3600)
+        stateB.consecutiveFailures = 5
+        vm.accountStates = [makeState(account: a, utilization: 30, resetsIn: 3600), stateB]
+        XCTAssertFalse(vm.menuBarSyncFailing, "B fails but the menu bar shows pinned A")
+        vm.accountStates[0].account.isPinned = false
+        vm.accountStates[1].account.isPinned = true
+        XCTAssertEqual(vm.menuBarState?.id, b.id)
+        XCTAssertTrue(vm.menuBarSyncFailing, "pinning B moves the menu bar to the failing account")
+    }
+
+    func testMenuBarSyncFailing_expiredMenuBarAccount() throws {
+        let vm = try makeViewModel(detectorEmail: nil)
+        var a = makeAccount(pinned: true, name: "A")
+        a.status = .expired
+        vm.accountStates = [makeState(account: a, utilization: 30, resetsIn: 3600)]
+        XCTAssertTrue(vm.menuBarSyncFailing)
+    }
+
+    func testMenuBarSyncFailing_falseWithoutAccounts() throws {
+        let vm = try makeViewModel(detectorEmail: nil)
+        vm.accountStates = []
+        XCTAssertFalse(vm.menuBarSyncFailing)
+    }
+
+    func testSyncErrorText_showsLastSuccessTimeOrDate() {
+        let now = Date()
+        XCTAssertEqual(MenuBarPopover.syncErrorText(name: "alice", lastSuccess: nil, now: now),
+                       "Sync failing for alice")
+        let today = MenuBarPopover.syncErrorText(name: "alice", lastSuccess: now, now: now)
+        XCTAssertEqual(today, "Sync failing for alice · last success "
+                       + now.formatted(date: .omitted, time: .shortened))
+        let old = now.addingTimeInterval(-3 * 86400)
+        XCTAssertEqual(MenuBarPopover.syncErrorText(name: "alice", lastSuccess: old, now: now),
+                       "Sync failing for alice · last success "
+                       + old.formatted(date: .abbreviated, time: .shortened))
+    }
+
     func testSortStates_activeCCNotBoosted_whenOtherAccountIsPinned() throws {
         let vm = try makeViewModel(detectorEmail: "active@x.com")
         // C is pinned. B is the active CC account but unpinned.
@@ -485,6 +539,48 @@ final class DashboardViewModelTests: XCTestCase {
                                            httpVersion: nil, headerFields: nil)!
             return (response, Data(body.utf8))
         }
+    }
+
+    /// Counts each refresh once (after `fetchWithRetry`'s own attempts): the third failed
+    /// refresh in a row flags the menu bar, one success clears it.
+    func testRefreshCountsFailuresAndSuccessClearsTheMenuBarSyncError() async throws {
+        let failing = Box(false)
+        MockURLProtocol.requestHandler = { request in
+            let body = (request.url?.path ?? "").hasSuffix("/usage") ? Self.emptyUsageJSON : "[]"
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                    headerFields: nil)!, Data(body.utf8))
+        }
+        let (vm, store) = try makeViewModelWithStore()
+        let account = makeAccount(orgId: "org-1", pinned: true, accountUuid: "acct-1")
+        store.addAccount(account)
+        store.saveSessionKey("sk-test", for: account.id)
+        await Task.yield()
+        XCTAssertEqual(vm.accountStates.count, 1, "sanity: account reached accountStates")
+        // The view model's own launch refresh must finish first, or it would count too.
+        for _ in 0..<300 where vm.isRefreshing { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertFalse(vm.isRefreshing)
+
+        failing.value = true
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            let fail = failing.value && path.hasSuffix("/usage")
+            let body = path.hasSuffix("/usage") ? Self.emptyUsageJSON : "[]"
+            let response = HTTPURLResponse(url: request.url!, statusCode: fail ? 500 : 200,
+                                           httpVersion: nil, headerFields: nil)!
+            return (response, Data((fail ? "oops" : body).utf8))
+        }
+
+        await vm.refreshAll()
+        await vm.refreshAll()
+        XCTAssertEqual(vm.accountStates.first?.consecutiveFailures, 2)
+        XCTAssertFalse(vm.menuBarSyncFailing)
+        await vm.refreshAll()
+        XCTAssertTrue(vm.menuBarSyncFailing)
+
+        failing.value = false
+        await vm.refreshAll()
+        XCTAssertEqual(vm.accountStates.first?.consecutiveFailures, 0)
+        XCTAssertFalse(vm.menuBarSyncFailing)
     }
 
     func testRefreshBackfillsAccountUuidAndEmailWhenMissing() async throws {

@@ -141,7 +141,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   `docs/superpowers/specs/2026-10-29-rocket-burn-level-design.md`.
 
 ### ViewModel
-- **DashboardViewModel** — `@MainActor` observable. Parallel refresh via `TaskGroup`. Sorts accounts by burn rate (utilization / time-remaining). Computes menu bar label from highest utilization.
+- **DashboardViewModel** — `@MainActor` observable. Parallel refresh via `TaskGroup`. Sorts accounts by burn rate (utilization / time-remaining). The menu bar label follows `menuBarState` (pinned account, else the top one); after 3 failed refreshes in a row of that account (`consecutiveFailures`, in memory) or when it is expired, `menuBarSyncFailing` swaps the percentage for a red sync mark and the popover shows a "Sync failing" banner.
 
 ### Views
 - **ClaudeDashboardApp** — Entry point. `MenuBarExtra` with `AppDelegate` managing window lifecycle.

@@ -124,7 +124,7 @@ struct HelpView: View {
             }
             HelpRow(symbol: "exclamationmark.triangle.fill", color: .orange, "**Session expired**: sign in again in the browser, then **Re-sync**.")
 
-            HelpCallout(.note, "The menu bar shows the 5h usage and the time left until reset for your pinned account, or the top account when none is pinned.")
+            HelpCallout(.note, "The menu bar shows the 5h usage and the time left until reset for your pinned account, or the top account when none is pinned. When that account's last 3 refreshes all failed, or its session expired, a red sync mark replaces the percentage; the popover says when it last synced.")
         }
     }
 

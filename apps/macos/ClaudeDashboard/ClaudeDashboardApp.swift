@@ -1,8 +1,45 @@
 import SwiftUI
 import AppKit
 
-private enum MenuBarLabelRenderer {
+enum MenuBarLabelRenderer {
     private static let barH: CGFloat = 22
+
+    /// Symbol of the sync-error mark, and the one drawn if this macOS lacks it.
+    static let syncErrorSymbol = "exclamationmark.arrow.triangle.2.circlepath"
+    static let syncErrorFallbackSymbol = "exclamationmark.circle.fill"
+
+    /// The menu bar label while the menu bar account cannot sync
+    /// (`DashboardViewModel.menuBarSyncFailing`): the usual bar icon, then a red sync-error
+    /// mark in place of the percentage and time. Not a template image, so the red survives;
+    /// the bar icon is drawn in `labelColor`, resolved when the menu bar draws it.
+    static func renderSyncError() -> NSImage {
+        let iconCfg = NSImage.SymbolConfiguration(pointSize: 20, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.labelColor]))
+        let iconImg = (NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(iconCfg))!
+        let iconSz = iconImg.size
+        let iconDrawW = ceil(iconSz.width * 2.0 / 3.0)
+
+        let markCfg = NSImage.SymbolConfiguration(pointSize: 15, weight: .bold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.systemRed]))
+        let markImg = (NSImage(systemSymbolName: syncErrorSymbol, accessibilityDescription: "Sync failing")
+            ?? NSImage(systemSymbolName: syncErrorFallbackSymbol, accessibilityDescription: "Sync failing"))!
+            .withSymbolConfiguration(markCfg)!
+        let markSz = markImg.size
+
+        let gap: CGFloat = 3
+        let totalW = iconDrawW + gap + ceil(markSz.width)
+        let image = NSImage(size: NSSize(width: totalW, height: barH), flipped: false) { _ in
+            iconImg.draw(in: NSRect(x: 0, y: (barH - iconSz.height) / 2,
+                                    width: iconDrawW, height: iconSz.height))
+            markImg.draw(in: NSRect(x: iconDrawW + gap, y: (barH - markSz.height) / 2,
+                                    width: markSz.width, height: markSz.height))
+            return true
+        }
+        image.isTemplate = false
+        image.accessibilityDescription = "Claude Dashboard: sync failing"
+        return image
+    }
 
     static func render(percent: String, time: String?) -> NSImage {
         let pctFont = NSFont.monospacedDigitSystemFont(ofSize: 14, weight: .bold)
@@ -105,10 +142,12 @@ struct ClaudeDashboardApp: App {
                 }
             }
         } label: {
-            Image(nsImage: MenuBarLabelRenderer.render(
-                percent: viewModel.menuBarPercentText,
-                time: viewModel.menuBarTimeText
-            ))
+            Image(nsImage: viewModel.menuBarSyncFailing
+                ? MenuBarLabelRenderer.renderSyncError()
+                : MenuBarLabelRenderer.render(
+                    percent: viewModel.menuBarPercentText,
+                    time: viewModel.menuBarTimeText
+                ))
         }
         .menuBarExtraStyle(.window)
     }

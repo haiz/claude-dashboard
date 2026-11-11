@@ -92,6 +92,10 @@ struct MenuBarPopover: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
 
+            if viewModel.menuBarSyncFailing, let state = viewModel.menuBarState {
+                syncErrorBanner(state)
+            }
+
             Divider()
 
             // Account cards
@@ -155,6 +159,33 @@ struct MenuBarPopover: View {
                 }
             }
         }
+    }
+
+    /// Why the menu bar shows the red sync mark instead of a percentage.
+    private func syncErrorBanner(_ state: AccountUsageState) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: MenuBarLabelRenderer.syncErrorSymbol)
+                .foregroundStyle(.red)
+            Text(Self.syncErrorText(name: state.account.name, lastSuccess: state.account.lastSynced))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.red.opacity(0.12))
+    }
+
+    /// "Sync failing for alice · last success 14:02" (a date is added when not today;
+    /// no clause at all when the account never synced).
+    static func syncErrorText(name: String, lastSuccess: Date?, now: Date = Date()) -> String {
+        let head = "Sync failing for \(name)"
+        guard let lastSuccess else { return head }
+        let when = Calendar.current.isDate(lastSuccess, inSameDayAs: now)
+            ? lastSuccess.formatted(date: .omitted, time: .shortened)
+            : lastSuccess.formatted(date: .abbreviated, time: .shortened)
+        return "\(head) · last success \(when)"
     }
 
     private var updateBanner: some View {
