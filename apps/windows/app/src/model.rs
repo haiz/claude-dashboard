@@ -13,7 +13,7 @@ use claude_dashboard_core::model::{AccountPlan, AccountStatus};
 use claude_dashboard_core::rows::{sidebar_percent, DisplayRow, WindowView};
 
 use crate::animal_assets;
-use claude_dashboard_core::animal_display::ACTIVITY_SECONDS;
+use claude_dashboard_core::animal_display::{five_hour_full, ACTIVITY_SECONDS};
 use crate::{UiRow, UiSegment, UiWindow};
 
 const FIVE_HOUR_S: f64 = 18000.0;
@@ -220,11 +220,14 @@ fn window(
 /// `UiWindow.animal-expires-at` while the 5h value has not changed since launch.
 const NO_EXPIRY: f32 = -1.0;
 
-/// The animated asset id for the 5h ring: the stable id of `animal` while `show_animals` is on
-/// and the packaged manifest lists it, else "" (percentage only). Activity is separate: see
-/// [`set_animal_activity`].
-fn five_hour_asset(animal: &str, show_animals: bool) -> slint::SharedString {
-    if show_animals { animal_assets::asset_for_emoji(animal).unwrap_or("").into() } else { Default::default() }
+/// The animated asset id for the 5h ring: the stable id of `animal` while `show_animals` is on,
+/// the packaged manifest lists it and the 5h window is not full (`core::animal_display::
+/// five_hour_full`), else "" (percentage only). Activity is separate: see [`set_animal_activity`].
+fn five_hour_asset(animal: &str, show_animals: bool, five_hour: &Option<WindowView>) -> slint::SharedString {
+    if !show_animals || five_hour_full(five_hour.as_ref().map(|w| w.utilization)) {
+        return Default::default();
+    }
+    animal_assets::asset_for_emoji(animal).unwrap_or("").into()
 }
 
 /// Stamps the 5h window with when its animal activity lapses: `changed_at` (monotonic seconds,
@@ -267,7 +270,7 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64, show_animals: bool) -> UiRow
         peak: row.peak_utilization as f32,
         peak_color: to_color(usage_color(row.peak_utilization)),
         five_hour: UiWindow {
-            animal_asset: five_hour_asset(animal, show_animals),
+            animal_asset: five_hour_asset(animal, show_animals, &row.five_hour),
             ..window(&row.five_hour, FIVE_HOUR_S, now_unix_s, shift, animal, true)
         },
         seven_day: window(
@@ -618,6 +621,15 @@ mod tests {
         assert!(c.green() > c.red() && c.green() > c.blue());
         assert_eq!(ui.plan.as_str(), "Pro");
         assert_eq!(ui.staleness.as_str(), "Never synced");
+    }
+
+    #[test]
+    fn a_full_five_hour_window_shows_no_animal_asset() {
+        let mut r = burning_row();
+        r.five_hour = Some(WindowView { utilization: 100.0, resets_at_unix: Some(1e9 + 3600.0), is_limited: true });
+        assert!(to_ui_row(&r, 1e9, true).five_hour.animal_asset.is_empty());
+        r.five_hour = Some(WindowView { utilization: 99.0, resets_at_unix: Some(1e9 + 3600.0), is_limited: false });
+        assert!(!to_ui_row(&r, 1e9, true).five_hour.animal_asset.is_empty());
     }
 
     #[test]

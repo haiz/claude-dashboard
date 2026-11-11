@@ -24,10 +24,14 @@
     { "name": "accounts have independent activity state", "operations": [{ "kind": "success", "account_id": "a", "utilization": 10.0, "resets_at": 1000.0, "at": 0.0 }, { "kind": "success", "account_id": "b", "utilization": 10.0, "resets_at": 1000.0, "at": 0.0 }, { "kind": "success", "account_id": "a", "utilization": 11.0, "resets_at": 1000.0, "at": 10.0 }], "checks": [{ "account_id": "a", "at": 10.0, "expect_active": true }, { "account_id": "b", "at": 10.0, "expect_active": false }] }
   ],
   "eligibility_cases": [
-    { "name": "eligible five hour animal resolves to a stable asset", "show_burn_animals": true, "is_five_hour": true, "animal": "🐇", "is_active": true, "expect_asset_id": "rabbit" },
-    { "name": "setting off suppresses the animal", "show_burn_animals": false, "is_five_hour": true, "animal": "🐇", "is_active": true, "expect_asset_id": null },
-    { "name": "seven day never receives an animated animal", "show_burn_animals": true, "is_five_hour": false, "animal": "🐇", "is_active": true, "expect_asset_id": null },
-    { "name": "missing burn result suppresses the animal", "show_burn_animals": true, "is_five_hour": true, "animal": null, "is_active": true, "expect_asset_id": null },
-    { "name": "inactive account suppresses the animal", "show_burn_animals": true, "is_five_hour": true, "animal": "🐇", "is_active": false, "expect_asset_id": null }
+    { "name": "eligible five hour animal resolves to a stable asset", "show_burn_animals": true, "is_five_hour": true, "animal": "🐇", "is_active": true, "five_hour_utilization": 50.0, "expect_asset_id": "rabbit" },
+    { "name": "setting off suppresses the animal", "show_burn_animals": false, "is_five_hour": true, "animal": "🐇", "is_active": true, "five_hour_utilization": 50.0, "expect_asset_id": null },
+    { "name": "seven day never receives an animated animal", "show_burn_animals": true, "is_five_hour": false, "animal": "🐇", "is_active": true, "five_hour_utilization": 50.0, "expect_asset_id": null },
+    { "name": "missing burn result suppresses the animal", "show_burn_animals": true, "is_five_hour": true, "animal": null, "is_active": true, "five_hour_utilization": 50.0, "expect_asset_id": null },
+    { "name": "inactive account suppresses the animal", "show_burn_animals": true, "is_five_hour": true, "animal": "🐇", "is_active": false, "five_hour_utilization": 50.0, "expect_asset_id": null },
+    { "name": "a full 5h window suppresses the animal", "show_burn_animals": true, "is_five_hour": true, "animal": "🐇", "is_active": true, "five_hour_utilization": 100.0, "expect_asset_id": null },
+    { "name": "a 5h window over 100 percent suppresses the animal", "show_burn_animals": true, "is_five_hour": true, "animal": "🚀", "is_active": true, "five_hour_utilization": 104.0, "expect_asset_id": null },
+    { "name": "a 5h window just under full keeps the animal", "show_burn_animals": true, "is_five_hour": true, "animal": "🐇", "is_active": true, "five_hour_utilization": 99.9, "expect_asset_id": "rabbit" },
+    { "name": "unknown 5h usage keeps the animal", "show_burn_animals": true, "is_five_hour": true, "animal": "🐇", "is_active": true, "five_hour_utilization": null, "expect_asset_id": "rabbit" }
   ]
 }

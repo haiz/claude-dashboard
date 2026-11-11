@@ -78,12 +78,14 @@ final class AnimalDisplayModelsTests: XCTestCase {
         let isFiveHour: Bool
         let animal: String?
         let isActive: Bool
+        let fiveHourUtilization: Double?
         let expectAssetID: String?
         enum CodingKeys: String, CodingKey {
             case name, animal
             case showBurnAnimals = "show_burn_animals"
             case isFiveHour = "is_five_hour"
             case isActive = "is_active"
+            case fiveHourUtilization = "five_hour_utilization"
             case expectAssetID = "expect_asset_id"
         }
     }
@@ -125,7 +127,8 @@ final class AnimalDisplayModelsTests: XCTestCase {
 
         for c in fixture.eligibilityCases {
             XCTAssertEqual(AnimalDisplayModels.eligibleAsset(showBurnAnimals: c.showBurnAnimals,
-                isFiveHour: c.isFiveHour, emoji: c.animal, isActive: c.isActive), c.expectAssetID,
+                isFiveHour: c.isFiveHour, emoji: c.animal, isActive: c.isActive,
+                fiveHourUtilization: c.fiveHourUtilization), c.expectAssetID,
                 "eligibility — case: \(c.name)")
         }
 

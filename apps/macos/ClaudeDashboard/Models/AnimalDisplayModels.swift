@@ -73,9 +73,17 @@ enum AnimalDisplayModels {
         }
     }
 
+    /// The animal's asset id for a gauge, or nil when none is drawn: setting off, not the 5h
+    /// gauge, inactive, no burn-rate animal, or the 5h window already full
+    /// (`fiveHourUtilization >= 100`; nil means usage unknown and does not suppress).
+    ///
+    ///     eligibleAsset(showBurnAnimals: true, isFiveHour: true, emoji: "🐇",
+    ///                   isActive: true, fiveHourUtilization: 100)   // nil
     static func eligibleAsset(showBurnAnimals: Bool, isFiveHour: Bool,
-                              emoji: String?, isActive: Bool) -> String? {
+                              emoji: String?, isActive: Bool,
+                              fiveHourUtilization: Double?) -> String? {
         guard showBurnAnimals, isFiveHour, isActive, let emoji else { return nil }
+        if let fiveHourUtilization, fiveHourUtilization >= 100 { return nil }
         return assetID(for: emoji)
     }
 }

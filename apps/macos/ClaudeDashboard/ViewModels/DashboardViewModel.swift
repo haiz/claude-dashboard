@@ -289,12 +289,13 @@ final class DashboardViewModel: ObservableObject {
     }
 
     /// Asset id of the animal to draw on the account's 5h ring now, or nil (setting off,
-    /// inactive, or no burn-rate animal yet).
+    /// inactive, no burn-rate animal yet, or the 5h window at 100%).
     func animalAsset(for state: AccountUsageState) -> String? {
         AnimalDisplayModels.eligibleAsset(
             showBurnAnimals: showBurnAnimals, isFiveHour: true,
             emoji: state.burnRates?.fiveHour?.animal,
-            isActive: isAnimalActive(accountID: state.id))
+            isActive: isAnimalActive(accountID: state.id),
+            fiveHourUtilization: state.usage?.fiveHour.utilization)
     }
 
     /// What the account's 5h ring needs to animate its animal, or nil while the setting is

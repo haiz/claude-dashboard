@@ -60,8 +60,10 @@ of it.
   detail. The `showBurnAnimals` setting defaults to off; when enabled, only
   active 5-hour rows with a recognized burn-rate animal (the cheetah's faster
   neighbour, the rocket, included) may animate (10 s shared phase, 600 s
-  activity window). Seven-day and Fable rows show their percentage
-  only, and a missing or unreadable asset falls back to the percentage.
+  activity window). A 5-hour row whose utilization is 100 or more shows its
+  percentage only: a full window has nothing left to burn. Seven-day and
+  Fable rows show their percentage only, and a missing or unreadable asset
+  falls back to the percentage.
 
 **Platform detail (deliberately free to differ):**
 - **Cookie decryption.** How a session key is extracted from the browser's

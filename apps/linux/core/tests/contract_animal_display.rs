@@ -117,6 +117,7 @@ fn eligibility_cases() {
             c["is_five_hour"].as_bool().unwrap(),
             c["animal"].as_str(),
             c["is_active"].as_bool().unwrap(),
+            c["five_hour_utilization"].as_f64(),
         );
         assert_eq!(got, c["expect_asset_id"].as_str(), "{}", name(c));
     }

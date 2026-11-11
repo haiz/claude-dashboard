@@ -102,9 +102,30 @@ impl AnimalActivityTracker {
     }
 }
 
-/// Animated assets are eligible only for active 5-hour rows with the setting on.
-pub fn eligible_asset(show_burn_animals: bool, is_five_hour: bool, emoji: Option<&str>, is_active: bool) -> Option<&'static str> {
-    if !show_burn_animals || !is_five_hour || !is_active { return None; }
+/// True when the 5h window is used up (`utilization >= 100`): its ring shows no animal then.
+/// `None` (usage unknown) is not full.
+///
+/// ```text
+/// five_hour_full(Some(100.0))   // true: no animal on the 5h ring
+/// five_hour_full(Some(99.9))    // false
+/// five_hour_full(None)          // false
+/// ```
+pub fn five_hour_full(utilization: Option<f64>) -> bool {
+    utilization.is_some_and(|u| u >= 100.0)
+}
+
+/// Animated assets are eligible only for active 5-hour rows with the setting on, while the
+/// 5h window is not full ([`five_hour_full`]).
+pub fn eligible_asset(
+    show_burn_animals: bool,
+    is_five_hour: bool,
+    emoji: Option<&str>,
+    is_active: bool,
+    five_hour_utilization: Option<f64>,
+) -> Option<&'static str> {
+    if !show_burn_animals || !is_five_hour || !is_active || five_hour_full(five_hour_utilization) {
+        return None;
+    }
     emoji.and_then(asset_id)
 }
 
@@ -141,11 +162,13 @@ mod tests {
             assert_eq!(asset_id(emoji), Some(id));
         }
         assert_eq!(asset_id("🐈"), None);
-        assert_eq!(eligible_asset(true, true, Some("🐇"), true), Some("rabbit"));
-        assert_eq!(eligible_asset(false, true, Some("🐇"), true), None);
-        assert_eq!(eligible_asset(true, false, Some("🐇"), true), None);
-        assert_eq!(eligible_asset(true, true, None, true), None);
-        assert_eq!(eligible_asset(true, true, Some("🐇"), false), None);
+        assert_eq!(eligible_asset(true, true, Some("🐇"), true, Some(50.0)), Some("rabbit"));
+        assert_eq!(eligible_asset(false, true, Some("🐇"), true, Some(50.0)), None);
+        assert_eq!(eligible_asset(true, false, Some("🐇"), true, Some(50.0)), None);
+        assert_eq!(eligible_asset(true, true, None, true, Some(50.0)), None);
+        assert_eq!(eligible_asset(true, true, Some("🐇"), false, Some(50.0)), None);
+        assert_eq!(eligible_asset(true, true, Some("🐇"), true, Some(100.0)), None);
+        assert_eq!(eligible_asset(true, true, Some("🐇"), true, None), Some("rabbit"));
     }
 
     #[test]

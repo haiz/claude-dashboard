@@ -128,8 +128,8 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   (`command_logs.db`, `runCommand_*` keys) at launch. Windows removed Run Command too and deletes its leftovers at launch (`apps/windows/app/src/migration.rs`).
   Spec: `docs/superpowers/specs/2026-10-14-ping-design.md`.
 - **Burn animal animation** — with `showBurnAnimals` on, only the 5h ring alternates percentage and
-  animal (10 s shared phase, 12 fps, 600 s activity window; 7d/Fable/Overview legend/Help sample
-  show none). Level 6 is a rocket above the cheetah; the current rate comes from three samples
+  animal (10 s shared phase, 12 fps, 600 s activity window; none once 5h >= 100%; 7d/Fable/Overview
+  legend/Help sample show none). Level 6 is a rocket above the cheetah; the current rate comes from three samples
   with a 50 s minimum gap. With Auto Refresh on, an account at cheetah or rocket is refreshed
   alone every 60 s. Rules and fixture: `contract/cases/animal-display.json`; pure model in Swift
   `AnimalDisplayModels` and Rust `core::animal_display`. macOS: `AnimalDisplayClock`,

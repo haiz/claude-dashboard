@@ -94,7 +94,7 @@ struct HelpView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HelpText("**Big ring**: how much of the window you have used, with the percentage inside.")
                     HelpText("**Small ring**: time until the window resets. One segment per hour (5h) or per day (7d). It turns green as the reset gets close.")
-                    HelpText("**Animal**: how fast you are burning (see below). It takes turns with the percentage inside the 5h ring while that usage changed in the last 10 minutes. Off by default; turn on **Show burn-rate animals** in Settings > General.")
+                    HelpText("**Animal**: how fast you are burning (see below). It takes turns with the percentage inside the 5h ring while that usage changed in the last 10 minutes and is below 100%. Off by default; turn on **Show burn-rate animals** in Settings > General.")
                 }
             }
 
