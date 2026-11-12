@@ -30,6 +30,9 @@ xcodebuild test -project apps/macos/ClaudeDashboard.xcodeproj -scheme ClaudeDash
 # Run the GNOME Shell extension's test suite (apps/linux/)
 cd apps/linux && CLAUDE_DASHBOARD_REPO="$(git rev-parse --show-toplevel)" gjs -m tests/run.js
 
+# Guard: the limit-resets field name must not appear in any tracked file (also run in CI)
+bash scripts/test-no-codename.sh
+
 # Windows: core on Windows (paths, DPAPI, v10 cookies)
 cd apps/linux && cargo test -p claude-dashboard-core
 # Windows: the bridge workspace (framing, sources, handler, roundtrip)
@@ -139,6 +142,18 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   `python3 -I tools/burn-animal-animation/validate_assets.py` on the tool dir and both app copies.
   Spec: `docs/superpowers/specs/2026-10-27-burn-animal-animation-design.md` and
   `docs/superpowers/specs/2026-10-29-rocket-burn-level-design.md`.
+- **Limit resets** (`Shared/LimitResets.swift`, `LimitResetsText.swift`, views `LimitResetBadge` and
+  `LimitResetsSection`) — a usage-payload field ("the limit-resets field") lists the free resets an
+  account holds, each with a count and an expiry. `/usage` is requested with that field's query
+  parameter; the field name is stored base64-encoded and decoded at runtime, never written in
+  plain text (`scripts/test-no-codename.sh` enforces it, run in CI). The app only reads the field
+  and never calls the reset endpoint (no reset button). Dashboard cards show a badge beside the
+  7d label (full reset) and the F label (fable reset), `↻` + count, blue, red when it expires in
+  under 7 days; the account page has a "Limit resets" section with the expiry detail lines (macOS,
+  Windows; Linux shows badges only: GNOME `accountRow.js`). Rules and fixture:
+  `contract/cases/limit-resets.json` and `contract/README.md`, "Limit resets"; Rust
+  `core::limit_resets` and `core::limit_resets_text`; JS `apps/linux/lib/limitResets.js` and
+  `lib/timestamp.js`.
 
 ### ViewModel
 - **DashboardViewModel** — `@MainActor` observable. Parallel refresh via `TaskGroup`. Sorts accounts by burn rate (utilization / time-remaining). The menu bar label follows `menuBarState` (pinned account, else the top one); after 3 failed refreshes in a row of that account (`consecutiveFailures`, in memory) or when it is expired, `menuBarSyncFailing` swaps the percentage for a red sync mark and the popover shows a "Sync failing" banner.
