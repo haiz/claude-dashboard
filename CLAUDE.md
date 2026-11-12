@@ -148,12 +148,15 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   parameter; the field name is stored base64-encoded and decoded at runtime, never written in
   plain text (`scripts/test-no-codename.sh` enforces it, run in CI). The app only reads the field
   and never calls the reset endpoint (no reset button). Dashboard cards show a badge beside the
-  7d label (full reset) and the F label (fable reset), `↻` + count, blue, red when it expires in
-  under 7 days; the account page has a "Limit resets" section with the expiry detail lines (macOS,
-  Windows; Linux shows badges only: GNOME `accountRow.js`). Rules and fixture:
-  `contract/cases/limit-resets.json` and `contract/README.md`, "Limit resets"; Rust
-  `core::limit_resets` and `core::limit_resets_text`; JS `apps/linux/lib/limitResets.js` and
-  `lib/timestamp.js`.
+  7d label (full reset) and the F label (fable reset): a clockwise arrow icon (SF Symbol on
+  macOS, Slint path on Windows, `view-refresh-symbolic` on GNOME, not a text character) plus the
+  count, blue, red when it expires in under 7 days. Badges show on dashboard cards, the
+  popover/flyout and the account-page gauges; the account page also has a "Limit resets" section
+  with the expiry detail lines (macOS, Windows; Linux shows badges only: GNOME `accountRow.js`).
+  Windows: the `model.rs` badge/lines mapping and `ResetBadge` in `ui/components.slint`, over
+  `core::limit_resets_text`. Rules and fixture: `contract/cases/limit-resets.json` and
+  `contract/README.md`, "Limit resets"; Rust `core::limit_resets` and `core::limit_resets_text`;
+  JS `apps/linux/lib/limitResets.js` and `lib/timestamp.js`.
 
 ### ViewModel
 - **DashboardViewModel** — `@MainActor` observable. Parallel refresh via `TaskGroup`. Sorts accounts by burn rate (utilization / time-remaining). The menu bar label follows `menuBarState` (pinned account, else the top one); after 3 failed refreshes in a row of that account (`consecutiveFailures`, in memory) or when it is expired, `menuBarSyncFailing` swaps the percentage for a red sync mark and the popover shows a "Sync failing" banner.
@@ -182,6 +185,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   windows, plus an optional Fable window. Fable has no top-level field: it is derived from
   the `limits` array entry whose `scope.model.display_name` is `"Fable"`, reading `percent`
   rather than `utilization`. `seven_day_sonnet` is a removed field the decoder ignores.
+  `resetGrants` holds the parsed limit-reset grants (see Limit resets).
 
 ### Linux
 - **apps/linux/lib/** — canonical pure modules (no `gi://` or `resource:///org/gnome/shell` imports)
