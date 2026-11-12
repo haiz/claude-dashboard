@@ -142,5 +142,85 @@
       "fable_utilization": 0.0,
       "fable_resets_at_epoch": null
     }
+  },
+  {
+    "name": "malformed limit-resets object still decodes the windows",
+    "input": {
+      "five_hour": {
+        "utilization": 42.0,
+        "resets_at": "2026-04-10T18:59:59.661633+00:00"
+      },
+      "seven_day": {
+        "utilization": 18.0,
+        "resets_at": "2026-04-14T16:59:59.661657+00:00"
+      },
+      "$RESETS": {
+        "eligible": true,
+        "grants": "nope"
+      }
+    },
+    "expect": {
+      "five_hour_utilization": 42.0,
+      "five_hour_resets_at_epoch": 1775847599,
+      "seven_day_utilization": 18.0,
+      "seven_day_resets_at_epoch": 1776185999,
+      "fable_present": false,
+      "fable_utilization": null,
+      "fable_resets_at_epoch": null,
+      "reset_grants": 0
+    }
+  },
+  {
+    "name": "limit-resets grants are kept on the usage model",
+    "input": {
+      "five_hour": {
+        "utilization": 42.0,
+        "resets_at": "2026-04-10T18:59:59.661633+00:00"
+      },
+      "seven_day": {
+        "utilization": 18.0,
+        "resets_at": "2026-04-14T16:59:59.661657+00:00"
+      },
+      "$RESETS": {
+        "eligible": true,
+        "grants": [
+          {
+            "id": "g-full",
+            "resets_left": 1,
+            "ends_at": "2026-12-10T22:00:00+00:00",
+            "clears": [
+              "five_hour",
+              "seven_day",
+              "seven_day_overage_included"
+            ],
+            "gives_back_weekly": false,
+            "paused": false,
+            "usable_now": true
+          },
+          {
+            "id": "g-fable",
+            "resets_left": 1,
+            "ends_at": "2027-03-09T07:59:00+00:00",
+            "clears": [
+              "five_hour",
+              "seven_day_overage_included"
+            ],
+            "gives_back_weekly": true,
+            "paused": false,
+            "usable_now": true
+          }
+        ]
+      }
+    },
+    "expect": {
+      "five_hour_utilization": 42.0,
+      "five_hour_resets_at_epoch": 1775847599,
+      "seven_day_utilization": 18.0,
+      "seven_day_resets_at_epoch": 1776185999,
+      "fable_present": false,
+      "fable_utilization": null,
+      "fable_resets_at_epoch": null,
+      "reset_grants": 2
+    }
   }
 ]

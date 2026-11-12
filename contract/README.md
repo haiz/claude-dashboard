@@ -278,6 +278,40 @@ The row is still coded into the bash CLI (`cli/claude-dashboard-cli`); see
 cited by line number on purpose — this document has already been wrong once
 about a line number in a file it does not own.)
 
+## Limit resets
+
+claude.ai hands out free "limit resets" (a Full reset and Fable resets, each with an
+expiry). The `/usage` request carries `?<limit-resets field>=1` and the response then has a
+top-level limit-resets object (without the parameter the key is `null`). The app never
+calls the reset endpoint; the user resets on claude.ai.
+
+Input: the decoded limit-resets object (or its absence).
+
+1. The limit-resets field missing, `null`, not an object, `eligible != true`, or `grants`
+   missing / not an array: **no resets** (no badge, no detail block). A malformed
+   limit-resets field must never fail the usage decode; it degrades to "no resets", the
+   same way a bad `limits` degrades to `fable = nil`.
+2. A grant counts only when `resets_left > 0`, `paused != true`, and `ends_at` parses and
+   is after *now*. A grant whose individual fields are malformed is skipped, not fatal.
+   `usable_now` is ignored.
+3. Kind: `gives_back_weekly == true` -> **fable**; else `clears` contains both
+   `five_hour` and `seven_day` -> **full**; else ignored.
+4. Per kind: `count = sum(resets_left)`, `expiresAt = min(ends_at)` over counted grants.
+   A kind with count 0 is absent.
+5. `urgent = expiresAt - now < 7 days` (strictly less than 604800 s).
+
+The field's real name is an unreleased internal codename. It is never stored raw in the
+repository: each implementation keeps it base64-encoded and decodes it at runtime, and
+`scripts/test-no-codename.sh` (run in CI) fails if the raw name appears in a tracked file.
+Commit messages and docs say "limit resets".
+
+Cases: `cases/limit-resets.json` takes the limit-resets object itself as `input` (no outer
+key) plus `now`, and expects `full` / `fable` as `{count, expires_at_epoch, urgent}` or
+`null`. `cases/usage-decoding.json` writes the key of a whole usage payload as the
+placeholder `"$RESETS"`; each harness replaces it with the decoded name before decoding. Its
+optional `expect.reset_grants` is the number of grants kept on the usage model (default 0
+when absent).
+
 ## Burn-rate levels
 
 Source: `apps/macos/ClaudeDashboard/Models/UsageLogModels.swift:53-88`

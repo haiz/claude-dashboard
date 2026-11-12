@@ -13,6 +13,7 @@ jobs:
         run: |
           bash scripts/test-sync-version.sh
           bash scripts/test-release-workflow.sh
+          bash scripts/test-no-codename.sh
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
           components: clippy
