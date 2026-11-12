@@ -19,6 +19,9 @@ struct UsageData: Codable, Equatable {
     /// "Fable". nil when the account has no Fable-scoped limit (the gauge stays
     /// hidden). Resets in lockstep with `sevenDay`.
     var fable: UsageLimit? = nil
+    /// Usable limit resets read from the `/usage` payload (see `LimitResets`).
+    /// Not part of `CodingKeys`: filled by `decode(from:)`, never encoded.
+    var resetGrants: [ResetGrant] = []
 
     // Encoded shape only — `fable` is derived from `limits` on decode (see the
     // custom init below) and is never re-encoded.
@@ -50,7 +53,11 @@ struct UsageData: Codable, Equatable {
                 debugDescription: "Cannot decode date: \(dateString)"
             )
         }
-        return try decoder.decode(UsageData.self, from: data)
+        var usage = try decoder.decode(UsageData.self, from: data)
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            usage.resetGrants = LimitResets.parseGrants(object[LimitResets.fieldName])
+        }
+        return usage
     }
 }
 

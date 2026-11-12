@@ -19,6 +19,7 @@ final class UsageDecodingContractTests: XCTestCase {
             let fablePresent: Bool
             let fableUtilization: Double?
             let fableResetsAtEpoch: Int?
+            let resetGrants: Int?
 
             enum CodingKeys: String, CodingKey {
                 case fiveHourUtilization = "five_hour_utilization"
@@ -28,6 +29,7 @@ final class UsageDecodingContractTests: XCTestCase {
                 case fablePresent = "fable_present"
                 case fableUtilization = "fable_utilization"
                 case fableResetsAtEpoch = "fable_resets_at_epoch"
+                case resetGrants = "reset_grants"
             }
         }
     }
@@ -62,7 +64,12 @@ final class UsageDecodingContractTests: XCTestCase {
         XCTAssertFalse(cases.isEmpty, "contract/cases/usage-decoding.json is empty")
 
         for c in cases {
-            let inputData = try JSONSerialization.data(withJSONObject: c.input.raw)
+            var raw = c.input.raw
+            if var top = raw as? [String: Any], let placeholder = top.removeValue(forKey: "$RESETS") {
+                top[LimitResets.fieldName] = placeholder
+                raw = top
+            }
+            let inputData = try JSONSerialization.data(withJSONObject: raw)
             let usage = try UsageData.decode(from: inputData)
 
             XCTAssertEqual(usage.fiveHour.utilization, c.expect.fiveHourUtilization,
@@ -80,6 +87,8 @@ final class UsageDecodingContractTests: XCTestCase {
                            "fable utilization — case: \(c.name)")
             XCTAssertEqual(epoch(usage.fable?.resetsAt), c.expect.fableResetsAtEpoch,
                            "fable resets_at — case: \(c.name)")
+            XCTAssertEqual(usage.resetGrants.count, c.expect.resetGrants ?? 0,
+                           "reset grants — case: \(c.name)")
         }
     }
 

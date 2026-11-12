@@ -36,7 +36,7 @@ final class UsageAPIService {
     // MARK: - Usage
 
     func fetchUsage(orgId: String, sessionKey: String) async throws -> UsageAPIResult {
-        guard let url = URL(string: "\(baseURL)/organizations/\(orgId)/usage") else {
+        guard let url = URL(string: "\(baseURL)/organizations/\(orgId)/usage?\(LimitResets.fieldName)=1") else {
             throw UsageAPIError.invalidResponse
         }
         let request = makeRequest(url: url, sessionKey: sessionKey)
@@ -119,7 +119,7 @@ final class UsageAPIService {
     // credits) and has no tier/multiplier field. Plan tier comes solely from the
     // organizations endpoint's capabilities (see `detectPlanTier`).
     func fetchFullUsage(orgId: String, sessionKey: String) async throws -> (usage: UsageData, newSessionKey: String?) {
-        guard let url = URL(string: "\(baseURL)/organizations/\(orgId)/usage") else {
+        guard let url = URL(string: "\(baseURL)/organizations/\(orgId)/usage?\(LimitResets.fieldName)=1") else {
             throw UsageAPIError.invalidResponse
         }
         let request = makeRequest(url: url, sessionKey: sessionKey)

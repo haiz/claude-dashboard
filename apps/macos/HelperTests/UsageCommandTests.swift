@@ -39,7 +39,7 @@ final class UsageCommandTests: XCTestCase {
 
         let request = try XCTUnwrap(server.recorded.first)
         XCTAssertEqual(request.method, "GET")
-        XCTAssertEqual(request.path, "/api/organizations/org-abc/usage")
+        XCTAssertEqual(request.path, "/api/organizations/org-abc/usage?\(LimitResets.fieldName)=1")
         XCTAssertEqual(request.headers["accept"], "*/*")
         XCTAssertEqual(request.headers["content-type"], "application/json")
         XCTAssertEqual(request.headers["anthropic-client-platform"], "web_claude_ai")

@@ -30,7 +30,7 @@ final class LoopbackServer {
         }
     }
 
-    /// Matches `/api/organizations/<anything>/usage`.
+    /// Matches `/api/organizations/<anything>/usage`, with or without a query string.
     static let usageWildcard = "/api/organizations/*/usage"
 
     private let lock = NSLock()
@@ -257,7 +257,8 @@ final class LoopbackServer {
     }
 
     static func matchesUsageWildcard(_ path: String) -> Bool {
-        path.hasPrefix("/api/organizations/") && path.hasSuffix("/usage")
+        let withoutQuery = path.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)[0]
+        return withoutQuery.hasPrefix("/api/organizations/") && withoutQuery.hasSuffix("/usage")
     }
 
     private func readRequest(_ fd: Int32) -> RecordedRequest? {
