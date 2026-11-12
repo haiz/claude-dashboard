@@ -1,0 +1,605 @@
+[
+  {
+    "name": "null object",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": null,
+    "expect": {
+      "full": null,
+      "fable": null
+    }
+  },
+  {
+    "name": "not an object",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": [
+      1
+    ],
+    "expect": {
+      "full": null,
+      "fable": null
+    }
+  },
+  {
+    "name": "ineligible",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": false,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "2026-12-10T22:00:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": null
+    }
+  },
+  {
+    "name": "eligible missing",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "2026-12-10T22:00:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": null
+    }
+  },
+  {
+    "name": "grants not an array",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": {}
+    },
+    "expect": {
+      "full": null,
+      "fable": null
+    }
+  },
+  {
+    "name": "full only",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "2026-12-10T22:00:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": {
+        "count": 1,
+        "expires_at_epoch": 1796940000,
+        "urgent": false
+      },
+      "fable": null
+    }
+  },
+  {
+    "name": "fable only",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-fable",
+          "resets_left": 1,
+          "ends_at": "2027-03-09T07:59:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": true,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": {
+        "count": 1,
+        "expires_at_epoch": 1804579140,
+        "urgent": false
+      }
+    }
+  },
+  {
+    "name": "both",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "2026-12-10T22:00:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        },
+        {
+          "id": "g-fable",
+          "resets_left": 1,
+          "ends_at": "2027-03-09T07:59:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": true,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": {
+        "count": 1,
+        "expires_at_epoch": 1796940000,
+        "urgent": false
+      },
+      "fable": {
+        "count": 1,
+        "expires_at_epoch": 1804579140,
+        "urgent": false
+      }
+    }
+  },
+  {
+    "name": "two fable grants sum, min expiry",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-fable",
+          "resets_left": 1,
+          "ends_at": "2027-03-09T07:59:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": true,
+          "paused": false,
+          "usable_now": true
+        },
+        {
+          "id": "g-fable-2",
+          "resets_left": 2,
+          "ends_at": "2027-01-01T00:00:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": true,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": {
+        "count": 3,
+        "expires_at_epoch": 1798761600,
+        "urgent": false
+      }
+    }
+  },
+  {
+    "name": "usable_now false still counts",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-fable",
+          "resets_left": 1,
+          "ends_at": "2027-03-09T07:59:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": true,
+          "paused": false,
+          "usable_now": false
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": {
+        "count": 1,
+        "expires_at_epoch": 1804579140,
+        "urgent": false
+      }
+    }
+  },
+  {
+    "name": "expired grant dropped",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "2026-11-11T00:00:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": null
+    }
+  },
+  {
+    "name": "ends exactly now dropped",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "2026-11-12T00:00:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": null
+    }
+  },
+  {
+    "name": "resets_left 0 dropped",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 0,
+          "ends_at": "2026-12-10T22:00:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": null
+    }
+  },
+  {
+    "name": "paused dropped",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "2026-12-10T22:00:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": true,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": null
+    }
+  },
+  {
+    "name": "unparseable ends_at dropped, others kept",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "soon",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        },
+        {
+          "id": "g-fable",
+          "resets_left": 1,
+          "ends_at": "2027-03-09T07:59:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": true,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": {
+        "count": 1,
+        "expires_at_epoch": 1804579140,
+        "urgent": false
+      }
+    }
+  },
+  {
+    "name": "non-integer resets_left dropped",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": "1",
+          "ends_at": "2026-12-10T22:00:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": null
+    }
+  },
+  {
+    "name": "non-object grant skipped",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        42,
+        {
+          "id": "g-fable",
+          "resets_left": 1,
+          "ends_at": "2027-03-09T07:59:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": true,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": {
+        "count": 1,
+        "expires_at_epoch": 1804579140,
+        "urgent": false
+      }
+    }
+  },
+  {
+    "name": "neither kind ignored",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "2026-12-10T22:00:00+00:00",
+          "clears": [
+            "five_hour"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": null
+    }
+  },
+  {
+    "name": "fable wins over clears",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-fable",
+          "resets_left": 1,
+          "ends_at": "2027-03-09T07:59:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day"
+          ],
+          "gives_back_weekly": true,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": {
+        "count": 1,
+        "expires_at_epoch": 1804579140,
+        "urgent": false
+      }
+    }
+  },
+  {
+    "name": "exactly 7 days is not urgent",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "2026-11-19T00:00:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": {
+        "count": 1,
+        "expires_at_epoch": 1795046400,
+        "urgent": false
+      },
+      "fable": null
+    }
+  },
+  {
+    "name": "7 days minus 1 s is urgent",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "2026-11-18T23:59:59+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": {
+        "count": 1,
+        "expires_at_epoch": 1795046399,
+        "urgent": true
+      },
+      "fable": null
+    }
+  },
+  {
+    "name": "fractional ends_at",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "2026-12-10T22:00:00.737559+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": {
+        "count": 1,
+        "expires_at_epoch": 1796940000,
+        "urgent": false
+      },
+      "fable": null
+    }
+  }
+]

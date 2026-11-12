@@ -137,7 +137,8 @@ current Foundation, `URL(string:)` percent-encodes whitespace and control
 characters into the path instead of refusing them, so a parser-shaped check
 would let a malformed `orgId` through to a 404.
 
-Request: `GET https://claude.ai/api/organizations/<orgId>/usage` with headers:
+Request: `GET https://claude.ai/api/organizations/<orgId>/usage?<limit-resets field>=1`
+(see `README.md`, "Limit resets") with headers:
 - `accept: */*`
 - `content-type: application/json`
 - `anthropic-client-platform: web_claude_ai`
