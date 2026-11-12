@@ -106,6 +106,7 @@ impl LoopbackServer {
 }
 
 fn matches_usage_wildcard(path: &str) -> bool {
+    let path = path.split_once('?').map_or(path, |(p, _)| p);
     path.starts_with("/api/organizations/") && path.ends_with("/usage")
 }
 

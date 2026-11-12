@@ -24,6 +24,9 @@ pub struct UsageData {
     /// has `scope.model.display_name == "Fable"`, when `limits` is absent,
     /// or when `limits` is malformed (see `derive_fable`).
     pub fable: Option<UsageLimit>,
+    /// Usable limit-resets grants (see `crate::limit_resets`); empty when the
+    /// field is absent or malformed. Never fails the decode.
+    pub reset_grants: Vec<crate::limit_resets::ResetGrant>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -58,7 +61,10 @@ impl UsageData {
         let five_hour = required_window(&v, "five_hour")?;
         let seven_day = required_window(&v, "seven_day")?;
         let fable = derive_fable(&v); // swallows all errors -> None
-        Ok(UsageData { five_hour, seven_day, fable })
+        let reset_grants = crate::limit_resets::parse_grants(
+            v.get(&crate::limit_resets::field_name()).unwrap_or(&Value::Null),
+        );
+        Ok(UsageData { five_hour, seven_day, fable, reset_grants })
     }
 }
 
