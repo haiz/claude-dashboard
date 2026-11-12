@@ -197,6 +197,7 @@ mod tests {
             five_hour: UsageLimit { utilization: util, resets_at: resets_in.map(|s| NOW as i64 + s) },
             seven_day: UsageLimit { utilization: 5.0, resets_at: None },
             fable: None,
+            reset_grants: Vec::new(),
         }
     }
 

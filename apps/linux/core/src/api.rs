@@ -270,7 +270,7 @@ fn decode_body_strict(bytes: Vec<u8>) -> String {
 /// usage payload that [`crate::usage`] decodes.
 pub fn usage_raw(org_id: &str, session_key: &str) -> Result<UsageResponse, ApiError> {
     validate_org_id(org_id)?;
-    let url = format!("{}/organizations/{org_id}/usage", api_root());
+    let url = format!("{}/organizations/{org_id}/usage?{}=1", api_root(), crate::limit_resets::field_name());
     let (bytes, cookies) = perform_get_bytes(&url, session_key)?;
     Ok(UsageResponse {
         body: decode_body_strict(bytes),

@@ -32,7 +32,10 @@ fn successful_request_is_passed_through_and_carries_the_contract_headers() {
     let recorded = server.recorded();
     let request = recorded.first().expect("one request");
     assert_eq!(request.method, "GET");
-    assert_eq!(request.path, "/api/organizations/org-abc/usage");
+    assert_eq!(
+        request.path,
+        format!("/api/organizations/org-abc/usage?{}=1", claude_dashboard_core::limit_resets::field_name())
+    );
     assert_eq!(request.headers["accept"], "*/*");
     assert_eq!(request.headers["content-type"], "application/json");
     assert_eq!(request.headers["anthropic-client-platform"], "web_claude_ai");

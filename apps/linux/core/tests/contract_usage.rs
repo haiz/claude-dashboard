@@ -1,3 +1,4 @@
+use claude_dashboard_core::limit_resets::field_name;
 use claude_dashboard_core::usage::UsageData;
 use serde_json::Value;
 use std::path::PathBuf;
@@ -17,7 +18,13 @@ fn usage_decoding_cases() {
     assert!(!cases.is_empty(), "usage-decoding.json empty");
     for c in &cases {
         let name = c["name"].as_str().unwrap_or("<unnamed>");
-        let input = serde_json::to_string(&c["input"]).unwrap();
+        let mut raw = c["input"].clone();
+        if let Some(obj) = raw.as_object_mut() {
+            if let Some(v) = obj.remove("$RESETS") {
+                obj.insert(field_name(), v);
+            }
+        }
+        let input = serde_json::to_string(&raw).unwrap();
         let expect = &c["expect"];
         let decoded = UsageData::decode(&input);
 
@@ -39,6 +46,9 @@ fn usage_decoding_cases() {
                    "seven_day_resets_at — {name}");
         assert_eq!(d.fable.is_some(), expect["fable_present"].as_bool().unwrap(),
                    "fable_present — {name}");
+        assert_eq!(d.reset_grants.len() as u64,
+                   expect.get("reset_grants").and_then(|v| v.as_u64()).unwrap_or(0),
+                   "reset_grants — {name}");
         if let Some(f) = &d.fable {
             assert_eq!(f.utilization, expect["fable_utilization"].as_f64().unwrap(),
                        "fable_utilization — {name}");

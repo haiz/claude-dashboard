@@ -216,6 +216,7 @@ mod tests {
             five_hour: UsageLimit { utilization: 0.0, resets_at: five },
             seven_day: UsageLimit { utilization: 10.0, resets_at: seven },
             fable: None,
+            reset_grants: Vec::new(),
         }
     }
 
