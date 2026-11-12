@@ -76,9 +76,19 @@ pub fn parse_grants(v: &Value) -> Vec<ResetGrant> {
     grants.iter().filter_map(parse_grant).collect()
 }
 
+/// A JSON number holding an integer in `1..=u32::MAX` (`1` and `1.0` both
+/// count); non-integral numbers, bools and strings give `None`.
+fn integral_count(v: &Value) -> Option<u32> {
+    if let Some(n) = v.as_u64() {
+        return u32::try_from(n).ok();
+    }
+    let f = v.as_f64()?;
+    (f.fract() == 0.0 && f >= 1.0 && f <= u32::MAX as f64).then(|| f as u32)
+}
+
 fn parse_grant(g: &Value) -> Option<ResetGrant> {
     let g = g.as_object()?;
-    let resets_left = u32::try_from(g.get("resets_left")?.as_u64()?).ok()?;
+    let resets_left = integral_count(g.get("resets_left")?)?;
     if resets_left < 1 || g.get("paused").and_then(Value::as_bool) == Some(true) {
         return None;
     }
@@ -104,7 +114,7 @@ pub fn summarize(grants: &[ResetGrant], now_unix: i64) -> LimitResets {
         let live: Vec<&ResetGrant> =
             grants.iter().filter(|g| g.kind == kind && g.ends_at > now_unix).collect();
         let expires_at = live.iter().map(|g| g.ends_at).min()?;
-        let count: u32 = live.iter().map(|g| g.resets_left).sum();
+        let count = live.iter().fold(0u32, |a, g| a.saturating_add(g.resets_left));
         Some(ResetSummary { count, expires_at, urgent: expires_at - now_unix < URGENT_SECONDS })
     };
     LimitResets { full: of(ResetKind::Full), fable: of(ResetKind::Fable) }
