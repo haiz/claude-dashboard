@@ -66,6 +66,22 @@
     font-family: monospace;
 }
 
+.claude-reset-badge {
+    background-color: rgb(74, 144, 217);
+    color: #ffffff;
+    border-radius: 99px;
+    padding: 0 4px;
+    spacing: 2px;
+}
+
+.claude-reset-badge-urgent {
+    background-color: #ff6b6b;
+}
+
+.claude-reset-badge-icon {
+    color: #ffffff;
+}
+
 .claude-reset-label {
     font-size: 8px;
     font-family: monospace;
