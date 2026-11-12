@@ -83,7 +83,7 @@ fn integral_count(v: &Value) -> Option<u32> {
         return u32::try_from(n).ok();
     }
     let f = v.as_f64()?;
-    (f.fract() == 0.0 && f >= 1.0 && f <= u32::MAX as f64).then(|| f as u32)
+    (f.fract() == 0.0 && f >= 1.0 && f <= u32::MAX as f64).then_some(f as u32)
 }
 
 fn parse_grant(g: &Value) -> Option<ResetGrant> {

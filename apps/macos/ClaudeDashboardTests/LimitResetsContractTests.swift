@@ -19,7 +19,7 @@ final class LimitResetsContractTests: XCTestCase {
     func testCases() throws {
         let data = try ContractFixtures.data("cases/limit-resets.json")
         let cases = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
-        XCTAssertEqual(cases.count, 25)
+        XCTAssertEqual(cases.count, 27)
 
         for c in cases {
             let name = c["name"] as? String ?? "?"
