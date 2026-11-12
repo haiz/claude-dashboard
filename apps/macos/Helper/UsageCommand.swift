@@ -33,7 +33,7 @@ enum UsageCommand {
             return 1
         }
 
-        guard let url = URL(string: "\(APIBaseURL.apiRoot)/organizations/\(orgId)/usage") else {
+        guard let url = URL(string: "\(APIBaseURL.apiRoot)/organizations/\(orgId)/usage?\(LimitResets.fieldName)=1") else {
             fputs("Invalid orgId.\n", stderr)
             return 1
         }

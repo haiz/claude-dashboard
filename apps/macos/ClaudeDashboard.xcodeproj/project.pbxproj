@@ -118,6 +118,7 @@
 		809F8F94BD5A8185ED4FFDFE /* AddKeyCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F466F80474346C7DBE22396 /* AddKeyCommand.swift */; };
 		816C4095972A2C5BB3AC8FE1 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B232994C234BB992BF28606 /* SidebarView.swift */; };
 		81F2429B21545DD0CB6C2FE9 /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
+		8246B1B60BADC71E3376B02E /* LimitResetsContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4DC21DED676BC5D0DC8399 /* LimitResetsContractTests.swift */; };
 		82BEE4E50C037B6E3C0670CE /* SessionCandidateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9047126E678CDE2BB4637921 /* SessionCandidateTests.swift */; };
 		82C00A064BAECA4DFDC748C2 /* HelperProcessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF6809358DD6A8B16731981A /* HelperProcessTests.swift */; };
 		839417BA3EBE78D6962AFF24 /* UsageWindowPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F81212F82265B50442FF18 /* UsageWindowPicker.swift */; };
@@ -165,6 +166,7 @@
 		A6F05ADA316EC6FF3F96B159 /* AccountSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05E2848D8529F3B12BFF386 /* AccountSourceTests.swift */; };
 		A72E88325121A0C994B0AC3A /* BurnAnimals in Resources */ = {isa = PBXBuildFile; fileRef = 4901C787B6C1995EEE7DB2B3 /* BurnAnimals */; };
 		A78ABDC5C67BE7DC611063B3 /* AnimalDisplayModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35067D981D777B1622CA7615 /* AnimalDisplayModelsTests.swift */; };
+		A8B8DDB5C6E2E69EAB26E5BE /* LimitResets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED9BCA996F217C59521012 /* LimitResets.swift */; };
 		A9862BFB975A44304B4B7374 /* ClaudeDesktopSwitcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5A30A2FEE408A97A0450ED9 /* ClaudeDesktopSwitcherTests.swift */; };
 		AA72E48E60E8F05C7CB6AF8B /* ClaudeDesktopSafeStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42703485F19F6578FD7F9ED8 /* ClaudeDesktopSafeStorage.swift */; };
 		AAEAB48A072B469189CCA747 /* UsageAPIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64695012FC6F1C08762E7E77 /* UsageAPIServiceTests.swift */; };
@@ -212,6 +214,7 @@
 		DC866C6D464B0F717BE0E88C /* ClaudeDesktopProcessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCCF925CF97753E0C28E1CB0 /* ClaudeDesktopProcessTests.swift */; };
 		DFE233BEB879527F51838818 /* InfoTip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF5955977F933195581B1AE /* InfoTip.swift */; };
 		E14E787ED8AAADA813FA42F0 /* AutoSwitchDesktopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E296F7F3DAECAD782BF8A0 /* AutoSwitchDesktopTests.swift */; };
+		E28C8A34CE74E61D6B59C197 /* LimitResets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED9BCA996F217C59521012 /* LimitResets.swift */; };
 		E31B51A27092F17B0C752A22 /* PaneHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FE432C84E62A7FE9684E5A4 /* PaneHeader.swift */; };
 		E497B0E528DF69D36BD96883 /* DashboardViewModel+Critical.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A6C3D557EACAE9350D87814 /* DashboardViewModel+Critical.swift */; };
 		E5305F7BB5F35DD4A630FBF5 /* CriticalSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85466D536408CB51A8662E02 /* CriticalSettingsTests.swift */; };
@@ -225,6 +228,7 @@
 		EA2D655C3363DACEE2AA5C8C /* AppDefaultsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A46883EF2F0ABE27EC8EC7 /* AppDefaultsTests.swift */; };
 		EA49B0D971AF46AC2AE410A6 /* GeneralSettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D3775C1FC2B1C99A5FDB188 /* GeneralSettingsPane.swift */; };
 		EA9BA4D00613E09D8D0A427E /* ClaudeCodeOAuthClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F8B5FF0329E0A79D62CA8AF /* ClaudeCodeOAuthClient.swift */; };
+		EC0E7D582EF763E6F7B5A72D /* LimitResets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED9BCA996F217C59521012 /* LimitResets.swift */; };
 		EEF3B34CBA208CD5E4BBDB2B /* PingLogViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E29F783F80FE0FD6AAA842D5 /* PingLogViewModelTests.swift */; };
 		F1060C38798420C35CC6F2F1 /* AutoSwitchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 307168BF6B40DB84E0E5A46F /* AutoSwitchController.swift */; };
 		F108A126F5779799A8FF1DB6 /* SessionCandidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53FC5C2A26C631D62371B57C /* SessionCandidate.swift */; };
@@ -447,6 +451,7 @@
 		DC394CD29F6E869A54D1CE5A /* HelpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpView.swift; sourceTree = "<group>"; };
 		DC670D86C6D9BB498AFA6B2E /* PingLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingLogStoreTests.swift; sourceTree = "<group>"; };
 		DF3D3C642BA08FCA6281C68F /* AccentSwitchToggleStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccentSwitchToggleStyle.swift; sourceTree = "<group>"; };
+		DF4DC21DED676BC5D0DC8399 /* LimitResetsContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitResetsContractTests.swift; sourceTree = "<group>"; };
 		DFA6B7D8BC846956FB00E42A /* DashboardPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPane.swift; sourceTree = "<group>"; };
 		E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDetectionContractTests.swift; sourceTree = "<group>"; };
 		E29F783F80FE0FD6AAA842D5 /* PingLogViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingLogViewModelTests.swift; sourceTree = "<group>"; };
@@ -470,6 +475,7 @@
 		FCCF925CF97753E0C28E1CB0 /* ClaudeDesktopProcessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDesktopProcessTests.swift; sourceTree = "<group>"; };
 		FCCFAC39E6AB87092AEC2D54 /* CriticalSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticalSettings.swift; sourceTree = "<group>"; };
 		FE366562BDB7D1A8CDE6FD20 /* CriticalPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticalPlannerTests.swift; sourceTree = "<group>"; };
+		FEED9BCA996F217C59521012 /* LimitResets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitResets.swift; sourceTree = "<group>"; };
 		FF4D3349D7E712D70BE8BB5D /* PingLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingLogStore.swift; sourceTree = "<group>"; };
 		FFD5987436CCEAA1F1FC1DC6 /* AccountPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountPane.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -576,6 +582,7 @@
 				AFD4C1EC6F97C4F34F204E5E /* DedupeContractTests.swift */,
 				B97C7A111F9FB5CE6E67CD60 /* DesktopSwitchFlowTests.swift */,
 				E79F99E6791ECFF919869DD5 /* DesktopSwitchSettingsTests.swift */,
+				DF4DC21DED676BC5D0DC8399 /* LimitResetsContractTests.swift */,
 				D627736A32F2282084F78A58 /* ManualKeyContractTests.swift */,
 				AE57E5139A296611CB7F49C2 /* ManualKeyInputTests.swift */,
 				0C8D27DC73CD1321619DF47A /* ManualKeyOutcomeTests.swift */,
@@ -829,6 +836,7 @@
 				5DCBF1EA7D7222950388A01C /* Browser.swift */,
 				B4ED0121EB136414664B103B /* BrowserCookieService.swift */,
 				6C7E115BD84248989BAA883F /* CryptoService.swift */,
+				FEED9BCA996F217C59521012 /* LimitResets.swift */,
 				3DF55256F6D81B14585D71C9 /* ManualKey.swift */,
 				7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */,
 				84D76299585A3672F3ADD331 /* PingService.swift */,
@@ -899,7 +907,7 @@
 			path = Ping;
 			sourceTree = "<group>";
 		};
-		"TEMP_078FD029-FEEE-471A-8AD2-0DE284346F7A" /* Resources */ = {
+		"TEMP_BDC33DA7-0F04-46FD-B990-794F28197D0F" /* Resources */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -1094,6 +1102,7 @@
 				14E1A2437A2103B2A0DE0F20 /* DesktopSwitchSettingsTests.swift in Sources */,
 				0F3D68AF3F3645FE3E1BFD0C /* FakePinger.swift in Sources */,
 				390BB1B38D799B09D2603F36 /* InMemoryKeychain.swift in Sources */,
+				8246B1B60BADC71E3376B02E /* LimitResetsContractTests.swift in Sources */,
 				924D219F90D34BE86951B7DB /* ManualKeyContractTests.swift in Sources */,
 				E54289326B8471DAABA189CF /* ManualKeyInputTests.swift in Sources */,
 				667F013D8C979684131DD6D2 /* ManualKeyOutcomeTests.swift in Sources */,
@@ -1149,6 +1158,7 @@
 				6D2C7F0EC9D99E1A21AA3C6C /* HelperAccountStoreTests.swift in Sources */,
 				DB632700951205ACE0A3C952 /* HelperProcess.swift in Sources */,
 				82C00A064BAECA4DFDC748C2 /* HelperProcessTests.swift in Sources */,
+				EC0E7D582EF763E6F7B5A72D /* LimitResets.swift in Sources */,
 				46022E5A9168DBFFE3140E9E /* LoopbackServer.swift in Sources */,
 				BD44D9A3F83F77BA7B53B5FD /* LoopbackServerTests.swift in Sources */,
 				E99F26B2AF2EACF7A4B12282 /* ManualKey.swift in Sources */,
@@ -1184,6 +1194,7 @@
 				952383DC16D74D6BF7106040 /* CryptoService.swift in Sources */,
 				1DB54021BBBA6A80D35336A8 /* DecryptCommand.swift in Sources */,
 				203ACE14CE6715FA4B712065 /* HelperAccountStore.swift in Sources */,
+				A8B8DDB5C6E2E69EAB26E5BE /* LimitResets.swift in Sources */,
 				1213175776995521648C0196 /* ManualKey.swift in Sources */,
 				9FAB31B717BAEDE9C724CB3E /* ManualKeyInput.swift in Sources */,
 				C3A07C8ABE7AA0986CE63789 /* PingService.swift in Sources */,
@@ -1264,6 +1275,7 @@
 				DFE233BEB879527F51838818 /* InfoTip.swift in Sources */,
 				89EF0ECEF1D170B4BA0889F1 /* InlinePrompt.swift in Sources */,
 				04AD291FD33FFB834B40D945 /* InteractiveChartContainer.swift in Sources */,
+				E28C8A34CE74E61D6B59C197 /* LimitResets.swift in Sources */,
 				E58E9615874AAD6AC19F48DE /* MainWindow.swift in Sources */,
 				310A4AEEB4EF068D8522A921 /* ManualKey.swift in Sources */,
 				C5EF5EF93570CBB91B78006E /* ManualKeyInput.swift in Sources */,
