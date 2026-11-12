@@ -114,7 +114,7 @@ mod tests {
         let ui = include_str!("../ui/help.slint");
         for text in [
             "subtitle: \"The \\u{21BB} badge beside 7d and F.\"",
-            "**Limit resets**: claude.ai sometimes gives an account free resets of its limits. A badge beside **7d** counts Full resets (they clear the 5h and 7d windows); a badge beside **F** counts Fable resets. The account page lists each kind with its expiry. A badge turns red when its resets expire in under 7 days. Resets are used on claude.ai; this app only shows them and never resets a limit.",
+            "**Limit resets**: claude.ai sometimes gives an account free resets of its limits. A badge beside **7d** counts Full resets (they clear the 5h and 7d windows); a badge beside **F** counts Fable resets. The account page lists each kind with its expiry. A badge turns red when its resets expire in under 7 days. Resets are used on claude.ai: **Open Usage Page** in that section opens its usage page in the browser the account signs in with. This app only shows resets and never resets a limit.",
             "id == \"limit-resets\" ? c-resets.y",
         ] {
             assert!(ui.contains(text), "{text}");

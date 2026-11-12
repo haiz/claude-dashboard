@@ -147,7 +147,10 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   account holds, each with a count and an expiry. `/usage` is requested with that field's query
   parameter; the field name is stored base64-encoded and decoded at runtime, never written in
   plain text (`scripts/test-no-codename.sh` enforces it, run in CI). The app only reads the field
-  and never calls the reset endpoint (no reset button). Dashboard cards show a badge beside the
+  and never calls the reset endpoint (no reset button); the account page's "Limit resets"
+  section has an **Open Usage Page** button that opens `claude.ai/settings/usage` in the
+  account's own browser profile (`UsagePage` on macOS, `app/src/usage_page.rs` on Windows; a
+  pasted key, or a browser that won't launch, uses the default browser). Dashboard cards show a badge beside the
   7d label (full reset) and the F label (fable reset): a clockwise arrow icon (SF Symbol on
   macOS, Slint path on Windows, `view-refresh-symbolic` on GNOME, not a text character) plus the
   count, blue, red when it expires in under 7 days. Badges show on dashboard cards, the

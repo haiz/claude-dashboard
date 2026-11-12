@@ -791,6 +791,8 @@ export component AccountPane inherits VerticalLayout {
     callback refresh();
     callback resync();
     callback ping();
+    // "Open Usage Page" in the Limit resets section (macOS `UsagePage`).
+    callback open-usage-page();
     in property <bool> cc-switching;
     callback switch-cc();
     // Claude Desktop (macOS "Switch Desktop to this account"): shown on the account Claude
@@ -985,15 +987,31 @@ export component AccountPane inherits VerticalLayout {
                 }
             }
 
-            // macOS LimitResetsSection: one read-only line per kind, the expiry red when urgent.
+            // macOS LimitResetsSection: one read-only line per kind, the expiry red when urgent,
+            // and "Open Usage Page" on the trailing side.
             if root.data.resets.length > 0: PaneSection {
                 title: "Limit resets";
-                for line in root.data.resets: HorizontalLayout {
-                    spacing: 6px;
-                    alignment: start;
-                    Text { text: line.title; color: Theme.text-primary; }
-                    Text { text: "\u{2014}"; color: Theme.text-secondary; }
-                    Text { text: line.expiry; color: line.urgent ? Theme.danger : Theme.text-secondary; }
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        spacing: 6px;
+                        alignment: center;
+                        for line in root.data.resets: HorizontalLayout {
+                            spacing: 6px;
+                            alignment: start;
+                            Text { text: line.title; color: Theme.text-primary; }
+                            Text { text: "\u{2014}"; color: Theme.text-secondary; }
+                            Text { text: line.expiry; color: line.urgent ? Theme.danger : Theme.text-secondary; }
+                        }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    ActionButton {
+                        label: "Open Usage Page";
+                        glyph: "\u{E8A7}";
+                        tip: "Open claude.ai's usage page in the browser this account signs in with";
+                        y: (parent.height - self.height) / 2;
+                        clicked => { root.open-usage-page(); }
+                    }
                 }
             }
 

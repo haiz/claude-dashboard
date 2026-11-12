@@ -822,6 +822,8 @@ export component AppWindow inherits Window {
     callback refresh-account(string);
     // The account page's Ping button.
     callback ping-account(string);
+    // The account page's "Open Usage Page" (Limit resets section).
+    callback open-usage-page(string);
     // Claude Code Switch: a switch is running; the prompt (0 none, see CcPrompt).
     in property <bool> cc-switching;
     in property <int> cc-prompt-kind;
@@ -1134,6 +1136,7 @@ export component AppWindow inherits Window {
                     refresh => { root.refresh-account(acct.id); }
                     resync => { root.resync-account(acct.id); }
                     ping => { root.ping-account(acct.id); }
+                    open-usage-page => { root.open-usage-page(acct.id); }
                     cc-switching: root.cc-switching;
                     switch-cc => { root.switch-claude-code(acct.id); } toggle-home => { root.toggle-home(acct.id); }
                     desktop-differs: root.desktop-differs;

@@ -39,6 +39,7 @@ mod tips;
 mod testenv;
 mod tray;
 mod updater;
+mod usage_page;
 mod wizard;
 
 slint::include_modules!();
@@ -1945,6 +1946,24 @@ fn main() -> Result<(), slint::PlatformError> {
                 let Some(target) = ping_target(&id) else { return };
                 if ping::run_ping(&target, claude_dashboard_core::ping_log::PingTrigger::Manual).is_some() {
                     let _ = tx.send(refresh::Nudge::One(id));
+                }
+            });
+        });
+        // The account page's "Open Usage Page" (macOS `UsagePage.open`).
+        app.on_open_usage_page(move |id| {
+            let id = id.to_string();
+            if dev_run() {
+                eprintln!("open usage page {id}: skipped in a dev run");
+                return;
+            }
+            std::thread::spawn(move || {
+                use claude_dashboard_core::{extension_sources, store};
+                let Some(a) = store::load_accounts().ok().and_then(|all| all.into_iter().find(|a| a.id == id)) else {
+                    return;
+                };
+                let sources = extension_sources::load(&extension_sources::sources_path()).unwrap_or_default();
+                if !usage_page::open(&a, &sources) {
+                    eprintln!("open usage page {id}: could not start the browser");
                 }
             });
         });

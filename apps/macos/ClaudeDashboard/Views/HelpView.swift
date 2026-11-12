@@ -132,7 +132,7 @@ struct HelpView: View {
     /// Mirrors the badge drawn by `UsageGaugeRow` and the account page's "Limit resets" box.
     private var limitResets: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HelpRow("**Limit resets**: claude.ai sometimes gives an account free resets of its limits. A badge beside **7d** counts Full resets (they clear the 5h and 7d windows); a badge beside **F** counts Fable resets. The account page lists each kind with its expiry. A badge turns red when its resets expire in under 7 days. Resets are used on claude.ai; this app only shows them and never resets a limit.") {
+            HelpRow("**Limit resets**: claude.ai sometimes gives an account free resets of its limits. A badge beside **7d** counts Full resets (they clear the 5h and 7d windows); a badge beside **F** counts Fable resets. The account page lists each kind with its expiry. A badge turns red when its resets expire in under 7 days. Resets are used on claude.ai: **Open Usage Page** in that section opens its usage page in the browser the account signs in with. This app only shows resets and never resets a limit.") {
                 LimitResetBadge(summary: ResetSummary(count: 1, expiresAt: .distantFuture, urgent: false),
                                 tooltip: "Full reset", isCompact: false)
             }

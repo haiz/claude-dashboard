@@ -67,7 +67,7 @@ struct AccountPane: View {
                 VStack(alignment: .leading, spacing: 20) {
                     PaneSection { summary }
                     if let usage = state.usage, !usage.resetGrants.isEmpty {
-                        LimitResetsSection(grants: usage.resetGrants)
+                        LimitResetsSection(grants: usage.resetGrants) { UsagePage.open(state.account) }
                     }
                     PaneSection("History") {
                         AccountDetailView(viewModel: chartViewModel, dashboardViewModel: dashboardViewModel)
