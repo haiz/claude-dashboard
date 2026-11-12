@@ -260,6 +260,7 @@ mod tests {
             burn: None,
             burn_7d: None,
             burn_fable: None,
+            reset_grants: Vec::new(),
             is_extension_sourced: false,
             error: error.map(str::to_owned),
             last_synced_unix: None,

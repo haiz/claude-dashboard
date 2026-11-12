@@ -54,6 +54,18 @@ export struct UiWindow {
     // Eligible while `animal-asset != "" && clock <= animal-expires-at`. The phase is NOT here:
     // it is one app-wide property so row refreshes never restart the animation.
     animal-expires-at: float,
+    // Limit reset badge beside the label (core::limit_resets_text::view): the Full reset on
+    // 7d, Fable resets on F. 0 = no badge (also when this window has no gauge). Red when urgent.
+    badge-count: int,
+    badge-urgent: bool,
+    badge-tip: string,
+}
+
+// One line of the account page's "Limit resets" section ("Full reset · 1", "Expires ...").
+export struct UiResetLine {
+    title: string,
+    expiry: string,
+    urgent: bool,
 }
 
 // Compile-time references so every burn-animal sprite sheet (768x512, 6x4 cells of 128 px,
@@ -129,4 +141,6 @@ export struct UiRow {
     excluded: bool,
     critical-level: int,
     critical-help: string,
+    // The account page's "Limit resets" lines, Full first; empty hides the section.
+    resets: [UiResetLine],
 }

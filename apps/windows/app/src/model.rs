@@ -9,12 +9,14 @@ use claude_dashboard_core::geometry::{
     segment_range, to_angle, Metrics, METRICS, METRICS_REGULAR, TAU,
 };
 use claude_dashboard_core::format::{format_reset_time, formatted_countdown};
+use claude_dashboard_core::limit_resets_text::{self, Badge};
 use claude_dashboard_core::model::{AccountPlan, AccountStatus};
 use claude_dashboard_core::rows::{sidebar_percent, DisplayRow, WindowView};
 
 use crate::animal_assets;
 use claude_dashboard_core::animal_display::{five_hour_full, ACTIVITY_SECONDS};
-use crate::{UiRow, UiSegment, UiWindow};
+use crate::{UiResetLine, UiRow, UiSegment, UiWindow};
+use slint::Model;
 
 const FIVE_HOUR_S: f64 = 18000.0;
 const SEVEN_DAY_S: f64 = 604800.0;
@@ -212,9 +214,34 @@ fn window(
                 animal: animal.into(),
                 animal_asset: Default::default(),
                 animal_expires_at: NO_EXPIRY,
+                badge_count: 0,
+                badge_urgent: false,
+                badge_tip: Default::default(),
             }
         }
     }
+}
+
+/// Puts a limit reset badge on `w` (the 7d window for the Full reset, F for Fable). A window
+/// with no gauge gets none: the account page's "Limit resets" section still lists the kind.
+fn with_badge(w: UiWindow, badge: Option<&Badge>) -> UiWindow {
+    match badge {
+        Some(b) if w.present => UiWindow {
+            badge_count: b.count.min(i32::MAX as u32) as i32,
+            badge_urgent: b.urgent,
+            badge_tip: b.tip.as_str().into(),
+            ..w
+        },
+        _ => w,
+    }
+}
+
+fn reset_lines(lines: &[limit_resets_text::Line]) -> slint::ModelRc<UiResetLine> {
+    let items: Vec<UiResetLine> = lines
+        .iter()
+        .map(|l| UiResetLine { title: l.title.as_str().into(), expiry: l.expiry.as_str().into(), urgent: l.urgent })
+        .collect();
+    slint::ModelRc::new(slint::VecModel::from(items))
 }
 
 /// `UiWindow.animal-expires-at` while the 5h value has not changed since launch.
@@ -254,6 +281,9 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64, show_animals: bool) -> UiRow
     let seed = if row.account_id.is_empty() { &row.name } else { &row.account_id };
     let [animal, animal_7d, animal_fable] = animals(row, show_animals);
     let sidebar = sidebar_percent(row);
+    // Summarised against `now`, so the 1 s tick (`retime`) drops an expired reset and turns
+    // one red without a refetch.
+    let resets = limit_resets_text::view(&row.reset_grants, now_unix_s.floor() as i64, shift as i64);
     UiRow {
         id: row.account_id.as_str().into(),
         name: row.name.as_str().into(),
@@ -273,22 +303,14 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64, show_animals: bool) -> UiRow
             animal_asset: five_hour_asset(animal, show_animals, &row.five_hour),
             ..window(&row.five_hour, FIVE_HOUR_S, now_unix_s, shift, animal, true)
         },
-        seven_day: window(
-            &row.seven_day,
-            SEVEN_DAY_S,
-            now_unix_s,
-            shift,
-            animal_7d,
-            true,
+        seven_day: with_badge(
+            window(&row.seven_day, SEVEN_DAY_S, now_unix_s, shift, animal_7d, true),
+            resets.full.as_ref(),
         ),
         // macOS `showCountdown: false` for Fable: no countdown segments.
-        fable: window(
-            &row.fable,
-            SEVEN_DAY_S,
-            now_unix_s,
-            shift,
-            animal_fable,
-            false,
+        fable: with_badge(
+            window(&row.fable, SEVEN_DAY_S, now_unix_s, shift, animal_fable, false),
+            resets.fable.as_ref(),
         ),
         avatar_color: to_color(avatar_color(seed)),
         animal: animal.into(),
@@ -314,12 +336,14 @@ pub fn to_ui_row(row: &DisplayRow, now_unix_s: f64, show_animals: bool) -> UiRow
         excluded: false,
         critical_level: 0,
         critical_help: Default::default(),
+        resets: reset_lines(&resets.lines),
     }
 }
 
 /// The 1 s tick (macOS `TimelineView(.periodic(by: 1))` on each countdown): rebuilds the
-/// three windows of `ui` from `row` at `now` when their countdown text, reset label or
-/// countdown colour changed, leaving every other field (error lines included) alone.
+/// three windows of `ui` from `row` at `now` when their countdown text, reset label,
+/// countdown colour or limit reset badge changed, and the "Limit resets" lines when they
+/// changed, leaving every other field (error lines included) alone.
 /// Returns whether anything changed, so callers only touch rows that need a redraw.
 /// The animals are not timing: each window keeps the one it shows, and the 5h animal asset and
 /// expiry (see [`set_animals`], [`set_animal_activity`]).
@@ -332,12 +356,22 @@ pub fn retime(ui: &mut UiRow, row: &DisplayRow, now: f64) -> bool {
         (&mut ui.seven_day, fresh.seven_day),
         (&mut ui.fable, fresh.fable),
     ] {
-        if cur.countdown != new.countdown || cur.reset_label != new.reset_label || cur.countdown_color != new.countdown_color {
+        if cur.countdown != new.countdown
+            || cur.reset_label != new.reset_label
+            || cur.countdown_color != new.countdown_color
+            || cur.badge_count != new.badge_count
+            || cur.badge_urgent != new.badge_urgent
+            || cur.badge_tip != new.badge_tip
+        {
             let (animal, asset, expires) = (std::mem::take(&mut cur.animal), std::mem::take(&mut cur.animal_asset), cur.animal_expires_at);
             *cur = new;
             (cur.animal, cur.animal_asset, cur.animal_expires_at) = (animal, asset, expires);
             changed = true;
         }
+    }
+    if !ui.resets.iter().eq(fresh.resets.iter()) {
+        ui.resets = fresh.resets;
+        changed = true;
     }
     changed
 }
@@ -381,6 +415,7 @@ pub fn tray_tooltip(row: Option<&DisplayRow>, now: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use claude_dashboard_core::limit_resets::{ResetGrant, ResetKind};
     use slint::Model;
 
     #[test]
@@ -432,6 +467,7 @@ mod tests {
             burn: None,
             burn_7d: None,
             burn_fable: None,
+            reset_grants: Vec::new(),
             is_extension_sourced: false,
             error: None,
             last_synced_unix: None,
@@ -440,6 +476,72 @@ mod tests {
             kind_label: String::new(),
             expired_hint: String::new(),
         }
+    }
+
+    const NOW: f64 = 1e9;
+
+    fn grant(kind: ResetKind, resets_left: u32, ends_in_s: i64) -> ResetGrant {
+        ResetGrant { kind, resets_left, ends_at: NOW as i64 + ends_in_s }
+    }
+
+    fn row_with_gauges() -> DisplayRow {
+        let mut r = row();
+        let w = WindowView { utilization: 10.0, resets_at_unix: Some(NOW + 3600.0), is_limited: false };
+        r.seven_day = Some(w.clone());
+        r.fable = Some(w);
+        r
+    }
+
+    #[test]
+    fn both_kinds_badge_7d_and_f_and_list_two_lines() {
+        let mut r = row_with_gauges();
+        r.reset_grants = vec![grant(ResetKind::Full, 1, 28 * 86_400), grant(ResetKind::Fable, 2, 117 * 86_400)];
+        let ui = to_ui_row(&r, NOW, true);
+        assert_eq!(ui.seven_day.badge_count, 1);
+        assert_eq!(ui.fable.badge_count, 2);
+        assert!(!ui.seven_day.badge_urgent && !ui.fable.badge_urgent);
+        assert!(ui.seven_day.badge_tip.starts_with("Full reset · expires "));
+        assert!(ui.fable.badge_tip.starts_with("Fable resets · 2 · expire "));
+        assert_eq!(ui.five_hour.badge_count, 0);
+        assert_eq!(ui.resets.row_count(), 2);
+        assert_eq!(ui.resets.row_data(0).unwrap().title.as_str(), "Full reset · 1");
+        assert_eq!(ui.resets.row_data(1).unwrap().title.as_str(), "Fable reset · 2");
+    }
+
+    #[test]
+    fn a_fable_reset_without_a_fable_gauge_has_no_badge_but_a_line() {
+        let mut r = row_with_gauges();
+        r.fable = None;
+        r.reset_grants = vec![grant(ResetKind::Fable, 1, 30 * 86_400)];
+        let ui = to_ui_row(&r, NOW, true);
+        assert_eq!(ui.fable.badge_count, 0);
+        assert_eq!(ui.seven_day.badge_count, 0);
+        assert_eq!(ui.resets.row_count(), 1);
+    }
+
+    #[test]
+    fn a_full_reset_ending_within_seven_days_is_urgent() {
+        let mut r = row_with_gauges();
+        r.reset_grants = vec![grant(ResetKind::Full, 1, 6 * 86_400)];
+        let ui = to_ui_row(&r, NOW, true);
+        assert!(ui.seven_day.badge_urgent);
+        assert!(ui.resets.row_data(0).unwrap().urgent);
+    }
+
+    #[test]
+    fn time_passing_without_refetch_drops_the_badge_and_retime_clears_it() {
+        let mut r = row_with_gauges();
+        r.reset_grants = vec![grant(ResetKind::Full, 1, 3_600)];
+        let mut ui = to_ui_row(&r, NOW, true);
+        assert_eq!(ui.seven_day.badge_count, 1);
+        let later = to_ui_row(&r, NOW + 3_600.0, true);
+        assert_eq!(later.seven_day.badge_count, 0);
+        assert_eq!(later.resets.row_count(), 0);
+        ui.error = "kept".into();
+        assert!(retime(&mut ui, &r, NOW + 3_600.0));
+        assert_eq!(ui.seven_day.badge_count, 0);
+        assert_eq!(ui.resets.row_count(), 0);
+        assert_eq!(ui.error.as_str(), "kept");
     }
 
     #[test]
