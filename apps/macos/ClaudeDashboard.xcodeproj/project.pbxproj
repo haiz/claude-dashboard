@@ -13,6 +13,7 @@
 		06386ECAA9801ECAF79B3E0A /* PopoverFooter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6CEE94A190F9667328C4A7 /* PopoverFooter.swift */; };
 		0924D8F9139A4EE436ABEA8C /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7E115BD84248989BAA883F /* CryptoService.swift */; };
 		09CE6D71B0AEC1F0567D7743 /* AccountStoreQuarantine.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2A774B02398706067FC3A3 /* AccountStoreQuarantine.swift */; };
+		0D179D672B404BD399674664 /* LimitResetBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DAB6D3F79745F435C212204 /* LimitResetBadge.swift */; };
 		0D2BDE04D4B6D1D0C60DC187 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B626BA4B6B77C9127190E09 /* IOKit.framework */; };
 		0E2F307F40E44ACE95131FFA /* ChartWindowSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F3F9A558E37233133C847A5 /* ChartWindowSummary.swift */; };
 		0F3D68AF3F3645FE3E1BFD0C /* FakePinger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2350E45EA897A81903976D13 /* FakePinger.swift */; };
@@ -88,6 +89,7 @@
 		658C3AD44DF83CF3894DDBBF /* APIBaseURLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC6B7044313E37D1A46EFB3C /* APIBaseURLTests.swift */; };
 		65B871908DDBBBA22338EA23 /* Browser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCBF1EA7D7222950388A01C /* Browser.swift */; };
 		667F013D8C979684131DD6D2 /* ManualKeyOutcomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C8D27DC73CD1321619DF47A /* ManualKeyOutcomeTests.swift */; };
+		68E9CE836C602D20129F8EE7 /* LimitResetsText.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4507D0F84CAAA93EE34FC7D /* LimitResetsText.swift */; };
 		697FD5163EBEAA9871C91C38 /* SessionCandidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53FC5C2A26C631D62371B57C /* SessionCandidate.swift */; };
 		6994523150E34EE73FF95993 /* PingMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC57209CDF950797EE227167 /* PingMigrationTests.swift */; };
 		69ABC780DB34CC0E7498F13B /* DashboardViewModel+BurnPoll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D52D07901490DE7F10417DD /* DashboardViewModel+BurnPoll.swift */; };
@@ -109,6 +111,7 @@
 		778AEDD47FE25842B4C722AB /* DesktopSwitchFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97C7A111F9FB5CE6E67CD60 /* DesktopSwitchFlowTests.swift */; };
 		78FE8A4C073CCC5DE40FB5BE /* PingLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF4D3349D7E712D70BE8BB5D /* PingLogStore.swift */; };
 		799960A4D530BF35FAB68326 /* UsageLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A9C824A446A4513554E6BC5 /* UsageLogStore.swift */; };
+		7BB383E9DE1C268C3D002C47 /* LimitResetsText.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4507D0F84CAAA93EE34FC7D /* LimitResetsText.swift */; };
 		7C270378E7A24C8959633F69 /* APIBaseURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BF0A4FB04BB2713656EADBF /* APIBaseURL.swift */; };
 		7CF21E5F1DE379253A2A1CE7 /* BrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78303A2B3B9A1F15A814671 /* BrowserTests.swift */; };
 		7D3FCD0210FF7A90A46BB7F9 /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A87EC4F90E188AAAFB660C3 /* AppVersion.swift */; };
@@ -145,6 +148,7 @@
 		9759697B6C02F84B6EF06C09 /* DashboardViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690E18B51A43CF7A0BFFA627 /* DashboardViewModelTests.swift */; };
 		98FD479769E1857F43E86CCB /* UsageLogModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8ADAEF8BBFC797B0D4950E3 /* UsageLogModelsTests.swift */; };
 		9914ACB5979F1973B8C16B09 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF469D724BE1FCA1D071131F /* AccountStore.swift */; };
+		9951FC8BB5ECA8BE4B220B65 /* LimitResetBadgeLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19C947C6438EDF3AF54D925C /* LimitResetBadgeLayoutTests.swift */; };
 		9ABEC1784D916F22BCDC0786 /* AutoSwitchControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA457A45F67B4D67C244760D /* AutoSwitchControllerTests.swift */; };
 		9BAD90735B7C464237426A22 /* CriticalSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCCFAC39E6AB87092AEC2D54 /* CriticalSettings.swift */; };
 		9BBE74481A377B1DB3D0EF35 /* ClaudeDesktopSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6881833E4F42E75F8451B805 /* ClaudeDesktopSwitcher.swift */; };
@@ -175,6 +179,7 @@
 		AE6B0086743C161F44A7D360 /* UsageCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9E7C0511055F46A89CEB231 /* UsageCommand.swift */; };
 		AEE0A79BD59AE75A452A3B7B /* AutoSwitchLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7382201BF6A76E26BC932C4A /* AutoSwitchLogStoreTests.swift */; };
 		B08BAF76D7F9C719824B8AD4 /* ClaudeCodeSlot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D70116CC22F5808DE2352C /* ClaudeCodeSlot.swift */; };
+		B144275E5F69E0B8E14E7A2A /* LimitResetsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71CCA1522287940369D63873 /* LimitResetsSection.swift */; };
 		B17665D047E3FF28A5833216 /* AppDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C66707D08388FB1A9081646 /* AppDefaults.swift */; };
 		B38B8E482E1BC067FFD7AE74 /* MenuBarPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F459D10501056C193989A6 /* MenuBarPopover.swift */; };
 		B60EA96F4138C4C6B891CFE3 /* AnimalDisplayModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C8DC56CA1BF3E839D2876D5 /* AnimalDisplayModels.swift */; };
@@ -201,6 +206,7 @@
 		C7D3F994BAA968A2E2F93649 /* DashboardViewModelProvisionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7847039AA6686C575636ACDE /* DashboardViewModelProvisionTests.swift */; };
 		CA06A14E4AF6469C7EE91BBD /* BrowserCookieService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4ED0121EB136414664B103B /* BrowserCookieService.swift */; };
 		CBA5F28B81C6FA6C0E24C610 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2535C231EBCF76F786F7B7E /* Account.swift */; };
+		CD6711D05F9E96AD6EF9ED9B /* LimitResetsText.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4507D0F84CAAA93EE34FC7D /* LimitResetsText.swift */; };
 		CDCC9922649F3AADEE10A792 /* ChartWindowSummaryContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53D0166D2B630F72DF4EC75 /* ChartWindowSummaryContractTests.swift */; };
 		CE25D0A650D6DAB575C31023 /* AccentSwitchToggleStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3D3C642BA08FCA6281C68F /* AccentSwitchToggleStyle.swift */; };
 		CE55D2C28FBD864C7E772496 /* DashboardViewModelAutoSwitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA55958AE5E1F672CCBE9FD9 /* DashboardViewModelAutoSwitchTests.swift */; };
@@ -210,6 +216,7 @@
 		D8B9A70A970E00377F9C00AD /* DashboardViewModel+Ping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CE2258780F95A45D7C88D04 /* DashboardViewModel+Ping.swift */; };
 		D8E4C3734EF770A9574C0194 /* ClaudeCodeOAuthClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2E021E6A7AAD0A4DCC9F0B /* ClaudeCodeOAuthClientTests.swift */; };
 		DB36C85108500684823E76F6 /* PingLogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88EBE6888FCD1A377372D9FB /* PingLogModels.swift */; };
+		DB5123E2218A55B612C26724 /* LimitResetsTextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F29C02F35A02CB0AAF21C64 /* LimitResetsTextTests.swift */; };
 		DB632700951205ACE0A3C952 /* HelperProcess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E80DA8175A0D4CB1C886FE4 /* HelperProcess.swift */; };
 		DC866C6D464B0F717BE0E88C /* ClaudeDesktopProcessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCCF925CF97753E0C28E1CB0 /* ClaudeDesktopProcessTests.swift */; };
 		DFE233BEB879527F51838818 /* InfoTip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF5955977F933195581B1AE /* InfoTip.swift */; };
@@ -290,6 +297,7 @@
 		185387031B74CDBE139E0830 /* UsageLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLogStoreTests.swift; sourceTree = "<group>"; };
 		18EFF689916F3050F6F7354D /* StoreFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreFixture.swift; sourceTree = "<group>"; };
 		192B6A7B21DD123434442F5B /* AddKeyCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddKeyCommandTests.swift; sourceTree = "<group>"; };
+		19C947C6438EDF3AF54D925C /* LimitResetBadgeLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitResetBadgeLayoutTests.swift; sourceTree = "<group>"; };
 		1A466FBD387F8F0F01866D2D /* ClaudeCodeLoginProvisioner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeLoginProvisioner.swift; sourceTree = "<group>"; };
 		1A49DF1036E4DBC2567EFDB6 /* PingMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingMigration.swift; sourceTree = "<group>"; };
 		1AA1E9D0BCC00C9ABCD8F6BF /* DashboardViewModel+AutoSwitch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DashboardViewModel+AutoSwitch.swift"; sourceTree = "<group>"; };
@@ -310,6 +318,7 @@
 		2B9035A662D17D7670BAB113 /* ClaudeCodeCredentialTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeCredentialTests.swift; sourceTree = "<group>"; };
 		2CE2258780F95A45D7C88D04 /* DashboardViewModel+Ping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DashboardViewModel+Ping.swift"; sourceTree = "<group>"; };
 		2CECA8F5BDB86E3741F82280 /* ClaudeCodeAccountDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeAccountDetector.swift; sourceTree = "<group>"; };
+		2DAB6D3F79745F435C212204 /* LimitResetBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitResetBadge.swift; sourceTree = "<group>"; };
 		2EA61B2FF2C2B145D0C49C56 /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
 		2F3F9A558E37233133C847A5 /* ChartWindowSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartWindowSummary.swift; sourceTree = "<group>"; };
 		307168BF6B40DB84E0E5A46F /* AutoSwitchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchController.swift; sourceTree = "<group>"; };
@@ -366,6 +375,7 @@
 		6C9D2CB13A6304EAA8197BCF /* CriticalSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticalSettingsSection.swift; sourceTree = "<group>"; };
 		6E80DA8175A0D4CB1C886FE4 /* HelperProcess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperProcess.swift; sourceTree = "<group>"; };
 		6F8B5FF0329E0A79D62CA8AF /* ClaudeCodeOAuthClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeOAuthClient.swift; sourceTree = "<group>"; };
+		71CCA1522287940369D63873 /* LimitResetsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitResetsSection.swift; sourceTree = "<group>"; };
 		7382201BF6A76E26BC932C4A /* AutoSwitchLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchLogStoreTests.swift; sourceTree = "<group>"; };
 		73EA27C3A6B23F369D86DDB7 /* DecryptCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecryptCommandTests.swift; sourceTree = "<group>"; };
 		74D1585842EDF62709FFE79D /* ClaudeCodeSlotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeSlotTests.swift; sourceTree = "<group>"; };
@@ -409,6 +419,7 @@
 		9D3775C1FC2B1C99A5FDB188 /* GeneralSettingsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsPane.swift; sourceTree = "<group>"; };
 		9D9410DC3E0803A469DCDE90 /* MockURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockURLProtocol.swift; sourceTree = "<group>"; };
 		9E5DC2CBF0146B4C97668D08 /* ClaudeCodeSwitcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeSwitcherTests.swift; sourceTree = "<group>"; };
+		9F29C02F35A02CB0AAF21C64 /* LimitResetsTextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitResetsTextTests.swift; sourceTree = "<group>"; };
 		9F2F0B81819D6583AA3F02AE /* PingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingController.swift; sourceTree = "<group>"; };
 		A460EE7CEDF2261DFEAA6C1A /* AutoSwitchPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchPlanner.swift; sourceTree = "<group>"; };
 		A53A8E90D5A5556AAC38ED9D /* BurnAnimalGaugeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnAnimalGaugeTests.swift; sourceTree = "<group>"; };
@@ -455,6 +466,7 @@
 		DFA6B7D8BC846956FB00E42A /* DashboardPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPane.swift; sourceTree = "<group>"; };
 		E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDetectionContractTests.swift; sourceTree = "<group>"; };
 		E29F783F80FE0FD6AAA842D5 /* PingLogViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingLogViewModelTests.swift; sourceTree = "<group>"; };
+		E4507D0F84CAAA93EE34FC7D /* LimitResetsText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitResetsText.swift; sourceTree = "<group>"; };
 		E4BAD55D59287038F16012AE /* ClaudeDashboardTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeDashboardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E53D0166D2B630F72DF4EC75 /* ChartWindowSummaryContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartWindowSummaryContractTests.swift; sourceTree = "<group>"; };
 		E54CFBC6B0C4EF6B9A3099D2 /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
@@ -582,7 +594,9 @@
 				AFD4C1EC6F97C4F34F204E5E /* DedupeContractTests.swift */,
 				B97C7A111F9FB5CE6E67CD60 /* DesktopSwitchFlowTests.swift */,
 				E79F99E6791ECFF919869DD5 /* DesktopSwitchSettingsTests.swift */,
+				19C947C6438EDF3AF54D925C /* LimitResetBadgeLayoutTests.swift */,
 				DF4DC21DED676BC5D0DC8399 /* LimitResetsContractTests.swift */,
+				9F29C02F35A02CB0AAF21C64 /* LimitResetsTextTests.swift */,
 				D627736A32F2282084F78A58 /* ManualKeyContractTests.swift */,
 				AE57E5139A296611CB7F49C2 /* ManualKeyInputTests.swift */,
 				0C8D27DC73CD1321619DF47A /* ManualKeyOutcomeTests.swift */,
@@ -697,6 +711,7 @@
 				DC394CD29F6E869A54D1CE5A /* HelpView.swift */,
 				63F7648F7947F079340F6B42 /* InlinePrompt.swift */,
 				86AC4B09025CCFBC088F61A5 /* InteractiveChartContainer.swift */,
+				71CCA1522287940369D63873 /* LimitResetsSection.swift */,
 				82BD8EADA1A53C63A8745853 /* MainWindow.swift */,
 				52F459D10501056C193989A6 /* MenuBarPopover.swift */,
 				2AA56B8E5252FD397123C6C2 /* OverviewChartView.swift */,
@@ -815,6 +830,7 @@
 				990F490C58BF3B30BEAC6581 /* HelpBlocks.swift */,
 				23E104FF0D60CC558E8D93B0 /* HoverableButtonStyle.swift */,
 				7DF5955977F933195581B1AE /* InfoTip.swift */,
+				2DAB6D3F79745F435C212204 /* LimitResetBadge.swift */,
 				8FE432C84E62A7FE9684E5A4 /* PaneHeader.swift */,
 				348C8E47DD7A1A6C254070A5 /* SettingsIcon.swift */,
 				A95082583D7C4BDB685C32B1 /* UsageGaugeRow.swift */,
@@ -837,6 +853,7 @@
 				B4ED0121EB136414664B103B /* BrowserCookieService.swift */,
 				6C7E115BD84248989BAA883F /* CryptoService.swift */,
 				FEED9BCA996F217C59521012 /* LimitResets.swift */,
+				E4507D0F84CAAA93EE34FC7D /* LimitResetsText.swift */,
 				3DF55256F6D81B14585D71C9 /* ManualKey.swift */,
 				7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */,
 				84D76299585A3672F3ADD331 /* PingService.swift */,
@@ -907,7 +924,7 @@
 			path = Ping;
 			sourceTree = "<group>";
 		};
-		"TEMP_BDC33DA7-0F04-46FD-B990-794F28197D0F" /* Resources */ = {
+		"TEMP_A8C8885A-4BD4-46DF-8167-FB500D516C7F" /* Resources */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -1102,7 +1119,9 @@
 				14E1A2437A2103B2A0DE0F20 /* DesktopSwitchSettingsTests.swift in Sources */,
 				0F3D68AF3F3645FE3E1BFD0C /* FakePinger.swift in Sources */,
 				390BB1B38D799B09D2603F36 /* InMemoryKeychain.swift in Sources */,
+				9951FC8BB5ECA8BE4B220B65 /* LimitResetBadgeLayoutTests.swift in Sources */,
 				8246B1B60BADC71E3376B02E /* LimitResetsContractTests.swift in Sources */,
+				DB5123E2218A55B612C26724 /* LimitResetsTextTests.swift in Sources */,
 				924D219F90D34BE86951B7DB /* ManualKeyContractTests.swift in Sources */,
 				E54289326B8471DAABA189CF /* ManualKeyInputTests.swift in Sources */,
 				667F013D8C979684131DD6D2 /* ManualKeyOutcomeTests.swift in Sources */,
@@ -1159,6 +1178,7 @@
 				DB632700951205ACE0A3C952 /* HelperProcess.swift in Sources */,
 				82C00A064BAECA4DFDC748C2 /* HelperProcessTests.swift in Sources */,
 				EC0E7D582EF763E6F7B5A72D /* LimitResets.swift in Sources */,
+				68E9CE836C602D20129F8EE7 /* LimitResetsText.swift in Sources */,
 				46022E5A9168DBFFE3140E9E /* LoopbackServer.swift in Sources */,
 				BD44D9A3F83F77BA7B53B5FD /* LoopbackServerTests.swift in Sources */,
 				E99F26B2AF2EACF7A4B12282 /* ManualKey.swift in Sources */,
@@ -1195,6 +1215,7 @@
 				1DB54021BBBA6A80D35336A8 /* DecryptCommand.swift in Sources */,
 				203ACE14CE6715FA4B712065 /* HelperAccountStore.swift in Sources */,
 				A8B8DDB5C6E2E69EAB26E5BE /* LimitResets.swift in Sources */,
+				7BB383E9DE1C268C3D002C47 /* LimitResetsText.swift in Sources */,
 				1213175776995521648C0196 /* ManualKey.swift in Sources */,
 				9FAB31B717BAEDE9C724CB3E /* ManualKeyInput.swift in Sources */,
 				C3A07C8ABE7AA0986CE63789 /* PingService.swift in Sources */,
@@ -1275,7 +1296,10 @@
 				DFE233BEB879527F51838818 /* InfoTip.swift in Sources */,
 				89EF0ECEF1D170B4BA0889F1 /* InlinePrompt.swift in Sources */,
 				04AD291FD33FFB834B40D945 /* InteractiveChartContainer.swift in Sources */,
+				0D179D672B404BD399674664 /* LimitResetBadge.swift in Sources */,
 				E28C8A34CE74E61D6B59C197 /* LimitResets.swift in Sources */,
+				B144275E5F69E0B8E14E7A2A /* LimitResetsSection.swift in Sources */,
+				CD6711D05F9E96AD6EF9ED9B /* LimitResetsText.swift in Sources */,
 				E58E9615874AAD6AC19F48DE /* MainWindow.swift in Sources */,
 				310A4AEEB4EF068D8522A921 /* ManualKey.swift in Sources */,
 				C5EF5EF93570CBB91B78006E /* ManualKeyInput.swift in Sources */,

@@ -9,10 +9,12 @@ struct UsageBar: View {
     let burnAnimal: BurnAnimalSource?
     let showCountdown: Bool
     let isCompact: Bool         // true = widget/popover, false = dashboard
+    /// A limit reset badge beside the label (7d: Full reset, F: Fable resets); nil draws the label alone.
+    let resetBadge: (summary: ResetSummary, tooltip: String)?
 
     var onTap: (() -> Void)? = nil
 
-    init(label: String, utilization: Double, resetsAt: Date?, totalSeconds: TimeInterval = 18000, burnAnimal: BurnAnimalSource? = nil, showCountdown: Bool = true, isCompact: Bool = true, onTap: (() -> Void)? = nil) {
+    init(label: String, utilization: Double, resetsAt: Date?, totalSeconds: TimeInterval = 18000, burnAnimal: BurnAnimalSource? = nil, showCountdown: Bool = true, isCompact: Bool = true, resetBadge: (summary: ResetSummary, tooltip: String)? = nil, onTap: (() -> Void)? = nil) {
         self.label = label
         self.utilization = utilization
         self.resetsAt = resetsAt
@@ -20,6 +22,7 @@ struct UsageBar: View {
         self.burnAnimal = burnAnimal
         self.showCountdown = showCountdown
         self.isCompact = isCompact
+        self.resetBadge = resetBadge
         self.onTap = onTap
     }
 
@@ -42,9 +45,14 @@ struct UsageBar: View {
 
     private var gauges: some View {
         VStack(alignment: .center, spacing: 5) {
-            Text(label)
-                .font(.system(size: labelFontSize, design: .monospaced))
-                .foregroundStyle(.secondary)
+            HStack(spacing: isCompact ? 3 : 4) {
+                Text(label)
+                    .font(.system(size: labelFontSize, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                if let resetBadge {
+                    LimitResetBadge(summary: resetBadge.summary, tooltip: resetBadge.tooltip, isCompact: isCompact)
+                }
+            }
 
             HStack(alignment: .bottom, spacing: isCompact ? 5 : 8) {
                 CircularProgressView(
