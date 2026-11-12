@@ -683,5 +683,57 @@
       "full": null,
       "fable": null
     }
+  },
+  {
+    "name": "resets_left above u32 max dropped",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 5000000000,
+          "ends_at": "2026-12-10T22:00:00+00:00",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": null
+    }
+  },
+  {
+    "name": "date-only ends_at dropped",
+    "now": "2026-11-12T00:00:00+00:00",
+    "input": {
+      "eligible": true,
+      "grants": [
+        {
+          "id": "g-full",
+          "resets_left": 1,
+          "ends_at": "2026-12-10",
+          "clears": [
+            "five_hour",
+            "seven_day",
+            "seven_day_overage_included"
+          ],
+          "gives_back_weekly": false,
+          "paused": false,
+          "usable_now": true
+        }
+      ]
+    },
+    "expect": {
+      "full": null,
+      "fable": null
+    }
   }
 ]

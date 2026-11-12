@@ -21,7 +21,7 @@ function shape(s) {
 
 test('limit resets match every contract case', () => {
     const cases = loadCases('limit-resets.json');
-    assertEqual(cases.length, 25, 'case count');
+    assertEqual(cases.length, 27, 'case count');
     for (const c of cases) {
         const got = summarize(parseGrants(c.input), Date.parse(c.now));
         assertDeepEqual({full: shape(got.full), fable: shape(got.fable)}, c.expect, c.name);

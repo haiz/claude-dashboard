@@ -86,11 +86,11 @@ enum LimitResets {
     }
 
     /// A JSON number holding an integer >= 1 (`1` and `1.0` count); booleans,
-    /// strings and non-integral numbers give nil.
+    /// strings, non-integral numbers and values above u32 max (as Rust and JS) give nil.
     private static func integralCount(_ v: Any?) -> Int? {
         guard let n = v as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() else { return nil }
         let d = n.doubleValue
-        guard d.rounded(.towardZero) == d, d >= 1, d < 9.2e18 else { return nil }
+        guard d.rounded(.towardZero) == d, d >= 1, d <= 4294967295 else { return nil }
         return n.intValue
     }
 

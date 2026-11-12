@@ -62,7 +62,7 @@ impl UsageData {
         let seven_day = required_window(&v, "seven_day")?;
         let fable = derive_fable(&v); // swallows all errors -> None
         let reset_grants = crate::limit_resets::parse_grants(
-            v.get(&crate::limit_resets::field_name()).unwrap_or(&Value::Null),
+            v.get(crate::limit_resets::field_name()).unwrap_or(&Value::Null),
         );
         Ok(UsageData { five_hour, seven_day, fable, reset_grants })
     }

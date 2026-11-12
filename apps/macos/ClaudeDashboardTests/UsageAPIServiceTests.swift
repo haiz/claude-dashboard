@@ -24,6 +24,7 @@ final class UsageAPIServiceTests: XCTestCase {
 
         MockURLProtocol.requestHandler = { request in
             XCTAssertEqual(request.url?.path, "/api/organizations/org-123/usage")
+            XCTAssertEqual(request.url?.query, "\(LimitResets.fieldName)=1")
             XCTAssertTrue(request.value(forHTTPHeaderField: "Cookie")?.contains("sessionKey=sk-test") ?? false)
 
             let response = HTTPURLResponse(
@@ -106,6 +107,7 @@ final class UsageAPIServiceTests: XCTestCase {
         """.data(using: .utf8)!
 
         MockURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.query, "\(LimitResets.fieldName)=1")
             let response = HTTPURLResponse(
                 url: request.url!, statusCode: 200,
                 httpVersion: nil, headerFields: nil
