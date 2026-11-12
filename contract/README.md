@@ -291,7 +291,8 @@ Input: the decoded limit-resets object (or its absence).
    missing / not an array: **no resets** (no badge, no detail block). A malformed
    limit-resets field must never fail the usage decode; it degrades to "no resets", the
    same way a bad `limits` degrades to `fable = nil`.
-2. A grant counts only when `resets_left > 0`, `paused != true`, and `ends_at` parses and
+2. A grant counts only when `resets_left` is a JSON number with an integer value >= 1 (`1` and
+   `1.0` both count; `1.5`, booleans and strings are skipped), `paused != true`, and `ends_at` parses and
    is after *now*. A grant whose individual fields are malformed is skipped, not fatal.
    `usable_now` is ignored.
 3. Kind: `gives_back_weekly == true` -> **fable**; else `clears` contains both
