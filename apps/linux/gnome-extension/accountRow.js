@@ -6,6 +6,7 @@ import {UsageRing, CountdownRing} from './ring.js';
 import {metricsFor, percentFontSize, percentSignFontSize, countdownFontSize} from './lib/geometry.js';
 import {formatResetTime, formattedCountdown} from './lib/format.js';
 import {planBadgeColor} from './lib/plan.js';
+import {summarize} from './lib/limitResets.js';
 
 const FIVE_HOUR_SECONDS = 18000;
 const SEVEN_DAY_SECONDS = 604800;
@@ -37,7 +38,31 @@ class WindowColumn extends St.BoxLayout {
             x_align: Clutter.ActorAlign.CENTER,
         });
         windowLabel.set_style(`font-size: ${metrics.windowLabelFontSize}px;`);
-        this.add_child(windowLabel);
+
+        // The limit-resets badge sits beside the label. It is smaller than the
+        // label font and padding-free so the row height, and so the ring
+        // alignment with the 5h column (which never has a badge), is unchanged.
+        const badgeFont = Math.max(8, metrics.windowLabelFontSize - 3);
+        this._badge = new St.BoxLayout({
+            style_class: 'claude-reset-badge',
+            y_align: Clutter.ActorAlign.CENTER,
+            visible: false,
+        });
+        this._badge.add_child(new St.Icon({
+            icon_name: 'view-refresh-symbolic',
+            icon_size: badgeFont,
+            style_class: 'claude-reset-badge-icon',
+            y_align: Clutter.ActorAlign.CENTER,
+        }));
+        this._badgeCount = new St.Label({y_align: Clutter.ActorAlign.CENTER});
+        this._badgeCount.set_style(`font-size: ${badgeFont}px;`);
+        this._badge.add_child(this._badgeCount);
+
+        const labelRow = new St.BoxLayout({x_align: Clutter.ActorAlign.CENTER});
+        labelRow.set_style('spacing: 4px;');
+        labelRow.add_child(windowLabel);
+        labelRow.add_child(this._badge);
+        this.add_child(labelRow);
 
         // Ports UsageBar.swift's HStack(spacing: isCompact ? 5 : 8).
         const gauges = new St.BoxLayout({y_align: Clutter.ActorAlign.END});
@@ -107,6 +132,20 @@ class WindowColumn extends St.BoxLayout {
         gauges.add_child(this._countdownBox);
 
         this.add_child(gauges);
+    }
+
+    // summary: {count, urgent} or null (hides the badge).
+    setResetBadge(summary) {
+        if (!summary) {
+            this._badge.hide();
+            return;
+        }
+        this._badgeCount.text = `${summary.count}`;
+        if (summary.urgent)
+            this._badge.add_style_class_name('claude-reset-badge-urgent');
+        else
+            this._badge.remove_style_class_name('claude-reset-badge-urgent');
+        this._badge.show();
     }
 
     update(window, animal, nowMs) {
@@ -345,6 +384,9 @@ class AccountRow extends St.BoxLayout {
             ['seven_day', row.windows.sevenDay],
             ['fable', row.windows.fable],
         ];
+        const resets = summarize(row.windows.resetGrants, nowMs);
+        this._columns.seven_day.setResetBadge(resets.full);
+        this._columns.fable.setResetBadge(row.windows.fable ? resets.fable : null);
         for (const [key, window] of pairs) {
             const column = this._columns[key];
             if (!window) {
