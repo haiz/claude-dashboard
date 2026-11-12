@@ -6,6 +6,7 @@
 pub const TOPICS: &[(&str, &str)] = &[
     ("getting-started", "Getting Started"),
     ("reading-a-card", "Reading a Card"),
+    ("limit-resets", "Limit Resets"),
     ("finding-your-way", "Finding Your Way"),
     ("charts", "Charts"),
     ("switch-claude-code", "Switch Claude Code"),
@@ -41,6 +42,7 @@ mod tests {
             &[
                 ("getting-started", "Getting Started"),
                 ("reading-a-card", "Reading a Card"),
+                ("limit-resets", "Limit Resets"),
                 ("finding-your-way", "Finding Your Way"),
                 ("charts", "Charts"),
                 ("switch-claude-code", "Switch Claude Code"),
@@ -102,6 +104,18 @@ mod tests {
             "**X** (Dashboard header)",
             "**Switch after reset**",
             "Auto Switch did nothing",
+        ] {
+            assert!(ui.contains(text), "{text}");
+        }
+    }
+
+    #[test]
+    fn limit_resets_card_matches_macos() {
+        let ui = include_str!("../ui/help.slint");
+        for text in [
+            "subtitle: \"The \\u{21BB} badge beside 7d and F.\"",
+            "**Limit resets**: claude.ai sometimes gives an account free resets of its limits. A badge beside **7d** counts Full resets (they clear the 5h and 7d windows); a badge beside **F** counts Fable resets. The account page lists each kind with its expiry. A badge turns red when its resets expire in under 7 days. Resets are used on claude.ai; this app only shows them and never resets a limit.",
+            "id == \"limit-resets\" ? c-resets.y",
         ] {
             assert!(ui.contains(text), "{text}");
         }

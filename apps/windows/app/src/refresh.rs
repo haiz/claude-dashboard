@@ -316,7 +316,7 @@ pub fn apply_projections(tracker: &mut BurnRateTracker, rows: &mut [DisplayRow],
 }
 
 /// A row that was not fetched fine this time (errored, or expired and so skipped) and has
-/// no window data of its own keeps the previous row's last-good windows, as macOS keeps
+/// no window data of its own keeps the previous row's last-good windows and limit resets, as macOS keeps
 /// `usage` across a failed fetch, so its gauges do not blank.
 fn backfill_errored_rows(prev: &[DisplayRow], fresh: &mut [DisplayRow]) {
     for row in fresh.iter_mut() {
@@ -328,6 +328,7 @@ fn backfill_errored_rows(prev: &[DisplayRow], fresh: &mut [DisplayRow]) {
             row.five_hour = p.five_hour.clone();
             row.seven_day = p.seven_day.clone();
             row.fable = p.fable.clone();
+            row.reset_grants = p.reset_grants.clone();
             row.peak_utilization = p.peak_utilization;
             if row.last_synced_unix.is_none() {
                 row.last_synced_unix = p.last_synced_unix;
@@ -852,7 +853,13 @@ mod tests {
 
     #[test]
     fn errored_row_keeps_previous_window_data_not_blank() {
-        let prev = rows(&[]);
+        let mut prev = rows(&[]);
+        let grant = claude_dashboard_core::limit_resets::ResetGrant {
+            kind: claude_dashboard_core::limit_resets::ResetKind::Full,
+            resets_left: 1,
+            ends_at: NOW as i64 + 86_400,
+        };
+        prev.iter_mut().find(|r| r.account_id == "b").unwrap().reset_grants = vec![grant.clone()];
         let mut fresh = rows(&[("b", "HTTP 500")]);
         let b = fresh.iter_mut().find(|r| r.account_id == "b").unwrap();
         b.five_hour = None;
@@ -864,6 +871,7 @@ mod tests {
         assert_eq!(b.error.as_deref(), Some("HTTP 500"));
         assert_eq!(b.five_hour.as_ref().map(|w| w.utilization), Some(70.0));
         assert!(b.seven_day.is_some());
+        assert_eq!(b.reset_grants, vec![grant], "a failed refresh keeps the last known resets");
         assert_eq!(merged.peak, 70.0);
         assert_eq!(merged.rows.len(), 3);
     }

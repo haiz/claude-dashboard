@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use crate::account_kind::kind_of;
 use crate::burn_rate::BurnRateResult;
 use crate::extension_sources::ExtensionSources;
+use crate::limit_resets::ResetGrant;
 use crate::model::{Account, AccountPlan, AccountStatus};
 use crate::usage::{UsageData, UsageLimit};
 
@@ -41,6 +42,9 @@ pub struct DisplayRow {
     /// Same result for the 7-day and Fable windows (macOS shows an animal on each gauge).
     pub burn_7d: Option<BurnRateResult>,
     pub burn_fable: Option<BurnRateResult>,
+    /// The limit resets from the last usage (empty without usage). Kept raw, not
+    /// summarised, so the views re-run `limit_resets::summarize` against the current time.
+    pub reset_grants: Vec<ResetGrant>,
     pub is_extension_sourced: bool,
     pub error: Option<String>,
     pub last_synced_unix: Option<f64>,
@@ -132,6 +136,7 @@ pub fn build_rows(input: BuildInput<'_>) -> Vec<DisplayRow> {
                 burn: None,
                 burn_7d: None,
                 burn_fable: None,
+                reset_grants: usage.map(|u| u.reset_grants.clone()).unwrap_or_default(),
                 is_extension_sourced: input.sources.bindings.values().any(|b| b.account_id == a.id),
                 error: input.errors.get(&a.id).cloned(),
                 last_synced_unix: a.last_synced_unix(),
@@ -424,6 +429,20 @@ mod tests {
     fn sidebar_percent_none_when_expired() {
         let r = plain("a", false, AccountStatus::Expired, Some(40.0), Some(100.0));
         assert_eq!(sidebar_percent(&r), None);
+    }
+
+    #[test]
+    fn row_carries_the_usage_reset_grants_and_none_without_usage() {
+        use crate::limit_resets::ResetKind;
+        let grant = ResetGrant { kind: ResetKind::Full, resets_left: 1, ends_at: NOW as i64 + 86_400 };
+        let mut u = usage(1.0, None);
+        u.reset_grants = vec![grant.clone()];
+        let accts = [acct("a", false, AccountStatus::Active), acct("b", false, AccountStatus::Active)];
+        let rows = run(&accts, &[("a", u)], &[], &[]);
+        let a = rows.iter().find(|r| r.account_id == "a").unwrap();
+        let b = rows.iter().find(|r| r.account_id == "b").unwrap();
+        assert_eq!(a.reset_grants, vec![grant]);
+        assert!(b.reset_grants.is_empty());
     }
 
     #[test]

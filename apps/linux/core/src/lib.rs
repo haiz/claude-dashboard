@@ -1,6 +1,7 @@
 pub mod model;
 pub mod usage;
 pub mod limit_resets;
+pub mod limit_resets_text;
 pub mod plan;
 pub mod burn_rate;
 pub mod colors;

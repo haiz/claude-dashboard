@@ -228,6 +228,72 @@ component RingButton inherits Rectangle {
     Tooltip { text: @markdown("\{root.tip}"); }
 }
 
+// A clockwise circular arrow (macOS SF Symbol arrow.clockwise, standing in for U+21BB, which
+// renders poorly in monospace fonts): a 300-degree arc from 2 o'clock round to 12 o'clock, its
+// head at the top pointing clockwise. Both paths share one stroke width because Slint insets
+// a path's viewbox by its stroke width; that keeps the head on the arc's end.
+export component ResetArrow inherits Rectangle {
+    in property <color> tint: white;
+    in property <length> stroke: 1.2px;
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 16;
+        viewbox-height: 16;
+        commands: "M 12.33 6.5 A 5 5 0 1 1 8 4";
+        stroke: root.tint;
+        stroke-width: root.stroke;
+        fill: transparent;
+    }
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 16;
+        viewbox-height: 16;
+        commands: "M 6.6 0.6 L 11 4 L 6.6 7.4 Z";
+        stroke: transparent;
+        stroke-width: root.stroke;
+        fill: root.tint;
+    }
+}
+
+// The limit reset badge beside a gauge label (macOS LimitResetBadge): a capsule holding a
+// clockwise arrow and the count, white on the countdown's blue rgb(74,144,217), on the
+// Windows error red (#c42b1c, legible with white text in both themes) when the resets expire
+// within 7 days. The caller sets its height to the label's line height, so a column with a
+// badge keeps the label row height of one without and the rings stay aligned.
+export component ResetBadge inherits Rectangle {
+    in property <int> count;
+    in property <bool> urgent;
+    in property <string> tip;
+    in property <bool> compact: true;
+    property <length> font: root.compact ? 8px : 10px;
+    width: row.preferred-width + (root.compact ? 6px : 8px);
+    border-radius: self.height / 2;
+    background: root.urgent ? #c42b1c : #4a90d9;
+    row := HorizontalLayout {
+        x: (parent.width - self.width) / 2;
+        width: self.preferred-width;
+        spacing: 1px;
+        ResetArrow {
+            width: root.font;
+            height: root.font;
+            y: (parent.height - self.height) / 2;
+            stroke: root.compact ? 1.2px : 1.4px;
+        }
+        Text {
+            text: root.count;
+            color: white;
+            font-family: "Consolas";
+            font-size: root.font;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+    TouchArea { }
+    Tooltip { text: @markdown("\{root.tip}"); }
+}
+
 // One gauge column on the card (macOS UsageBar, compact): mono label, usage ring (the 5h one
 // alternates its percent with the animated burn animal), then the segmented countdown ring beside it with the
 // reset label above. Only the two rings open that window's chart, as on macOS.
@@ -250,12 +316,24 @@ export component WindowColumn inherits Rectangle {
 
     col := VerticalLayout {
         spacing: 5px;
-        Text {
-            text: root.label;
-            color: Theme.text-secondary;
-            font-family: "Consolas";
-            font-size: root.compact ? 10px : 13px;
-            horizontal-alignment: center;
+        // The label, with the limit reset badge beside it (7d: Full, F: Fable).
+        HorizontalLayout {
+            alignment: center;
+            spacing: root.compact ? 3px : 4px;
+            lbl := Text {
+                text: root.label;
+                color: Theme.text-secondary;
+                font-family: "Consolas";
+                font-size: root.compact ? 10px : 13px;
+                vertical-alignment: center;
+            }
+            if root.win.badge-count > 0: ResetBadge {
+                height: lbl.preferred-height;
+                count: root.win.badge-count;
+                urgent: root.win.badge-urgent;
+                tip: root.win.badge-tip;
+                compact: root.compact;
+            }
         }
         HorizontalLayout {
             spacing: root.compact ? 5px : 8px;
@@ -904,6 +982,18 @@ export component AccountPane inherits VerticalLayout {
                         data: root.data;
                         open-window(w) => { root.open-window(w); }
                     }
+                }
+            }
+
+            // macOS LimitResetsSection: one read-only line per kind, the expiry red when urgent.
+            if root.data.resets.length > 0: PaneSection {
+                title: "Limit resets";
+                for line in root.data.resets: HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    Text { text: line.title; color: Theme.text-primary; }
+                    Text { text: "\u{2014}"; color: Theme.text-secondary; }
+                    Text { text: line.expiry; color: line.urgent ? Theme.danger : Theme.text-secondary; }
                 }
             }
 

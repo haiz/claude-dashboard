@@ -1254,10 +1254,12 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
 }
 
 /// Dev-only: `CLAUDE_DASHBOARD_FAKE_ROWS=1` seeds sample cards (no network): a pinned
-/// account, a Fable account, an extension account, and an expired one of each kind.
+/// account, a Fable account, an extension account, and an expired one of each kind; two
+/// carry limit resets (one urgent).
 fn fake_rows(now: f64) -> refresh::RefreshOutput {
     use claude_dashboard_core::account_kind::AccountKind;
     use claude_dashboard_core::burn_rate::BurnRateResult;
+    use claude_dashboard_core::limit_resets::{ResetGrant, ResetKind};
     use claude_dashboard_core::model::{AccountPlan, AccountStatus, Browser};
     use claude_dashboard_core::rows::{DisplayRow, WindowView};
     let win = |u: f64, resets_in: f64| WindowView { utilization: u, resets_at_unix: Some(now + resets_in), is_limited: false };
@@ -1275,6 +1277,7 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
         burn,
         burn_7d: None,
         burn_fable: None,
+        reset_grants: Vec::new(),
         is_extension_sourced: false,
         error: None,
         last_synced_unix: Some(now),
@@ -1306,6 +1309,11 @@ fn fake_rows(now: f64) -> refresh::RefreshOutput {
     let mut alice = mk("f1", "alice", AccountPlan::Pro, 12.0, 60.0, None);
     alice.seven_day = Some(win(60.0, 10.0 * 3600.0));
     bob.seven_day = Some(win(55.0, 25.0 * 3600.0));
+    // Limit resets: bob has both kinds (blue 7d and F badges), alice a Full reset expiring in
+    // 2 days (red 7d badge, red expiry on her page).
+    let grant = |kind, resets_left, days: f64| ResetGrant { kind, resets_left, ends_at: (now + days * 86400.0) as i64 };
+    bob.reset_grants = vec![grant(ResetKind::Full, 1, 20.0), grant(ResetKind::Fable, 2, 60.0)];
+    alice.reset_grants = vec![grant(ResetKind::Full, 1, 2.0)];
     let rows = vec![
         alice,
         bob,

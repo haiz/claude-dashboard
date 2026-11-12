@@ -1,5 +1,5 @@
 import { Theme, UiWindow } from "theme.slint";
-import { WindowColumn, BoltIcon, FlameIcon } from "components.slint";
+import { WindowColumn, BoltIcon, FlameIcon, ResetArrow, ResetBadge } from "components.slint";
 
 // Tools > Help (macOS HelpView + HelpBlocks): a topic grid that scrolls to one card per
 // topic. Topic ids and titles live in `src/help.rs` (TOPICS); the card for each id is
@@ -36,6 +36,8 @@ component HelpRow inherits HorizontalLayout {
     in property <color> tint: Theme.text-secondary;
     in property <bool> dot: false;
     in property <bool> gradient: false;
+    // A sample limit reset badge (count 1, blue).
+    in property <bool> reset-badge: false;
     in property <styled-text> body;
     spacing: 12px;
     Rectangle {
@@ -79,6 +81,12 @@ component HelpRow inherits HorizontalLayout {
             height: 8px;
             border-radius: 4px;
             background: @linear-gradient(90deg, #30d158 0%, #ffd60a 50%, #ff453a 100%);
+        }
+        if root.reset-badge: ResetBadge {
+            height: 15px;
+            count: 1;
+            tip: "Full reset";
+            compact: false;
         }
         if root.dot: Rectangle {
             width: 8px;
@@ -176,7 +184,7 @@ component HelpCard inherits Rectangle {
     in property <string> title;
     in property <string> subtitle;
     in property <string> glyph;
-    // "flame" draws the Critical Accounts symbol instead of a glyph.
+    // "flame" draws the Critical Accounts symbol instead of a glyph, "reset" the limit reset arrow.
     in property <string> icon;
     in property <color> tile;
     background: Theme.card-bg;
@@ -195,6 +203,7 @@ component HelpCard inherits Rectangle {
                 border-radius: 7px;
                 background: root.tile;
                 if root.icon == "flame": FlameIcon { width: 18px; height: 18px; tint: white; }
+                if root.icon == "reset": ResetArrow { width: 18px; height: 18px; stroke: 2px; }
                 Text {
                     text: root.glyph;
                     font-family: "Segoe Fluent Icons";
@@ -228,6 +237,7 @@ component TopicChip inherits Rectangle {
     callback clicked();
     property <string> glyph: root.topic-id == "getting-started" ? "\u{E734}"
         : root.topic-id == "reading-a-card" ? "\u{E946}"
+        : root.topic-id == "limit-resets" ? ""
         : root.topic-id == "finding-your-way" ? "\u{E707}"
         : root.topic-id == "charts" ? "\u{E9D2}"
         : root.topic-id == "switch-claude-code" ? "\u{E8AB}"
@@ -240,6 +250,7 @@ component TopicChip inherits Rectangle {
         : "\u{E90F}";
     property <color> tile: root.topic-id == "getting-started" ? #0a84ff
         : root.topic-id == "reading-a-card" ? #bf5af2
+        : root.topic-id == "limit-resets" ? #0a84ff
         : root.topic-id == "finding-your-way" ? #8e8e93
         : root.topic-id == "charts" ? #ff9f0a
         : root.topic-id == "switch-claude-code" ? #ff375f
@@ -266,6 +277,7 @@ component TopicChip inherits Rectangle {
             border-radius: 5px;
             background: root.tile;
             if root.topic-id == "critical-accounts": FlameIcon { width: 13px; height: 13px; tint: white; }
+            if root.topic-id == "limit-resets": ResetArrow { width: 13px; height: 13px; stroke: 1.6px; }
             Text {
                 text: root.glyph;
                 font-family: "Segoe Fluent Icons";
@@ -308,6 +320,7 @@ export component HelpPane inherits Flickable {
     function target(id: string) -> length {
         return id == "getting-started" ? c-start.y
             : id == "reading-a-card" ? c-card.y
+            : id == "limit-resets" ? c-resets.y
             : id == "finding-your-way" ? c-way.y
             : id == "charts" ? c-charts.y
             : id == "switch-claude-code" ? c-switch.y
@@ -444,6 +457,16 @@ export component HelpPane inherits Flickable {
             HelpRow { glyph: "\u{E7BA}"; tint: #ff9f0a; body: @markdown("**Session expired**: sign in again in the browser, then **Re-sync**."); }
 
             HelpCallout { kind: "note"; body: @markdown("The tray icon shows the 5h usage of your pinned account, or the top account when none is pinned. Hover it for the time left until reset."); }
+        }
+
+        // macOS HelpView `limitResets`: the badge beside 7d and F, and the red rule.
+        c-resets := HelpCard {
+            topic-id: "limit-resets";
+            title: "Limit Resets";
+            subtitle: "The \u{21BB} badge beside 7d and F.";
+            icon: "reset";
+            tile: #0a84ff;
+            HelpRow { reset-badge: true; body: @markdown("**Limit resets**: claude.ai sometimes gives an account free resets of its limits. A badge beside **7d** counts Full resets (they clear the 5h and 7d windows); a badge beside **F** counts Fable resets. The account page lists each kind with its expiry. A badge turns red when its resets expire in under 7 days. Resets are used on claude.ai; this app only shows them and never resets a limit."); }
         }
 
         c-way := HelpCard {
