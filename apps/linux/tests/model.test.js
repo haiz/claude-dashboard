@@ -90,3 +90,17 @@ test('two distinct accounts keep separate identities end-to-end through parseAcc
     assertEqual(alex.plan, 'Pro');
     assertEqual(bailey.plan, 'Max');
 });
+
+test('buildRows carries the limit resets grants on windows.resetGrants', () => {
+    const now = Date.parse('2026-11-12T00:00:00Z');
+    const raw = {
+        five_hour: {utilization: 1, resets_at: null},
+        seven_day: {utilization: 1, resets_at: null},
+        [fieldName()]: {eligible: true, grants: [
+            {resets_left: 1, ends_at: '2099-01-01T00:00:00Z', clears: ['five_hour', 'seven_day']},
+            {resets_left: 2, ends_at: '2099-01-01T00:00:00Z', gives_back_weekly: true},
+        ]},
+    };
+    const rows = buildRows([{id: 'a', name: 'a', plan: 'max', status: 'active'}], {a: raw}, now);
+    assertEqual(rows[0].windows.resetGrants.length, 2);
+});

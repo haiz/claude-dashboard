@@ -44,3 +44,11 @@ test('resets_left is capped at u32 max when summed', () => {
     assertEqual(s.fable.count, 4294967295, 'saturated');
     assertEqual(parseGrants({eligible: true, grants: [g(4294967296)]}).length, 0, 'over u32');
 });
+
+test('a grant ending within the current second of now is expired (whole seconds)', () => {
+    const grants = parseGrants({eligible: true, grants: [
+        {resets_left: 1, ends_at: '2026-11-12T00:00:00.500+00:00', gives_back_weekly: true},
+    ]});
+    const got = summarize(grants, Date.parse('2026-11-12T00:00:00.000Z'));
+    assertEqual(got.fable, null, 'fable dropped');
+});

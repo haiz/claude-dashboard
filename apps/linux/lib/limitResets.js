@@ -13,7 +13,7 @@
 //
 //   summarize(parseGrants(null), 0)  // -> {full: null, fable: null}
 
-import {parseTimestamp} from './model.js';
+import {parseTimestamp} from './timestamp.js';
 
 export const ENCODED_FIELD_NAME = 'Y2VkYXJfZW1iZXI=';
 
@@ -67,7 +67,8 @@ function parseGrant(g) {
     } else {
         return null;
     }
-    return {kind, resetsLeft: g.resets_left, endsAtMs};
+    // Whole seconds, as the Rust and Swift ports compare them.
+    return {kind, resetsLeft: g.resets_left, endsAtMs: Math.floor(endsAtMs / 1000) * 1000};
 }
 
 // Time-independent: keeps every well-formed, unpaused grant with

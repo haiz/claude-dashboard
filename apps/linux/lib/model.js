@@ -7,17 +7,11 @@
 
 import {sortKey} from './burnRate.js';
 import {fieldName, parseGrants} from './limitResets.js';
+import {parseTimestamp} from './timestamp.js';
 
 const FABLE_DISPLAY_NAME = 'Fable';
 
-// The API emits both fractional and whole-second ISO8601. Date.parse accepts
-// both forms, including six-digit fractions.
-export function parseTimestamp(value) {
-    if (value === null || value === undefined)
-        return null;
-    const ms = Date.parse(value);
-    return Number.isNaN(ms) ? null : ms;
-}
+export {parseTimestamp} from './timestamp.js';
 
 function window(raw) {
     return {
