@@ -6,6 +6,7 @@
 // decoded.
 
 import {sortKey} from './burnRate.js';
+import {fieldName, parseGrants} from './limitResets.js';
 
 const FABLE_DISPLAY_NAME = 'Fable';
 
@@ -42,6 +43,7 @@ export function parseUsage(json) {
         fiveHour: window(json?.five_hour),
         sevenDay: window(json?.seven_day),
         fable: fableWindow(json),
+        resetGrants: parseGrants(json?.[fieldName()]),
     };
 }
 
