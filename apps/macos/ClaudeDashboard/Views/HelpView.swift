@@ -59,6 +59,7 @@ struct HelpView: View {
         switch topic {
         case .gettingStarted: gettingStarted
         case .readingCard: readingCard
+        case .limitResets: limitResets
         case .findingYourWay: findingYourWay
         case .charts: charts
         case .switchClaudeCode: switchClaudeCode
@@ -125,6 +126,16 @@ struct HelpView: View {
             HelpRow(symbol: "exclamationmark.triangle.fill", color: .orange, "**Session expired**: sign in again in the browser, then **Re-sync**.")
 
             HelpCallout(.note, "The menu bar shows the 5h usage and the time left until reset for your pinned account, or the top account when none is pinned. When that account's last 3 refreshes all failed, or its session expired, a red sync mark replaces the percentage; the popover says when it last synced.")
+        }
+    }
+
+    /// Mirrors the badge drawn by `UsageGaugeRow` and the account page's "Limit resets" box.
+    private var limitResets: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HelpRow("**Limit resets**: claude.ai sometimes gives an account free resets of its limits. A badge beside **7d** counts Full resets (they clear the 5h and 7d windows); a badge beside **F** counts Fable resets. The account page lists each kind with its expiry. A badge turns red when its resets expire in under 7 days. Resets are used on claude.ai; this app only shows them and never resets a limit.") {
+                LimitResetBadge(summary: ResetSummary(count: 1, expiresAt: .distantFuture, urgent: false),
+                                tooltip: "Full reset", isCompact: false)
+            }
         }
     }
 
@@ -384,7 +395,7 @@ private struct TopicChip: View {
 
 /// The Help pane's topics, in display order.
 enum HelpTopic: String, CaseIterable, Identifiable {
-    case gettingStarted, readingCard, findingYourWay, charts, switchClaudeCode, switchClaudeDesktop
+    case gettingStarted, readingCard, limitResets, findingYourWay, charts, switchClaudeCode, switchClaudeDesktop
     case autoSwitch, criticalAccounts, ping, accounts, refreshUpdates, troubleshooting
 
     var id: String { rawValue }
@@ -393,6 +404,7 @@ enum HelpTopic: String, CaseIterable, Identifiable {
         switch self {
         case .gettingStarted: return "Getting Started"
         case .readingCard: return "Reading a Card"
+        case .limitResets: return "Limit Resets"
         case .findingYourWay: return "Finding Your Way"
         case .charts: return "Charts"
         case .switchClaudeCode: return "Switch Claude Code"
@@ -410,6 +422,7 @@ enum HelpTopic: String, CaseIterable, Identifiable {
         switch self {
         case .gettingStarted: return "Add your first account in under a minute."
         case .readingCard: return "What the rings, colors, animals and badges mean."
+        case .limitResets: return "The ↻ badge beside 7d and F."
         case .findingYourWay: return "The menu bar popover and the main window."
         case .charts: return "Look back at how each account was used."
         case .switchClaudeCode: return "Move Claude Code to another account in one click."
@@ -427,6 +440,7 @@ enum HelpTopic: String, CaseIterable, Identifiable {
         switch self {
         case .gettingStarted: return "sparkles"
         case .readingCard: return "gauge.with.dots.needle.50percent"
+        case .limitResets: return "arrow.clockwise.circle"
         case .findingYourWay: return "menubar.rectangle"
         case .charts: return "chart.xyaxis.line"
         case .switchClaudeCode: return "arrow.left.arrow.right"
@@ -444,6 +458,7 @@ enum HelpTopic: String, CaseIterable, Identifiable {
         switch self {
         case .gettingStarted: return .blue
         case .readingCard: return .purple
+        case .limitResets: return .blue
         case .findingYourWay: return .gray
         case .charts: return .orange
         case .switchClaudeCode: return .pink

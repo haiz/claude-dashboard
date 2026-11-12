@@ -66,6 +66,9 @@ struct AccountPane: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     PaneSection { summary }
+                    if let usage = state.usage, !usage.resetGrants.isEmpty {
+                        LimitResetsSection(grants: usage.resetGrants)
+                    }
                     PaneSection("History") {
                         AccountDetailView(viewModel: chartViewModel, dashboardViewModel: dashboardViewModel)
                     }
@@ -251,7 +254,7 @@ struct AccountPane: View {
 ///
 ///     PaneSection("Actions") { actions }
 ///     PaneSection { summary }
-private struct PaneSection<Content: View>: View {
+struct PaneSection<Content: View>: View {
     let title: String?
     let content: Content
 
