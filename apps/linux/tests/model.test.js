@@ -2,6 +2,7 @@ import GLib from 'gi://GLib';
 import {test, assertEqual} from './harness.js';
 import {parseUsage, buildRows} from '../lib/model.js';
 import {parseAccounts} from '../lib/helper.js';
+import {fieldName} from '../lib/limitResets.js';
 
 const REPO = GLib.getenv('CLAUDE_DASHBOARD_REPO') ?? '../..';
 
@@ -18,8 +19,10 @@ function epochOrNull(ms) {
 
 test('usage decoding matches every contract case', () => {
     for (const c of loadCases('usage-decoding.json')) {
-        const u = parseUsage(c.input);
+        const input = JSON.parse(JSON.stringify(c.input).replace('"$RESETS"', JSON.stringify(fieldName())));
+        const u = parseUsage(input);
         const e = c.expect;
+        assertEqual(u.resetGrants.length, e.reset_grants ?? 0, `${c.name}: reset grants`);
         assertEqual(u.fiveHour.utilization, e.five_hour_utilization, `${c.name}: 5h utilisation`);
         assertEqual(epochOrNull(u.fiveHour.resetsAtMs), e.five_hour_resets_at_epoch, `${c.name}: 5h reset`);
         assertEqual(u.sevenDay.utilization, e.seven_day_utilization, `${c.name}: 7d utilisation`);
