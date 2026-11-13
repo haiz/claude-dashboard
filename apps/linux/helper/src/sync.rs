@@ -736,10 +736,11 @@ mod tests {
     }
 
     #[test]
-    fn plan_from_matching_org_marker() {
-        // max_20x appears in the matching org's JSON (its name) -> Max20x.
-        let json = r#"[{"uuid":"o1","name":"Acme max_20x","capabilities":["chat"]}]"#;
-        assert_eq!(plan_for(&parse_orgs(json), "o1"), AccountPlan::Max20x);
+    fn plan_team_org_resolves_to_team() {
+        // raven + raven_type team on the matching org -> Team; a max_20x
+        // string in its name no longer means anything.
+        let json = r#"[{"uuid":"o1","name":"Acme max_20x","capabilities":["chat","raven"],"raven_type":"team"}]"#;
+        assert_eq!(plan_for(&parse_orgs(json), "o1"), AccountPlan::Team);
     }
 
     #[test]
@@ -766,6 +767,9 @@ mod tests {
         assert_eq!(plan_wire_value(&AccountPlan::Max5x), "Max 5x");
         assert_eq!(plan_wire_value(&AccountPlan::Max20x), "Max 20x");
         assert_eq!(plan_wire_value(&AccountPlan::Max200), "Max");
+        assert_eq!(plan_wire_value(&AccountPlan::Team), "Team");
+        assert_eq!(plan_wire_value(&AccountPlan::Enterprise), "Enterprise");
+        assert_eq!(plan_wire_value(&AccountPlan::Free), "Free");
     }
 
     // -- new_account_id -----------------------------------------------------

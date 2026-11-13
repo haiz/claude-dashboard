@@ -58,7 +58,9 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   comes from the **organizations** endpoint's `capabilities` (`claude_pro` / `claude_max`),
   never from the usage response — `extra_usage` is a pay-as-you-go overage toggle with no
   tier field. The API exposes no Max 5x vs 20x signal, so consumer Max accounts resolve to
-  the generic `Max`. Handles session key refresh via Set-Cookie headers.
+  the generic `Max`. A `raven` org is Team or Enterprise by its `raven_type`; a chat-only org is
+  Free only when `analytics_subscription_plan` is `claude_free`; anything else is nil (keeps the
+  stored plan, never guessed). Handles session key refresh via Set-Cookie headers.
   Account identity comes from `/api/account` (`fetchAccount`), which returns the
   account's own `uuid` and `email_address` — `orgId` identifies an organisation,
   not an account, and is never used for dedupe. See `contract/README.md`'s
@@ -160,7 +162,7 @@ No external dependencies — pure native Swift (SwiftUI, AppKit, Combine, Securi
   bundles lives in `ClaudeDashboardTests/TestSupport/` and nowhere else.
 
 ### Models
-- **Account** — Core model with `AccountPlan` enum (pro/max5x/max20x/max200) and `AccountStatus` (active/expired/error).
+- **Account** — Core model with `AccountPlan` enum (pro/max5x/max20x/max200/team/enterprise/free; 5x/20x are no longer derived) and `AccountStatus` (active/expired/error).
 - **UsageData** — Decoded API response with `UsageLimit` entries for the 5-hour and 7-day
   windows, plus an optional Fable window. Fable has no top-level field: it is derived from
   the `limits` array entry whose `scope.model.display_name` is `"Fable"`, reading `percent`

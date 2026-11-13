@@ -111,6 +111,11 @@ test('each plan gets its own badge tint', () => {
     assertEqual(planBadgeColor('Max'), max5);
 });
 
+test('Team, Enterprise and Free get tints of their own', () => {
+    const tints = ['Pro', 'Max', 'Max 20x', 'Team', 'Enterprise', 'Free'].map(planBadgeColor);
+    assertEqual(new Set(tints).size, tints.length);
+});
+
 test('an unknown plan string still gets a tint rather than none', () => {
     assertEqual(planBadgeColor('Max 900x'), planBadgeColor('Max'));
     assertEqual(planBadgeColor(undefined), planBadgeColor('Max'));

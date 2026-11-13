@@ -155,10 +155,11 @@ final class UsageAPIServiceTests: XCTestCase {
         XCTAssertEqual(plan, .pro)
     }
 
-    func testDetectsMaxFromChatOnlyCapability() async throws {
-        // A consumer chat org without `claude_pro` is Max (tier not exposed by API).
+    func testChatOnlyCapabilityWithoutFreeMarkerHasNoPlan() async throws {
+        // Not guessed: a chat-only org is Free only with
+        // analytics_subscription_plan = claude_free (contract plan-detection.json).
         let plan = try await planHint(forCapabilities: ["chat"])
-        XCTAssertEqual(plan, .max200)
+        XCTAssertNil(plan)
     }
 
     func testNonConsumerOrgHasNoPlan() async throws {

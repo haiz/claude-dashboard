@@ -150,28 +150,45 @@ A real `extra_usage` payload, from a test fixture
 `{ "is_enabled": false, "disabled_reason": "out_of_credits" }` — confirming
 it is a credit toggle, not a plan marker.
 
-The actual derivation, `detectPlanTier` (`apps/macos/Shared/UsageAPIService.swift:101-123`),
-checked in this order against one organization's dict + `capabilities` array:
+The actual derivation, `detectPlanTier` (`apps/macos/Shared/UsageAPIService.swift`,
+mirrored by Rust `plan::detect_plan_tier`), checked in this order against one
+organization's dict + `capabilities` array (capability matching is
+case-insensitive; `contract/cases/plan-detection.json` is the rule):
 
-1. If the org's raw JSON (serialized back to a lowercased string) contains
-   `"max_20x"` or `"max20x"` → `.max20x` ("Max 20x").
-2. Else if it contains `"max_5x"` or `"max5x"` → `.max5x` ("Max 5x").
-3. Else if `capabilities` contains `"claude_pro"` → `.pro` ("Pro"). Checked
-   before the chat fallback because Pro orgs also carry `"chat"`.
-4. Else if `capabilities` contains `"claude_max"` → `.max200` (wire value
-   `"Max"` — see the naming trap in `account-schema.md`).
-5. Else if `capabilities` contains `"chat"` → `.max200` (wire value `"Max"`)
-   — a consumer chat org without the Pro marker, tier unknown.
-6. Else → `nil` (not a plan the dashboard displays, e.g. an API-only org).
+1. `capabilities` contains `"claude_pro"` → `.pro` ("Pro").
+2. Else contains `"claude_max"` → `.max200` (wire value `"Max"`, see the
+   naming trap in `account-schema.md`). The API exposes no 5x/20x signal.
+3. Else contains `"raven"` (a Team or Enterprise org): the org's `raven_type`
+   `"team"` → `.team` ("Team"), `"enterprise"` → `.enterprise`
+   ("Enterprise"), anything else or missing → `nil`.
+4. Else contains `"chat"`: the org's `analytics_subscription_plan`
+   `"claude_free"` → `.free` ("Free"), anything else → `nil`.
+5. Else → `nil` (not a plan the dashboard displays, e.g. an API-only org).
 
-Per the code's own comment (lines 97-100 immediately above `detectPlanTier`,
-"the 5x vs 20x distinction is not exposed anywhere"), steps 1-2 are markers
-the implementation scans for defensively; this document cannot independently
-verify whether any live API response ever sets them, only that the code
-comment asserts it does not currently happen. Treat that line as sourced
-from the implementation's own comment, not as an independently verified
-fact. Practically, this means today every consumer Max account — 5x or 20x
-— resolves to the generic `"Max"` tier via step 5, not step 1/2.
+`nil` never means a plan: it leaves a stored plan alone (next section).
+
+Evidence, from live responses on 2026-11-13 (five accounts, trimmed copies in
+the case file):
+
+- A Team org: `capabilities: ["chat", "raven", "customer_terms:standard",
+  "claude_science_no_training"]`, `raven_type: "team"`,
+  `analytics_subscription_plan: "claude_team"`, `rate_limit_tier:
+  "default_raven"`. Each member's `GET /api/account` membership carries
+  `seat_tier: "team_tier_1"`, which is not read (its Standard/Premium meaning
+  is unverified).
+- A Free org: `capabilities: ["chat"]`, `analytics_subscription_plan:
+  "claude_free"`, `rate_limit_tier: "default_claude_ai"`. Its
+  `/organizations/{id}/usage` has `five_hour`, `seven_day`, `extra_usage`
+  all `null` and `limits: []` (that org had never been used; the usage
+  shape is evidence, not a rule).
+- API orgs: `capabilities: ["api", ...]`, `analytics_subscription_plan`
+  `"api_individual"` / `"api_team"` → `nil`.
+
+Before 2026-11-13 a chat-only org (and so every Team org) resolved to
+`"Max"`, and a `max_5x` / `max_20x` substring anywhere in the org JSON
+(even its name) won over every capability. Neither marker was ever seen in a
+live response; the scan is gone. `"Max 5x"` and `"Max 20x"` stay valid stored
+values.
 
 ### Refreshing a stored plan
 

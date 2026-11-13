@@ -10,6 +10,12 @@ pub enum AccountPlan {
     Max20x,
     #[serde(rename = "Max")]
     Max200,
+    #[serde(rename = "Team")]
+    Team,
+    #[serde(rename = "Enterprise")]
+    Enterprise,
+    #[serde(rename = "Free")]
+    Free,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -169,6 +175,9 @@ mod tests {
         assert_eq!(serde_json::to_string(&AccountPlan::Max5x).unwrap(), "\"Max 5x\"");
         let p: AccountPlan = serde_json::from_str("\"Max 20x\"").unwrap();
         assert!(matches!(p, AccountPlan::Max20x));
+        assert_eq!(serde_json::to_string(&AccountPlan::Team).unwrap(), "\"Team\"");
+        assert_eq!(serde_json::to_string(&AccountPlan::Enterprise).unwrap(), "\"Enterprise\"");
+        assert_eq!(serde_json::to_string(&AccountPlan::Free).unwrap(), "\"Free\"");
     }
 
     #[test]

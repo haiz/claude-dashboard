@@ -431,9 +431,13 @@ export component AccountCard inherits Rectangle {
     in property <UiRow> data;
     // Compact metrics for the flyout; the Dashboard passes false (full-size rings).
     in property <bool> compact: true;
-    // Plan capsule colour (macOS badgeColor): Pro blue, Max 5x purple, Max 20x orange, Max purple.
+    // Plan capsule colour (macOS badgeColor): Pro blue, Max 5x purple, Max 20x orange, Max purple,
+    // Team teal, Enterprise indigo, Free gray (the last three read from NSColor, dark, macOS 26).
     property <color> plan-tint: root.data.plan == "Pro" ? #0a84ff
         : root.data.plan == "Max 20x" ? #ff9f0a
+        : root.data.plan == "Team" ? #00d2e0
+        : root.data.plan == "Enterprise" ? #6d7cff
+        : root.data.plan == "Free" ? #98989d
         : #bf5af2;
     // Claude Code Switch (macOS AccountCard `onSwitchClaudeCode`); `cc-switching` disables it,
     // and so does `desktop-switching` (a Switch would also move Claude Desktop, which is busy).
@@ -811,6 +815,9 @@ export component AccountPane inherits VerticalLayout {
     property <bool> confirming-remove: false;
     property <color> plan-tint: root.data.plan == "Pro" ? #0a84ff
         : root.data.plan == "Max 20x" ? #ff9f0a
+        : root.data.plan == "Team" ? #00d2e0
+        : root.data.plan == "Enterprise" ? #6d7cff
+        : root.data.plan == "Free" ? #98989d
         : #bf5af2;
     spacing: 12px;
 

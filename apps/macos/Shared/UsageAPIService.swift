@@ -134,31 +134,34 @@ final class UsageAPIService {
 
     // MARK: - Private
 
-    // Plan tier from the organizations endpoint. The only stable consumer-plan
-    // markers the API exposes are the `claude_pro` / `claude_max` capabilities;
-    // the 5x vs 20x distinction is not exposed anywhere, so Max falls back to a
-    // generic "Max". A consumer chat org without `claude_pro` is treated as Max.
+    /// Plan tier of one `GET /api/organizations` entry; nil when it can't be told
+    /// (nil leaves a stored plan alone, see `refreshedPlan`).
+    /// `contract/cases/plan-detection.json` is the rule, mirrored by Rust
+    /// `plan::detect_plan_tier`:
+    ///
+    /// 1. `claude_pro` → Pro; 2. `claude_max` → Max (the API exposes no 5x/20x
+    ///    signal).
+    /// 3. `raven` (a Team/Enterprise org): `raven_type` `team` → Team,
+    ///    `enterprise` → Enterprise, anything else → nil.
+    /// 4. `chat` only: `analytics_subscription_plan` `claude_free` → Free,
+    ///    anything else → nil (unknown is never guessed).
+    /// 5. Otherwise (e.g. an API-only org) → nil.
+    ///
+    ///     detectPlanTier(from: ["raven_type": "team"], capabilities: ["chat", "raven"])  // .team
     static func detectPlanTier(from dict: [String: Any], capabilities: [String]) -> AccountPlan? {
         let caps = Set(capabilities.map { $0.lowercased() })
-
-        // Explicit 5x/20x markers, if the org ever exposes them.
-        let jsonString = (try? JSONSerialization.data(withJSONObject: dict))
-            .flatMap { String(data: $0, encoding: .utf8) }?.lowercased() ?? ""
-        if jsonString.contains("max_20x") || jsonString.contains("max20x") {
-            return .max20x
-        }
-        if jsonString.contains("max_5x") || jsonString.contains("max5x") {
-            return .max5x
-        }
-
-        // `claude_pro` is the authoritative Pro marker — check it before the chat
-        // fallback, since Pro orgs also carry the `chat` capability.
         if caps.contains("claude_pro") { return .pro }
         if caps.contains("claude_max") { return .max200 }
-
-        // A consumer chat org without the Pro marker is Max (tier unknown).
-        // Non-consumer orgs (api-only, etc.) are not a plan we display.
-        if caps.contains("chat") { return .max200 }
+        if caps.contains("raven") {
+            switch dict["raven_type"] as? String {
+            case "team": return .team
+            case "enterprise": return .enterprise
+            default: return nil
+            }
+        }
+        if caps.contains("chat") {
+            return dict["analytics_subscription_plan"] as? String == "claude_free" ? .free : nil
+        }
         return nil
     }
 

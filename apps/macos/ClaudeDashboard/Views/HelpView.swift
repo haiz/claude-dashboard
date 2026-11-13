@@ -112,7 +112,7 @@ struct HelpView: View {
             HelpRow("**Active in Claude Code**: the account Claude Code is using right now.") {
                 Circle().fill(.green).frame(width: 8, height: 8)
             }
-            HelpRow("**Plan**: Pro, Max 5x, Max 20x, or Max when the tier is unknown.") {
+            HelpRow("**Plan**: Pro, Max (the API does not say 5x or 20x), Team, Enterprise or Free. An account whose plan cannot be told keeps the last one shown.") {
                 HelpBadge("Pro", color: AccountPlan.pro.badgeColor)
             }
             HelpRow(symbol: "pin.fill", "**Pinned**: always at the top of the list, and the account shown in the menu bar.")

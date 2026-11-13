@@ -1,22 +1,55 @@
 [
   {
-    "name": "claude_pro wins over the chat fallback",
+    "name": "claude_pro is Pro",
     "org": { "uuid": "org-1", "name": "Personal", "capabilities": ["chat", "claude_pro"] },
     "expect_plan": "Pro"
   },
   {
-    "name": "claude_max resolves to generic Max — the API exposes no 5x/20x signal",
+    "name": "claude_max resolves to generic Max: the API exposes no 5x/20x signal",
     "org": { "uuid": "org-2", "name": "Personal", "capabilities": ["chat", "claude_max"] },
     "expect_plan": "Max"
   },
   {
-    "name": "a consumer chat org with no plan marker is treated as Max",
+    "name": "a real Team org (2026-11-13 response, trimmed): raven + raven_type team is Team, not Max",
+    "org": { "uuid": "org-team", "name": "Example Team",
+             "capabilities": ["chat", "raven", "customer_terms:standard", "claude_science_no_training"],
+             "raven_type": "team", "analytics_subscription_plan": "claude_team",
+             "rate_limit_tier": "default_raven", "billing_type": "stripe_subscription" },
+    "expect_plan": "Team"
+  },
+  {
+    "name": "raven + raven_type enterprise is Enterprise",
+    "org": { "uuid": "org-ent", "name": "Example Enterprise", "capabilities": ["chat", "raven"],
+             "raven_type": "enterprise" },
+    "expect_plan": "Enterprise"
+  },
+  {
+    "name": "an unknown raven_type is not guessed",
+    "org": { "uuid": "org-r1", "name": "Example", "capabilities": ["chat", "raven"],
+             "raven_type": "something_new" },
+    "expect_plan": null
+  },
+  {
+    "name": "raven without raven_type is not guessed",
+    "org": { "uuid": "org-r2", "name": "Example", "capabilities": ["chat", "raven"] },
+    "expect_plan": null
+  },
+  {
+    "name": "a real Free org (2026-11-13 response, trimmed): chat only + analytics_subscription_plan claude_free is Free",
+    "org": { "uuid": "org-free", "name": "someone's Organization", "capabilities": ["chat"],
+             "analytics_subscription_plan": "claude_free", "rate_limit_tier": "default_claude_ai",
+             "billing_type": null, "raven_type": null },
+    "expect_plan": "Free"
+  },
+  {
+    "name": "a chat-only org with no free marker is unknown, not Max",
     "org": { "uuid": "org-3", "name": "Personal", "capabilities": ["chat"] },
-    "expect_plan": "Max"
+    "expect_plan": null
   },
   {
     "name": "an api-only org is not a displayable plan",
-    "org": { "uuid": "org-4", "name": "Acme API", "capabilities": ["api"] },
+    "org": { "uuid": "org-4", "name": "Acme API", "capabilities": ["api", "api_individual"],
+             "analytics_subscription_plan": "api_individual" },
     "expect_plan": null
   },
   {
@@ -25,25 +58,26 @@
     "expect_plan": null
   },
   {
-    "name": "an explicit max_20x marker anywhere in the org JSON wins over capabilities",
-    "org": { "uuid": "org-6", "name": "Personal", "capabilities": ["chat", "claude_pro"],
+    "name": "a max_20x string anywhere in the org JSON no longer changes the plan",
+    "org": { "uuid": "org-6", "name": "max20x holdings", "capabilities": ["chat", "claude_pro"],
              "settings": { "tier": "max_20x" } },
-    "expect_plan": "Max 20x"
+    "expect_plan": "Pro"
   },
   {
-    "name": "an explicit max_5x marker anywhere in the org JSON wins over capabilities",
-    "org": { "uuid": "org-7", "name": "Personal", "capabilities": ["chat", "claude_pro"],
+    "name": "a max_5x string anywhere in the org JSON no longer changes the plan",
+    "org": { "uuid": "org-7", "name": "Personal", "capabilities": ["chat", "claude_max"],
              "settings": { "tier": "max_5x" } },
-    "expect_plan": "Max 5x"
-  },
-  {
-    "name": "the marker scan is a substring match over the whole JSON, so an org NAME can trigger it",
-    "org": { "uuid": "org-8", "name": "max20x holdings", "capabilities": ["chat", "claude_pro"] },
-    "expect_plan": "Max 20x"
+    "expect_plan": "Max"
   },
   {
     "name": "capability matching is case-insensitive",
     "org": { "uuid": "org-9", "name": "Personal", "capabilities": ["CHAT", "Claude_Pro"] },
     "expect_plan": "Pro"
+  },
+  {
+    "name": "raven capability matching is case-insensitive too",
+    "org": { "uuid": "org-10", "name": "Example Team", "capabilities": ["Chat", "RAVEN"],
+             "raven_type": "team" },
+    "expect_plan": "Team"
   }
 ]

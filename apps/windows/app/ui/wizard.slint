@@ -369,7 +369,7 @@ export component SetupWizardWindow inherits Window {
                             border-width: 1px;
                             border-color: Theme.card-border;
                             // Plan capsule colour (macOS badgeColor), as on the account card.
-                            property <color> plan-tint: it.plan == "Pro" ? #0a84ff : it.plan == "Max 20x" ? #ff9f0a : #bf5af2;
+                            property <color> plan-tint: it.plan == "Pro" ? #0a84ff : it.plan == "Max 20x" ? #ff9f0a : it.plan == "Team" ? #00d2e0 : it.plan == "Enterprise" ? #6d7cff : it.plan == "Free" ? #98989d : #bf5af2;
                             HorizontalLayout {
                                 padding: 10px;
                                 spacing: 10px;

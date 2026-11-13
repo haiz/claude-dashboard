@@ -6,6 +6,11 @@ const PLAN_COLORS = {
     'Max 5x': 'rgba(175, 82, 222, 0.15)',    // .purple
     'Max 20x': 'rgba(255, 159, 10, 0.15)',   // .orange
     'Max': 'rgba(175, 82, 222, 0.15)',       // .purple — max200 on macOS
+    // Read from NSColor (light appearance) on macOS 26, the palette the newer
+    // plans were added under.
+    'Team': 'rgba(0, 195, 208, 0.15)',       // .teal
+    'Enterprise': 'rgba(97, 85, 245, 0.15)', // .indigo
+    'Free': 'rgba(142, 142, 147, 0.15)',     // .gray
 };
 
 // An unrecognised wire value keeps the generic purple rather than rendering

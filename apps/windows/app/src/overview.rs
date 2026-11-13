@@ -608,8 +608,8 @@ mod tests {
     #[test]
     fn plan_weights_follow_macos() {
         assert_eq!(
-            ["Pro", "Max 5x", "Max 20x", "Max"].map(plan_weight),
-            [1.0, 5.0, 20.0, 10.0]
+            ["Pro", "Max 5x", "Max 20x", "Max", "Team", "Enterprise", "Free"].map(plan_weight),
+            [1.0, 5.0, 20.0, 10.0, 1.0, 1.0, 1.0]
         );
     }
 

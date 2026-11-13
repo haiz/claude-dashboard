@@ -66,19 +66,25 @@ These are the exact strings that appear in persisted JSON and in the
 `decrypt` helper output (`helper-cli.md`). A Rust implementation must encode
 and decode these literal strings, not a paraphrase.
 
-`AccountPlan` (`Account.swift:3-8`):
+`AccountPlan` (`Account.swift:3-11`):
 | Case | Raw value |
 |---|---|
 | `.pro` | `"Pro"` |
 | `.max5x` | `"Max 5x"` |
 | `.max20x` | `"Max 20x"` |
 | `.max200` | `"Max"` |
+| `.team` | `"Team"` |
+| `.enterprise` | `"Enterprise"` |
+| `.free` | `"Free"` |
 
 The naming trap: `.max200`'s wire value is `"Max"`, not `"Max 200"` or
 `"Max20x"` — it is the *fallback* case used when the tier is a consumer Max
-account but the 5x/20x distinction is unknown (see `README.md`'s "Plan
-tier" section, steps 4-5 of `detectPlanTier`). Do not infer a numeric tier
-from this raw value.
+account; the API exposes no 5x/20x distinction (see `README.md`'s "Plan
+tier" section, step 2 of `detectPlanTier`). Do not infer a numeric tier
+from this raw value. `"Max 5x"` / `"Max 20x"` are no longer derived but stay
+readable. A build older than the `"Team"` / `"Enterprise"` / `"Free"` cases
+skips such a record and keeps it untouched ("A record this build cannot
+read").
 
 `AccountStatus` (`Account.swift:10-14`): `"active"`, `"expired"`, `"error"`
 (the enum's raw values are its unadorned case names — Swift's default

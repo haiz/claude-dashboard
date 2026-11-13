@@ -44,6 +44,9 @@ fn plan_str(p: &AccountPlan) -> &'static str {
         AccountPlan::Max5x => "Max 5x",
         AccountPlan::Max20x => "Max 20x",
         AccountPlan::Max200 => "Max",
+        AccountPlan::Team => "Team",
+        AccountPlan::Enterprise => "Enterprise",
+        AccountPlan::Free => "Free",
     }
 }
 

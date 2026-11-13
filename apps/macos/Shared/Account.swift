@@ -4,7 +4,10 @@ enum AccountPlan: String, Codable, CaseIterable {
     case pro = "Pro"
     case max5x = "Max 5x"
     case max20x = "Max 20x"
-    case max200 = "Max"  // fallback when tier unknown
+    case max200 = "Max"  // consumer Max; the API exposes no 5x/20x signal
+    case team = "Team"
+    case enterprise = "Enterprise"
+    case free = "Free"
 }
 
 enum AccountStatus: String, Codable {

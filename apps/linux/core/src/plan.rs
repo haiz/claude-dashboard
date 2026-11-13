@@ -3,32 +3,29 @@ use serde_json::Value;
 
 /// Derives the account's plan tier from one `GET /api/organizations` entry.
 ///
-/// Mirrors `UsageAPIService.detectPlanTier` (`apps/macos/Shared/UsageAPIService.swift:101-123`)
-/// and `contract/README.md`'s "Plan tier" section, in this exact order:
+/// Mirrors `UsageAPIService.detectPlanTier` and `contract/README.md`'s
+/// "Plan tier" section (`contract/cases/plan-detection.json` is the rule), in
+/// this exact order:
 ///
-/// 1. The org's raw JSON, serialized back to a lowercased string, contains
-///    `"max_20x"` or `"max20x"` -> `Max20x`.
-/// 2. Else contains `"max_5x"` or `"max5x"` -> `Max5x`.
-/// 3. Else `capabilities` contains `"claude_pro"` -> `Pro` (checked before the
-///    chat fallback, since Pro orgs also carry `"chat"`).
-/// 4. Else `capabilities` contains `"claude_max"` -> `Max200` (wire `"Max"`).
-/// 5. Else `capabilities` contains `"chat"` -> `Max200` (wire `"Max"`) — a
-///    consumer chat org without the Pro marker, tier unknown.
-/// 6. Else `None` — not a plan the dashboard displays (e.g. an API-only org).
+/// 1. `capabilities` contains `"claude_pro"` -> `Pro`.
+/// 2. Else contains `"claude_max"` -> `Max200` (wire `"Max"`; no 5x/20x signal).
+/// 3. Else contains `"raven"` (a Team/Enterprise org): `raven_type` `"team"`
+///    -> `Team`, `"enterprise"` -> `Enterprise`, anything else or missing ->
+///    `None`.
+/// 4. Else contains `"chat"`: `analytics_subscription_plan` `"claude_free"`
+///    -> `Free`, otherwise `None` (unknown, never guessed).
+/// 5. Else `None` (e.g. an API-only org).
 ///
-/// Steps 1-2 scan the *entire* serialized org, not just `capabilities` — a
-/// marker anywhere in the org JSON (e.g. in `name`) triggers it. Capability
-/// matching in steps 3-5 is case-insensitive, matching the Swift source's
-/// `Set(capabilities.map { $0.lowercased() })`.
+/// Capability matching is case-insensitive. `None` leaves a stored plan alone
+/// (see [`refreshed_plan`]).
+///
+/// ```
+/// use claude_dashboard_core::{model::AccountPlan, plan::detect_plan_tier};
+/// let org = serde_json::json!({"raven_type": "team"});
+/// let caps = vec!["chat".to_string(), "raven".to_string()];
+/// assert_eq!(detect_plan_tier(&org, &caps), Some(AccountPlan::Team));
+/// ```
 pub fn detect_plan_tier(org: &Value, capabilities: &[String]) -> Option<AccountPlan> {
-    let raw = serde_json::to_string(org).unwrap_or_default().to_lowercase();
-    if raw.contains("max_20x") || raw.contains("max20x") {
-        return Some(AccountPlan::Max20x);
-    }
-    if raw.contains("max_5x") || raw.contains("max5x") {
-        return Some(AccountPlan::Max5x);
-    }
-
     let has = |c: &str| capabilities.iter().any(|x| x.to_lowercase() == c);
     if has("claude_pro") {
         return Some(AccountPlan::Pro);
@@ -36,8 +33,18 @@ pub fn detect_plan_tier(org: &Value, capabilities: &[String]) -> Option<AccountP
     if has("claude_max") {
         return Some(AccountPlan::Max200);
     }
+    if has("raven") {
+        return match org.get("raven_type").and_then(Value::as_str) {
+            Some("team") => Some(AccountPlan::Team),
+            Some("enterprise") => Some(AccountPlan::Enterprise),
+            _ => None,
+        };
+    }
     if has("chat") {
-        return Some(AccountPlan::Max200);
+        return match org.get("analytics_subscription_plan").and_then(Value::as_str) {
+            Some("claude_free") => Some(AccountPlan::Free),
+            _ => None,
+        };
     }
     None
 }

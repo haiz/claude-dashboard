@@ -449,7 +449,7 @@ export component HelpPane inherits Flickable {
 
             HelpSubheading { text: "Badges on a card"; }
             HelpRow { dot: true; tint: Theme.ok; body: @markdown("**Active in Claude Code**: the account Claude Code is using right now."); }
-            HelpRow { badge: "Pro"; tint: #0a84ff; body: @markdown("**Plan**: Pro, Max 5x, Max 20x, or Max when the tier is unknown."); }
+            HelpRow { badge: "Pro"; tint: #0a84ff; body: @markdown("**Plan**: Pro, Max (the API does not say 5x or 20x), Team, Enterprise or Free. An account whose plan cannot be told keeps the last one shown."); }
             HelpRow { glyph: "\u{E718}"; body: @markdown("**Pinned**: always at the top of the list, and the account shown on the tray icon."); }
             HelpRow { icon: "bolt-fill"; tint: #ff9f0a; body: @markdown("**Home after reset**: Claude Code comes back here each time this account's 5h limit resets. Shown only while Auto Switch is on; turning it off keeps your choice."); }
             HelpRow { icon: "flame-fill"; tint: #ff453a; body: @markdown("**Flame**: orange when the account is critical, red when high critical: its weekly quota will go unused. Hover for the numbers."); }

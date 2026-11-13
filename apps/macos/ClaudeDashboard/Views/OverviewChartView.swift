@@ -357,6 +357,8 @@ struct OverviewChartView: View {
         case .max5x: return 5
         case .max20x: return 20
         case .max200: return 10
+        // Usage multiplier not verified; neutral, like Windows' fallback.
+        case .team, .enterprise, .free: return 1
         }
     }
 
