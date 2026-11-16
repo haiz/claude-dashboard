@@ -28,6 +28,15 @@ pub enum ResyncOutcome {
     Failed(String),
 }
 
+/// Why `/api/account` gave no identity for a freshly read key.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AccountFetchError {
+    /// HTTP 401/403: claude.ai revoked this cookie (the profile is logged out).
+    Rejected,
+    /// Network, timeout, or an unreadable body: says nothing about the key.
+    Other(String),
+}
+
 pub trait ResyncEnv {
     /// The profile's sessionKey and its `lastActiveOrg` cookie, if any.
     fn read_key(
@@ -35,7 +44,7 @@ pub trait ResyncEnv {
         b: Browser,
         profile: &str,
     ) -> Result<(String, Option<String>), ResyncReadError>;
-    fn fetch_account(&self, key: &str) -> Result<ParsedAccount, String>;
+    fn fetch_account(&self, key: &str) -> Result<ParsedAccount, AccountFetchError>;
     /// The raw `/api/organizations` body.
     fn fetch_orgs(&self, key: &str) -> Result<String, String>;
 }
@@ -50,9 +59,13 @@ impl ResyncEnv for RealResyncEnv {
     ) -> Result<(String, Option<String>), ResyncReadError> {
         read_profile_session_key(b, profile)
     }
-    fn fetch_account(&self, key: &str) -> Result<ParsedAccount, String> {
-        let body = api::fetch_account(key).map_err(|e| e.to_string())?;
-        api::parse_account(&body).ok_or_else(|| "could not identify this session".to_string())
+    fn fetch_account(&self, key: &str) -> Result<ParsedAccount, AccountFetchError> {
+        let body = api::fetch_account(key).map_err(|e| match e {
+            api::ApiError::HttpError(401 | 403) => AccountFetchError::Rejected,
+            e => AccountFetchError::Other(e.to_string()),
+        })?;
+        api::parse_account(&body)
+            .ok_or_else(|| AccountFetchError::Other("could not identify this session".to_string()))
     }
     fn fetch_orgs(&self, key: &str) -> Result<String, String> {
         api::fetch_organizations(key).map_err(|e| e.to_string())
@@ -103,9 +116,22 @@ pub fn resync(account_id: &str, env: &dyn ResyncEnv) -> ResyncOutcome {
             }
         };
 
-    // Who the profile is signed in as now. A failure is not fatal: the new key
-    // is still worth saving, and `Active` is what lets the next refresh retry.
-    let info = env.fetch_account(&key).ok();
+    // Who the profile is signed in as now. An unreachable endpoint is not fatal:
+    // the new key is still worth saving, and `Active` is what lets the next refresh
+    // retry. A rejected key is: saving it would only expire again on that refresh,
+    // with no message left on the card (macOS reports the same text after its refresh).
+    let info = match env.fetch_account(&key) {
+        Ok(info) => Some(info),
+        Err(AccountFetchError::Rejected) => {
+            return ResyncOutcome::Failed(format!(
+                "Re-sync read a session key, but claude.ai rejected it. \
+                 Log in to claude.ai again in {} profile \"{}\", then re-sync.",
+                browser.display_name(),
+                profile
+            ))
+        }
+        Err(AccountFetchError::Other(_)) => None,
+    };
     if let (Some(info), Some(stored)) = (&info, &account.account_uuid) {
         if &info.uuid != stored {
             return failed(
@@ -195,7 +221,7 @@ mod tests {
     struct Fake {
         key: Result<String, ResyncReadError>,
         cookie_org: Option<String>,
-        account: Result<ParsedAccount, String>,
+        account: Result<ParsedAccount, AccountFetchError>,
         read_calls: RefCell<Vec<(String, String)>>,
     }
 
@@ -210,7 +236,7 @@ mod tests {
                 .push((b.display_name().to_string(), profile.to_string()));
             self.key.clone().map(|k| (k, self.cookie_org.clone()))
         }
-        fn fetch_account(&self, _key: &str) -> Result<ParsedAccount, String> {
+        fn fetch_account(&self, _key: &str) -> Result<ParsedAccount, AccountFetchError> {
             self.account.clone()
         }
         fn fetch_orgs(&self, _key: &str) -> Result<String, String> {
@@ -355,6 +381,42 @@ mod tests {
         );
         assert_eq!(a.status, AccountStatus::Expired);
         assert_eq!(a.org_id.as_deref(), Some("org-old"));
+    }
+
+    /// The profile still holds a sessionKey cookie that claude.ai has revoked. Saving
+    /// it would mark the account active only for the next refresh to expire it again,
+    /// with nothing on the card to say why.
+    #[test]
+    fn scanned_rejected_key_fails_and_writes_nothing() {
+        let _g = crate::testenv::lock();
+        let mut a = account("s", AccountSource::Browser);
+        a.chrome_profile_name = Some("Work".into());
+        let _d = setup(&[a], &[]);
+        let mut env = fake(Ok("sk-revoked"), "uuid-1");
+        env.account = Err(AccountFetchError::Rejected);
+        assert_eq!(
+            resync("s", &env),
+            ResyncOutcome::Failed(
+                "Re-sync read a session key, but claude.ai rejected it. Log in to claude.ai again in Microsoft Edge profile \"Work\", then re-sync.".into()
+            )
+        );
+        let a = stored("s");
+        assert_eq!(
+            store::decrypt_session_key(a.session_key.as_deref().unwrap()).as_deref(),
+            Some("sk-old")
+        );
+        assert_eq!(a.status, AccountStatus::Expired);
+    }
+
+    /// Unreachable is not rejected: the key is still saved (see `resync`).
+    #[test]
+    fn scanned_unreachable_account_endpoint_still_saves_the_key() {
+        let _g = crate::testenv::lock();
+        let _d = setup(&[account("s", AccountSource::Browser)], &[]);
+        let mut env = fake(Ok("sk-new"), "uuid-1");
+        env.account = Err(AccountFetchError::Other("offline".into()));
+        assert_eq!(resync("s", &env), ResyncOutcome::Updated);
+        assert_eq!(stored("s").status, AccountStatus::Active);
     }
 
     #[test]

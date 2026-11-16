@@ -116,8 +116,10 @@ fn apply_output(
         set_footer(&pop, &out.rows);
     }
     // Re-sync All failures ride this refresh into the cards' error lines (macOS setError).
+    // Expired rows included: a failed re-sync leaves the account expired, and the
+    // expired card is where its message shows.
     let failures = std::mem::take(&mut *RESYNC_FAILURES.lock().unwrap_or_else(|e| e.into_inner()));
-    for r in rows.iter_mut().filter(|r| !r.expired) {
+    for r in rows.iter_mut() {
         if let Some(msg) = failures.get(r.id.as_str()) {
             r.error = msg.as_str().into();
         }
@@ -1059,11 +1061,16 @@ fn dev_run() -> bool {
         || std::env::var_os("CLAUDE_DASHBOARD_SMOKE").is_some()
 }
 
-/// UI thread: sets `f` on the row `id` of the main window's models (cards and pages).
+/// UI thread: sets `f` on the row `id` of the main window's models (cards and pages)
+/// and the flyout's, whose Re-sync button lands here too.
 fn patch_row(weak: &slint::Weak<AppWindow>, id: &str, f: impl Fn(&mut UiRow)) {
     use slint::Model;
     let Some(app) = weak.upgrade() else { return };
-    for rows in [app.get_account_rows(), app.get_pane_rows()] {
+    let mut models = vec![app.get_account_rows(), app.get_pane_rows()];
+    if let Some(p) = POPOVER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade())) {
+        models.push(p.get_account_rows());
+    }
+    for rows in models {
         if let Some(i) = (0..rows.row_count()).find(|&i| rows.row_data(i).is_some_and(|r| r.id == id)) {
             if let Some(mut row) = rows.row_data(i) {
                 f(&mut row);

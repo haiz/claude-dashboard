@@ -630,7 +630,7 @@ export component AccountCard inherits Rectangle {
                     Tooltip { text: @markdown("Read a fresh session key from the browser"); }
                 }
             }
-            // Windows keeps a failed Re-sync's message here (macOS shows none on the card).
+            // A failed Re-sync's message (macOS shows it on the expired card too).
             if root.data.error != "": Text {
                 text: root.data.error;
                 color: Theme.danger;
