@@ -54,4 +54,25 @@ final class UsagePageTests: XCTestCase {
         XCTAssertEqual(commands, [])
         XCTAssertEqual(defaults, [UsagePage.url])
     }
+
+    // MARK: - LoginPage
+
+    func testLoginPageOpensTheProfileAtClaudeLogin() {
+        var commands: [BrowserProfileOpener.Command] = []
+        let opened = LoginPage.open(account(source: .browser, browser: .edge),
+                                    opener: BrowserProfileOpener(run: { commands.append($0) }))
+        XCTAssertTrue(opened)
+        XCTAssertEqual(LoginPage.url.absoluteString, "https://claude.ai/login")
+        XCTAssertEqual(commands, [BrowserProfileOpener.command(browser: .edge, profilePath: "Profile 2", url: LoginPage.url)])
+    }
+
+    /// Signing in from the default browser would not give the account's profile a session.
+    func testLoginPageNeverFallsBackToTheDefaultBrowser() {
+        var commands: [BrowserProfileOpener.Command] = []
+        XCTAssertFalse(LoginPage.open(account(source: .manual, path: ""),
+                                      opener: BrowserProfileOpener(run: { commands.append($0) })))
+        XCTAssertEqual(commands, [])
+        XCTAssertFalse(LoginPage.open(account(source: .browser),
+                                      opener: BrowserProfileOpener(run: { _ in throw Failed() })))
+    }
 }

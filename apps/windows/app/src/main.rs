@@ -1221,8 +1221,10 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
             {
                 let mut f = RESYNC_FAILURES.lock().unwrap_or_else(|e| e.into_inner());
                 for (id, outcome) in &results {
-                    if let resync::ResyncOutcome::Failed(msg) = outcome {
-                        f.insert(id.clone(), msg.clone());
+                    // NeedsLogin included, but no browser opens: one window per expired
+                    // account would be a flood (macOS `resyncAll` opens none either).
+                    if let Some(msg) = outcome.failure_message() {
+                        f.insert(id.clone(), msg.to_string());
                     }
                 }
             }
@@ -1231,7 +1233,7 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
             // the failures above reach their cards through apply_output.
             let ok: Vec<String> = results
                 .into_iter()
-                .filter(|(_, o)| !matches!(o, resync::ResyncOutcome::Failed(_)))
+                .filter(|(_, o)| o.failure_message().is_none())
                 .map(|(id, _)| id)
                 .collect();
             let _ = tx.send(if ok.is_empty() { refresh::Nudge::Local } else { refresh::Nudge::Some(ok) });
@@ -1252,6 +1254,18 @@ fn install_card_actions(app: &AppWindow, nudge_tx: std::sync::mpsc::Sender<refre
                     let _ = tx.send(refresh::Nudge::One(id.clone()));
                 }
                 resync::ResyncOutcome::Failed(msg) => {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        patch_row(&w, &id, |r| r.error = msg.as_str().into());
+                    });
+                }
+                // Open the profile that must sign in again; if it won't launch, the
+                // card keeps the reason and its manual steps.
+                resync::ResyncOutcome::NeedsLogin { reason, browser, profile_dir, profile } => {
+                    let msg = if resync::open_login_page(&browser, &profile_dir) {
+                        resync::opened_message(&browser, &profile)
+                    } else {
+                        reason
+                    };
                     let _ = slint::invoke_from_event_loop(move || {
                         patch_row(&w, &id, |r| r.error = msg.as_str().into());
                     });

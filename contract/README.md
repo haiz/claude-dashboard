@@ -692,6 +692,13 @@ differ from the add-an-account path:
   in to another Claude login must not have its session key copied onto this
   record, which is the same collision `isDuplicate` exists to prevent. A legacy
   record without `accountUuid` has nothing to compare and is backfilled instead.
+- No live session in the profile: no `sessionKey` cookie, or one `/api/account`
+  answers `401`/`403` for (claude.ai revoked it). Nothing is written and the
+  card reports it. A single account's Re-sync (`resyncAccount`) then opens that
+  profile at `https://claude.ai/login` (`LoginPage`, never the default browser:
+  signing in elsewhere gives this profile no session) and the card says
+  `Opened <browser> profile "<profile>" on claude.ai. Log in there, then press Re-sync.`;
+  when the browser won't launch it keeps the reason. `resyncAll` opens nothing.
 
 A **pasted session key** obeys a narrower rule than either. It carries no
 `lastActiveOrg`, so on the add path rule 2 applies: the first chat org. On the

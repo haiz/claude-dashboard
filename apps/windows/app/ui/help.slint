@@ -659,7 +659,7 @@ export component HelpPane inherits Flickable {
             VerticalLayout {
                 spacing: 14px;
                 HelpFAQ { question: "\"No profiles found\" when adding"; answer: @markdown("Make sure you are signed in to claude.ai in that browser, then click **Retry Scan**. A profile that uses app-bound (`v20`) cookies cannot be read: use the **Browser extension** tab for it."); }
-                HelpFAQ { question: "A card says \"Session expired\""; answer: @markdown("Open the browser profile named on the card, sign in to claude.ai, then click **Re-sync**. For an extension account, the extension sends the new key once you are signed in. A pasted key can't be re-synced: add it again with **Paste a session key**."); }
+                HelpFAQ { question: "A card says \"Session expired\""; answer: @markdown("Click **Re-sync**. If the browser profile named on the card is signed out, Re-sync opens it on claude.ai: sign in there, then click **Re-sync** again. For an extension account, the extension sends the new key once you are signed in. A pasted key can't be re-synced: add it again with **Paste a session key**."); }
                 HelpFAQ { question: "The extension shows a red !"; answer: @markdown("The bridge (`claude-dashboard-bridge.exe`) is missing or reported an error. Reinstall the app, then reload the extension."); }
                 HelpFAQ { question: "Switch asks me to run /login"; answer: @markdown("Claude Code lost that login. Run `/login` in Claude Code and sign in with that account."); }
                 HelpFAQ { question: "Switch is refused"; answer: @markdown("Claude Code is signed in to an account that is not on the dashboard. Add that account first so its login is kept safe."); }

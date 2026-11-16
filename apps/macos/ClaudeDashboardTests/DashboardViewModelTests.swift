@@ -490,6 +490,7 @@ final class DashboardViewModelTests: XCTestCase {
     private func makeViewModelWithStore(
         cookies: ChromeCookieResult = ChromeCookieResult(sessionKey: nil, orgId: nil),
         cookieProvider: ((String, Browser) -> ChromeCookieResult)? = nil,
+        loginPageOpener: @escaping (Account) -> Bool = { _ in false },
         pinger: Pinging = FakePinger(),
         animalClock: AnimalDisplayClock? = nil,
         now: @escaping () -> Date = Date.init
@@ -512,6 +513,7 @@ final class DashboardViewModelTests: XCTestCase {
             logStore: UsageLogStore(dbPath: tempDir.appendingPathComponent("usage.sqlite").path),
             ccDetector: detector,
             cookieProvider: cookieProvider ?? { _, _ in cookies },
+            loginPageOpener: loginPageOpener,
             autoSwitchLogStore: AutoSwitchLogStore(
                 dbPath: tempDir.appendingPathComponent("auto_switch.sqlite").path),
             pingController: pingController,
@@ -1124,6 +1126,82 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertNotNil(state?.error, "a re-sync failure must outlive the other account's refresh")
         XCTAssertTrue(state?.error?.contains("Re-sync failed") ?? false,
                       "expected the re-sync failure message, got: \(state?.error ?? "nil")")
+    }
+
+    // MARK: - Re-sync opens the login page
+
+    func testResyncWithNoSessionOpensTheProfileAtTheLoginPage() async throws {
+        let opened = Box<[UUID]>([])
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil),
+            loginPageOpener: { opened.value.append($0.id); return true })
+        var account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        account.chromeProfileName = "Shared.Engineer"
+        account.status = .expired
+        store.addAccount(account)
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        XCTAssertEqual(opened.value, [account.id])
+        let error = try XCTUnwrap(vm.accountStates.first?.error)
+        XCTAssertEqual(error, "Opened Google Chrome profile \"Shared.Engineer\" on claude.ai. Log in there, then press Re-sync.")
+    }
+
+    /// A revoked cookie is caught at `/api/account`, before the key is saved, and opens
+    /// the profile the same way a missing one does.
+    func testResyncWithARejectedKeyOpensTheProfileAndKeepsTheOldKey() async throws {
+        let opened = Box<[UUID]>([])
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: "sk-revoked", orgId: "org-good"),
+            loginPageOpener: { opened.value.append($0.id); return true })
+        var account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        store.saveSessionKey("sk-old", for: account.id)
+        MockURLProtocol.requestHandler = { request in
+            (HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!,
+             Data("{}".utf8))
+        }
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        XCTAssertEqual(opened.value, [account.id])
+        XCTAssertEqual(store.loadSessionKey(for: account.id), "sk-old", "a rejected key must not be saved")
+        XCTAssertTrue(vm.accountStates.first?.error?.hasPrefix("Opened ") ?? false)
+    }
+
+    /// When the browser cannot be launched, the card keeps the reason and its manual steps.
+    func testResyncKeepsTheReasonWhenTheProfileCannotBeOpened() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil),
+            loginPageOpener: { _ in false })
+        var account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        XCTAssertTrue(vm.accountStates.first?.error?.hasPrefix("Re-sync failed.") ?? false)
+    }
+
+    /// Re-sync All must not open one browser window per expired account.
+    func testResyncAllNeverOpensABrowser() async throws {
+        let opened = Box<[UUID]>([])
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil),
+            loginPageOpener: { opened.value.append($0.id); return true })
+        var account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        await Task.yield()
+
+        await vm.resyncAll()
+
+        XCTAssertTrue(opened.value.isEmpty)
+        XCTAssertTrue(vm.accountStates.first?.error?.hasPrefix("Re-sync failed.") ?? false)
     }
 
     // MARK: - Manual session key

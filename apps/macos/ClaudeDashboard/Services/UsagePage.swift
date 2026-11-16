@@ -31,3 +31,19 @@ enum UsagePage {
         openDefault(url)
     }
 }
+
+/// Opens claude.ai's login page in the browser profile an account was scanned from, so
+/// the user can sign that profile in again before a Re-sync. Unlike `UsagePage` there is
+/// no default-browser fallback: signing in elsewhere would not give this profile a
+/// session. Returns false when nothing was opened (a pasted key, or a browser that
+/// won't launch). Arc opens without a profile (`BrowserProfileOpener`).
+///
+///     if LoginPage.open(account) { ... }
+enum LoginPage {
+    static let url = URL(string: "https://claude.ai/login")!
+
+    static func open(_ account: Account, opener: BrowserProfileOpener = BrowserProfileOpener()) -> Bool {
+        guard case .profile(let browser, let path) = UsagePage.target(for: account) else { return false }
+        return (try? opener.open(browser: browser, profilePath: path, url: url)) != nil
+    }
+}

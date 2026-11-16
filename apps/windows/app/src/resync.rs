@@ -18,6 +18,9 @@ use claude_dashboard_core::model::{AccountStatus, Browser};
 use claude_dashboard_core::plan::{parse_orgs, refreshed_plan_for};
 use claude_dashboard_core::scan::{read_profile_session_key, ResyncReadError};
 use claude_dashboard_core::store;
+use std::path::PathBuf;
+
+use crate::cc_login::{browser_command, install_roots};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResyncOutcome {
@@ -26,6 +29,44 @@ pub enum ResyncOutcome {
     /// An extension-fed account: nothing was read; the caller refreshes usage.
     Refreshed,
     Failed(String),
+    /// The profile has no live claude.ai session (no cookie, or one claude.ai rejects):
+    /// only signing in again there fixes it. A single Re-sync opens that profile at
+    /// [`LOGIN_URL`] (macOS `LoginPage`); Re-sync All only shows `reason`.
+    NeedsLogin { reason: String, browser: Browser, profile_dir: String, profile: String },
+}
+
+impl ResyncOutcome {
+    /// The card's error text, for any outcome that did not leave the account ready.
+    pub fn failure_message(&self) -> Option<&str> {
+        match self {
+            ResyncOutcome::Failed(m) | ResyncOutcome::NeedsLogin { reason: m, .. } => Some(m),
+            ResyncOutcome::Updated | ResyncOutcome::Refreshed => None,
+        }
+    }
+}
+
+pub const LOGIN_URL: &str = "https://claude.ai/login";
+
+/// The exe and arguments that open [`LOGIN_URL`] in `browser`'s `profile_dir`, looking
+/// under `roots`. `None` when the browser is not there (or is Arc): unlike the usage page
+/// there is no default-browser fallback, since signing in elsewhere gives this profile
+/// no session.
+pub fn login_command(browser: &Browser, profile_dir: &str, roots: &[PathBuf]) -> Option<(PathBuf, Vec<String>)> {
+    browser_command(browser, Some(profile_dir), LOGIN_URL, roots)
+}
+
+/// Launches the login page; false when nothing was opened.
+pub fn open_login_page(browser: &Browser, profile_dir: &str) -> bool {
+    login_command(browser, profile_dir, &install_roots())
+        .is_some_and(|(exe, args)| std::process::Command::new(exe).args(args).spawn().is_ok())
+}
+
+/// The card's text once the login page is open (macOS `openLoginPage`).
+pub fn opened_message(browser: &Browser, profile: &str) -> String {
+    format!(
+        "Opened {} profile \"{profile}\" on claude.ai. Log in there, then press Re-sync.",
+        browser.display_name()
+    )
 }
 
 /// Why `/api/account` gave no identity for a freshly read key.
@@ -108,11 +149,16 @@ pub fn resync(account_id: &str, env: &dyn ResyncEnv) -> ResyncOutcome {
                 ))
             }
             Err(ResyncReadError::NoSession) => {
-                return ResyncOutcome::Failed(format!(
-                    "Re-sync failed. Open {} profile \"{}\" and login to claude.ai first.",
-                    browser.display_name(),
-                    profile
-                ))
+                return ResyncOutcome::NeedsLogin {
+                    reason: format!(
+                        "Re-sync failed. Open {} profile \"{}\" and login to claude.ai first.",
+                        browser.display_name(),
+                        profile
+                    ),
+                    browser,
+                    profile_dir: account.chrome_profile_path.clone(),
+                    profile,
+                }
             }
         };
 
@@ -123,12 +169,17 @@ pub fn resync(account_id: &str, env: &dyn ResyncEnv) -> ResyncOutcome {
     let info = match env.fetch_account(&key) {
         Ok(info) => Some(info),
         Err(AccountFetchError::Rejected) => {
-            return ResyncOutcome::Failed(format!(
-                "Re-sync read a session key, but claude.ai rejected it. \
-                 Log in to claude.ai again in {} profile \"{}\", then re-sync.",
-                browser.display_name(),
-                profile
-            ))
+            return ResyncOutcome::NeedsLogin {
+                reason: format!(
+                    "Re-sync read a session key, but claude.ai rejected it. \
+                     Log in to claude.ai again in {} profile \"{}\", then re-sync.",
+                    browser.display_name(),
+                    profile
+                ),
+                browser,
+                profile_dir: account.chrome_profile_path.clone(),
+                profile,
+            }
         }
         Err(AccountFetchError::Other(_)) => None,
     };
@@ -396,9 +447,12 @@ mod tests {
         env.account = Err(AccountFetchError::Rejected);
         assert_eq!(
             resync("s", &env),
-            ResyncOutcome::Failed(
-                "Re-sync read a session key, but claude.ai rejected it. Log in to claude.ai again in Microsoft Edge profile \"Work\", then re-sync.".into()
-            )
+            ResyncOutcome::NeedsLogin {
+                reason: "Re-sync read a session key, but claude.ai rejected it. Log in to claude.ai again in Microsoft Edge profile \"Work\", then re-sync.".into(),
+                browser: Browser::Edge,
+                profile_dir: "Profile 2".into(),
+                profile: "Work".into(),
+            }
         );
         let a = stored("s");
         assert_eq!(
@@ -428,9 +482,12 @@ mod tests {
         let env = fake(Err(ResyncReadError::NoSession), "uuid-1");
         assert_eq!(
             resync("s", &env),
-            ResyncOutcome::Failed(
-                "Re-sync failed. Open Microsoft Edge profile \"Work\" and login to claude.ai first.".into()
-            )
+            ResyncOutcome::NeedsLogin {
+                reason: "Re-sync failed. Open Microsoft Edge profile \"Work\" and login to claude.ai first.".into(),
+                browser: Browser::Edge,
+                profile_dir: "Profile 2".into(),
+                profile: "Work".into(),
+            }
         );
         assert_eq!(stored("s").status, AccountStatus::Expired);
     }
@@ -485,5 +542,48 @@ mod tests {
         assert_eq!(out[0].1, ResyncOutcome::Updated);
         assert_eq!(out[1].1, ResyncOutcome::Refreshed);
         assert!(matches!(out[2].1, ResyncOutcome::Failed(_)));
+    }
+
+    #[test]
+    fn login_command_opens_the_profile_at_claude_login() {
+        let d = tempfile::tempdir().unwrap();
+        let exe = d.path().join("Microsoft").join("Edge").join("Application").join("msedge.exe");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, b"").unwrap();
+        assert_eq!(
+            login_command(&Browser::Edge, "Profile 2", &[d.path().to_path_buf()]),
+            Some((exe, vec!["--profile-directory=Profile 2".to_string(), "https://claude.ai/login".to_string()]))
+        );
+    }
+
+    /// No default-browser fallback: signing in elsewhere gives this profile no session.
+    #[test]
+    fn login_command_is_none_when_the_browser_is_missing_or_arc() {
+        let d = tempfile::tempdir().unwrap();
+        let roots = [d.path().to_path_buf()];
+        assert_eq!(login_command(&Browser::Chrome, "Default", &roots), None);
+        assert_eq!(login_command(&Browser::Arc, "Default", &roots), None);
+    }
+
+    #[test]
+    fn opened_message_names_the_browser_and_profile() {
+        assert_eq!(
+            opened_message(&Browser::Chrome, "Shared.Engineer"),
+            "Opened Google Chrome profile \"Shared.Engineer\" on claude.ai. Log in there, then press Re-sync."
+        );
+    }
+
+    #[test]
+    fn failure_message_covers_failed_and_needs_login_only() {
+        let needs = ResyncOutcome::NeedsLogin {
+            reason: "why".into(),
+            browser: Browser::Edge,
+            profile_dir: "P".into(),
+            profile: "W".into(),
+        };
+        assert_eq!(needs.failure_message(), Some("why"));
+        assert_eq!(ResyncOutcome::Failed("x".into()).failure_message(), Some("x"));
+        assert_eq!(ResyncOutcome::Updated.failure_message(), None);
+        assert_eq!(ResyncOutcome::Refreshed.failure_message(), None);
     }
 }

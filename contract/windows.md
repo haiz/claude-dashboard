@@ -228,7 +228,11 @@ and hints come from `core::account_kind`:
 that re-synced in a single pass (macOS `refreshAll(only:)`); a single card's
 Re-sync refreshes that account only. Its "Re-syncing… (n/total)" progress counts
 every account, as on macOS; per-account failures show in that card's error line after
-the refresh.
+the refresh, expired cards included. A profile with no live session (no cookie, or a
+key `/api/account` rejects with `401`/`403`) follows macOS: nothing is written, and a
+single card's Re-sync opens that profile at `https://claude.ai/login`
+(`resync::login_command`; no default-browser fallback, Arc opens nothing); Re-sync All
+opens none (see `contract/README.md`, the re-sync outcomes).
 
 ## Refresh
 

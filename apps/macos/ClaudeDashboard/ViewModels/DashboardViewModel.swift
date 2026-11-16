@@ -186,6 +186,9 @@ final class DashboardViewModel: ObservableObject {
     /// Reads the browser cookies for one stored account. Injected so `resyncAccount`
     /// can be driven in tests without a real Chromium cookie DB on disk.
     private let cookieProvider: (String, Browser) -> ChromeCookieResult
+    /// Opens claude.ai's login page in an account's own browser profile; false when it
+    /// could not. Injected so tests never launch a browser.
+    private let loginPageOpener: (Account) -> Bool
     private var cancellables = Set<AnyCancellable>()
     private var autoRefreshTask: Task<Void, Never>?
     private var resetMonitorTask: Task<Void, Never>?
@@ -207,6 +210,8 @@ final class DashboardViewModel: ObservableObject {
         ccDetector: ClaudeCodeAccountDetector = ClaudeCodeAccountDetector(),
         cookieProvider: @escaping (String, Browser) -> ChromeCookieResult
             = BrowserCookieService.extractCookies(for:browser:),
+        loginPageOpener: @escaping (Account) -> Bool
+            = AppDefaults.isRunningTests() ? { _ in false } : { LoginPage.open($0) },
         ccSwitcher: ClaudeCodeSwitcher? = ClaudeCodeSwitcher.live(isRunningTests: AppDefaults.isRunningTests()),
         desktopSwitcher: ClaudeDesktopSwitcher? = ClaudeDesktopSwitcher.live(isRunningTests: AppDefaults.isRunningTests()),
         ccProvisioner: ClaudeCodeLoginProvisioner? =
@@ -232,6 +237,7 @@ final class DashboardViewModel: ObservableObject {
         self.apiService = apiService
         self.ccDetector = ccDetector
         self.cookieProvider = cookieProvider
+        self.loginPageOpener = loginPageOpener
         self.ccSwitcher = ccSwitcher
         self.desktopSwitcher = desktopSwitcher
         self.ccProvisioner = ccProvisioner
@@ -534,13 +540,21 @@ final class DashboardViewModel: ObservableObject {
         updateBurnPoll(afterFullRefresh: ids == nil)
     }
 
+    /// What `resyncCore` left the account ready for. On anything but `.ready` the
+    /// reason is already on the card as an error message.
+    private enum ResyncResult {
+        case ready
+        case failed
+        /// The profile has no live claude.ai session (no cookie, or one claude.ai
+        /// rejects): only signing in again in that browser profile fixes it.
+        case needsLogin
+    }
+
     /// Re-reads one account's browser cookies and writes the new session key, the
-    /// identity backfill and the resolved org. Returns `true` when the record is
-    /// ready for a usage refresh; on `false` the reason is already on the card as
-    /// an error message. Runs no refresh itself, so a caller re-syncing several
-    /// accounts pays for one refresh pass instead of one per account.
-    private func resyncCore(_ accountId: UUID) async -> Bool {
-        guard let account = accountStore.accounts.first(where: { $0.id == accountId }) else { return false }
+    /// identity backfill and the resolved org. Runs no refresh itself, so a caller
+    /// re-syncing several accounts pays for one refresh pass instead of one per account.
+    private func resyncCore(_ accountId: UUID) async -> ResyncResult {
+        guard let account = accountStore.accounts.first(where: { $0.id == accountId }) else { return .failed }
 
         // A pasted-key account has no browser profile to re-read. Falling through
         // would ask the cookie provider for the profile named "" and report
@@ -549,22 +563,32 @@ final class DashboardViewModel: ObservableObject {
         guard account.source == .browser else {
             setError("This account's session key was pasted by hand. Paste a new one to re-sync it.",
                      for: accountId)
-            return false
+            return .failed
         }
 
         let cookies = cookieProvider(account.chromeProfilePath, account.browser)
 
+        let profileName = account.chromeProfileName ?? account.chromeProfilePath
         guard let sessionKey = cookies.sessionKey else {
             // Re-sync failed — keep expired status, update error message
-            let profileName = account.chromeProfileName ?? account.chromeProfilePath
             setError("Re-sync failed. Open \(account.browser.displayName) profile \"\(profileName)\" and login to claude.ai first.",
                      for: accountId)
-            return false
+            return .needsLogin
         }
 
         // Who the profile is signed in as now, and which orgs that session may be
-        // polled against. A failure here is not fatal — see the org write below.
-        let info = try? await apiService.fetchAccount(sessionKey: sessionKey)
+        // polled against. An unreachable endpoint is not fatal (see the org write
+        // below); a rejected key is: saving it would only expire again on the refresh.
+        let info: AccountInfo?
+        do {
+            info = try await apiService.fetchAccount(sessionKey: sessionKey)
+        } catch UsageAPIError.authExpired {
+            setError("Re-sync read a session key, but claude.ai rejected it. Log in to claude.ai again in \(account.browser.displayName) profile \"\(profileName)\", then re-sync.",
+                     for: accountId)
+            return .needsLogin
+        } catch {
+            info = nil
+        }
 
         // The profile has been switched to a different Claude account. Writing its
         // session key onto this record would point two cards at one account, the
@@ -573,7 +597,7 @@ final class DashboardViewModel: ObservableObject {
         if let info, let storedUuid = account.accountUuid, info.uuid != storedUuid {
             setError("Re-sync stopped. That browser profile is now signed in to a different Claude account.",
                      for: accountId)
-            return false
+            return .failed
         }
 
         var updated = account
@@ -604,18 +628,35 @@ final class DashboardViewModel: ObservableObject {
             // clear the message a second later.
             setError("Re-sync incomplete. This account has no organization with chat access.",
                      for: accountId)
-            return false
+            return .failed
         }
 
-        return true
+        return .ready
     }
 
     func resyncAccount(_ accountId: UUID) async {
-        guard await resyncCore(accountId) else { return }
-        // Refresh just this card. A whole-fleet pass would re-fetch usage nobody
-        // asked for and clear the error message any other card is showing.
-        await refreshAll(only: [accountId])
-        reportRejectedKeys([accountId])
+        switch await resyncCore(accountId) {
+        case .ready:
+            // Refresh just this card. A whole-fleet pass would re-fetch usage nobody
+            // asked for and clear the error message any other card is showing.
+            await refreshAll(only: [accountId])
+            reportRejectedKeys([accountId])
+        case .failed:
+            return
+        case .needsLogin:
+            openLoginPage(accountId)
+        }
+    }
+
+    /// One click on Re-sync opens the profile that must sign in again (never Re-sync
+    /// All: that would open a window per expired account). If the browser cannot be
+    /// launched, the card keeps the reason and its manual steps.
+    private func openLoginPage(_ accountId: UUID) {
+        guard let account = accountStore.accounts.first(where: { $0.id == accountId }),
+              loginPageOpener(account) else { return }
+        let profileName = account.chromeProfileName ?? account.chromeProfilePath
+        setError("Opened \(account.browser.displayName) profile \"\(profileName)\" on claude.ai. Log in there, then press Re-sync.",
+                 for: accountId)
     }
 
     /// A re-sync that saved a key the refresh then got a 401 for leaves the account
@@ -723,7 +764,7 @@ final class DashboardViewModel: ObservableObject {
 
         var refreshable: Set<UUID> = []
         for (index, account) in accounts.enumerated() {
-            if await resyncCore(account.id) { refreshable.insert(account.id) }
+            if await resyncCore(account.id) == .ready { refreshable.insert(account.id) }
             resyncAllProgress = (done: index + 1, total: accounts.count)
         }
         guard !refreshable.isEmpty else { return }

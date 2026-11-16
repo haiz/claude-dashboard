@@ -317,7 +317,7 @@ struct HelpView: View {
             HelpFAQ("\"No profiles found\" when adding",
                     "Make sure you are signed in to claude.ai in that browser, pick the right browser at the top, then click **Retry Scan**.")
             HelpFAQ("A card says \"Session expired\"",
-                    "Open the browser profile named on the card, sign in to claude.ai, then click **Re-sync**. A pasted key can't be re-synced: add it again with **Paste a session key instead**.")
+                    "Click **Re-sync**. If the browser profile named on the card is signed out, Re-sync opens it on claude.ai: sign in there, then click **Re-sync** again. A pasted key can't be re-synced: add it again with **Paste a session key instead**.")
             HelpFAQ("Switch asks me to run /login",
                     "Claude Code lost that login. Run `/login` in Claude Code and sign in with that account.")
             HelpFAQ("Switch is refused",
