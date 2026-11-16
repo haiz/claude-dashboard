@@ -1006,6 +1006,31 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertNotNil(vm.accountStates.first?.usage, "the card must show the usage it just fetched")
     }
 
+    /// The browser still holds a sessionKey cookie, but claude.ai has revoked it (the
+    /// profile was logged out server side). Re-sync saves the key, the refresh gets a
+    /// 401 and marks the account `.expired` again. The card must say why, not keep the
+    /// internal "expired" sentinel that it never shows, or the button looks dead.
+    func testResyncExplainsAKeyThatClaudeRejects() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: "sk-revoked", orgId: "org-good"))
+        try await Task.sleep(nanoseconds: 100_000_000)
+        var account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        MockURLProtocol.requestHandler = { request in
+            (HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!,
+             Data("{}".utf8))
+        }
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(store.accounts.first?.status, .expired, "sanity: the revoked key must not look active")
+        let error = try XCTUnwrap(vm.accountStates.first?.error)
+        XCTAssertTrue(error.contains("rejected"), "got: \(error)")
+    }
+
     /// Double-clicking "Re-sync All" must not spawn a second overlapping pass:
     /// the second call has to bail out while the first is still running.
     func testResyncAllIgnoresAReentrantCallWhileRunning() async throws {

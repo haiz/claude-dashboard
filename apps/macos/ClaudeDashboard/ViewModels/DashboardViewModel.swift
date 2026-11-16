@@ -442,7 +442,9 @@ final class DashboardViewModel: ObservableObject {
             for await (accountId, usage, error, planHint, info) in group {
                 if let index = accountStates.firstIndex(where: { $0.id == accountId }) {
                     accountStates[index].usage = usage ?? accountStates[index].usage
-                    accountStates[index].error = error
+                    // "expired" is a sentinel for the status write below, not a
+                    // message: the expired card already says so, and shows `error` raw.
+                    accountStates[index].error = error == "expired" ? nil : error
                     accountStates[index].consecutiveFailures =
                         error == nil ? 0 : accountStates[index].consecutiveFailures + 1
                     // Only a successful fetch's 5h value counts as activity.
@@ -613,6 +615,18 @@ final class DashboardViewModel: ObservableObject {
         // Refresh just this card. A whole-fleet pass would re-fetch usage nobody
         // asked for and clear the error message any other card is showing.
         await refreshAll(only: [accountId])
+        reportRejectedKeys([accountId])
+    }
+
+    /// A re-sync that saved a key the refresh then got a 401 for leaves the account
+    /// `.expired` with the internal "expired" sentinel as its error, which no card
+    /// shows. Say why instead: the browser still has a cookie claude.ai has revoked.
+    private func reportRejectedKeys(_ ids: Set<UUID>) {
+        for account in accountStore.accounts where ids.contains(account.id) && account.status == .expired {
+            let profileName = account.chromeProfileName ?? account.chromeProfilePath
+            setError("Re-sync read a session key, but claude.ai rejected it. Log in to claude.ai again in \(account.browser.displayName) profile \"\(profileName)\", then re-sync.",
+                     for: account.id)
+        }
     }
 
     /// Adds or repairs an account from a session key the user pasted.
@@ -714,6 +728,7 @@ final class DashboardViewModel: ObservableObject {
         }
         guard !refreshable.isEmpty else { return }
         await refreshAll(only: refreshable)
+        reportRejectedKeys(refreshable)
     }
 
     private func setError(_ message: String, for accountId: UUID) {

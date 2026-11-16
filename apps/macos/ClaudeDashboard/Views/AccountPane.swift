@@ -141,9 +141,17 @@ struct AccountPane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if let profileName = state.account.chromeProfileName {
-                Text("Open Chrome profile \"\(profileName)\" and login to claude.ai, then re-sync.")
+                Text("Open \(state.account.browser.displayName) profile \"\(profileName)\" and login to claude.ai, then re-sync.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            // Why the last Re-sync failed. The account stays `.expired` on every
+            // failure path, so without this line the button looks like it did nothing.
+            if let error = state.error {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Button("Re-sync") {
                 Task { await dashboardViewModel.resyncAccount(state.id) }
