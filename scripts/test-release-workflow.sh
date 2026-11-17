@@ -150,10 +150,28 @@ check_release() {
     grep -q 'gh workflow run release-linux.yml' "$STRIPPED" || fail "release: does not start release-linux.yml"
     grep -q 'gh workflow run release-windows.yml' "$STRIPPED" || fail "release: does not start release-windows.yml"
     grep -q 'group: release$' "$STRIPPED" || fail "release: two releases could run at once"
+    # The signing certificate reaches the shell through env:, like the inputs.
+    grep -q 'secrets.MACOS_SIGNING_P12_BASE64' "$STRIPPED" || fail "release: does not import the signing certificate"
+    grep -qE '^[[:space:]]+[^:]*\$\{\{ *secrets\.' "$STRIPPED" && fail "release: a secret is interpolated into a run script"
+    grep -qE 'run:.*\$\{\{ *secrets\.' "$STRIPPED" && fail "release: a secret is interpolated into a run script"
+    return 0
+}
+
+# release.sh signs with one pinned certificate, so privacy grants survive updates.
+check_release_signing() {
+    local script=scripts/release.sh
+    grep -qE '^SIGNING_CERT_SHA1="[0-9A-F]{40}"$' "$script" || fail "release.sh: signing certificate is not pinned"
+    grep -qF 'codesign --force --sign "$SIGNING_CERT_SHA1"' "$script" || fail "release.sh: does not sign with the pinned certificate"
+    grep -qF 'certificate leaf = H' "$script" || fail "release.sh: does not verify the designated requirement"
+    grep -qE 'CODE_SIGN_IDENTITY|--sign -( |$)' "$script" && fail "release.sh: signs ad-hoc"
+    return 0
 }
 
 check_release
 echo "PASS: release workflow runs release.sh on macOS and starts both platform builds"
+
+check_release_signing
+echo "PASS: release.sh signs with the pinned release certificate"
 
 check_common .github/workflows/release-linux.yml
 check_linux

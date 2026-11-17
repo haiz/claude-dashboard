@@ -55,12 +55,27 @@ if [[ "$NEW_VERSION" == "$OLD_VERSION" ]]; then
 fi
 
 # ── Preflight checks ─────────────────────────────────────────────────────────
-for cmd in xcodegen xcodebuild gh shasum ditto; do
+for cmd in xcodegen xcodebuild gh shasum ditto codesign security; do
     if ! command -v "$cmd" &>/dev/null; then
         echo "error: '$cmd' not found in PATH" >&2
         exit 1
     fi
 done
+
+# The release signing certificate (self-signed, "ClaudeDashboard Release Signing").
+# macOS keys privacy grants (Files & Folders) and Keychain "Always Allow" on the
+# app's designated requirement. Ad-hoc signing makes that a per-build cdhash, so
+# every update lost them; signing with one fixed certificate makes it
+# `certificate leaf = H"<this>"`, the same for every release. Changing it costs
+# every user those grants once: keep the .p12 backed up.
+SIGNING_CERT_SHA1="D0F820946322CA99A35CAB1A6E94829A58B3D4FD"
+# Captured first: under pipefail, `grep -q` exiting early can SIGPIPE the producer.
+IDENTITIES="$(security find-identity -p codesigning)"
+if [[ "$IDENTITIES" != *"$SIGNING_CERT_SHA1"* ]]; then
+    echo "error: signing identity $SIGNING_CERT_SHA1 is not in the keychain search list." >&2
+    echo "       Import the release .p12 (see CLAUDE.md, Releasing) before releasing." >&2
+    exit 1
+fi
 
 if [[ -n "$(git status --porcelain)" ]]; then
     echo "error: working tree is dirty — commit or stash first" >&2
@@ -150,15 +165,28 @@ if [[ ! -d "$APP_PATH" ]]; then
     echo "error: $APP_PATH not found" >&2
     exit 1
 fi
-ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$STAGING/ClaudeDashboard.app.zip"
-
-# CLI tarball — must contain both claude-dashboard-cli AND claude-dashboard-helper
 HELPER_PATH="$RELEASE_DIR/claude-dashboard-helper"
-CLI_PATH="$REPO_ROOT/cli/claude-dashboard-cli"
 if [[ ! -f "$HELPER_PATH" ]]; then
     echo "error: $HELPER_PATH not found" >&2
     exit 1
 fi
+
+# Sign after the tests (they build their own Debug products) and before packaging.
+# The app has a single executable, so no nested code needs signing first.
+LEAF_REQ="certificate leaf = H\"$(echo "$SIGNING_CERT_SHA1" | tr '[:upper:]' '[:lower:]')\""
+for target in "$APP_PATH" "$HELPER_PATH"; do
+    codesign --force --sign "$SIGNING_CERT_SHA1" "$target"
+    codesign --verify --strict "$target"
+    REQ="$(codesign -d -r- "$target" 2>&1)"
+    [[ "$REQ" == *"$LEAF_REQ"* ]] \
+        || { echo "error: $target is not pinned to the release certificate: $REQ" >&2; exit 1; }
+done
+echo "  Signed app and helper with $SIGNING_CERT_SHA1"
+
+ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$STAGING/ClaudeDashboard.app.zip"
+
+# CLI tarball — must contain both claude-dashboard-cli AND claude-dashboard-helper
+CLI_PATH="$REPO_ROOT/cli/claude-dashboard-cli"
 cp "$HELPER_PATH" "$STAGING/claude-dashboard-helper"
 cp "$CLI_PATH" "$STAGING/claude-dashboard-cli"
 tar czf "$STAGING/claude-dashboard-cli.tar.gz" -C "$STAGING" claude-dashboard-helper claude-dashboard-cli

@@ -315,6 +315,16 @@ When asked to create a release:
 
 The script handles everything else: version bump, sync, xcodegen, build (app + helper), tests, artifact creation, Homebrew sha256 update, commit, tag, push, and `gh release create`.
 
+**Signing.** `release.sh` signs the app and helper with one self-signed certificate
+("ClaudeDashboard Release Signing", SHA-1 pinned as `SIGNING_CERT_SHA1`) and checks the
+designated requirement is `certificate leaf = H"..."`. macOS keys privacy grants (macOS 27's
+Files & Folders switch for browser data) and Keychain "Always Allow" on that requirement; the
+old ad-hoc signature made it a per-build cdhash, so every update lost them. The workflow imports
+the `.p12` from the `MACOS_SIGNING_P12_BASE64` / `MACOS_SIGNING_P12_PASSWORD` secrets into a
+throwaway keychain (trust is not needed). To release by hand, import the same `.p12` into your
+login keychain first. Never replace the certificate casually: every user loses those grants once.
+Debug builds stay ad-hoc (`project.yml`).
+
 If no `--notes` flag is passed, the script falls back to GitHub's auto-generated notes.
 
 **Manual steps (only if the script fails):**

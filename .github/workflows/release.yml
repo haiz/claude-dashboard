@@ -45,6 +45,26 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # release.sh signs with the pinned release certificate and stops if it is
+      # missing. A throwaway keychain on the search list is all codesign needs; the
+      # self-signed certificate does not have to be trusted.
+      - name: Import signing certificate
+        env:
+          P12_BASE64: ${{ secrets.MACOS_SIGNING_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MACOS_SIGNING_P12_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/release-signing.keychain-db"
+          KC_PASSWORD="$(uuidgen)"
+          P12="$RUNNER_TEMP/release-signing.p12"
+          printf '%s' "$P12_BASE64" | base64 --decode > "$P12"
+          security create-keychain -p "$KC_PASSWORD" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KC_PASSWORD" "$KC"
+          security import "$P12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASSWORD" "$KC" > /dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          rm -f "$P12"
+
       - name: Run release.sh
         env:
           GH_TOKEN: ${{ github.token }}
