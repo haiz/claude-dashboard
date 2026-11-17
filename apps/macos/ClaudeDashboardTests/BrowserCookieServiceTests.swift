@@ -173,3 +173,33 @@ final class CookieRowRuleTests: XCTestCase {
         XCTAssertEqual(result.sessionKey, "sk-ant-sid01-NOEXPIRY")
     }
 }
+
+/// macOS 27 answers EPERM when an app not allowed in Files & Folders opens a protected
+/// browser's data. That must read as "blocked", never as "no session".
+final class CookieAccessFailureTests: XCTestCase {
+    func testOnlyEPERMIsAPrivacyBlock() {
+        XCTAssertEqual(BrowserCookieService.accessFailure(forOpenErrno: EPERM), .accessDenied)
+        XCTAssertNil(BrowserCookieService.accessFailure(forOpenErrno: ENOENT))
+        XCTAssertNil(BrowserCookieService.accessFailure(forOpenErrno: EACCES))
+    }
+
+    func testAMissingFileIsNotABlock() {
+        let path = NSTemporaryDirectory() + "no-such-cookies-\(UUID().uuidString)"
+        XCTAssertNil(BrowserCookieService.accessFailure(openingFileAt: path))
+    }
+
+    func testAReadableFileIsNotABlock() throws {
+        let path = NSTemporaryDirectory() + "cookies-\(UUID().uuidString)"
+        try Data("x".utf8).write(to: URL(fileURLWithPath: path))
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        XCTAssertNil(BrowserCookieService.accessFailure(openingFileAt: path))
+    }
+
+    /// A profile folder with no Cookies file is a profile with no session.
+    func testExtractingFromAMissingProfileReportsNoFailure() {
+        let result = BrowserCookieService.extractCookies(
+            for: "No Such Profile \(UUID().uuidString)", browser: .chrome, encryptionKey: Data(count: 16))
+        XCTAssertNil(result.sessionKey)
+        XCTAssertNil(result.readFailure)
+    }
+}

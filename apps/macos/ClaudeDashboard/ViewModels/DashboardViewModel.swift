@@ -189,6 +189,9 @@ final class DashboardViewModel: ObservableObject {
     /// Opens claude.ai's login page in an account's own browser profile; false when it
     /// could not. Injected so tests never launch a browser.
     private let loginPageOpener: (Account) -> Bool
+    /// Opens System Settings at Files & Folders; false when it could not. Injected so
+    /// tests never open System Settings.
+    private let dataAccessSettingsOpener: () -> Bool
     private var cancellables = Set<AnyCancellable>()
     private var autoRefreshTask: Task<Void, Never>?
     private var resetMonitorTask: Task<Void, Never>?
@@ -212,6 +215,8 @@ final class DashboardViewModel: ObservableObject {
             = BrowserCookieService.extractCookies(for:browser:),
         loginPageOpener: @escaping (Account) -> Bool
             = AppDefaults.isRunningTests() ? { _ in false } : { LoginPage.open($0) },
+        dataAccessSettingsOpener: @escaping () -> Bool
+            = AppDefaults.isRunningTests() ? { false } : { DataAccessSettings.open() },
         ccSwitcher: ClaudeCodeSwitcher? = ClaudeCodeSwitcher.live(isRunningTests: AppDefaults.isRunningTests()),
         desktopSwitcher: ClaudeDesktopSwitcher? = ClaudeDesktopSwitcher.live(isRunningTests: AppDefaults.isRunningTests()),
         ccProvisioner: ClaudeCodeLoginProvisioner? =
@@ -238,6 +243,7 @@ final class DashboardViewModel: ObservableObject {
         self.ccDetector = ccDetector
         self.cookieProvider = cookieProvider
         self.loginPageOpener = loginPageOpener
+        self.dataAccessSettingsOpener = dataAccessSettingsOpener
         self.ccSwitcher = ccSwitcher
         self.desktopSwitcher = desktopSwitcher
         self.ccProvisioner = ccProvisioner
@@ -548,6 +554,9 @@ final class DashboardViewModel: ObservableObject {
         /// The profile has no live claude.ai session (no cookie, or one claude.ai
         /// rejects): only signing in again in that browser profile fixes it.
         case needsLogin
+        /// macOS refused to let the app read the browser's data: only the user's
+        /// Files & Folders switch fixes it, and signing in again would not.
+        case needsDataAccess
     }
 
     /// Re-reads one account's browser cookies and writes the new session key, the
@@ -567,6 +576,20 @@ final class DashboardViewModel: ObservableObject {
         }
 
         let cookies = cookieProvider(account.chromeProfilePath, account.browser)
+
+        // No cookie could be read at all. Not a signed-out profile, so the login
+        // page would not help (the loop seen on macOS 27 before this branch).
+        switch cookies.readFailure {
+        case .accessDenied?:
+            setError(Self.dataAccessMessage(account.browser, opened: false), for: accountId)
+            return .needsDataAccess
+        case .keychainUnavailable?:
+            setError("ClaudeDashboard could not read \"\(account.browser.keychainService)\" from the Keychain. Press Re-sync and choose Always Allow when macOS asks.",
+                     for: accountId)
+            return .failed
+        case nil:
+            break
+        }
 
         let profileName = account.chromeProfileName ?? account.chromeProfilePath
         guard let sessionKey = cookies.sessionKey else {
@@ -645,7 +668,20 @@ final class DashboardViewModel: ObservableObject {
             return
         case .needsLogin:
             openLoginPage(accountId)
+        case .needsDataAccess:
+            // Re-sync All opens nothing; one click here opens the switch to turn on.
+            if let account = accountStore.accounts.first(where: { $0.id == accountId }),
+               dataAccessSettingsOpener() {
+                setError(Self.dataAccessMessage(account.browser, opened: true), for: accountId)
+            }
         }
+    }
+
+    static func dataAccessMessage(_ browser: Browser, opened: Bool) -> String {
+        let blocked = "macOS blocked ClaudeDashboard from reading \(browser.displayName)'s data."
+        return opened
+            ? "\(blocked) Opened Files & Folders in System Settings: turn on \(browser.displayName) under ClaudeDashboard, then press Re-sync."
+            : "\(blocked) In System Settings > Privacy & Security > Files & Folders, turn on \(browser.displayName) under ClaudeDashboard, then press Re-sync."
     }
 
     /// One click on Re-sync opens the profile that must sign in again (never Re-sync

@@ -318,6 +318,8 @@ struct HelpView: View {
                     "Make sure you are signed in to claude.ai in that browser, pick the right browser at the top, then click **Retry Scan**.")
             HelpFAQ("A card says \"Session expired\"",
                     "Click **Re-sync**. If the browser profile named on the card is signed out, Re-sync opens it on claude.ai: sign in there, then click **Re-sync** again. A pasted key can't be re-synced: add it again with **Paste a session key instead**.")
+            HelpFAQ("Re-sync says macOS blocked the app",
+                    "macOS 27 blocks apps from reading a browser's data until you allow it, and shows a \"Data Access Blocked\" notice. Re-sync opens System Settings › Privacy & Security › **Files & Folders**: under ClaudeDashboard, turn on the browser (for example Google Chrome), then click **Re-sync** again. Adding accounts by scanning needs the same switch. **Full Disk Access** works too, but allows far more.")
             HelpFAQ("Switch asks me to run /login",
                     "Claude Code lost that login. Run `/login` in Claude Code and sign in with that account.")
             HelpFAQ("Switch is refused",

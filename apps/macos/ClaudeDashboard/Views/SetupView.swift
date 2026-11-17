@@ -254,10 +254,15 @@ struct SetupView: View {
             if Task.isCancelled { return }
 
             if results.isEmpty {
+                let blocked = await Task.detached {
+                    BrowserCookieService.dataAccessBlocked(browser: browser)
+                }.value
                 await MainActor.run {
                     self.detectedAccounts = []
                     self.isScanning = false
-                    self.scanError = "No \(selectedBrowser.displayName) profiles found with active Claude sessions. Make sure you're logged into claude.ai in \(selectedBrowser.displayName)."
+                    self.scanError = blocked
+                        ? "macOS blocked ClaudeDashboard from reading \(browser.displayName)'s data. In System Settings > Privacy & Security > Files & Folders, turn on \(browser.displayName) under ClaudeDashboard, then scan again."
+                        : "No \(selectedBrowser.displayName) profiles found with active Claude sessions. Make sure you're logged into claude.ai in \(selectedBrowser.displayName)."
                 }
                 return
             }

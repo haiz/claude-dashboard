@@ -491,6 +491,7 @@ final class DashboardViewModelTests: XCTestCase {
         cookies: ChromeCookieResult = ChromeCookieResult(sessionKey: nil, orgId: nil),
         cookieProvider: ((String, Browser) -> ChromeCookieResult)? = nil,
         loginPageOpener: @escaping (Account) -> Bool = { _ in false },
+        dataAccessSettingsOpener: @escaping () -> Bool = { false },
         pinger: Pinging = FakePinger(),
         animalClock: AnimalDisplayClock? = nil,
         now: @escaping () -> Date = Date.init
@@ -514,6 +515,7 @@ final class DashboardViewModelTests: XCTestCase {
             ccDetector: detector,
             cookieProvider: cookieProvider ?? { _, _ in cookies },
             loginPageOpener: loginPageOpener,
+            dataAccessSettingsOpener: dataAccessSettingsOpener,
             autoSwitchLogStore: AutoSwitchLogStore(
                 dbPath: tempDir.appendingPathComponent("auto_switch.sqlite").path),
             pingController: pingController,
@@ -1202,6 +1204,83 @@ final class DashboardViewModelTests: XCTestCase {
 
         XCTAssertTrue(opened.value.isEmpty)
         XCTAssertTrue(vm.accountStates.first?.error?.hasPrefix("Re-sync failed.") ?? false)
+    }
+
+    /// macOS 27 refuses an app any read of Chrome's data until Files & Folders allows it
+    /// (EPERM). Signing in again cannot fix that, so Re-sync must not open the login
+    /// page: it opens the Files & Folders pane and says so.
+    func testResyncBlockedByMacOSOpensFilesAndFoldersNotTheLoginPage() async throws {
+        let openedLogin = Box<[UUID]>([])
+        let openedSettings = Box<Int>(0)
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil, readFailure: .accessDenied),
+            loginPageOpener: { openedLogin.value.append($0.id); return true },
+            dataAccessSettingsOpener: { openedSettings.value += 1; return true })
+        var account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        XCTAssertEqual(openedLogin.value, [])
+        XCTAssertEqual(openedSettings.value, 1)
+        XCTAssertEqual(vm.accountStates.first?.error,
+                       "macOS blocked ClaudeDashboard from reading Google Chrome's data. Opened Files & Folders in System Settings: turn on Google Chrome under ClaudeDashboard, then press Re-sync.")
+    }
+
+    /// When System Settings cannot be opened, the card still names the setting.
+    func testResyncBlockedByMacOSNamesTheSettingWhenItCannotOpenIt() async throws {
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil, readFailure: .accessDenied),
+            dataAccessSettingsOpener: { false })
+        var account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        XCTAssertEqual(vm.accountStates.first?.error,
+                       "macOS blocked ClaudeDashboard from reading Google Chrome's data. In System Settings > Privacy & Security > Files & Folders, turn on Google Chrome under ClaudeDashboard, then press Re-sync.")
+    }
+
+    /// Re-sync All reports the block on every card but opens nothing.
+    func testResyncAllBlockedByMacOSOpensNothing() async throws {
+        let openedLogin = Box<[UUID]>([])
+        let openedSettings = Box<Int>(0)
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil, readFailure: .accessDenied),
+            loginPageOpener: { openedLogin.value.append($0.id); return true },
+            dataAccessSettingsOpener: { openedSettings.value += 1; return true })
+        var account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        await Task.yield()
+
+        await vm.resyncAll()
+
+        XCTAssertEqual(openedLogin.value, [])
+        XCTAssertEqual(openedSettings.value, 0)
+        XCTAssertTrue(vm.accountStates.first?.error?.hasPrefix("macOS blocked ClaudeDashboard") ?? false)
+    }
+
+    /// An unreadable Safe Storage password is a Keychain problem, not a signed-out profile.
+    func testResyncWithoutTheKeychainPasswordDoesNotOpenTheLoginPage() async throws {
+        let openedLogin = Box<[UUID]>([])
+        let (vm, store) = try makeViewModelWithStore(
+            cookies: ChromeCookieResult(sessionKey: nil, orgId: nil, readFailure: .keychainUnavailable),
+            loginPageOpener: { openedLogin.value.append($0.id); return true })
+        var account = makeAccount(orgId: "org-good", email: "person@example.com", accountUuid: "acct-1")
+        account.status = .expired
+        store.addAccount(account)
+        await Task.yield()
+
+        await vm.resyncAccount(account.id)
+
+        XCTAssertEqual(openedLogin.value, [])
+        XCTAssertEqual(vm.accountStates.first?.error,
+                       "ClaudeDashboard could not read \"Chrome Safe Storage\" from the Keychain. Press Re-sync and choose Always Allow when macOS asks.")
     }
 
     // MARK: - Manual session key

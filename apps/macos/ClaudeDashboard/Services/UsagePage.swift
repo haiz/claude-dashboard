@@ -47,3 +47,16 @@ enum LoginPage {
         return (try? opener.open(browser: browser, profilePath: path, url: url)) != nil
     }
 }
+
+/// Opens System Settings at Privacy & Security > Files & Folders. macOS 27 denies any
+/// read of a browser's data folder without a prompt, then lists the browser there under
+/// this app, switched off; turning it on lets Re-sync read cookies again.
+///
+///     if DataAccessSettings.open() { ... }
+enum DataAccessSettings {
+    static let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")!
+
+    static func open(workspace: NSWorkspace = .shared) -> Bool {
+        workspace.open(url)
+    }
+}

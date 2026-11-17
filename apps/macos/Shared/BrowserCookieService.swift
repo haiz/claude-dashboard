@@ -9,9 +9,21 @@ struct BrowserProfile {
     let browser: Browser
 }
 
+/// Why no cookie could be read at all. Nil means the read itself worked, so a nil
+/// `sessionKey` really is a profile with no claude.ai session.
+enum CookieReadFailure: Equatable {
+    /// macOS refused the read (EPERM): macOS 27 locks some browsers' data folders
+    /// until the user turns the browser on for this app in Files & Folders (or
+    /// grants Full Disk Access). Signing in again cannot fix it.
+    case accessDenied
+    /// The browser's "... Safe Storage" password could not be read from the Keychain.
+    case keychainUnavailable
+}
+
 struct ChromeCookieResult {
     let sessionKey: String?
     let orgId: String?
+    var readFailure: CookieReadFailure? = nil
 }
 
 enum BrowserCookieService {
@@ -67,7 +79,7 @@ enum BrowserCookieService {
 
     static func extractCookies(for profilePath: String, browser: Browser) -> ChromeCookieResult {
         guard let encryptionKey = getEncryptionKey(browser: browser) else {
-            return ChromeCookieResult(sessionKey: nil, orgId: nil)
+            return ChromeCookieResult(sessionKey: nil, orgId: nil, readFailure: .keychainUnavailable)
         }
         return extractCookies(for: profilePath, browser: browser, encryptionKey: encryptionKey)
     }
@@ -82,7 +94,9 @@ enum BrowserCookieService {
         let tempPath = tempDir + "claude-dashboard-cookies-\(browser.rawValue)-\(profilePath.replacingOccurrences(of: " ", with: "_")).db"
         try? FileManager.default.removeItem(atPath: tempPath)
         guard (try? FileManager.default.copyItem(atPath: dbPath, toPath: tempPath)) != nil else {
-            return ChromeCookieResult(sessionKey: nil, orgId: nil)
+            // A missing file is a profile with no cookies; a refused one is not.
+            return ChromeCookieResult(sessionKey: nil, orgId: nil,
+                                      readFailure: accessFailure(openingFileAt: dbPath))
         }
         // Also copy WAL and SHM if they exist
         for suffix in ["-wal", "-shm"] {
@@ -161,6 +175,29 @@ enum BrowserCookieService {
         }
 
         return ChromeCookieResult(sessionKey: sessionKey, orgId: orgId)
+    }
+
+    /// `.accessDenied` when macOS refuses to open `path`, nil when it opens or fails for
+    /// any other reason (a missing file is not a block). On macOS 27 an app not allowed
+    /// in Files & Folders gets EPERM for any file under a protected browser's data folder.
+    static func accessFailure(openingFileAt path: String) -> CookieReadFailure? {
+        let fd = open(path, O_RDONLY)
+        if fd >= 0 {
+            close(fd)
+            return nil
+        }
+        return accessFailure(forOpenErrno: errno)
+    }
+
+    /// EPERM is a privacy refusal; EACCES (file mode) and ENOENT are not.
+    static func accessFailure(forOpenErrno code: Int32) -> CookieReadFailure? {
+        code == EPERM ? .accessDenied : nil
+    }
+
+    /// True when macOS refuses this app the browser's data folder, so a scan that
+    /// found nothing says why instead of "log in to claude.ai".
+    static func dataAccessBlocked(browser: Browser) -> Bool {
+        accessFailure(openingFileAt: browser.basePath + "/Local State") == .accessDenied
     }
 
     /// A `Date` on Chromium's cookie clock: microseconds since 1601-01-01.
