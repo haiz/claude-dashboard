@@ -7,7 +7,7 @@ import Charts
 ///
 ///     let lines = OverviewSpeedLines.make(logs: logs, plans: plans, order: ids, selected: shown,
 ///                                         step: .six, range: range, now: Date(),
-///                                         utcOffset: TimeInterval(TimeZone.current.secondsFromGMT()))
+///                                         utcOffset: TimeInterval(TimeZone.current.secondsFromGMT(for: range.upperBound)))
 struct OverviewSpeedLines: Equatable {
     struct AccountLine: Equatable {
         let id: UUID
@@ -164,7 +164,13 @@ struct OverviewSpeedChart: View {
         let end = bucketEnd(for: date)
         let df = DateFormatter()
         df.dateFormat = "HH:mm"
-        let header = df.string(from: end.addingTimeInterval(-step.seconds)) + "–" + df.string(from: end)
+        // The day is unknown on 3d/7d/30d ranges, so name it unless the bucket ends today.
+        let day = Calendar.current.isDateInToday(end) ? "" : { () -> String in
+            let d = DateFormatter()
+            d.dateFormat = "d MMM "
+            return d.string(from: end)
+        }()
+        let header = day + df.string(from: end.addingTimeInterval(-step.seconds)) + "–" + df.string(from: end)
 
         return VStack(alignment: .leading, spacing: 3) {
             Text(header)

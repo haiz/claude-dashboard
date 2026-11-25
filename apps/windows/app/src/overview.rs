@@ -43,11 +43,11 @@ pub struct Account {
     pub name: String,
     /// Shown in the legend after the name when it differs ("" = none).
     pub email: String,
-    /// Plan weight for the Avg overlay (macOS `planWeight`).
+    /// Plan weight for the Avg overlay (`core::speed_series::plan_weight`, Swift `PlanWeight.weight`).
     pub weight: f64,
 }
 
-/// macOS `OverviewChartView.planWeight`, from the plan label (shared in core).
+/// `core::speed_series::plan_weight` (Swift `PlanWeight.weight`), from the plan label.
 pub use claude_dashboard_core::speed_series::plan_weight;
 
 /// One frame of the Overview chart: the view state, the lines, the legend and

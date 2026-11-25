@@ -9,6 +9,7 @@ struct OverviewChartView: View {
     @State private var selectedAccounts: Set<UUID> = []
     @State private var logs: [UsageLogEntry] = []
     @State private var loadTask: Task<Void, Never>?
+    @State private var speedTask: Task<Void, Never>?
     @State private var isLoading = false
     @State private var hasLoaded = false
     @State private var hoverDate: Date?
@@ -110,7 +111,7 @@ struct OverviewChartView: View {
             legendView
         }
         .onAppear { loadLogs() }
-        .onDisappear { loadTask?.cancel() }
+        .onDisappear { loadTask?.cancel(); speedTask?.cancel() }
         .onChange(of: selectedWindow) { _ in loadLogs(range: visibleRange) }
         .onChange(of: mode) { _ in rebuildSpeedLines() }
         .onChange(of: stepMinutes) { _ in rebuildSpeedLines() }
@@ -475,10 +476,34 @@ struct OverviewChartView: View {
     /// Rebuilds the Speed chart's lines from `logs` for `visibleRange`; only while Speed shows
     /// (a mode switch rebuilds), so the Usage chart pays nothing. Called per data, selection,
     /// step or range change, never per hover: a range or selection change reloads `logs`.
+    /// The computation runs off the main actor on a snapshot of the inputs; a newer rebuild
+    /// cancels this one, so a stale result never overwrites a newer one.
     private func rebuildSpeedLines() {
         guard isSpeed else { return }
+        speedTask?.cancel()
+        let input = speedInput()
+        speedTask = Task { @MainActor in
+            let lines = await Self.makeSpeedLines(input)
+            if Task.isCancelled { return }
+            speedLines = lines
+        }
+    }
+
+    /// Every input of `OverviewSpeedLines.make` as plain values, so the pass can leave the main actor.
+    private struct SpeedInput {
+        let logs: [UsageLogEntry]
+        let plans: [UUID: AccountPlan]
+        let order: [UUID]
+        let selected: Set<UUID>
+        let step: SpeedStep
+        let range: ClosedRange<Date>
+        let now: Date
+        let utcOffset: TimeInterval
+    }
+
+    private func speedInput() -> SpeedInput {
         let states = viewModel.accountStates
-        speedLines = OverviewSpeedLines.make(
+        return SpeedInput(
             logs: logs,
             plans: Dictionary(uniqueKeysWithValues: states.map { ($0.id, $0.account.plan) }),
             order: states.map(\.id),
@@ -488,6 +513,12 @@ struct OverviewChartView: View {
             now: Date(),
             utcOffset: TimeInterval(TimeZone.current.secondsFromGMT(for: visibleRange.upperBound))
         )
+    }
+
+    nonisolated private static func makeSpeedLines(_ input: SpeedInput) async -> OverviewSpeedLines {
+        OverviewSpeedLines.make(logs: input.logs, plans: input.plans, order: input.order,
+                                selected: input.selected, step: input.step, range: input.range,
+                                now: input.now, utcOffset: input.utcOffset)
     }
 
     /// Starts a load for `range` (or the current window slid to now), cancelling any
@@ -526,7 +557,13 @@ struct OverviewChartView: View {
                 store: store, window: window, range: effectiveRange, accountIds: accountIds
             ) else { return }
             logs = fetched
-            rebuildSpeedLines()
+            if isSpeed {
+                // Same task as the fetch, so the next load's cancel also drops this pass.
+                speedTask?.cancel()
+                let lines = await Self.makeSpeedLines(speedInput())
+                if Task.isCancelled { return }
+                speedLines = lines
+            }
             hasLoaded = true
             isLoading = false
         }

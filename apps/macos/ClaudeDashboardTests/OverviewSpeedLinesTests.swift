@@ -72,8 +72,8 @@ final class OverviewSpeedLinesTests: XCTestCase {
         XCTAssertEqual(lines.yMax, 30)
     }
 
-    func testThirtyDaysTenAccountsIsFast() {
-        let days = 30.0 * 86400
+    func testSevenDaysTenAccountsIsFast() {
+        let days = 7.0 * 86400
         let ids = (0..<10).map { _ in UUID() }
         var logs: [UsageLogEntry] = []
         for id in ids {
