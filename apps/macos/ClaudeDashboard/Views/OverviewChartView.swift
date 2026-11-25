@@ -343,23 +343,12 @@ struct OverviewChartView: View {
         var weightedSum = 0.0
         var totalWeight = 0.0
         for state in viewModel.accountStates where positiveDeltas[state.id] != nil {
-            let w = Self.planWeight(state.account.plan)
+            let w = PlanWeight.weight(state.account.plan)
             weightedSum += positiveDeltas[state.id, default: 0] * w
             totalWeight += w
         }
         guard totalWeight > 0 else { return nil }
         return weightedSum / totalWeight / totalHours
-    }
-
-    private static func planWeight(_ plan: AccountPlan) -> Double {
-        switch plan {
-        case .pro: return 1
-        case .max5x: return 5
-        case .max20x: return 20
-        case .max200: return 10
-        // Usage multiplier not verified; neutral, like Windows' fallback.
-        case .team, .enterprise, .free: return 1
-        }
     }
 
     private func interpolate(at time: Date, in logs: [UsageLogEntry]) -> Double? {
