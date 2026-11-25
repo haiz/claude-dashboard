@@ -168,6 +168,7 @@ struct HelpView: View {
             HelpRow(symbol: "ruler", "**Measure**: click two points to see how much usage changed between them.")
             HelpRow(symbol: "clock", "**Time span**: beside Avg, the start and end of the visible range (\"now\" at the live edge). On the 5h chart over 5h or less, or the 7d chart over 7d or less, with no reset in between, it also shows the usage at each end when they differ, e.g. 14:02 2% → now 9%.")
             HelpCallout(.tip, "**Overview** puts every account on one chart. Click an account in the legend to show or hide it.")
+            HelpRow(symbol: "speedometer", "**Usage | Speed**: on Overview, Speed shows how fast each account and their bold Total use their limit per step (6, 10, 20 or 30 min), in Max-equivalent %/h: a Pro account counts a tenth, Max 20x double.")
         }
     }
 

@@ -111,6 +111,7 @@
 		76BA8139F5DCA27C87F3D8D1 /* AccountAvatarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67AC5563CF36D085E954208F /* AccountAvatarTests.swift */; };
 		773DC5318E35F74CC255551A /* ClaudeCodeLoginProvisioner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A466FBD387F8F0F01866D2D /* ClaudeCodeLoginProvisioner.swift */; };
 		778AEDD47FE25842B4C722AB /* DesktopSwitchFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97C7A111F9FB5CE6E67CD60 /* DesktopSwitchFlowTests.swift */; };
+		78F2875F2E5FDF68186ED4D0 /* OverviewSpeedLinesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E8598FAB9A3E8D14EB9161B /* OverviewSpeedLinesTests.swift */; };
 		78FE8A4C073CCC5DE40FB5BE /* PingLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF4D3349D7E712D70BE8BB5D /* PingLogStore.swift */; };
 		799960A4D530BF35FAB68326 /* UsageLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A9C824A446A4513554E6BC5 /* UsageLogStore.swift */; };
 		7BB383E9DE1C268C3D002C47 /* LimitResetsText.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4507D0F84CAAA93EE34FC7D /* LimitResetsText.swift */; };
@@ -157,6 +158,7 @@
 		9C1660C69D3A0A2D926B179E /* UpdateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 373E95B92E85447700BA3DEF /* UpdateServiceTests.swift */; };
 		9C632D2CDB84CD434C8D1B33 /* SyncCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B48B3EE5B29CFDE5EA2B450 /* SyncCommandTests.swift */; };
 		9E0803227E668084B9FBD768 /* ClaudeDesktopVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B6B6000425EF724813A4173 /* ClaudeDesktopVault.swift */; };
+		9F263B7FEAC52880AB2640D9 /* OverviewSpeedChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F0C1642D62A6C94ECA4745 /* OverviewSpeedChart.swift */; };
 		9F5A8904E11A88034246F0D9 /* UsageRatioChartTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 839A2FFF474675F3980B7B6F /* UsageRatioChartTests.swift */; };
 		9FAB31B717BAEDE9C724CB3E /* ManualKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D9D56AC716B8F1D80E62A /* ManualKeyInput.swift */; };
 		A0A51AB9400328B0A1CD094D /* SecurityCLIKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E836DDC2F3DA13CDC23B077 /* SecurityCLIKeychain.swift */; };
@@ -282,6 +284,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		00F0C1642D62A6C94ECA4745 /* OverviewSpeedChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewSpeedChart.swift; sourceTree = "<group>"; };
 		044BB8B1571D196A895EFAE9 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
 		0589371491C55017ABF34450 /* AutoSwitchLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchLogStore.swift; sourceTree = "<group>"; };
 		066B8B1E829B2024AB298464 /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
@@ -310,6 +313,7 @@
 		1B626BA4B6B77C9127190E09 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		1D57AC22215AA530FAC3ED67 /* UsageAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAPIService.swift; sourceTree = "<group>"; };
 		1E7E8867CDD9C03EEBA35ECD /* SettingsTipsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTipsTests.swift; sourceTree = "<group>"; };
+		1E8598FAB9A3E8D14EB9161B /* OverviewSpeedLinesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewSpeedLinesTests.swift; sourceTree = "<group>"; };
 		1FC225BDED78A49E00D41BB3 /* AutoSwitchSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSwitchSettings.swift; sourceTree = "<group>"; };
 		22852C4BF281EFE3D942EFC7 /* ClaudeDesktopConfigFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDesktopConfigFile.swift; sourceTree = "<group>"; };
 		2350E45EA897A81903976D13 /* FakePinger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakePinger.swift; sourceTree = "<group>"; };
@@ -609,6 +613,7 @@
 				AE57E5139A296611CB7F49C2 /* ManualKeyInputTests.swift */,
 				0C8D27DC73CD1321619DF47A /* ManualKeyOutcomeTests.swift */,
 				65B6FF0D0BD63D5125DBE9E9 /* OrgSelectionContractTests.swift */,
+				1E8598FAB9A3E8D14EB9161B /* OverviewSpeedLinesTests.swift */,
 				E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */,
 				7D2EB0AED06D26591B8C814F /* PlanRefreshContractTests.swift */,
 				4CB083F464444A9AAEFA0DDE /* ScanOutcomeTests.swift */,
@@ -726,6 +731,7 @@
 				82BD8EADA1A53C63A8745853 /* MainWindow.swift */,
 				52F459D10501056C193989A6 /* MenuBarPopover.swift */,
 				2AA56B8E5252FD397123C6C2 /* OverviewChartView.swift */,
+				00F0C1642D62A6C94ECA4745 /* OverviewSpeedChart.swift */,
 				39C1533FA0CC46BC64424B9F /* PasteKeyView.swift */,
 				0A13471E54BDEEA14818A35E /* PingLogView.swift */,
 				DA6CEE94A190F9667328C4A7 /* PopoverFooter.swift */,
@@ -936,7 +942,7 @@
 			path = Ping;
 			sourceTree = "<group>";
 		};
-		"TEMP_0D3272A5-1690-46FC-8910-89B837122F4A" /* Resources */ = {
+		"TEMP_0A5DB865-F399-40C8-90FC-38D994FC6437" /* Resources */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -1140,6 +1146,7 @@
 				B9591794E9DA0689E406A431 /* MockURLProtocol.swift in Sources */,
 				95B1138E1D2272D2AB2BB8CA /* OAuthCallbackListenerTests.swift in Sources */,
 				69E5C98294531C72DBF1D4CC /* OrgSelectionContractTests.swift in Sources */,
+				78F2875F2E5FDF68186ED4D0 /* OverviewSpeedLinesTests.swift in Sources */,
 				A6B8EFBB4886FD8E091829F9 /* PingControllerTests.swift in Sources */,
 				9317FFCCE3828B6095DFC538 /* PingLogStoreTests.swift in Sources */,
 				EEF3B34CBA208CD5E4BBDB2B /* PingLogViewModelTests.swift in Sources */,
@@ -1320,6 +1327,7 @@
 				B38B8E482E1BC067FFD7AE74 /* MenuBarPopover.swift in Sources */,
 				701C35A47BF27244BB6521A2 /* OAuthCallbackListener.swift in Sources */,
 				5994EEF08661FBAD5564707D /* OverviewChartView.swift in Sources */,
+				9F263B7FEAC52880AB2640D9 /* OverviewSpeedChart.swift in Sources */,
 				E31B51A27092F17B0C752A22 /* PaneHeader.swift in Sources */,
 				85A890C260027761BE3F5188 /* PasteKeyView.swift in Sources */,
 				CF7DB98CD235039D3FAEA9EA /* PingController.swift in Sources */,

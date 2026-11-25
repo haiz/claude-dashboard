@@ -43,6 +43,8 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
     let toolbarExtra: () -> ToolbarExtra
     let dataPoints: [UsageLogEntry]
     let averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)?
+    /// Whether the toolbar shows the "Avg" pill (the Overview hides it in Speed).
+    let showsAverageRate: Bool
     /// The range label beside Avg: its time part ("14:02 → now") and usage part ("2% → 9%",
     /// nil when hidden), or nil for no label.
     let rangeLabel: ((ClosedRange<Date>) -> (time: String, usage: String?))?
@@ -73,6 +75,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         isInteractionDisabled: Bool = false,
         liveTick: Date,
         autoFollowsLiveEdge: Bool,
+        showsAverageRate: Bool = true,
         averageRateProvider: ((ClosedRange<Date>, [UsageLogEntry]) -> Double?)? = nil,
         rangeLabel: ((ClosedRange<Date>) -> (time: String, usage: String?))? = nil,
         onRangeChanged: @escaping (ClosedRange<Date>) -> Void,
@@ -84,6 +87,7 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
         self.isInteractionDisabled = isInteractionDisabled
         self.liveTick = liveTick
         self.autoFollowsLiveEdge = autoFollowsLiveEdge
+        self.showsAverageRate = showsAverageRate
         self.averageRateProvider = averageRateProvider
         self.rangeLabel = rangeLabel
         self.onRangeChanged = onRangeChanged
@@ -164,7 +168,9 @@ struct InteractiveChartContainer<ChartContent: View, ToolbarExtra: View>: View {
                 if let rangeLabel {
                     toolbarPill(rangeLabelText(rangeLabel(visibleRange)))
                 }
-                averageRateOverlay
+                if showsAverageRate {
+                    averageRateOverlay
+                }
             }
             .allowsHitTesting(false)
 

@@ -14,6 +14,19 @@ struct OverviewChartView: View {
     @State private var hoverDate: Date?
     @State private var hoverX: CGFloat = 0
     @State private var chartWidth: CGFloat = 1
+    @State private var speedLines: OverviewSpeedLines = .empty
+    @AppStorage(AppDefaults.overviewChartModeKey, store: AppDefaults.shared) private var mode = ChartMode.usage.rawValue
+    @AppStorage(AppDefaults.overviewSpeedStepKey, store: AppDefaults.shared) private var stepMinutes = SpeedStep.six.rawValue
+
+    /// The chart the pane shows; stored by raw value under `overviewChartModeKey`.
+    private enum ChartMode: String, CaseIterable {
+        case usage, speed
+        var label: String { rawValue.capitalized }
+    }
+
+    private var isSpeed: Bool { mode == ChartMode.speed.rawValue }
+    /// An unknown stored step falls back to 6 minutes.
+    private var speedStep: SpeedStep { SpeedStep(rawValue: stepMinutes) ?? .six }
 
     private static let lineColors: [Color] = [
         .orange, .cyan, .green, .purple, .pink, .blue, .yellow, .mint, .indigo, .red
@@ -25,6 +38,13 @@ struct OverviewChartView: View {
                 if isLoading {
                     ProgressView().controlSize(.small)
                 }
+                Picker("Chart", selection: $mode) {
+                    ForEach(ChartMode.allCases, id: \.self) { Text($0.label).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .help("Show usage, or the speed of use per time step")
             }
 
             Divider()
@@ -52,7 +72,8 @@ struct OverviewChartView: View {
                     chartHeight: 300,
                     liveTick: viewModel.lastLogsUpdatedAt,
                     autoFollowsLiveEdge: true,
-                    averageRateProvider: { range, _ in
+                    showsAverageRate: !isSpeed,
+                    averageRateProvider: isSpeed ? nil : { range, _ in
                         weightedAverageRate(in: range)
                     },
                     onRangeChanged: { range in
@@ -60,11 +81,25 @@ struct OverviewChartView: View {
                         loadLogs(range: range)
                     },
                     chartContent: { range in
-                        overviewChart(range: range)
+                        if isSpeed {
+                            OverviewSpeedChart(lines: speedLines, range: range, step: speedStep,
+                                               names: accountNames, colors: accountColors)
+                        } else {
+                            overviewChart(range: range)
+                        }
                     },
                     toolbarExtra: {
                         UsageWindowPicker(selection: $selectedWindow)
                             .frame(width: 180)
+                        if isSpeed {
+                            Picker("Step", selection: $stepMinutes) {
+                                ForEach(SpeedStep.allCases) { Text($0.label).tag($0.rawValue) }
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .fixedSize()
+                            .help("Width of each speed step")
+                        }
                     }
                 )
             }
@@ -77,6 +112,8 @@ struct OverviewChartView: View {
         .onAppear { loadLogs() }
         .onDisappear { loadTask?.cancel() }
         .onChange(of: selectedWindow) { _ in loadLogs(range: visibleRange) }
+        .onChange(of: mode) { _ in rebuildSpeedLines() }
+        .onChange(of: stepMinutes) { _ in rebuildSpeedLines() }
         // While the chart is on screen, InteractiveChartContainer drives the per-refresh
         // reload (advancing the live window as needed). Only bootstrap the empty state here,
         // since the container isn't in the tree until there's data to show.
@@ -117,7 +154,7 @@ struct OverviewChartView: View {
                     }
                 }
 
-                ForEach(noonMarkers(in: range), id: \.self) { noon in
+                ForEach(Self.noonMarkers(in: range), id: \.self) { noon in
                     RuleMark(x: .value("Noon", noon))
                         .foregroundStyle(.secondary.opacity(0.15))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 4]))
@@ -132,12 +169,12 @@ struct OverviewChartView: View {
             }
             .chartXScale(domain: range.lowerBound...range.upperBound)
             .chartXAxis {
-                let marks = axisMarkDates(for: range)
+                let marks = Self.axisMarkDates(for: range)
                 AxisMarks(values: marks) { value in
                     AxisGridLine()
                     if let date = value.as(Date.self) {
                         AxisValueLabel {
-                            Text(axisLabel(for: date, in: range))
+                            Text(Self.axisLabel(for: date, in: range))
                                 .font(.caption2)
                         }
                     }
@@ -280,6 +317,16 @@ struct OverviewChartView: View {
         viewModel.accountStates.indices.map { Self.lineColors[$0 % Self.lineColors.count] }
     }
 
+    private var accountNames: [UUID: String] {
+        Dictionary(uniqueKeysWithValues: viewModel.accountStates.map { ($0.id, $0.account.name) })
+    }
+
+    private var accountColors: [UUID: Color] {
+        Dictionary(uniqueKeysWithValues: viewModel.accountStates.enumerated().map { index, state in
+            (state.id, Self.lineColors[index % Self.lineColors.count])
+        })
+    }
+
     // MARK: - Legend
 
     private var legendView: some View {
@@ -369,7 +416,8 @@ struct OverviewChartView: View {
         return before?.utilization ?? after?.utilization
     }
 
-    private func axisMarkDates(for range: ClosedRange<Date>) -> [Date] {
+    // Static so `OverviewSpeedChart` draws the same x axis and noon rules.
+    static func axisMarkDates(for range: ClosedRange<Date>) -> [Date] {
         let duration = range.upperBound.timeIntervalSince(range.lowerBound)
         let cal = Calendar.current
         var dates: [Date] = []
@@ -398,7 +446,7 @@ struct OverviewChartView: View {
         return dates.sorted()
     }
 
-    private func axisLabel(for date: Date, in range: ClosedRange<Date>) -> String {
+    static func axisLabel(for date: Date, in range: ClosedRange<Date>) -> String {
         let duration = range.upperBound.timeIntervalSince(range.lowerBound)
         let df = DateFormatter()
         if duration <= 6 * 3600 {
@@ -410,7 +458,7 @@ struct OverviewChartView: View {
         return df.string(from: date)
     }
 
-    private func noonMarkers(in range: ClosedRange<Date>) -> [Date] {
+    static func noonMarkers(in range: ClosedRange<Date>) -> [Date] {
         let cal = Calendar.current
         var result: [Date] = []
         var day = cal.startOfDay(for: range.lowerBound)
@@ -422,6 +470,24 @@ struct OverviewChartView: View {
             day = cal.date(byAdding: .day, value: 1, to: day)!
         }
         return result
+    }
+
+    /// Rebuilds the Speed chart's lines from `logs` for `visibleRange`; only while Speed shows
+    /// (a mode switch rebuilds), so the Usage chart pays nothing. Called per data, selection,
+    /// step or range change, never per hover: a range or selection change reloads `logs`.
+    private func rebuildSpeedLines() {
+        guard isSpeed else { return }
+        let states = viewModel.accountStates
+        speedLines = OverviewSpeedLines.make(
+            logs: logs,
+            plans: Dictionary(uniqueKeysWithValues: states.map { ($0.id, $0.account.plan) }),
+            order: states.map(\.id),
+            selected: selectedAccounts,
+            step: speedStep,
+            range: visibleRange,
+            now: Date(),
+            utcOffset: TimeInterval(TimeZone.current.secondsFromGMT(for: visibleRange.upperBound))
+        )
     }
 
     /// Starts a load for `range` (or the current window slid to now), cancelling any
@@ -460,6 +526,7 @@ struct OverviewChartView: View {
                 store: store, window: window, range: effectiveRange, accountIds: accountIds
             ) else { return }
             logs = fetched
+            rebuildSpeedLines()
             hasLoaded = true
             isLoading = false
         }

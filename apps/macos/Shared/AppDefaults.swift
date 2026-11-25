@@ -33,6 +33,11 @@ enum AppDefaults {
     /// Settings > General > Display (default off): show the burn-rate animal on each gauge.
     static let showBurnAnimalsKey = "showBurnAnimals"
 
+    /// Overview pane: which chart shows ("usage" | "speed", default "usage") and the Speed
+    /// chart's bucket width in minutes (6 | 10 | 20 | 30, default 6).
+    static let overviewChartModeKey = "overviewChartMode"
+    static let overviewSpeedStepKey = "overviewSpeedStepMinutes"
+
     /// The suite to open, or nil to stay on the standard domain.
     ///
     /// Pure so the decision is testable; `shared` supplies the real inputs.
