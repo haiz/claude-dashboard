@@ -127,6 +127,6 @@ pub fn total_speed(accounts: &[AccountSpeed], now_ms: f64) -> Vec<SpeedPoint> {
         .filter_map(|a| a.points.last().map(|p| p.end_ms))
         .reduce(f64::min);
     sums.into_values()
-        .filter(|p| cutoff.map_or(true, |c| p.end_ms <= c))
+        .filter(|p| cutoff.is_none_or(|c| p.end_ms <= c))
         .collect()
 }
