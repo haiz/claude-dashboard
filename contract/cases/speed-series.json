@@ -26,6 +26,8 @@
      "points": [[0, 0], [100, 0], [100, 1], [720, 1]], "expect": [[360, 10.0], [720, 0.0]]},
     {"name": "partly covered edge buckets get no point", "step_min": 6, "utc_offset_s": 0, "from": 0, "to": 1080, "plan": "Max",
      "points": [[100, 0], [700, 6]], "expect": []},
+    {"name": "a rise that starts before from is clipped to the range", "step_min": 6, "utc_offset_s": 0, "from": 360, "to": 720, "plan": "Max",
+     "points": [[0, 0], [720, 6]], "expect": [[720, 30.0]]},
     {"name": "10-min step", "step_min": 10, "utc_offset_s": 25200, "from": 0, "to": 1200, "plan": "Max",
      "points": [[0, 0], [300, 1], [1200, 1]], "expect": [[600, 6.0], [1200, 0.0]]}
   ],
@@ -42,6 +44,9 @@
     {"name": "a stale account does not hold Total back", "now": 5000,
      "accounts": [{"points": [[360, 1], [720, 1], [1080, 1]], "last_entry": 4990}, {"points": [[360, 2], [720, 2]], "last_entry": 1000}],
      "expect": [[360, 3.0], [720, 3.0], [1080, 1.0]]},
+    {"name": "a live account with no points does not cut Total", "now": 1100,
+     "accounts": [{"points": [[360, 1], [720, 1], [1080, 1]], "last_entry": 1090}, {"points": [], "last_entry": 1095}],
+     "expect": [[360, 1.0], [720, 1.0], [1080, 1.0]]},
     {"name": "no accounts, no Total", "now": 1000, "accounts": [], "expect": []}
   ]
 }
