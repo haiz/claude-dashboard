@@ -308,6 +308,7 @@ struct HelpView: View {
 
     private var refreshUpdates: some View {
         VStack(alignment: .leading, spacing: 12) {
+            HelpRow(symbol: "power", "**Open at login** (Settings › General): off by default. When on, macOS starts the app in the menu bar after you log in. It follows System Settings › General › **Login Items**, so you can change it there too.")
             HelpRow(symbol: "arrow.clockwise", "**Auto Refresh** (Settings › General): keeps usage current, every 1 to 60 minutes.")
             HelpRow(symbol: "arrow.down.circle", "**Auto-update daily**: checks GitHub once a day and installs new releases. **Check for Updates** checks right now.")
         }

@@ -205,6 +205,8 @@ final class DashboardViewModel: ObservableObject {
     let logStore: UsageLogStore
     /// X, the 7d cost of a full 5h window; recomputed hourly (`UsageRatioController`).
     let ratioController: UsageRatioController
+    /// Settings > General "Open at login" (`SMAppService.mainApp`; in memory under XCTest).
+    let launchAtLogin: LaunchAtLoginController
 
     init(
         accountStore: AccountStore = AccountStore(),
@@ -226,9 +228,11 @@ final class DashboardViewModel: ObservableObject {
         pingController: PingController? = nil,
         criticalSettings: CriticalSettings? = nil,
         animalClock: AnimalDisplayClock? = nil,
+        launchAtLogin: LaunchAtLoginController? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.now = now
+        self.launchAtLogin = launchAtLogin ?? .live(isRunningTests: AppDefaults.isRunningTests())
         self.animalClock = animalClock ?? AnimalDisplayClock()
         self.autoRefreshEnabled = AppDefaults.shared.object(forKey: "autoRefreshEnabled") as? Bool ?? true
         self.switchDesktopEnabled = AppDefaults.shared.bool(forKey: AppDefaults.switchDesktopEnabledKey)
@@ -334,6 +338,7 @@ final class DashboardViewModel: ObservableObject {
         autoSwitchDesktopEnabled = false
         showBurnAnimals = false
         setAutoPingEnabled(false)
+        launchAtLogin.setEnabled(false)
         criticalSettings.resetToDefaults()
         autoSwitchSettings.resetToDefaults()
         Task { await runAutoSwitch() }

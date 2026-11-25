@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// Settings > General: app identity (icon, name, version), auto refresh
+/// Settings > General: app identity (icon, name, version), Startup (Open at login), auto refresh
 /// (on/off plus a 1-60 minute interval), Display (burn-rate animals), Auto Ping (on/off), Claude Desktop switch (two toggles), auto switch (on/off, 5h and 7d thresholds, menu bar toggle),
 /// Critical Accounts (paces, quiet hours, time zone), updates (daily toggle plus the manual check)
 /// and Reset All Settings (asks first, then `resetSettingsToDefaults`).
@@ -18,6 +18,7 @@ struct GeneralSettingsPane: View {
             PaneHeader(title: "General")
             Form {
                 Section { about }
+                LaunchAtLoginSection(controller: viewModel.launchAtLogin, openHelp: openHelp)
                 Section("Auto Refresh") {
                     Toggle(isOn: $viewModel.autoRefreshEnabled) { tipLabel("Enable auto refresh", SettingsTips.autoRefresh) }
                     if viewModel.autoRefreshEnabled {
@@ -129,7 +130,7 @@ struct GeneralSettingsPane: View {
                 updateViewModel.autoUpdateEnabled = true
             }
         } message: {
-            Text("Auto refresh, Auto Ping, Claude Desktop, Auto Switch, Critical Accounts and Updates go back to their defaults.")
+            Text("Open at login, auto refresh, Auto Ping, Claude Desktop, Auto Switch, Critical Accounts and Updates go back to their defaults.")
         }
     }
 

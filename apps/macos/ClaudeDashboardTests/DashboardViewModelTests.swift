@@ -284,6 +284,28 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertFalse(vm.showBurnAnimals)
     }
 
+    func testResetSettingsTurnsOffLaunchAtLogin() throws {
+        let svc = InMemoryLoginItemService()
+        svc.status = .enabled
+        let (vm, _) = try makeViewModelWithStore(launchAtLogin: LaunchAtLoginController(service: svc))
+        XCTAssertTrue(vm.launchAtLogin.isOn)
+
+        vm.resetSettingsToDefaults()
+
+        XCTAssertEqual(svc.status, .notRegistered)
+        XCTAssertFalse(vm.launchAtLogin.isOn)
+    }
+
+    func testResetSettingsWhenLaunchAtLoginOffHasNoError() throws {
+        let svc = InMemoryLoginItemService()
+        let (vm, _) = try makeViewModelWithStore(launchAtLogin: LaunchAtLoginController(service: svc))
+
+        vm.resetSettingsToDefaults()
+
+        XCTAssertEqual(svc.status, .notRegistered)
+        XCTAssertNil(vm.launchAtLogin.errorMessage)
+    }
+
     func testShowBurnAnimals_defaultsOffAndPersists() throws {
         AppDefaults.shared.removeObject(forKey: AppDefaults.showBurnAnimalsKey)
         defer { AppDefaults.shared.removeObject(forKey: AppDefaults.showBurnAnimalsKey) }
@@ -494,6 +516,7 @@ final class DashboardViewModelTests: XCTestCase {
         dataAccessSettingsOpener: @escaping () -> Bool = { false },
         pinger: Pinging = FakePinger(),
         animalClock: AnimalDisplayClock? = nil,
+        launchAtLogin: LaunchAtLoginController? = nil,
         now: @escaping () -> Date = Date.init
     ) throws -> (DashboardViewModel, AccountStore) {
         let detectorFile = tempDir.appendingPathComponent(".claude.json-\(UUID().uuidString)")
@@ -520,6 +543,7 @@ final class DashboardViewModelTests: XCTestCase {
                 dbPath: tempDir.appendingPathComponent("auto_switch.sqlite").path),
             pingController: pingController,
             animalClock: animalClock,
+            launchAtLogin: launchAtLogin,
             now: now)
         return (vm, store)
     }

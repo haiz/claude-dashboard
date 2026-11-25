@@ -87,8 +87,14 @@ enum SettingsTips {
         example: "A release published at noon is installed by the next daily check.",
         topic: .refreshUpdates)
 
+    static let launchAtLogin = SettingTip(
+        summary: "Open Claude Dashboard when you log in to your Mac.",
+        detail: "Off by default. When on, macOS starts the app in the menu bar after you log in. You can also change it in System Settings > General > Login Items; this switch follows that list.",
+        example: "Turn it on, restart your Mac: the menu bar shows your usage without opening the app.",
+        topic: .refreshUpdates)
+
     static let all: [SettingTip] = [
-        autoRefresh, refreshInterval, autoPing, autoSwitch, fiveHourThreshold, sevenDayThreshold,
+        launchAtLogin, autoRefresh, refreshInterval, autoPing, autoSwitch, fiveHourThreshold, sevenDayThreshold,
         menuBarToggle, criticalPace, highCriticalPace, quietHours, timeZone, autoUpdate,
     ]
 }

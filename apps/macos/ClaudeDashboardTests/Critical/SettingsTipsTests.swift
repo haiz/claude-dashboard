@@ -3,7 +3,7 @@ import XCTest
 
 final class SettingsTipsTests: XCTestCase {
     func testEveryTipHasAllParts() {
-        XCTAssertEqual(SettingsTips.all.count, 12)
+        XCTAssertEqual(SettingsTips.all.count, 13)
         for tip in SettingsTips.all {
             XCTAssertFalse(tip.summary.isEmpty)
             XCTAssertFalse(tip.detail.isEmpty, tip.summary)

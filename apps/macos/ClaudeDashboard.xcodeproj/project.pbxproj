@@ -257,6 +257,7 @@
 		F53DEBB0E6AE273B5F70F0AD /* UsageRatioEstimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F9378D707962958C10CFE52 /* UsageRatioEstimatorTests.swift */; };
 		F58F0EA896BFE9B618492B9D /* APIBaseURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BF0A4FB04BB2713656EADBF /* APIBaseURL.swift */; };
 		F6F423B9B14E2440A491018C /* ClaudeCodeAccountDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A3660023E6BA291B7932FE /* ClaudeCodeAccountDetectorTests.swift */; };
+		F741AB2CE339F88D240E942E /* LaunchAtLoginSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1ED38044E415219C8871BF4 /* LaunchAtLoginSection.swift */; };
 		FA34C144A6CC6F0D932C9009 /* AccountCardLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85AD7D28083E9B6F696E72C7 /* AccountCardLayoutTests.swift */; };
 		FAD9F75698D390A0550C8388 /* UsageRatioController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AD2748EF06750A5A71EB158 /* UsageRatioController.swift */; };
 		FC8E6F59CBF2D7360DBEC540 /* AppDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C66707D08388FB1A9081646 /* AppDefaults.swift */; };
@@ -481,6 +482,7 @@
 		DF3D3C642BA08FCA6281C68F /* AccentSwitchToggleStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccentSwitchToggleStyle.swift; sourceTree = "<group>"; };
 		DF4DC21DED676BC5D0DC8399 /* LimitResetsContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitResetsContractTests.swift; sourceTree = "<group>"; };
 		DFA6B7D8BC846956FB00E42A /* DashboardPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPane.swift; sourceTree = "<group>"; };
+		E1ED38044E415219C8871BF4 /* LaunchAtLoginSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginSection.swift; sourceTree = "<group>"; };
 		E24FC9E0D7D1602339CBC825 /* PlanDetectionContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDetectionContractTests.swift; sourceTree = "<group>"; };
 		E29F783F80FE0FD6AAA842D5 /* PingLogViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingLogViewModelTests.swift; sourceTree = "<group>"; };
 		E4507D0F84CAAA93EE34FC7D /* LimitResetsText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitResetsText.swift; sourceTree = "<group>"; };
@@ -562,6 +564,7 @@
 				95142383ED7E34A025B5F55A /* AccountsSettingsPane.swift */,
 				6C9D2CB13A6304EAA8197BCF /* CriticalSettingsSection.swift */,
 				9D3775C1FC2B1C99A5FDB188 /* GeneralSettingsPane.swift */,
+				E1ED38044E415219C8871BF4 /* LaunchAtLoginSection.swift */,
 				FACF8748FE497218E8A12DE4 /* SettingsTips.swift */,
 			);
 			path = Settings;
@@ -959,7 +962,7 @@
 			path = LaunchAtLogin;
 			sourceTree = "<group>";
 		};
-		"TEMP_D5D144BB-3147-4089-A7FE-7CE9F6F6DF4B" /* Resources */ = {
+		"TEMP_0698A01F-2048-4AC0-B390-202091821836" /* Resources */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -1336,6 +1339,7 @@
 				89EF0ECEF1D170B4BA0889F1 /* InlinePrompt.swift in Sources */,
 				04AD291FD33FFB834B40D945 /* InteractiveChartContainer.swift in Sources */,
 				0F543ADB6828ADF1A9C685C2 /* LaunchAtLoginController.swift in Sources */,
+				F741AB2CE339F88D240E942E /* LaunchAtLoginSection.swift in Sources */,
 				0D179D672B404BD399674664 /* LimitResetBadge.swift in Sources */,
 				E28C8A34CE74E61D6B59C197 /* LimitResets.swift in Sources */,
 				B144275E5F69E0B8E14E7A2A /* LimitResetsSection.swift in Sources */,
