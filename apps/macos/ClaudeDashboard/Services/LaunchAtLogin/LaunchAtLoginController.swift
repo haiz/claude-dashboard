@@ -1,9 +1,9 @@
-import Foundation
+import AppKit
 import ServiceManagement
 
 /// The "Open at login" switch in Settings > General. Holds no stored setting: `isOn` is read
 /// from the login-item list each `refresh()`, so a change made in System Settings > General >
-/// Login Items shows up here. Off by default because nothing registers until the user turns it on.
+/// Login Items shows up here; it also refreshes whenever the app becomes active again. Off by default because nothing registers until the user turns it on.
 ///
 ///     let c = LaunchAtLoginController.live(isRunningTests: AppDefaults.isRunningTests())
 ///     c.setEnabled(true)        // registers; isOn == true, or errorMessage set
@@ -18,10 +18,16 @@ final class LaunchAtLoginController: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private let service: LoginItemService
+    private var activeObserver: NSObjectProtocol?
 
-    init(service: LoginItemService) {
+    init(service: LoginItemService, notificationCenter: NotificationCenter = .default) {
         self.service = service
         refresh()
+        activeObserver = notificationCenter.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
     }
 
     /// The real login-item list, or an in-memory one under XCTest.

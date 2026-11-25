@@ -95,6 +95,18 @@ final class LaunchAtLoginControllerTests: XCTestCase {
         XCTAssertTrue(c.isOn)
     }
 
+    /// Coming back from System Settings (approval, or a change in Login Items) re-reads the list.
+    func testRefreshesWhenAppBecomesActive() {
+        let center = NotificationCenter()
+        let svc = FakeLoginItemService(status: .requiresApproval)
+        let c = LaunchAtLoginController(service: svc, notificationCenter: center)
+        XCTAssertTrue(c.needsApproval)
+        svc.status = .enabled
+        center.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        XCTAssertFalse(c.needsApproval)
+        XCTAssertTrue(c.isOn)
+    }
+
     func testLiveUnderTestsIsInMemory() {
         XCTAssertFalse(LaunchAtLoginController.live(isRunningTests: true).isOn)
     }
