@@ -734,6 +734,47 @@ loads). Swift `ChartWindowSummary`, Rust `core::chart::window_summary`.
 Formatting is platform detail, but both apps print `HH:mm`, or `d MMM HH:mm`
 for a time on another local day than now, and the Overview shows no label.
 
+## Speed series
+
+The Overview's "Speed" chart draws how fast usage rose, per time bucket, in
+Max-equivalent percent per hour. Cases: `cases/speed-series.json` (`factors`,
+`series`, `total`; times are Unix seconds, `expect` holds `[end, value]` pairs,
+compared within 1e-9; each fixture is the source of truth). Rust
+`core::speed_series`; macOS follows the same rules.
+
+Per account, from entries `(t, u)` ascending and already through the reset
+transitions, a step `S` (6, 10, 20 or 30 minutes), the local UTC offset, the
+visible range `[from, to]` and `factor`:
+
+- Buckets are aligned to the local clock: `start(t) = floor((t + offset) / S) * S - offset`.
+  Candidates are the buckets overlapping the range (`end > from` and `start < to`).
+- A bucket gets a point only when `first.t <= start` and `last.t >= end`
+  (partly covered buckets get none).
+- For each consecutive pair `(a, b)` with `b.u > a.u`: when `b.t > a.t` the rise
+  is spread linearly over `[a.t, b.t]`, so a bucket gets
+  `(b.u - a.u) * overlap / (b.t - a.t)`; when `b.t == a.t` the whole rise goes to
+  the bucket containing `b.t`. Pairs that fall or stay level add 0.
+- `value = sum / (S / 3600) * factor`, stamped at the bucket end. No smoothing.
+
+Every drawn value is Max-equivalent: `factor = weight / 10`, with the plan
+weights below (also the Avg overlay's weights; an unknown label weighs 1).
+
+| Plan | Weight | Factor |
+|---|---|---|
+| Pro | 1 | 0.1 |
+| Max 5x | 5 | 0.5 |
+| Max 20x | 20 | 2.0 |
+| Max | 10 | 1.0 |
+| Team | 1 | 0.1 |
+| Enterprise | 1 | 0.1 |
+| Free | 1 | 0.1 |
+
+Total: sum the accounts' points per bucket end, over the accounts that have a
+point at that end. An account is live when `now - last_entry <= 900` s. If any
+live account has points, drop the Total points after the smallest last point end
+among the live accounts that have at least one point; stale accounts never hold
+the Total back.
+
 ## Ping
 
 Starting an account's usage windows without Claude Code: one short claude.ai message sent

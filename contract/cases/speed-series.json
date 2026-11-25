@@ -1,0 +1,47 @@
+{
+  "factors": [
+    {"plan": "Pro", "factor": 0.1}, {"plan": "Max 5x", "factor": 0.5},
+    {"plan": "Max 20x", "factor": 2.0}, {"plan": "Max", "factor": 1.0},
+    {"plan": "Team", "factor": 0.1}, {"plan": "Enterprise", "factor": 0.1},
+    {"plan": "Free", "factor": 0.1}
+  ],
+  "series": [
+    {"name": "one 1% step in a 6-min bucket reads 10.0", "step_min": 6, "utc_offset_s": 0, "from": 0, "to": 720, "plan": "Max",
+     "points": [[0, 5], [120, 5], [240, 6], [720, 6]], "expect": [[360, 10.0], [720, 0.0]]},
+    {"name": "Pro is scaled to a tenth", "step_min": 6, "utc_offset_s": 0, "from": 0, "to": 720, "plan": "Pro",
+     "points": [[0, 5], [120, 5], [240, 6], [720, 6]], "expect": [[360, 1.0], [720, 0.0]]},
+    {"name": "Max 20x is doubled", "step_min": 6, "utc_offset_s": 0, "from": 0, "to": 720, "plan": "Max 20x",
+     "points": [[0, 5], [120, 5], [240, 6], [720, 6]], "expect": [[360, 20.0], [720, 0.0]]},
+    {"name": "a segment across two buckets splits by time", "step_min": 6, "utc_offset_s": 0, "from": 0, "to": 720, "plan": "Max",
+     "points": [[0, 0], [300, 0], [420, 2], [720, 2]], "expect": [[360, 10.0], [720, 10.0]]},
+    {"name": "a reset drop counts 0, never negative", "step_min": 6, "utc_offset_s": 0, "from": 0, "to": 720, "plan": "Max",
+     "points": [[0, 40], [180, 50], [181, 0], [360, 3], [720, 3]], "expect": [[360, 130.0], [720, 0.0]]},
+    {"name": "compressed plateau over hours reads 0", "step_min": 30, "utc_offset_s": 0, "from": 0, "to": 7200, "plan": "Max",
+     "points": [[0, 20], [7200, 20]], "expect": [[1800, 0.0], [3600, 0.0], [5400, 0.0], [7200, 0.0]]},
+    {"name": "overnight gap is spread, no spike", "step_min": 30, "utc_offset_s": 0, "from": 0, "to": 3600, "plan": "Max",
+     "points": [[0, 10], [36000, 40]], "expect": [[1800, 3.0], [3600, 3.0]]},
+    {"name": "buckets follow the local clock at +5:30", "step_min": 20, "utc_offset_s": 19800, "from": 600, "to": 3000, "plan": "Max",
+     "points": [[0, 0], [1800, 0], [1801, 1], [3600, 1]], "expect": [[1800, 0.0], [3000, 3.0]]},
+    {"name": "a same-time rise goes to the bucket holding it", "step_min": 6, "utc_offset_s": 0, "from": 0, "to": 720, "plan": "Max",
+     "points": [[0, 0], [100, 0], [100, 1], [720, 1]], "expect": [[360, 10.0], [720, 0.0]]},
+    {"name": "partly covered edge buckets get no point", "step_min": 6, "utc_offset_s": 0, "from": 0, "to": 1080, "plan": "Max",
+     "points": [[100, 0], [700, 6]], "expect": []},
+    {"name": "10-min step", "step_min": 10, "utc_offset_s": 25200, "from": 0, "to": 1200, "plan": "Max",
+     "points": [[0, 0], [300, 1], [1200, 1]], "expect": [[600, 6.0], [1200, 0.0]]}
+  ],
+  "total": [
+    {"name": "sums the accounts per bucket", "now": 10000,
+     "accounts": [{"points": [[360, 10], [720, 0]], "last_entry": 9990}, {"points": [[360, 1], [720, 2]], "last_entry": 9990}],
+     "expect": [[360, 11.0], [720, 2.0]]},
+    {"name": "an account missing a bucket adds nothing there", "now": 10000,
+     "accounts": [{"points": [[360, 10], [720, 5], [1080, 5]], "last_entry": 9990}, {"points": [[720, 1], [1080, 1]], "last_entry": 9990}],
+     "expect": [[360, 10.0], [720, 6.0], [1080, 6.0]]},
+    {"name": "stops where a live account has not caught up", "now": 1100,
+     "accounts": [{"points": [[360, 1], [720, 1], [1080, 1]], "last_entry": 1090}, {"points": [[360, 2], [720, 2]], "last_entry": 1000}],
+     "expect": [[360, 3.0], [720, 3.0]]},
+    {"name": "a stale account does not hold Total back", "now": 5000,
+     "accounts": [{"points": [[360, 1], [720, 1], [1080, 1]], "last_entry": 4990}, {"points": [[360, 2], [720, 2]], "last_entry": 1000}],
+     "expect": [[360, 3.0], [720, 3.0], [1080, 1.0]]},
+    {"name": "no accounts, no Total", "now": 1000, "accounts": [], "expect": []}
+  ]
+}

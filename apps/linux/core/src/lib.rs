@@ -37,3 +37,4 @@ pub mod userprotect;
 pub mod geometry;
 
 pub mod chart;
+pub mod speed_series;

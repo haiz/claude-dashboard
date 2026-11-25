@@ -47,15 +47,8 @@ pub struct Account {
     pub weight: f64,
 }
 
-/// macOS `OverviewChartView.planWeight`, from the plan label.
-pub fn plan_weight(plan: &str) -> f64 {
-    match plan {
-        "Max 5x" => 5.0,
-        "Max 20x" => 20.0,
-        "Max" => 10.0,
-        _ => 1.0,
-    }
-}
+/// macOS `OverviewChartView.planWeight`, from the plan label (shared in core).
+pub use claude_dashboard_core::speed_series::plan_weight;
 
 /// One frame of the Overview chart: the view state, the lines, the legend and
 /// the limit-hit markers.
